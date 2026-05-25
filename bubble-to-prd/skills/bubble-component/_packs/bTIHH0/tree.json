@@ -1,0 +1,14 @@
+{
+  "id": "bTIHH0",
+  "type": "CustomDefinition",
+  "name": "Group",
+  "props": {
+    "container_layout": "column",
+    "height": 200,
+    "min_width_px": 0,
+    "width": 200,
+    "default_width": 200,
+    "element_type": "Group",
+    "min_height_px": 120
+  }
+}

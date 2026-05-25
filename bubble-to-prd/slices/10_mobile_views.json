@@ -1,0 +1,27 @@
+{
+  "bTHDb": {
+    "properties": {
+      "height": 852,
+      "width": 393,
+      "title": {
+        "entries": {
+          "0": "Home"
+        },
+        "type": "TextExpression"
+      },
+      "fixed_width": true,
+      "min_width_px": 0,
+      "default_width": 393,
+      "min_height_px": 852,
+      "new_responsive": true,
+      "element_version": 5,
+      "container_layout": "column",
+      "responsive_version": 1
+    },
+    "type": "Page",
+    "id": "bTHDZ",
+    "default_name": "",
+    "name": "Home",
+    "is_mobile_view": true
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "bTMUX",
+  "type": "CustomDefinition",
+  "name": "FloatingGroup",
+  "props": {
+    "default_width": 200,
+    "element_type": "FloatingGroup",
+    "min_width_px": 0,
+    "height": 200,
+    "width": 200,
+    "container_layout": "column",
+    "min_height_px": 120
+  },
+  "children": [
+    {
+      "id": "bTMUd",
+      "type": "Icon",
+      "name": "Icon A",
+      "props": {
+        "collapse_when_hidden": true,
+        "icon": "phosphor regular spinner-gap",
+        "height": 30,
+        "left": 125,
+        "zindex": 2,
+        "top": 68,
+        "width": 30,
+        "horiz_alignment": "center"
+      }
+    }
+  ]
+}

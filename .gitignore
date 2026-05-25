@@ -1,0 +1,32 @@
+# ── Dependências / build (app Next.js) ──────────────────────
+balu-next/node_modules/
+balu-next/.next/
+balu-next/out/
+balu-next/.vercel/
+balu-next/tsconfig.tsbuildinfo
+balu-next/next-env.d.ts
+
+# ── Segredos / ambiente ──────────────────────────────────────
+balu-next/.env
+balu-next/.env.local
+balu-next/.env.*.local
+.env
+.env.local
+
+# ── Export bruto do Bubble (contém PII + tokens — fora do git) ─
+# Os slices em bubble-to-prd/slices/ já foram extraídos e estão limpos.
+# O arquivo continua no disco; só não vai pro versionamento.
+excluviapainel.bubble
+
+# ── Testes / artefatos ───────────────────────────────────────
+balu-next/playwright-report/
+balu-next/test-results/
+balu-next/blob-report/
+balu-next/.playwright/
+
+# ── Claude Code (config local da máquina) ────────────────────
+.claude/settings.local.json
+
+# ── Diversos ─────────────────────────────────────────────────
+*.log
+.DS_Store

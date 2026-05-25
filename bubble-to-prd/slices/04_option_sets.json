@@ -1,0 +1,1427 @@
+{
+  "tiponf": {
+    "display": "TipoNF",
+    "values": {
+      "bTIOg0": {
+        "display": "NFe",
+        "db_value": "nfe",
+        "sort_factor": 1
+      },
+      "bTIOh0": {
+        "display": "NFCE",
+        "db_value": "nfce",
+        "sort_factor": 2
+      },
+      "bTIOi0": {
+        "display": "NFSe",
+        "db_value": "nfse",
+        "sort_factor": 3
+      }
+    },
+    "creation_source": "editor"
+  },
+  "frete_nfe": {
+    "display": "Frete_Nfe",
+    "values": {
+      "bTMfc": {
+        "display": "Emitente",
+        "code": "0",
+        "db_value": "emitente",
+        "sort_factor": 1
+      },
+      "bTMfg": {
+        "display": "Destinatário",
+        "code": "1",
+        "db_value": "destinat_rio",
+        "sort_factor": 2
+      },
+      "bTMfh": {
+        "display": "Sem Frete",
+        "code": "9",
+        "db_value": "sem_frete",
+        "sort_factor": 3
+      }
+    },
+    "attributes": {
+      "code": {
+        "display": "Code",
+        "value": "text",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "role_user": {
+    "display": "Role_user",
+    "values": {
+      "bTNiY": {
+        "display": "Empresa",
+        "db_value": "empresa",
+        "sort_factor": 1
+      },
+      "bTNli": {
+        "display": "Contador",
+        "db_value": "contador",
+        "sort_factor": 2
+      }
+    },
+    "creation_source": "editor"
+  },
+  "status_nfs": {
+    "display": "Status_nfs",
+    "values": {
+      "bTLFC": {
+        "display": "cancelada",
+        "deleted": true,
+        "db_value": "cancelada",
+        "sort_factor": 1
+      },
+      "bTLFD": {
+        "display": "pendente",
+        "db_value": "pendente",
+        "sort_factor": 2
+      },
+      "bTLFE": {
+        "display": "ativa",
+        "db_value": "ativa",
+        "sort_factor": 3
+      },
+      "bTLFI": {
+        "display": "cancelada",
+        "db_value": "cancelada0",
+        "sort_factor": 4
+      }
+    },
+    "creation_source": "editor"
+  },
+  "type_itens": {
+    "display": "Type_itens",
+    "values": {
+      "bTImV": {
+        "display": "Empresa",
+        "db_value": "empresa",
+        "sort_factor": 1
+      },
+      "bTImW": {
+        "display": "PF",
+        "db_value": "pf",
+        "sort_factor": 2
+      }
+    },
+    "creation_source": "editor"
+  },
+  "icms_origem": {
+    "display": "icms_origem",
+    "values": {
+      "bTIfN0": {
+        "display": "0 – Nacional",
+        "number": 0,
+        "db_value": "0___nacional",
+        "sort_factor": 1
+      },
+      "bTIfO0": {
+        "display": "1 – Estrangeira (importação direta)",
+        "number": 1,
+        "db_value": "1___estrangeira__importa__o_direta_",
+        "sort_factor": 2
+      },
+      "bTIfS0": {
+        "display": "2 – Estrangeira (adquirida no mercado interno)",
+        "number": 2,
+        "db_value": "2___estrangeira__adquirida_no_mercado_interno_",
+        "sort_factor": 3
+      },
+      "bTIfT0": {
+        "display": "3 – Nacional com mais de 40% de conteúdo estrangeiro",
+        "number": 3,
+        "db_value": "3___nacional_com_mais_de_40__de_conte_do_estrangeiro",
+        "sort_factor": 4
+      },
+      "bTIfU0": {
+        "display": "4 – Nacional produzida através de processos produtivos básicos",
+        "number": 4,
+        "db_value": "4___nacional_produzida_atrav_s_de_processos_produtivos_b_sicos",
+        "sort_factor": 5
+      },
+      "bTIfY0": {
+        "display": "5 – Nacional com menos de 40% de conteúdo estrangeiro",
+        "number": 5,
+        "db_value": "5___nacional_com_menos_de_40__de_conte_do_estrangeiro",
+        "sort_factor": 6
+      },
+      "bTIfZ0": {
+        "display": "6 – Estrangeira (importação direta) sem produto nacional similar",
+        "number": 6,
+        "db_value": "6___estrangeira__importa__o_direta__sem_produto_nacional_similar",
+        "sort_factor": 7
+      },
+      "bTIfa0": {
+        "display": "7 – Estrangeira (adquirida no mercado interno) sem produto nacional similar",
+        "number": 7,
+        "db_value": "7___estrangeira__adquirida_no_mercado_interno__sem_produto_nacional_similar",
+        "sort_factor": 8
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "number",
+        "value": "number",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "local_destino": {
+    "display": "Local_destino",
+    "values": {
+      "bTIVS0": {
+        "display": "1 – Operação interna",
+        "number": 1,
+        "db_value": "1___opera__o_interna",
+        "sort_factor": 1
+      },
+      "bTIVW0": {
+        "display": "2 – Operação interestadual",
+        "number": 2,
+        "db_value": "2___opera__o_interestadual",
+        "sort_factor": 2
+      },
+      "bTIVX0": {
+        "display": "3 – Operação com exterior",
+        "number": 3,
+        "db_value": "3___opera__o_com_exterior",
+        "sort_factor": 3
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "number",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "tipo_documento": {
+    "display": "Tipo_documento",
+    "values": {
+      "bTIVQ0": {
+        "display": "0 – Nota Fiscal de Entrada",
+        "number": 0,
+        "db_value": "0___nota_fiscal_de_entrada",
+        "sort_factor": 1
+      },
+      "bTIVR0": {
+        "display": "1 – Nota Fiscal de Saída",
+        "number": 1,
+        "db_value": "1___nota_fiscal_de_sa_da",
+        "sort_factor": 2
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "number",
+        "creation_source": "editor"
+      },
+      "type_empresa": {
+        "display": "Type_empresa - deleted",
+        "value": "text",
+        "deleted": true,
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "forma_pagamento": {
+    "display": "forma_pagamento",
+    "values": {
+      "bTIul": {
+        "display": "01: Dinheiro",
+        "number": "01",
+        "db_value": "01__dinheiro",
+        "sort_factor": 1
+      },
+      "bTIum": {
+        "display": "02: Cheque",
+        "number": "02",
+        "db_value": "02__cheque",
+        "sort_factor": 2
+      },
+      "bTJAY": {
+        "display": "03: Cartão de Crédito",
+        "number": "03",
+        "db_value": "03__cart_o_de_cr_dito",
+        "sort_factor": 3
+      },
+      "bTJAZ": {
+        "display": "04: Cartão de Débito",
+        "number": "04",
+        "db_value": "04__cart_o_de_d_bito",
+        "sort_factor": 4
+      },
+      "bTJAa": {
+        "display": "05: Crédito Loja",
+        "number": "05",
+        "db_value": "05__cr_dito_loja",
+        "sort_factor": 5
+      },
+      "bTJAe": {
+        "display": "10: Vale Alimentação",
+        "number": "10",
+        "db_value": "10__vale_alimenta__o",
+        "sort_factor": 6
+      },
+      "bTJAf": {
+        "display": "11: Vale Refeição",
+        "number": "11",
+        "db_value": "11__vale_refei__o",
+        "sort_factor": 7
+      },
+      "bTJAg": {
+        "display": "12: Vale Presente",
+        "number": "12",
+        "db_value": "12__vale_presente",
+        "sort_factor": 8
+      },
+      "bTJAk": {
+        "display": "13: Vale Combustível",
+        "number": "13",
+        "db_value": "13__vale",
+        "sort_factor": 9
+      },
+      "bTJAl": {
+        "display": "99: Outros",
+        "number": "99",
+        "db_value": "99__outros",
+        "sort_factor": 10
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "text",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "inclui_no_total": {
+    "display": "Inclui_no_total",
+    "values": {
+      "bTIVw0": {
+        "display": "0 – Não",
+        "number": 0,
+        "db_value": "0___n_o",
+        "sort_factor": 1
+      },
+      "bTIfM0": {
+        "display": "1 – Sim",
+        "number": 1,
+        "db_value": "1___sim",
+        "sort_factor": 2
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "number",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "consumidor_final": {
+    "display": "Consumidor_final",
+    "values": {
+      "bTIVi0": {
+        "display": "0 – Normal",
+        "number": 0,
+        "db_value": "0___normal",
+        "sort_factor": 1
+      },
+      "bTIVj0": {
+        "display": "1 – Consumidor final",
+        "number": 1,
+        "db_value": "1___consumidor_final",
+        "sort_factor": 2
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "number",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "modalidade_frete": {
+    "display": "modalidade_frete",
+    "values": {
+      "bTImO": {
+        "display": "0 – Por conta do emitente",
+        "number": 0,
+        "db_value": "0___por_conta_do_emitente",
+        "sort_factor": 1
+      },
+      "bTImP": {
+        "display": "1 – Por conta do destinatário",
+        "number": 1,
+        "db_value": "1___por_conta_do_destinat_rio",
+        "sort_factor": 2
+      },
+      "bTImQ": {
+        "display": "2 – Por conta de terceiros",
+        "number": 2,
+        "db_value": "2___por_conta_de_terceiros",
+        "sort_factor": 3
+      },
+      "bTImU": {
+        "display": "9 – Sem frete",
+        "number": 9,
+        "db_value": "9___sem_frete",
+        "sort_factor": 4
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "number",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "unidade_comercial": {
+    "display": "Unidade_comercial",
+    "values": {
+      "bTKXI": {
+        "display": "UN",
+        "db_value": "un",
+        "sort_factor": 1
+      },
+      "bTKXM": {
+        "display": "KG",
+        "db_value": "kg",
+        "sort_factor": 2
+      },
+      "bTKXN": {
+        "display": "L",
+        "db_value": "l",
+        "sort_factor": 3
+      }
+    },
+    "creation_source": "editor"
+  },
+  "finalidade_emiss_o": {
+    "display": "Finalidade_emissão",
+    "values": {
+      "bTIVY0": {
+        "display": "1 – Normal",
+        "number": 1,
+        "db_value": "1___normal",
+        "sort_factor": 1
+      },
+      "bTIVc0": {
+        "display": "2 – Complementar",
+        "number": 2,
+        "db_value": "2___complementar",
+        "sort_factor": 2
+      },
+      "bTIVd0": {
+        "display": "3 – Nota de ajuste",
+        "number": 3,
+        "db_value": "3___nota_de_ajuste",
+        "sort_factor": 3
+      },
+      "bTIVe0": {
+        "display": "4 – Devolução",
+        "number": 4,
+        "db_value": "4___devolu__o",
+        "sort_factor": 4
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "number",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "presenca_comprador": {
+    "display": "presenca_comprador",
+    "values": {
+      "bTIVk0": {
+        "display": "0 – Não se aplica (por exemplo, para a Nota Fiscal complementar ou de ajuste)",
+        "number": 0,
+        "db_value": "0___n_o_se_aplica__por_exemplo__para_a_nota_fiscal_complementar_ou_de_ajuste_",
+        "sort_factor": 1
+      },
+      "bTIVo0": {
+        "display": "1 – Operação presencial",
+        "number": 1,
+        "db_value": "1___opera__o_presencial",
+        "sort_factor": 2
+      },
+      "bTIVp0": {
+        "display": "2 – Operação não presencial, pela Internet",
+        "number": 2,
+        "db_value": "2___opera__o_n_o_presencial__pela_internet",
+        "sort_factor": 3
+      },
+      "bTIVq0": {
+        "display": "3 – Operação não presencial, Teleatendimento",
+        "number": 3,
+        "db_value": "3___opera__o_n_o_presencial__teleatendimento",
+        "sort_factor": 4
+      },
+      "bTIVu0": {
+        "display": "4 – NFC-e em operação com entrega em domicílio",
+        "number": 4,
+        "db_value": "4___nfc_e_em_opera__o_com_entrega_em_domic_lio",
+        "sort_factor": 5
+      },
+      "bTIVv0": {
+        "display": "9 – Operação não presencial, outros",
+        "number": 9,
+        "db_value": "9___opera__o_n_o_presencial__outros",
+        "sort_factor": 6
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "number",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "status_declaracoes": {
+    "display": "Status_declaracoes",
+    "values": {
+      "bTMFi": {
+        "display": "pronta para enviar",
+        "db_value": "pronta_para_enviar",
+        "sort_factor": 1
+      },
+      "bTMFj": {
+        "display": "enviando",
+        "db_value": "enviando",
+        "sort_factor": 2
+      },
+      "bTMFk": {
+        "display": "enviada",
+        "db_value": "enviada",
+        "sort_factor": 3
+      },
+      "bTMFo": {
+        "display": "erro",
+        "db_value": "erro",
+        "sort_factor": 4
+      }
+    },
+    "creation_source": "editor"
+  },
+  "forma_pagamento_nfe": {
+    "display": "Forma_pagamento_nfe",
+    "values": {
+      "bTMge": {
+        "display": "Dinheiro",
+        "code": "01",
+        "db_value": "dinheiro",
+        "sort_factor": 1
+      },
+      "bTMgi": {
+        "display": "Cheque",
+        "code": "02",
+        "db_value": "cheque",
+        "sort_factor": 2
+      },
+      "bTMgj": {
+        "display": "Cartão de Crédito",
+        "code": "03",
+        "db_value": "cart_o_de_cr_dito",
+        "sort_factor": 3
+      },
+      "bTMgk": {
+        "display": "Cartão de Débito",
+        "code": "04",
+        "db_value": "cart_o_de_d_bito",
+        "sort_factor": 4
+      },
+      "bTMgo": {
+        "display": "Crédito Loja",
+        "code": "05",
+        "db_value": "cr_dito_loja",
+        "sort_factor": 5
+      },
+      "bTMgp": {
+        "display": "Outros",
+        "code": "99",
+        "db_value": "outros",
+        "sort_factor": 6
+      }
+    },
+    "attributes": {
+      "code": {
+        "display": "code",
+        "value": "text",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "natureza_operacao_nfe": {
+    "display": "Natureza_operacao_nfe",
+    "values": {
+      "bTMeY": {
+        "display": "Venda de produto",
+        "code": "5102 / 6102",
+        "db_value": "venda_de_produto",
+        "sort_factor": 1
+      },
+      "bTMeZ": {
+        "display": "Venda de produto para consumidor final",
+        "code": "5405 / 6404",
+        "db_value": "venda_de_produto_para_consumidor_final",
+        "sort_factor": 2
+      },
+      "bTMea": {
+        "display": "Devolução de compra",
+        "code": "5201 / 6201",
+        "db_value": "devolu__o_de_compra",
+        "sort_factor": 3
+      },
+      "bTMee": {
+        "display": "Devolução de venda",
+        "code": "5411 / 6411",
+        "db_value": "devolu__o_de_venda",
+        "sort_factor": 4
+      },
+      "bTMef": {
+        "display": "Transferência de mercadoria",
+        "code": "5152 / 6152",
+        "db_value": "transfer_ncia_de_mercadoria",
+        "sort_factor": 5
+      },
+      "bTMeg": {
+        "display": "Remessa para conserto",
+        "code": "5915 / 6915",
+        "db_value": "remessa_para_conserto",
+        "sort_factor": 6
+      },
+      "bTMek": {
+        "display": "Retorno de conserto",
+        "code": "5916 / 6916",
+        "db_value": "retorno_de_conserto",
+        "sort_factor": 7
+      },
+      "bTMel": {
+        "display": "Remessa para demonstração",
+        "code": "5912 / 6912",
+        "db_value": "remessa_para_demonstra__o",
+        "sort_factor": 8
+      },
+      "bTMem": {
+        "display": "Retorno de demonstração",
+        "code": "5913 / 6913",
+        "db_value": "retorno_de_demonstra__o",
+        "sort_factor": 9
+      },
+      "bTMeq": {
+        "display": "Remessa por conta e ordem",
+        "code": "5923 / 6923",
+        "db_value": "remessa_por_conta_e_ordem",
+        "sort_factor": 10
+      },
+      "bTMer": {
+        "display": "Brinde ou bonificação",
+        "code": "5190 / 6190",
+        "db_value": "brinde_ou_bonifica__o",
+        "sort_factor": 11
+      },
+      "bTMes": {
+        "display": "Doação",
+        "code": "5910 / 6910",
+        "db_value": "doa__o",
+        "sort_factor": 12
+      }
+    },
+    "attributes": {
+      "code": {
+        "display": "Code",
+        "value": "text",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "status_guias_impostos": {
+    "display": "status_guias_impostos",
+    "values": {
+      "bTLnR": {
+        "display": "gerando",
+        "db_value": "gerando",
+        "sort_factor": 1
+      },
+      "bTLnS": {
+        "display": "gerada",
+        "db_value": "gerada",
+        "sort_factor": 2
+      },
+      "bTLnW": {
+        "display": "paga",
+        "db_value": "paga",
+        "sort_factor": 3
+      },
+      "bTLnX": {
+        "display": "vencida",
+        "db_value": "vencida",
+        "sort_factor": 4
+      },
+      "bTLnY": {
+        "display": "erro",
+        "db_value": "erro",
+        "sort_factor": 5
+      }
+    },
+    "creation_source": "editor"
+  },
+  "natureza_operacao_nfse": {
+    "display": "natureza_operacao_nfse",
+    "values": {
+      "bTJAm": {
+        "display": "1: Tributação no município",
+        "number": 1,
+        "db_value": "1__tributa__o_no_munic_pio",
+        "sort_factor": 1
+      },
+      "bTJQI": {
+        "display": "2: Tributação fora do município",
+        "number": 2,
+        "db_value": "2__tributa__o_fora_do_munic_pio",
+        "sort_factor": 2
+      },
+      "bTJQJ": {
+        "display": "3: Isenção",
+        "number": 3,
+        "db_value": "3__isen__o",
+        "sort_factor": 3
+      },
+      "bTJQK": {
+        "display": "4: Imune",
+        "number": 4,
+        "db_value": "4__imune",
+        "sort_factor": 4
+      },
+      "bTJQO": {
+        "display": "5: Exigibilidade suspensa por decisão judicial",
+        "number": 5,
+        "db_value": "5__exigibilidade_suspensa_por_decis_o_judicial",
+        "sort_factor": 5
+      },
+      "bTJQP": {
+        "display": "6: Exigibilidade suspensa por procedimento administrativo",
+        "number": 6,
+        "db_value": "6__exigibilidade_suspensa_por_procedimento_administrativo",
+        "sort_factor": 6
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "number",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "icms_situacao_tributaria": {
+    "display": "icms_situacao_tributaria",
+    "values": {
+      "bTIfe0": {
+        "display": "00 – Tributada integralmente",
+        "number": 0,
+        "number0": "00",
+        "db_value": "00___tributada_integralmente",
+        "sort_factor": 1
+      },
+      "bTIff0": {
+        "display": "10 – Tributada e com cobrança do ICMS por substituição tributária",
+        "number0": "10",
+        "db_value": "10___tributada_e_com_cobran_a_do_icms_por_substitui__o_tribut_ria",
+        "sort_factor": 2
+      },
+      "bTIfg0": {
+        "display": "20 – Tributada com redução de base de cálculo",
+        "number0": "20",
+        "db_value": "20___tributada_com_redu__o_de_base_de_c_lculo",
+        "sort_factor": 3
+      },
+      "bTIfk0": {
+        "display": "30 – Isenta ou não tributada e com cobrança do ICMS por substituição tributária",
+        "number0": "30",
+        "db_value": "30___isenta_ou_n_o_tributada_e_com_cobran_a_do_icms_por_substitui__o_tribut_ria",
+        "sort_factor": 4
+      },
+      "bTIfl0": {
+        "display": "40 – Isenta",
+        "number0": "40",
+        "db_value": "40___isenta",
+        "sort_factor": 5
+      },
+      "bTIfm0": {
+        "display": "41 – Não tributada",
+        "number0": "41",
+        "db_value": "41___n_o_tributada",
+        "sort_factor": 6
+      },
+      "bTIfq0": {
+        "display": "50 – Suspensão",
+        "number0": "50",
+        "db_value": "50___suspens_o",
+        "sort_factor": 7
+      },
+      "bTIfr0": {
+        "display": "51 – Diferimento (a exigência do preenchimento das informações do ICMS diferido fica a critério de cada UF)",
+        "number0": "51",
+        "db_value": "51___diferimento__a_exig_ncia_do_preenchimento_das_informa__es_do_icms_diferido_fica_a_crit_rio_de_cada_uf_",
+        "sort_factor": 8
+      },
+      "bTIfs0": {
+        "display": "60 – Cobrado anteriormente por substituição tributária",
+        "number0": "60",
+        "db_value": "60___cobrado_anteriormente_por_substitui__o_tribut_ria",
+        "sort_factor": 9
+      },
+      "bTIfw0": {
+        "display": "70 – Tributada com redução de base de cálculo e com cobrança do ICMS por substituição tributária; 90 – Outras (regime Normal)",
+        "number0": "70",
+        "db_value": "70___tributada_com_redu__o_de_base_de_c_lculo_e_com_cobran_a_do_icms_por_substitui__o_tribut_ria__90___outras__regime_normal_",
+        "sort_factor": 10
+      },
+      "bTIfx0": {
+        "display": "101 – Ttributada pelo Simples Nacional com permissão de crédito",
+        "number0": "101\n",
+        "db_value": "101___ttributada_pelo_simples_nacional_com_permiss_o_de_cr_dito",
+        "sort_factor": 11
+      },
+      "bTIfy0": {
+        "display": "102 – Tributada pelo Simples Nacional sem permissão de crédito",
+        "number0": "102\n",
+        "db_value": "102___tributada_pelo_simples_nacional_sem_permiss_o_de_cr_dito",
+        "sort_factor": 12
+      },
+      "bTIgC0": {
+        "display": "103 – Isenção do ICMS no Simples Nacional para faixa de receita bruta",
+        "number0": "103",
+        "db_value": "103___isen__o_do_icms_no_simples_nacional_para_faixa_de_receita_bruta",
+        "sort_factor": 13
+      },
+      "bTIgD0": {
+        "display": "201 – Tributada pelo Simples Nacional com permissão de crédito e com cobrança do ICMS por substituição tributária",
+        "number0": "201",
+        "db_value": "201___tributada_pelo_simples_nacional_com_permiss_o_de_cr_dito_e_com_cobran_a_do_icms_por_substitui__o_tribut_ria",
+        "sort_factor": 14
+      },
+      "bTIgE0": {
+        "display": "202 – Tributada pelo Simples Nacional sem permissão de crédito e com cobrança do ICMS por substituição tributária",
+        "number0": "202\n",
+        "db_value": "202___tributada_pelo_simples_nacional_sem_permiss_o_de_cr_dito_e_com_cobran_a_do_icms_por_substitui__o_tribut_ria",
+        "sort_factor": 15
+      },
+      "bTIgI0": {
+        "display": "203 – Isenção do ICMS nos Simples Nacional para faixa de receita bruta e com cobrança do ICMS por substituição tributária",
+        "number0": "203",
+        "db_value": "203___isen__o_do_icms_nos_simples_nacional_para_faixa_de_receita_bruta_e_com_cobran_a_do_icms_por_substitui__o_tribut_ria",
+        "sort_factor": 16
+      },
+      "bTIgJ0": {
+        "display": "300 – Imune",
+        "number0": "300",
+        "db_value": "300___imune",
+        "sort_factor": 17
+      },
+      "bTIgK0": {
+        "display": "400 – Não tributada pelo Simples Nacional",
+        "number0": "400",
+        "db_value": "400___n_o_tributada_pelo_simples_nacional",
+        "sort_factor": 18
+      },
+      "bTIgO0": {
+        "display": "500 – ICMS cobrado anteriormente por substituição tributária (substituído) ou por antecipação",
+        "number0": "500",
+        "db_value": "500___icms_cobrado_anteriormente_por_substitui__o_tribut_ria__substitu_do__ou_por_antecipa__o",
+        "sort_factor": 19
+      },
+      "bTIgP0": {
+        "display": "900 – Outras (regime Simples Nacional)",
+        "number0": "900",
+        "db_value": "900___outras__regime_simples_nacional_",
+        "sort_factor": 20
+      },
+      "bTIgQ0": {
+        "display": "pis_situacao_tributaria",
+        "number0": "01",
+        "db_value": "pis_situacao_tributaria",
+        "sort_factor": 21
+      },
+      "bTIgU0": {
+        "display": "02 – Operação tributável: base de cálculo = valor da operação (alíquota diferenciada)",
+        "number0": "02",
+        "db_value": "02___opera__o_tribut_vel",
+        "sort_factor": 22
+      },
+      "bTIgV0": {
+        "display": "03 – Operação tributável: base de cálculo = quantidade vendida × alíquota por unidade de produto",
+        "number0": "03",
+        "db_value": "03___opera__o_tribut_vel__base_de_c_lculo___quantidade_vendida___al_quota_por_unidade_de_produto",
+        "sort_factor": 23
+      },
+      "bTIgW0": {
+        "display": "04 – Operação tributável: tributação monofásica (alíquota zero)",
+        "number0": "04",
+        "db_value": "04___opera__o_tribut_vel__tributa__o_monof_sica__al_quota_zero_",
+        "sort_factor": 24
+      },
+      "bTIga0": {
+        "display": "05 – Operação tributável: substituição tributária",
+        "number0": "05",
+        "db_value": "05___opera__o_tribut_vel__substitui__o_tribut_ria",
+        "sort_factor": 25
+      },
+      "bTIgb0": {
+        "display": "06 – Operação tributável: alíquota zero",
+        "number0": "06",
+        "db_value": "06___opera__o_tribut_vel__al_quota_zero",
+        "sort_factor": 26
+      },
+      "bTIgc0": {
+        "display": "07 – Operação isenta da contribuição",
+        "number0": "07",
+        "db_value": "07___opera__o_isenta_da_contribui__o",
+        "sort_factor": 27
+      },
+      "bTIgg0": {
+        "display": "08 – Operação sem incidência da contribuição",
+        "number0": "08\n",
+        "db_value": "08___opera__o_sem_incid_ncia_da_contribui__o",
+        "sort_factor": 28
+      },
+      "bTIgh0": {
+        "display": "09 – Operação com suspensão da contribuição",
+        "number0": "09\n",
+        "db_value": "09___opera__o_com_suspens_o_da_contribui__o",
+        "sort_factor": 29
+      },
+      "bTIgi0": {
+        "display": "49 – Outras operações de saída",
+        "number0": "49",
+        "db_value": "49___outras_opera__es_de_sa_da",
+        "sort_factor": 30
+      },
+      "bTIgm0": {
+        "display": "50 – Operação com direito a crédito: vinculada exclusivamente a receita tributada no mercado interno",
+        "number0": "50",
+        "db_value": "50___opera__o_com_direito_a_cr_dito__vinculada_exclusivamente_a_receita_tributada_no_mercado_interno",
+        "sort_factor": 31
+      },
+      "bTIgn0": {
+        "display": "51 – Operação com direito a crédito: vinculada exclusivamente a receita não tributada no mercado interno",
+        "number0": "51",
+        "db_value": "51___opera__o_com_direito_a_cr_dito__vinculada_exclusivamente_a_receita_n_o_tributada_no_mercado_interno",
+        "sort_factor": 32
+      },
+      "bTIgo0": {
+        "display": "52 – Operação com direito a crédito: vinculada exclusivamente a receita de exportação",
+        "number0": "52",
+        "db_value": "52___opera__o_com_direito_a_cr_dito__vinculada_exclusivamente_a_receita_de_exporta__o",
+        "sort_factor": 33
+      },
+      "bTIgs0": {
+        "display": "53 – Operação com direito a crédito: vinculada a receitas tributadas e não-tributadas no mercado interno",
+        "number0": "53",
+        "db_value": "53___opera__o_com_direito_a_cr_dito__vinculada_a_receitas_tributadas_e_n_o_tributadas_no_mercado_interno",
+        "sort_factor": 34
+      },
+      "bTIgt0": {
+        "display": "54 – Operação com direito a crédito: vinculada a receitas tributadas no mercado interno e de exportação",
+        "number0": "54",
+        "db_value": "54___opera__o_com_direito_a_cr_dito__vinculada_a_receitas_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 35
+      },
+      "bTIgu0": {
+        "display": "55 – Operação com direito a crédito: vinculada a receitas não-tributadas no mercado interno e de exportação",
+        "number0": "55",
+        "db_value": "55___opera__o_com_direito_a_cr_dito__vinculada_a_receitas_n_o_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 36
+      },
+      "bTIgy0": {
+        "display": "56 – Operação com direito a crédito: vinculada a receitas tributadas e não-tributadas no mercado interno e de exportação",
+        "number0": "56",
+        "db_value": "56___opera__o_com_direito_a_cr_dito__vinculada_a_receitas_tributadas_e_n_o_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 37
+      },
+      "bTIgz0": {
+        "display": "60 – Crédito presumido: operação de aquisição vinculada exclusivamente a receita tributada no mercado interno",
+        "number0": "60",
+        "db_value": "60___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_exclusivamente_a_receita_tributada_no_mercado_interno",
+        "sort_factor": 38
+      },
+      "bTIhA0": {
+        "display": "61 – Crédito presumido: operação de aquisição vinculada exclusivamente a receita não-tributada no mercado interno",
+        "number0": "61",
+        "db_value": "61___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_exclusivamente_a_receita_n_o_tributada_no_mercado_interno",
+        "sort_factor": 39
+      },
+      "bTIhE0": {
+        "display": "62 – Crédito presumido: operação de aquisição vinculada exclusivamente a receita de exportação",
+        "number0": "62",
+        "db_value": "62___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_exclusivamente_a_receita_de_exporta__o",
+        "sort_factor": 40
+      },
+      "bTIhF0": {
+        "display": "63 – Crédito presumido: operação de aquisição vinculada a receitas tributadas e não-tributadas no mercado interno",
+        "number0": "63",
+        "db_value": "63___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_a_receitas_tributadas_e_n_o_tributadas_no_mercado_interno",
+        "sort_factor": 41
+      },
+      "bTIhG0": {
+        "display": "64 – Crédito presumido: operação de aquisição vinculada a receitas tributadas no mercado interno e de exportação",
+        "number0": "64",
+        "db_value": "64___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_a_receitas_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 42
+      },
+      "bTIhK0": {
+        "display": "65 – Crédito presumido: operação de aquisição vinculada a receitas não-tributadas no mercado interno e de exportação",
+        "number0": "65",
+        "db_value": "65___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_a_receitas_n_o_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 43
+      },
+      "bTIhL0": {
+        "display": "66 – Crédito presumido: operação de aquisição vinculada a receitas tributadas e não-tributadas no mercado interno e de exportação",
+        "number0": "66",
+        "db_value": "66___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_a_receitas_tributadas_e_n_o_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 44
+      },
+      "bTIhM0": {
+        "display": "67 – Crédito presumido: outras operações",
+        "number0": "67",
+        "db_value": "67___cr_dito_presumido__outras_opera__es",
+        "sort_factor": 45
+      },
+      "bTIhQ0": {
+        "display": "70 – Operação de aquisição sem direito a crédito",
+        "number0": "70",
+        "db_value": "70___opera__o_de_aquisi__o_sem_direito_a_cr_dito",
+        "sort_factor": 46
+      },
+      "bTIhR0": {
+        "display": "71 – Operação de aquisição com isenção",
+        "number0": "71",
+        "db_value": "71___opera__o_de_aquisi__o_com_isen__o",
+        "sort_factor": 47
+      },
+      "bTIhS0": {
+        "display": "72 – Operação de aquisição com suspensão",
+        "number0": "72",
+        "db_value": "72___opera__o_de_aquisi__o_com_suspens_o",
+        "sort_factor": 48
+      },
+      "bTIhW0": {
+        "display": "73 – Operação de aquisição a alíquota zero",
+        "number0": "73",
+        "db_value": "73___opera__o_de_aquisi__o_a_al_quota_zero",
+        "sort_factor": 49
+      },
+      "bTIhX0": {
+        "display": "74 – Operação de aquisição sem incidência da contribuição",
+        "number0": "74",
+        "db_value": "74___opera__o_de_aquisi__o_sem_incid_ncia_da_contribui__o",
+        "sort_factor": 50
+      },
+      "bTIhY0": {
+        "display": "75 – Operação de aquisição por substituição tributária",
+        "number0": "75",
+        "db_value": "75___opera__o_de_aquisi__o_por_substitui__o_tribut_ria",
+        "sort_factor": 51
+      },
+      "bTIhc0": {
+        "display": "98 – Outras operações de entrada",
+        "number0": "98",
+        "db_value": "98___outras_opera__es_de_entrada",
+        "sort_factor": 52
+      },
+      "bTIhd0": {
+        "display": "99 – Outras operações",
+        "number0": "99",
+        "db_value": "99___outras_opera__es",
+        "sort_factor": 53
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number - deleted",
+        "value": "number",
+        "deleted": true,
+        "creation_source": "editor"
+      },
+      "number0": {
+        "display": "Number",
+        "value": "text",
+        "creation_source": "editor"
+      },
+      "tipagem": {
+        "display": "Tipagem",
+        "value": "option.type_itens",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "regime_tributario_empresa": {
+    "display": "regime_tributario_empresa",
+    "values": {
+      "bTMfO": {
+        "display": "Simples Nacional",
+        "code": "1",
+        "db_value": "simples_nacional",
+        "sort_factor": 1,
+        "type_empresa": "Simples"
+      },
+      "bTMfP": {
+        "display": "Simples Nacional — Excesso de sublimite de receita bruta",
+        "code": "2",
+        "db_value": "simples_nacional___excesso_de_sublimite_de_receita_bruta",
+        "sort_factor": 2,
+        "type_empresa": "Simples"
+      },
+      "bTMfQ": {
+        "display": "Regime Normal (Lucro Real ou Presumido)",
+        "code": "3",
+        "db_value": "regime_normal__lucro_real_ou_presumido_",
+        "sort_factor": 3,
+        "type_empresa": "Simples"
+      },
+      "bTMfU": {
+        "display": "Simples Nacional — MEI",
+        "code": "4",
+        "db_value": "simples_nacional___mei",
+        "sort_factor": 4,
+        "type_empresa": "mei"
+      }
+    },
+    "attributes": {
+      "code": {
+        "display": "Code",
+        "value": "text",
+        "creation_source": "editor"
+      },
+      "type_empresa": {
+        "display": "Type_empresa",
+        "value": "text",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "cofins_situacao_tributaria": {
+    "display": "cofins_situacao_tributaria",
+    "values": {
+      "bTIhi": {
+        "display": "01 – Operação tributável: base de cálculo = valor da operação (alíquota normal – cumulativo/não cumulativo)",
+        "number": "01",
+        "db_value": "01___opera__o_tribut_vel__base_de_c_lculo___valor_da_opera__o__al_quota_normal___cumulativo_n_o_cumulativo_",
+        "sort_factor": 1
+      },
+      "bTIhj": {
+        "display": "02 – Operação tributável: base de cálculo = valor da operação (alíquota diferenciada)",
+        "number": "02",
+        "db_value": "02___opera__o_tribut_vel__base_de_c_lculo___valor_da_opera__o__al_quota_diferenciada_",
+        "sort_factor": 2
+      },
+      "bTIhk": {
+        "display": "03 – Operação tributável: base de cálculo = quantidade vendida × alíquota por unidade de produto",
+        "number": "03",
+        "db_value": "03___opera__o_tribut_vel__base_de_c_lculo___quantidade_vendida___al_quota_por_unidade_de_produto",
+        "sort_factor": 3
+      },
+      "bTIho": {
+        "display": "04 – Operação tributável: tributação monofásica (alíquota zero)",
+        "number": "04",
+        "db_value": "04___opera__o_tribut_vel__tributa__o_monof_sica__al_quota_zero_",
+        "sort_factor": 4
+      },
+      "bTIhp": {
+        "display": "05 – Operação tributável: substituição tributária",
+        "number": "05",
+        "db_value": "05___opera__o_tribut_vel__substitui__o_tribut_ria",
+        "sort_factor": 5
+      },
+      "bTIhq": {
+        "display": "06 – Operação tributável: alíquota zero",
+        "number": "06",
+        "db_value": "06___opera__o_tribut_vel__al_quota_zero",
+        "sort_factor": 6
+      },
+      "bTIhu": {
+        "display": "07 – Operação isenta da contribuição",
+        "number": "07",
+        "db_value": "07___opera__o_isenta_da_contribui__o",
+        "sort_factor": 7
+      },
+      "bTIhv": {
+        "display": "08 – Operação sem incidência da contribuição",
+        "number": "08",
+        "db_value": "08___opera__o_sem_incid_ncia_da_contribui__o",
+        "sort_factor": 8
+      },
+      "bTIhw": {
+        "display": "09 – Operação com suspensão da contribuição",
+        "number": "09",
+        "db_value": "09___opera__o_com_suspens_o_da_contribui__o",
+        "sort_factor": 9
+      },
+      "bTIiA": {
+        "display": "49 – Outras operações de saída",
+        "number": "49",
+        "db_value": "49___outras_opera__es_de_sa_da",
+        "sort_factor": 10
+      },
+      "bTIiB": {
+        "display": "50 – Operação com direito a crédito: vinculada exclusivamente a receita tributada no mercado interno",
+        "number": "50",
+        "db_value": "50___opera__o_com_direito_a_cr_dito__vinculada_exclusivamente_a_receita_tributada_no_mercado_interno",
+        "sort_factor": 11
+      },
+      "bTIiC": {
+        "display": "51 – Operação com direito a crédito: vinculada exclusivamente a receita não tributada no mercado  interno",
+        "number": "51",
+        "db_value": "51___opera__o_com_direito_a_cr_dito__vinculada_exclusivamente_a_receita_n_o_tributada_no_mercado__interno",
+        "sort_factor": 12
+      },
+      "bTIiG": {
+        "display": "52 – Operação com direito a crédito: vinculada exclusivamente a receita de exportação",
+        "number": "52",
+        "db_value": "52___opera__o_com_direito_a_cr_dito__vinculada_exclusivamente_a_receita_de_exporta__o",
+        "sort_factor": 13
+      },
+      "bTIiH": {
+        "display": "53 – Operação com direito a crédito: vinculada a receitas tributadas e não-tributadas no mercado interno",
+        "number": "53",
+        "db_value": "53___opera__o_com_direito_a_cr_dito__vinculada_a_receitas_tributadas_e_n_o_tributadas_no_mercado_interno",
+        "sort_factor": 14
+      },
+      "bTIiI": {
+        "display": "54 – Operação com direito a crédito: vinculada a receitas tributadas no mercado interno e de exportação",
+        "number": "54",
+        "db_value": "54___opera__o_com_direito_a_cr_dito__vinculada_a_receitas_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 15
+      },
+      "bTIiM": {
+        "display": "55 – Operação com direito a crédito: vinculada a receitas não-tributadas no mercado interno e de exportação",
+        "number": "55",
+        "db_value": "55___opera__o_com_direito_a_cr_dito__vinculada_a_receitas_n_o_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 16
+      },
+      "bTIiN": {
+        "display": "56 – Operação com direito a crédito: vinculada a receitas tributadas e não-tributadas no mercado interno e de exportação",
+        "number": "56",
+        "db_value": "56___opera__o_com_direito_a_cr_dito__vinculada_a_receitas_tributadas_e_n_o_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 17
+      },
+      "bTIiO": {
+        "display": "60 – Crédito presumido: operação de aquisição vinculada exclusivamente a receita tributada no mercado interno",
+        "number": "60",
+        "db_value": "60___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_exclusivamente_a_receita_tributada_no_mercado_interno",
+        "sort_factor": 18
+      },
+      "bTIiS": {
+        "display": "61 – Crédito presumido: operação de aquisição vinculada exclusivamente a receita não-tributada no mercado interno",
+        "number": "61",
+        "db_value": "61___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_exclusivamente_a_receita_n_o_tributada_no_mercado_interno",
+        "sort_factor": 19
+      },
+      "bTIiT": {
+        "display": "62 – Crédito presumido: operação de aquisição vinculada exclusivamente a receita de exportação",
+        "number": "62",
+        "db_value": "62___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_exclusivamente_a_receita_de_exporta__o",
+        "sort_factor": 20
+      },
+      "bTIiU": {
+        "display": "63 – Crédito presumido: operação de aquisição vinculada a receitas tributadas e não-tributadas no mercado interno",
+        "number": "63",
+        "db_value": "63___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_a_receitas_tributadas_e_n_o_tributadas_no_mercado_interno",
+        "sort_factor": 21
+      },
+      "bTIiY": {
+        "display": "64 – Crédito presumido: operação de aquisição vinculada a receitas tributadas no mercado interno e de exportação",
+        "number": "64",
+        "db_value": "64___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_a_receitas_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 22
+      },
+      "bTIiZ": {
+        "display": "65 – Crédito presumido: operação de aquisição vinculada a receitas não-tributadas no mercado interno e de exportação",
+        "number": "65",
+        "db_value": "65___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_a_receitas_n_o_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 23
+      },
+      "bTIia": {
+        "display": "66 – Crédito presumido: operação de aquisição vinculada a receitas tributadas e não-tributadas no mercado interno e de exportação",
+        "number": "66",
+        "db_value": "66___cr_dito_presumido__opera__o_de_aquisi__o_vinculada_a_receitas_tributadas_e_n_o_tributadas_no_mercado_interno_e_de_exporta__o",
+        "sort_factor": 24
+      },
+      "bTIie": {
+        "display": "67 – Crédito presumido: outras operações",
+        "number": "67",
+        "db_value": "67___cr_dito_presumido__outras_opera__es",
+        "sort_factor": 25
+      },
+      "bTIif": {
+        "display": "70 – Operação de aquisição sem direito a crédito",
+        "number": "70",
+        "db_value": "70___opera__o_de_aquisi__o_sem_direito_a_cr_dito",
+        "sort_factor": 26
+      },
+      "bTIig": {
+        "display": "71 – Operação de aquisição com isenção",
+        "number": "71",
+        "db_value": "71___opera__o_de_aquisi__o_com_isen__o",
+        "sort_factor": 27
+      },
+      "bTIik": {
+        "display": "72 – Operação de aquisição com suspensão",
+        "number": "72",
+        "db_value": "72___opera__o_de_aquisi__o_com_suspens_o",
+        "sort_factor": 28
+      },
+      "bTIil": {
+        "display": "73 – Operação de aquisição a alíquota zero",
+        "number": "73",
+        "db_value": "73___opera__o_de_aquisi__o_a_al_quota_zero",
+        "sort_factor": 29
+      },
+      "bTIim": {
+        "display": "74 – Operação de aquisição sem incidência da contribuição",
+        "number": "74",
+        "db_value": "74___opera__o_de_aquisi__o_sem_incid_ncia_da_contribui__o",
+        "sort_factor": 30
+      },
+      "bTIiq": {
+        "display": "75 – Operação de aquisição por substituição tributária",
+        "number": "75",
+        "db_value": "75___opera__o_de_aquisi__o_por_substitui__o_tribut_ria",
+        "sort_factor": 31
+      },
+      "bTIir": {
+        "display": "98 – Outras operações de entrada",
+        "number": "98",
+        "db_value": "98___outras_opera__es_de_entrada",
+        "sort_factor": 32
+      },
+      "bTIis": {
+        "display": "99 – Outras operações",
+        "number": "99",
+        "db_value": "99___outras_opera__es",
+        "sort_factor": 33
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "text",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "faixas_atividades_economicas": {
+    "display": "Faixas_atividades_economicas",
+    "values": {
+      "bTMXu": {
+        "display": "I    Comércio",
+        "anexo": "Anexo I",
+        "db_value": "i____com_rcio",
+        "sort_factor": 1
+      },
+      "bTMXv": {
+        "display": "II    Indústria",
+        "anexo": "Anexo II",
+        "db_value": "ii____ind_stria",
+        "sort_factor": 2
+      },
+      "bTMXw": {
+        "display": "III    Serviços comuns",
+        "anexo": "Anexo III",
+        "db_value": "iii____servi_os_comuns",
+        "sort_factor": 3
+      },
+      "bTMYA": {
+        "display": "IV    Serviços com folha relevante",
+        "anexo": "Anexo IV",
+        "db_value": "iv____servi_os_com_folha_relevante",
+        "sort_factor": 4
+      },
+      "bTMYB": {
+        "display": "V    Serviços especializados",
+        "anexo": "Anexo V",
+        "db_value": "v____servi_os_especializados",
+        "sort_factor": 5
+      }
+    },
+    "attributes": {
+      "anexo": {
+        "display": "Anexo",
+        "value": "text",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  },
+  "icms_situacao_tributaria_nfe": {
+    "display": "icms_situacao_tributaria_nfe",
+    "creation_source": "editor"
+  },
+  "icms_modalidade_base__calculo": {
+    "display": "icms_modalidade_base _calculo",
+    "values": {
+      "bTIue": {
+        "display": "0 – margem de valor agregado (%)",
+        "number": 0,
+        "db_value": "0___margem_de_valor_agregado____",
+        "sort_factor": 1
+      },
+      "bTIuf": {
+        "display": "1 – pauta (valor)",
+        "number": 1,
+        "db_value": "1___pauta__valor_",
+        "sort_factor": 2
+      },
+      "bTIug": {
+        "display": "2 – preço tabelado máximo (valor)",
+        "number": 2,
+        "db_value": "2___pre_o_tabelado_m_ximo__valor_",
+        "sort_factor": 3
+      },
+      "bTIuk": {
+        "display": "3 – valor da operação",
+        "number": 3,
+        "db_value": "3___valor_da_opera__o",
+        "sort_factor": 4
+      }
+    },
+    "attributes": {
+      "number": {
+        "display": "Number",
+        "value": "number",
+        "creation_source": "editor"
+      }
+    },
+    "creation_source": "editor"
+  }
+}

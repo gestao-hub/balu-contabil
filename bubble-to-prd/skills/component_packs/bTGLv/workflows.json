@@ -1,0 +1,230 @@
+[
+  {
+    "id": "bTGOk",
+    "name": "bTGOk",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "ChangePage"
+      }
+    ]
+  },
+  {
+    "id": "bTGQb",
+    "name": "bTGQb",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "ChangePage"
+      }
+    ]
+  },
+  {
+    "id": "bTGQt",
+    "name": "bTGQt",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "ChangePage"
+      }
+    ]
+  },
+  {
+    "id": "bTGRL",
+    "name": "bTGRL",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "ChangePage"
+      }
+    ]
+  },
+  {
+    "id": "bTJxE",
+    "name": "bTJxE",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "ChangePage"
+      }
+    ]
+  },
+  {
+    "id": "bTJxm",
+    "name": "bTJxm",
+    "trigger": "CustomEvent",
+    "actions": [
+      {
+        "id": "0",
+        "type": "apiconnector2-bTJnN.bTJpL"
+      },
+      {
+        "id": "1",
+        "type": "DisplayGroupData"
+      },
+      {
+        "id": "2",
+        "type": "TriggerCustomEvent"
+      }
+    ]
+  },
+  {
+    "id": "bTJyA",
+    "name": "bTJyA",
+    "trigger": "CustomEvent",
+    "actions": [
+      {
+        "id": "0",
+        "type": "apiconnector2-bTJpo.bTJyF"
+      },
+      {
+        "id": "1",
+        "type": "DisplayListData"
+      },
+      {
+        "id": "2",
+        "type": "TriggerCustomEvent"
+      }
+    ]
+  },
+  {
+    "id": "bTJzC",
+    "name": "bTJzC",
+    "trigger": "PageLoaded",
+    "actions": [
+      {
+        "id": "0",
+        "type": "TriggerCustomEvent"
+      },
+      {
+        "id": "1",
+        "type": "TriggerCustomEvent"
+      }
+    ]
+  },
+  {
+    "id": "bTKAO",
+    "name": "bTKAO",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "HideElement"
+      }
+    ]
+  },
+  {
+    "id": "bTKAW",
+    "name": "bTKAW",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "apiconnector2-bTJpo.bTKAa"
+      },
+      {
+        "id": "1",
+        "type": "MakeChangeCurrentUser"
+      },
+      {
+        "id": "2",
+        "type": "HideElement"
+      },
+      {
+        "id": "3",
+        "type": "RefreshPage"
+      }
+    ]
+  },
+  {
+    "id": "bTKAn",
+    "name": "bTKAn",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "ShowElement"
+      }
+    ]
+  },
+  {
+    "id": "bTKFr",
+    "name": "bTKFr",
+    "trigger": "CustomEvent",
+    "actions": [
+      {
+        "id": "0",
+        "type": "ShowElement"
+      },
+      {
+        "id": "1",
+        "type": "SetCustomState"
+      }
+    ]
+  },
+  {
+    "id": "bTKHE",
+    "name": "bTKHE",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "ChangePage"
+      }
+    ]
+  },
+  {
+    "id": "bTKHe",
+    "name": "bTKHe",
+    "trigger": "CustomEvent",
+    "actions": [
+      {
+        "id": "0",
+        "type": "apiconnector2-bTJpo.bTJpq"
+      },
+      {
+        "id": "1",
+        "type": "DisplayGroupData"
+      },
+      {
+        "id": "2",
+        "type": "TriggerCustomEvent"
+      }
+    ]
+  },
+  {
+    "id": "bTKHu",
+    "name": "bTKHu",
+    "trigger": "CustomEvent",
+    "actions": [
+      {
+        "id": "0",
+        "type": "apiconnector2-bTJWt.bTJgM"
+      },
+      {
+        "id": "1",
+        "type": "DisplayListData"
+      }
+    ]
+  },
+  {
+    "id": "bTKNA",
+    "name": "bTKNA",
+    "trigger": "CustomEvent",
+    "actions": [
+      {
+        "id": "0",
+        "type": "apiconnector2-bTJpo.bTJpq"
+      },
+      {
+        "id": "1",
+        "type": "DisplayGroupData"
+      }
+    ]
+  }
+]

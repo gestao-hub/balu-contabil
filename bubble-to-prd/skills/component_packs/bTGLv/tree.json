@@ -1,0 +1,968 @@
+{
+  "id": "bTGLv",
+  "type": "CustomDefinition",
+  "name": "FloatingGroup",
+  "props": {
+    "width": 200,
+    "boxshadow_style": "outset",
+    "container_layout": "column",
+    "min_height_px": 600,
+    "min_width_px": 0,
+    "boxshadow_horizontal": 0,
+    "boxshadow_color": "rgba(0,0,0,0.05)",
+    "default_width": 300,
+    "height": 200,
+    "element_type": "FloatingGroup"
+  },
+  "children": [
+    {
+      "id": "bTGNt",
+      "type": "Group",
+      "name": "Group E",
+      "props": {
+        "width": 280,
+        "container_layout": "column",
+        "padding_right": 8,
+        "zindex": 5,
+        "padding_bottom": 8,
+        "horiz_alignment": "flex-start",
+        "top": -80,
+        "collapse_when_hidden": true,
+        "height": 280,
+        "left": -80,
+        "padding_top": 16,
+        "row_gap": 8,
+        "padding_left": 8
+      },
+      "children": [
+        {
+          "id": "bTGNu",
+          "type": "Group",
+          "name": "Group A",
+          "props": {
+            "width": 0,
+            "column_gap": 8,
+            "is_visible": false,
+            "container_layout": "row",
+            "padding_right": 8,
+            "zindex": 4,
+            "padding_bottom": 12,
+            "horiz_alignment": "center",
+            "top": 0,
+            "collapse_when_hidden": true,
+            "background_style": "bgcolor",
+            "height": 0,
+            "border_roundness": 8,
+            "left": 0,
+            "padding_top": 12,
+            "padding_left": 8
+          },
+          "children": [
+            {
+              "id": "bTGMg",
+              "type": "Icon",
+              "name": "Icon A",
+              "props": {
+                "width": 30,
+                "icon": "material outlined dashboard",
+                "zindex": 2,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 30,
+                "left": 0
+              }
+            },
+            {
+              "id": "bTGMk",
+              "type": "Text",
+              "name": "Text A",
+              "props": {
+                "width": 100,
+                "vert_alignment": "center",
+                "is_visible": false,
+                "font_size": 16,
+                "font_weight": "500",
+                "text": {
+                  "entries": {
+                    "0": "Início"
+                  },
+                  "type": "TextExpression"
+                },
+                "zindex": 3,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 36,
+                "left": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "bTGQU",
+          "type": "Group",
+          "name": "Group M",
+          "props": {
+            "width": 0,
+            "column_gap": 8,
+            "is_visible": false,
+            "container_layout": "row",
+            "padding_right": 8,
+            "zindex": 4,
+            "padding_bottom": 12,
+            "horiz_alignment": "center",
+            "top": 10,
+            "collapse_when_hidden": true,
+            "background_style": "bgcolor",
+            "height": 0,
+            "border_roundness": 8,
+            "left": 10,
+            "padding_top": 12,
+            "padding_left": 8
+          },
+          "children": [
+            {
+              "id": "bTGMg",
+              "type": "Icon",
+              "name": "Icon I",
+              "props": {
+                "width": 30,
+                "icon": "material outlined document_scanner",
+                "zindex": 2,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 30,
+                "left": 0
+              }
+            },
+            {
+              "id": "bTGMk",
+              "type": "Text",
+              "name": "Text J",
+              "props": {
+                "width": 100,
+                "vert_alignment": "center",
+                "is_visible": false,
+                "font_size": 16,
+                "font_weight": "500",
+                "text": {
+                  "entries": {
+                    "0": "Notas Fiscais"
+                  },
+                  "type": "TextExpression"
+                },
+                "zindex": 3,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 36,
+                "left": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "bTGQm",
+          "type": "Group",
+          "name": "Group I",
+          "props": {
+            "width": 0,
+            "column_gap": 8,
+            "is_visible": false,
+            "container_layout": "row",
+            "padding_right": 8,
+            "zindex": 4,
+            "padding_bottom": 12,
+            "horiz_alignment": "center",
+            "top": 10,
+            "collapse_when_hidden": true,
+            "background_style": "bgcolor",
+            "height": 0,
+            "border_roundness": 8,
+            "left": 10,
+            "padding_top": 12,
+            "padding_left": 8
+          },
+          "children": [
+            {
+              "id": "bTGMg",
+              "type": "Icon",
+              "name": "Icon E",
+              "props": {
+                "width": 30,
+                "icon": "material outlined attach_money",
+                "zindex": 2,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 30,
+                "left": 0
+              }
+            },
+            {
+              "id": "bTGMk",
+              "type": "Text",
+              "name": "Text F",
+              "props": {
+                "width": 100,
+                "vert_alignment": "center",
+                "is_visible": false,
+                "font_size": 16,
+                "font_weight": "500",
+                "text": {
+                  "entries": {
+                    "0": "Impostos"
+                  },
+                  "type": "TextExpression"
+                },
+                "zindex": 3,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 36,
+                "left": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "bTGRE",
+          "type": "Group",
+          "name": "Group D",
+          "props": {
+            "width": 0,
+            "column_gap": 8,
+            "container_layout": "row",
+            "padding_right": 8,
+            "zindex": 4,
+            "padding_bottom": 12,
+            "horiz_alignment": "center",
+            "top": 10,
+            "collapse_when_hidden": true,
+            "background_style": "bgcolor",
+            "height": 0,
+            "border_roundness": 8,
+            "left": 10,
+            "padding_top": 12,
+            "padding_left": 8
+          },
+          "children": [
+            {
+              "id": "bTGMg",
+              "type": "Icon",
+              "name": "Icon D",
+              "props": {
+                "width": 30,
+                "icon": "material outlined settings",
+                "zindex": 2,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 30,
+                "left": 0
+              }
+            },
+            {
+              "id": "bTGMk",
+              "type": "Text",
+              "name": "Text D",
+              "props": {
+                "width": 100,
+                "vert_alignment": "center",
+                "is_visible": false,
+                "font_size": 16,
+                "font_weight": "500",
+                "text": {
+                  "entries": {
+                    "0": "Configurações"
+                  },
+                  "type": "TextExpression"
+                },
+                "zindex": 3,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 36,
+                "left": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "bTKGy",
+          "type": "Group",
+          "name": "Group P",
+          "props": {
+            "width": 0,
+            "column_gap": 8,
+            "container_layout": "row",
+            "padding_right": 8,
+            "zindex": 4,
+            "padding_bottom": 12,
+            "horiz_alignment": "center",
+            "top": 20,
+            "collapse_when_hidden": true,
+            "background_style": "bgcolor",
+            "height": 0,
+            "border_roundness": 8,
+            "left": 20,
+            "padding_top": 12,
+            "padding_left": 8
+          },
+          "children": [
+            {
+              "id": "bTGMg",
+              "type": "Icon",
+              "name": "Icon G",
+              "props": {
+                "width": 30,
+                "icon": "material outlined people",
+                "zindex": 2,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 30,
+                "left": 0
+              }
+            },
+            {
+              "id": "bTGMk",
+              "type": "Text",
+              "name": "Text K",
+              "props": {
+                "width": 100,
+                "vert_alignment": "center",
+                "is_visible": false,
+                "font_size": 16,
+                "font_weight": "500",
+                "text": {
+                  "entries": {
+                    "0": "Clientes"
+                  },
+                  "type": "TextExpression"
+                },
+                "zindex": 3,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 36,
+                "left": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bTGOK",
+      "type": "Group",
+      "name": "Group F",
+      "props": {
+        "width": 280,
+        "column_gap": 8,
+        "container_layout": "row",
+        "padding_right": 16,
+        "zindex": 5,
+        "horiz_alignment": "center",
+        "top": -80,
+        "collapse_when_hidden": true,
+        "height": 280,
+        "left": -80,
+        "padding_left": 16
+      },
+      "children": [
+        {
+          "id": "bTGOc",
+          "type": "Group",
+          "name": "Group H",
+          "props": {
+            "width": 0,
+            "column_gap": 8,
+            "vert_alignment": "center",
+            "container_layout": "row",
+            "zindex": 4,
+            "horiz_alignment": "flex-start",
+            "top": 20,
+            "collapse_when_hidden": true,
+            "height": 0,
+            "left": 20
+          },
+          "children": [
+            {
+              "id": "bTKIk",
+              "type": "Group",
+              "name": "Group R",
+              "props": {
+                "width": 157,
+                "vert_alignment": "flex-start",
+                "container_layout": "relative",
+                "zindex": 5,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 38,
+                "left": 0
+              },
+              "children": [
+                {
+                  "id": "bTKIl",
+                  "type": "Group",
+                  "name": "Group G",
+                  "props": {
+                    "width": 280,
+                    "container_layout": "column",
+                    "zindex": 4,
+                    "horiz_alignment": "flex-start",
+                    "bgcolor": "rgba(10,10,10,1)",
+                    "top": 0,
+                    "collapse_when_hidden": true,
+                    "background_style": "bgcolor",
+                    "height": 280,
+                    "border_roundness": 5,
+                    "left": -46
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "bTKIr",
+          "type": "Text",
+          "name": "Text E",
+          "props": {
+            "width": 100,
+            "vert_alignment": "center",
+            "is_visible": false,
+            "font_size": 20,
+            "font_weight": "600",
+            "text": {
+              "entries": {
+                "0": "Excluv.ia"
+              },
+              "type": "TextExpression"
+            },
+            "zindex": 3,
+            "horiz_alignment": "flex-start",
+            "collapse_when_hidden": true,
+            "height": 36
+          }
+        }
+      ]
+    },
+    {
+      "id": "bTJwq",
+      "type": "Group",
+      "name": "Group B",
+      "props": {
+        "width": 280,
+        "container_layout": "column",
+        "padding_right": 8,
+        "zindex": 6,
+        "padding_bottom": 8,
+        "horiz_alignment": "flex-start",
+        "top": -80,
+        "collapse_when_hidden": true,
+        "height": 280,
+        "left": -80,
+        "padding_top": 8,
+        "row_gap": 8,
+        "padding_left": 8
+      },
+      "children": [
+        {
+          "id": "bTJwy",
+          "type": "Group",
+          "name": "Group C",
+          "props": {
+            "width": 0,
+            "column_gap": 8,
+            "container_layout": "row",
+            "padding_right": 8,
+            "zindex": 4,
+            "padding_bottom": 12,
+            "horiz_alignment": "center",
+            "top": 0,
+            "collapse_when_hidden": true,
+            "background_style": "bgcolor",
+            "height": 0,
+            "border_roundness": 8,
+            "left": 0,
+            "padding_top": 12,
+            "padding_left": 8
+          },
+          "children": [
+            {
+              "id": "bTGMg",
+              "type": "Icon",
+              "name": "Icon B",
+              "props": {
+                "width": 30,
+                "icon": "material outlined logout",
+                "zindex": 2,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 30,
+                "left": 0
+              }
+            },
+            {
+              "id": "bTGMk",
+              "type": "Text",
+              "name": "Text B",
+              "props": {
+                "width": 100,
+                "vert_alignment": "center",
+                "is_visible": false,
+                "font_size": 16,
+                "font_weight": "500",
+                "text": {
+                  "entries": {
+                    "0": "Sair"
+                  },
+                  "type": "TextExpression"
+                },
+                "zindex": 3,
+                "horiz_alignment": "flex-start",
+                "top": 0,
+                "collapse_when_hidden": true,
+                "height": 36,
+                "left": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "bTJyu",
+          "type": "Group",
+          "name": "Group L",
+          "props": {
+            "width": 0,
+            "column_gap": 12,
+            "is_visible": false,
+            "container_layout": "row",
+            "zindex": 7,
+            "horiz_alignment": "flex-start",
+            "top": 8,
+            "collapse_when_hidden": true,
+            "height": 0,
+            "left": 8
+          },
+          "children": [
+            {
+              "id": "bTJyv",
+              "type": "Text",
+              "name": "Text G",
+              "props": {
+                "width": 100,
+                "vert_alignment": "center",
+                "is_visible": false,
+                "font_size": 14,
+                "text": {
+                  "entries": {
+                    "0": {
+                      "next": {
+                        "next": {
+                          "next": {
+                            "next": {
+                              "type": "Message",
+                              "name": "_api_c2_nome",
+                              "is_slidable": false
+                            },
+                            "type": "Message",
+                            "name": "first_element",
+                            "is_slidable": false
+                          },
+                          "properties": {
+                            "constraints": {
+                              "0": {
+                                "key": "_api_c2_id",
+                                "value": {
+                                  "entries": {
+                                    "0": {
+                                      "next": {
+                                        "next": {
+                                          "type": "Message",
+                                          "name": "_api_c2_current_company",
+                                          "is_slidable": false
+                                        },
+                                        "type": "Message",
+                                        "name": "get_group_data",
+                                        "is_slidable": false
+                                      },
+                                      "properties": {
+                                        "element_id": "bTJxW"
+                                      },
+                                      "type": "GetElement",
+                                      "is_slidable": false
+                                    }
+                                  },
+                                  "type": "TextExpression"
+                                },
+                                "constraint_type": "equals"
+                              }
+                            }
+                          },
+                          "type": "Message",
+                          "name": "filtered",
+                          "is_slidable": true
+                        },
+                        "type": "Message",
+                        "name": "get_list_data",
+                        "is_slidable": false
+                      },
+                      "properties": {
+                        "element_id": "bTJyL"
+                      },
+                      "type": "GetElement",
+                      "is_slidable": false
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "zindex": 6,
+                "horiz_alignment": "flex-start",
+                "top": -8,
+                "collapse_when_hidden": true,
+                "height": 36,
+                "left": -8
+              }
+            },
+            {
+              "id": "bTJyw",
+              "type": "Group",
+              "name": "Group J",
+              "props": {
+                "width": 280,
+                "vert_alignment": "center",
+                "container_layout": "column",
+                "zindex": 5,
+                "horiz_alignment": "flex-start",
+                "bgcolor": "var(--color_bTGzw_default)",
+                "top": -8,
+                "collapse_when_hidden": true,
+                "background_style": "bgcolor",
+                "height": 280,
+                "border_roundness": 45,
+                "left": -8
+              },
+              "children": [
+                {
+                  "id": "bTJyi",
+                  "type": "Text",
+                  "name": "Text C",
+                  "props": {
+                    "width": 100,
+                    "text": {
+                      "entries": {
+                        "0": {
+                          "next": {
+                            "next": {
+                              "next": {
+                                "args": 1,
+                                "next": {
+                                  "type": "Message",
+                                  "name": "to_capitalized_words",
+                                  "is_slidable": false
+                                },
+                                "type": "Message",
+                                "name": "truncated",
+                                "is_slidable": false
+                              },
+                              "type": "Message",
+                              "name": "_api_c2_nome",
+                              "is_slidable": false
+                            },
+                            "type": "Message",
+                            "name": "get_group_data",
+                            "is_slidable": false
+                          },
+                          "properties": {
+                            "element_id": "bTJxW"
+                          },
+                          "type": "GetElement",
+                          "is_slidable": false
+                        }
+                      },
+                      "type": "TextExpression"
+                    },
+                    "zindex": 2,
+                    "horiz_alignment": "center",
+                    "top": 25,
+                    "collapse_when_hidden": true,
+                    "height": 36,
+                    "left": 7
+                  }
+                }
+              ]
+            },
+            {
+              "id": "bTJzN",
+              "type": "Icon",
+              "name": "Icon C",
+              "props": {
+                "width": 30,
+                "vert_alignment": "center",
+                "icon": "material outlined keyboard_arrow_up",
+                "zindex": 7,
+                "horiz_alignment": "flex-start",
+                "top": 15.1875,
+                "collapse_when_hidden": true,
+                "height": 30,
+                "left": 47
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bTJxV",
+      "type": "Popup",
+      "name": "Popup A",
+      "props": {
+        "width": 439,
+        "container_layout": "column",
+        "zindex": 7,
+        "horiz_alignment": "flex-start",
+        "top": -195,
+        "collapse_when_hidden": true,
+        "height": 395,
+        "left": -239,
+        "row_gap": 12
+      },
+      "children": [
+        {
+          "id": "bTJxb",
+          "type": "Group",
+          "name": "Group K",
+          "props": {
+            "width": 280,
+            "container_layout": "column",
+            "zindex": 2,
+            "horiz_alignment": "flex-start",
+            "bgcolor": "var(--color_text_default)",
+            "top": -80,
+            "collapse_when_hidden": true,
+            "background_style": "bgcolor",
+            "height": 280,
+            "left": -80
+          }
+        },
+        {
+          "id": "bTJyQ",
+          "type": "RepeatingGroup",
+          "name": "RepeatingGroup A",
+          "props": {
+            "width": 280,
+            "container_layout": "column",
+            "zindex": 3,
+            "horiz_alignment": "flex-start",
+            "bgcolor": "rgba(255,0,0,1)",
+            "top": -150,
+            "collapse_when_hidden": true,
+            "background_style": "bgcolor",
+            "height": 350,
+            "left": -80
+          }
+        },
+        {
+          "id": "bTKHM",
+          "type": "Group",
+          "name": "Group Q",
+          "props": {
+            "width": 280,
+            "container_layout": "column",
+            "zindex": 2,
+            "horiz_alignment": "flex-start",
+            "bgcolor": "rgba(227,91,91,1)",
+            "top": 0,
+            "collapse_when_hidden": true,
+            "background_style": "bgcolor",
+            "height": 280,
+            "left": 0
+          }
+        },
+        {
+          "id": "bTKIA",
+          "type": "RepeatingGroup",
+          "name": "RepeatingGroup C",
+          "props": {
+            "width": 280,
+            "container_layout": "column",
+            "zindex": 3,
+            "horiz_alignment": "flex-start",
+            "bgcolor": "var(--color_bTGzw_default)",
+            "top": 0,
+            "collapse_when_hidden": true,
+            "background_style": "bgcolor",
+            "height": 350,
+            "left": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "bTJzT",
+      "type": "Popup",
+      "name": "Popup B",
+      "props": {
+        "width": 382,
+        "container_layout": "column",
+        "zindex": 8,
+        "horiz_alignment": "flex-start",
+        "top": -180,
+        "collapse_when_hidden": true,
+        "height": 380,
+        "left": -182,
+        "row_gap": 12
+      },
+      "children": [
+        {
+          "id": "bTJzl",
+          "type": "Group",
+          "name": "Group N",
+          "props": {
+            "width": 0,
+            "container_layout": "row",
+            "zindex": 4,
+            "horiz_alignment": "flex-start",
+            "top": 24,
+            "collapse_when_hidden": true,
+            "height": 0,
+            "left": 24
+          },
+          "children": [
+            {
+              "id": "bTJzm",
+              "type": "Text",
+              "name": "Text H",
+              "props": {
+                "width": 100,
+                "font_size": 18,
+                "font_weight": "700",
+                "text": {
+                  "entries": {
+                    "0": "Selecione a empresa"
+                  },
+                  "type": "TextExpression"
+                },
+                "zindex": 2,
+                "horiz_alignment": "flex-start",
+                "top": -24,
+                "collapse_when_hidden": true,
+                "height": 36,
+                "left": -24
+              }
+            },
+            {
+              "id": "bTJzq",
+              "type": "Icon",
+              "name": "Icon F",
+              "props": {
+                "width": 30,
+                "icon": "material outlined close",
+                "zindex": 3,
+                "horiz_alignment": "flex-start",
+                "top": -24,
+                "collapse_when_hidden": true,
+                "height": 30,
+                "left": -24
+              }
+            }
+          ]
+        },
+        {
+          "id": "bTJzw",
+          "type": "RepeatingGroup",
+          "name": "RepeatingGroup B",
+          "props": {
+            "width": 280,
+            "container_layout": "column",
+            "zindex": 5,
+            "horiz_alignment": "flex-start",
+            "top": -150,
+            "collapse_when_hidden": true,
+            "height": 350,
+            "left": -80
+          },
+          "children": [
+            {
+              "id": "bTKAC",
+              "type": "Group",
+              "name": "Group O",
+              "props": {
+                "width": 280,
+                "boxshadow_style": "outset",
+                "container_layout": "column",
+                "padding_right": 4,
+                "zindex": 2,
+                "boxshadow_horizontal": 0,
+                "padding_bottom": 4,
+                "horiz_alignment": "flex-start",
+                "boxshadow_color": "rgba(0,0,0,0.15)",
+                "top": -80,
+                "collapse_when_hidden": true,
+                "height": 280,
+                "border_roundness": 5,
+                "left": -80,
+                "padding_top": 4,
+                "padding_left": 4,
+                "border_color": "rgba(199,199,199,1)",
+                "border_style": "solid"
+              },
+              "children": [
+                {
+                  "id": "bTKAI",
+                  "type": "Text",
+                  "name": "Text I",
+                  "props": {
+                    "width": 100,
+                    "font_size": 12,
+                    "font_weight": "600",
+                    "text": {
+                      "entries": {
+                        "0": {
+                          "next": {
+                            "type": "Message",
+                            "name": "_api_c2_nome",
+                            "is_slidable": false
+                          },
+                          "type": "ElementParent",
+                          "is_slidable": false
+                        }
+                      },
+                      "type": "TextExpression"
+                    },
+                    "zindex": 2,
+                    "horiz_alignment": "flex-start",
+                    "top": 17.8125,
+                    "collapse_when_hidden": true,
+                    "height": 36,
+                    "left": 100
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bTKFk",
+      "type": "CustomElement",
+      "name": "Create_company A",
+      "props": {
+        "width": 200,
+        "zindex": 9,
+        "horiz_alignment": "flex-start",
+        "top": 0,
+        "height": 200,
+        "left": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "bTJfI",
+  "type": "CustomDefinition",
+  "name": "Group",
+  "props": {
+    "height": 200,
+    "width": 200,
+    "min_width_px": 0,
+    "element_type": "Group",
+    "min_height_px": 120,
+    "container_layout": "column",
+    "default_width": 200
+  }
+}

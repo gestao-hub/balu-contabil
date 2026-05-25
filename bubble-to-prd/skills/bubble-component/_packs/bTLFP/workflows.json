@@ -1,0 +1,43 @@
+[
+  {
+    "id": "bTLFm",
+    "name": "bTLFm",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "ToggleElement"
+      }
+    ]
+  },
+  {
+    "id": "bTLGi",
+    "name": "bTLGi",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "SetCustomState"
+      },
+      {
+        "id": "1",
+        "type": "HideElement"
+      }
+    ]
+  },
+  {
+    "id": "bTLGq",
+    "name": "bTLGq",
+    "trigger": "ButtonClicked",
+    "actions": [
+      {
+        "id": "0",
+        "type": "SetCustomState"
+      },
+      {
+        "id": "1",
+        "type": "HideElement"
+      }
+    ]
+  }
+]

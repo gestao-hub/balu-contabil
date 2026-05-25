@@ -1,0 +1,85 @@
+{
+  "id": "bTLIb",
+  "type": "CustomDefinition",
+  "name": "Group",
+  "props": {
+    "background_style": "none",
+    "min_height_px": 120,
+    "row_gap": 12,
+    "height": 200,
+    "container_layout": "column",
+    "default_width": 200,
+    "min_width_px": 0,
+    "width": 200,
+    "element_type": "Group"
+  },
+  "children": [
+    {
+      "id": "bTLUD",
+      "type": "Group",
+      "name": "Group A",
+      "props": {
+        "row_gap": 12,
+        "collapse_when_hidden": true,
+        "horiz_alignment": "center",
+        "left": 0,
+        "height": 0,
+        "container_layout": "column",
+        "zindex": 4,
+        "top": 8.90625,
+        "width": 0
+      },
+      "children": [
+        {
+          "id": "bTLUE",
+          "type": "Icon",
+          "name": "Icon A",
+          "props": {
+            "collapse_when_hidden": true,
+            "horiz_alignment": "center",
+            "left": 0,
+            "icon": "feather loader",
+            "height": 30,
+            "zindex": 2,
+            "top": 0,
+            "width": 30
+          }
+        },
+        {
+          "id": "bTLUI",
+          "type": "Text",
+          "name": "Text A",
+          "props": {
+            "font_weight": "800",
+            "collapse_when_hidden": true,
+            "horiz_alignment": "flex-start",
+            "left": 0,
+            "height": 36,
+            "zindex": 3,
+            "font_size": 18,
+            "top": 0,
+            "width": 100,
+            "text": {
+              "entries": {
+                "0": {
+                  "next": {
+                    "type": "Message",
+                    "name": "param_bTLIc",
+                    "is_slidable": false
+                  },
+                  "properties": {
+                    "element_id": "bTLIa"
+                  },
+                  "type": "GetElement",
+                  "is_slidable": false,
+                  "moved_to_top": true
+                }
+              },
+              "type": "TextExpression"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

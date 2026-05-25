@@ -1,0 +1,282 @@
+'use client';
+// @custom — bubble-behavior: Create_company (PRD §6.7)
+// Popup único com 3 etapas visíveis (CNPJ → CEP → revisão).
+// Não é wizard: tudo fica numa só tela, etapas são apenas seções colapsáveis lógicas.
+
+import { useEffect, useRef, useState } from 'react';
+import { Building2, Search, MapPin, X, Loader2 } from 'lucide-react';
+import { useToast } from '@/components/Toaster';
+import { CompanySchema, type CompanyInput } from '@/types/zod';
+import {
+  lookupCnpjAction,
+  lookupCepAction,
+  createCompanyAction,
+} from '@/app/(auth)/onboarding/actions';
+
+type Props = {
+  open: boolean;
+  /** Quando true, esconde o botão Fechar (uso no onboarding obrigatório). */
+  forceCreate?: boolean;
+  onClose?: () => void;
+  onCreated?: (id: string) => void;
+};
+
+type Form = CompanyInput;
+
+const EMPTY: Form = {
+  cnpj: '',
+  razao_social: '',
+  nome: '',
+  inscricao_estadual: '',
+  inscricao_municipal: '',
+  codigo_municipio: '',
+  logradouro: '',
+  numero: '',
+  bairro: '',
+  municipio: '',
+  uf: '',
+  cep: '',
+  telefone: '',
+  email: '',
+};
+
+export default function CreateCompanyDialog({ open, forceCreate = false, onClose, onCreated }: Props) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const toast = useToast();
+  const [form, setForm] = useState<Form>(EMPTY);
+  const [busyCnpj, setBusyCnpj] = useState(false);
+  const [busyCep, setBusyCep] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const d = dialogRef.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    if (!open && d.open) d.close();
+  }, [open]);
+
+  function set<K extends keyof Form>(k: K, v: Form[K]) {
+    setForm((prev) => ({ ...prev, [k]: v }));
+  }
+
+  async function handleLookupCnpj() {
+    if (!form.cnpj || form.cnpj.replace(/\D+/g, '').length < 14) {
+      toast('warning', 'Informe um CNPJ com 14 dígitos.');
+      return;
+    }
+    setBusyCnpj(true);
+    try {
+      const r = await lookupCnpjAction(form.cnpj);
+      if (!r.ok) { toast('error', r.error); return; }
+      setForm((prev) => ({
+        ...prev,
+        cnpj: prev.cnpj.replace(/\D+/g, '').padStart(14, '0').slice(-14),
+        razao_social: r.data.razao_social ?? prev.razao_social,
+        nome: r.data.nome_fantasia ?? prev.nome,
+        logradouro: r.data.logradouro ?? prev.logradouro,
+        numero: r.data.numero ?? prev.numero,
+        bairro: r.data.bairro ?? prev.bairro,
+        municipio: r.data.municipio ?? prev.municipio,
+        uf: r.data.uf ?? prev.uf,
+        cep: r.data.cep ?? prev.cep,
+        telefone: r.data.telefone ?? prev.telefone,
+        email: r.data.email ?? prev.email,
+      }));
+      toast('success', 'Dados do CNPJ carregados.');
+    } finally {
+      setBusyCnpj(false);
+    }
+  }
+
+  async function handleLookupCep() {
+    if (!form.cep || form.cep.replace(/\D+/g, '').length !== 8) {
+      toast('warning', 'Informe um CEP com 8 dígitos.');
+      return;
+    }
+    setBusyCep(true);
+    try {
+      const r = await lookupCepAction(form.cep);
+      if (!r.ok) { toast('error', r.error); return; }
+      setForm((prev) => ({
+        ...prev,
+        logradouro: r.data.logradouro ?? prev.logradouro,
+        bairro: r.data.bairro ?? prev.bairro,
+        municipio: r.data.municipio ?? prev.municipio,
+        uf: r.data.uf ?? prev.uf,
+      }));
+      toast('success', 'Endereço preenchido.');
+    } finally {
+      setBusyCep(false);
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const parsed = CompanySchema.safeParse({
+      ...form,
+      cnpj: form.cnpj.replace(/\D+/g, '').padStart(14, '0').slice(-14),
+      email: form.email || undefined,
+      uf: form.uf ? form.uf.toUpperCase() : undefined,
+    });
+    if (!parsed.success) {
+      toast('error', parsed.error.issues[0]?.message ?? 'Verifique os campos.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const r = await createCompanyAction(parsed.data);
+      if (!r.ok) { toast('error', r.error); return; }
+      toast('success', 'Empresa criada!');
+      onCreated?.(r.id);
+      if (!forceCreate) onClose?.();
+      // Após criar, o layout faz revalidatePath('/') e o popup fecha sozinho via prop `open`.
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="create-company-title"
+      onCancel={(e) => { e.preventDefault(); if (!forceCreate) onClose?.(); }}
+      className="rounded-xl border border-zinc-200 p-0 shadow-xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
+    >
+      <form onSubmit={handleSubmit} className="w-[min(720px,95vw)] max-h-[90vh] overflow-y-auto p-6">
+        <header className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-full bg-primary/10 text-primary">
+              <Building2 className="size-5" />
+            </span>
+            <div>
+              <h2 id="create-company-title" className="text-lg font-semibold text-brand-navy">
+                {forceCreate ? 'Cadastre sua primeira empresa' : 'Nova empresa'}
+              </h2>
+              <p className="text-sm text-zinc-500">
+                Informe o CNPJ para preencher automaticamente.
+              </p>
+            </div>
+          </div>
+          {!forceCreate && (
+            <button type="button" onClick={onClose} aria-label="Fechar" className="text-zinc-400 hover:text-zinc-700">
+              <X className="size-5" />
+            </button>
+          )}
+        </header>
+
+        {/* Etapa 1 — CNPJ */}
+        <section className="mb-5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">1. CNPJ</h3>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="00.000.000/0000-00"
+              value={form.cnpj}
+              onChange={(e) => set('cnpj', e.target.value)}
+              className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm"
+              required
+            />
+            <button
+              type="button"
+              onClick={handleLookupCnpj}
+              disabled={busyCnpj}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {busyCnpj ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+              Buscar dados
+            </button>
+          </div>
+        </section>
+
+        {/* Etapa 2 — CEP */}
+        <section className="mb-5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">2. CEP</h3>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="00000-000"
+              value={form.cep ?? ''}
+              onChange={(e) => set('cep', e.target.value)}
+              className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={handleLookupCep}
+              disabled={busyCep}
+              className="inline-flex items-center gap-2 rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {busyCep ? <Loader2 className="size-4 animate-spin" /> : <MapPin className="size-4" />}
+              Buscar
+            </button>
+          </div>
+        </section>
+
+        {/* Etapa 3 — Revisão */}
+        <section>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">3. Confirme os dados</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Razão social" value={form.razao_social} onChange={(v) => set('razao_social', v)} required className="col-span-2" />
+            <Field label="Nome fantasia" value={form.nome ?? ''} onChange={(v) => set('nome', v)} className="col-span-2" />
+            <Field label="Inscrição estadual" value={form.inscricao_estadual ?? ''} onChange={(v) => set('inscricao_estadual', v)} />
+            <Field label="Inscrição municipal" value={form.inscricao_municipal ?? ''} onChange={(v) => set('inscricao_municipal', v)} />
+            <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} className="col-span-2" />
+            <Field label="Número" value={form.numero ?? ''} onChange={(v) => set('numero', v)} />
+            <Field label="Bairro" value={form.bairro ?? ''} onChange={(v) => set('bairro', v)} />
+            <Field label="Município" value={form.municipio ?? ''} onChange={(v) => set('municipio', v)} />
+            <Field label="UF" value={form.uf ?? ''} onChange={(v) => set('uf', v.toUpperCase().slice(0, 2))} />
+            <Field label="Telefone" value={form.telefone ?? ''} onChange={(v) => set('telefone', v)} />
+            <Field label="E-mail" type="email" value={form.email ?? ''} onChange={(v) => set('email', v)} />
+          </div>
+        </section>
+
+        <footer className="mt-6 flex justify-end gap-2">
+          {!forceCreate && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+            >
+              Cancelar
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {submitting && <Loader2 className="size-4 animate-spin" />}
+            Criar empresa
+          </button>
+        </footer>
+      </form>
+    </dialog>
+  );
+}
+
+function Field({
+  label, value, onChange, type = 'text', required = false, className = '',
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  required?: boolean;
+  className?: string;
+}) {
+  return (
+    <label className={`flex flex-col gap-1 text-sm ${className}`}>
+      <span className="text-xs font-medium text-zinc-600">{label}{required && <span className="text-destructive"> *</span>}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+      />
+    </label>
+  );
+}

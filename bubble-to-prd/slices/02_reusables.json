@@ -1,0 +1,218 @@
+{
+  "bTGLv": {
+    "id": "bTGLv",
+    "internal_id": "bTGLu",
+    "element_type": "FloatingGroup",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": {
+      "bTJxg": "Trigger_preenchimmento",
+      "bTKFl": "Show_create_company"
+    },
+    "states_count": 1,
+    "elements_count": 6,
+    "workflows": [
+      {
+        "path": "properties",
+        "wf_id": "bTJxg",
+        "wf_name": "Trigger_preenchimmento"
+      },
+      {
+        "path": "properties",
+        "wf_id": "bTKFl",
+        "wf_name": "Show_create_company"
+      }
+    ]
+  },
+  "bTJQE": {
+    "id": "bTJQE",
+    "internal_id": "bTJQD",
+    "element_type": "Popup",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": {
+      "bTJeq": "Viacep",
+      "bTKRe": "Trigger_Verify_client",
+      "bTKTj": "TriggerCpfCnpf"
+    },
+    "states_count": 0,
+    "elements_count": 3,
+    "workflows": [
+      {
+        "path": "properties",
+        "wf_id": "bTJeq",
+        "wf_name": "Viacep"
+      },
+      {
+        "path": "properties",
+        "wf_id": "bTKRe",
+        "wf_name": "Trigger_Verify_client"
+      },
+      {
+        "path": "properties",
+        "wf_id": "bTKTj",
+        "wf_name": "TriggerCpfCnpf"
+      }
+    ]
+  },
+  "bTJfI": {
+    "id": "bTJfI",
+    "internal_id": "bTJdk",
+    "element_type": "Group",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": null,
+    "states_count": 0,
+    "elements_count": 0,
+    "workflows": []
+  },
+  "bTJjL": {
+    "id": "bTJjL",
+    "internal_id": "bTJfh",
+    "element_type": "Popup",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": {
+      "bTJeq": "Viacep"
+    },
+    "states_count": 0,
+    "elements_count": 3,
+    "workflows": [
+      {
+        "path": "properties",
+        "wf_id": "bTJeq",
+        "wf_name": "Viacep"
+      }
+    ]
+  },
+  "bTJmc": {
+    "id": "bTJmc",
+    "internal_id": "bTJjc",
+    "element_type": "Popup",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": {
+      "bTJeq": "Viacep"
+    },
+    "states_count": 0,
+    "elements_count": 3,
+    "workflows": [
+      {
+        "path": "properties",
+        "wf_id": "bTJeq",
+        "wf_name": "Viacep"
+      }
+    ]
+  },
+  "bTKEX": {
+    "id": "bTKEX",
+    "internal_id": "bTKBK",
+    "element_type": "Popup",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": {
+      "bTJeq": "Viacep"
+    },
+    "states_count": 0,
+    "elements_count": 4,
+    "workflows": [
+      {
+        "path": "properties",
+        "wf_id": "bTJeq",
+        "wf_name": "Viacep"
+      }
+    ]
+  },
+  "bTLFP": {
+    "id": "bTLFP",
+    "internal_id": "bTLFO",
+    "element_type": "Group",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": null,
+    "states_count": 0,
+    "elements_count": 2,
+    "workflows": []
+  },
+  "bTLIb": {
+    "id": "bTLIb",
+    "internal_id": "bTLIa",
+    "element_type": "Group",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": null,
+    "states_count": 0,
+    "elements_count": 1,
+    "workflows": []
+  },
+  "bTLOU": {
+    "id": "bTLOU",
+    "internal_id": "bTLNe",
+    "element_type": "Group",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": {
+      "bTJeq": "Viacep"
+    },
+    "states_count": 0,
+    "elements_count": 1,
+    "workflows": [
+      {
+        "path": "properties",
+        "wf_id": "bTJeq",
+        "wf_name": "Viacep"
+      }
+    ]
+  },
+  "bTMUX": {
+    "id": "bTMUX",
+    "internal_id": "bTMUW",
+    "element_type": "FloatingGroup",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": null,
+    "states_count": 0,
+    "elements_count": 1,
+    "workflows": []
+  },
+  "bTIHH0": {
+    "id": "bTIHH0",
+    "internal_id": "bTIHG0",
+    "element_type": "Group",
+    "width": 200,
+    "height": 200,
+    "container_layout": "column",
+    "wf_folder_list": {
+      "bTIHI0": "Re_authentication",
+      "bTIHs0": "PageLoaded"
+    },
+    "states_count": 0,
+    "elements_count": 0,
+    "workflows": [
+      {
+        "path": "properties",
+        "wf_id": "bTIHI0",
+        "wf_name": "Re_authentication"
+      },
+      {
+        "path": "properties",
+        "wf_id": "bTIHs0",
+        "wf_name": "PageLoaded"
+      }
+    ]
+  },
+  "length": {
+    "id": "length",
+    "raw": 3
+  }
+}

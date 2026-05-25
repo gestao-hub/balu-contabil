@@ -1,0 +1,236 @@
+[
+  {
+    "scope": "reusable:bTGLv",
+    "path": "properties",
+    "wf_id": "bTJxg",
+    "wf_name": "Trigger_preenchimmento"
+  },
+  {
+    "scope": "reusable:bTGLv",
+    "path": "properties",
+    "wf_id": "bTKFl",
+    "wf_name": "Show_create_company"
+  },
+  {
+    "scope": "reusable:bTJQE",
+    "path": "properties",
+    "wf_id": "bTJeq",
+    "wf_name": "Viacep"
+  },
+  {
+    "scope": "reusable:bTJQE",
+    "path": "properties",
+    "wf_id": "bTKRe",
+    "wf_name": "Trigger_Verify_client"
+  },
+  {
+    "scope": "reusable:bTJQE",
+    "path": "properties",
+    "wf_id": "bTKTj",
+    "wf_name": "TriggerCpfCnpf"
+  },
+  {
+    "scope": "reusable:bTJjL",
+    "path": "properties",
+    "wf_id": "bTJeq",
+    "wf_name": "Viacep"
+  },
+  {
+    "scope": "reusable:bTJmc",
+    "path": "properties",
+    "wf_id": "bTJeq",
+    "wf_name": "Viacep"
+  },
+  {
+    "scope": "reusable:bTKEX",
+    "path": "properties",
+    "wf_id": "bTJeq",
+    "wf_name": "Viacep"
+  },
+  {
+    "scope": "reusable:bTLOU",
+    "path": "properties",
+    "wf_id": "bTJeq",
+    "wf_name": "Viacep"
+  },
+  {
+    "scope": "reusable:bTIHH0",
+    "path": "properties",
+    "wf_id": "bTIHI0",
+    "wf_name": "Re_authentication"
+  },
+  {
+    "scope": "reusable:bTIHH0",
+    "path": "properties",
+    "wf_id": "bTIHs0",
+    "wf_name": "PageLoaded"
+  },
+  {
+    "scope": "page:bTGbC",
+    "path": "properties",
+    "wf_id": "bTGRk",
+    "wf_name": "Custom_States"
+  },
+  {
+    "scope": "page:bTGbC",
+    "path": "properties",
+    "wf_id": "bTJpR",
+    "wf_name": "Page is loaded"
+  },
+  {
+    "scope": "page:bTGbC",
+    "path": "properties",
+    "wf_id": "bTKfX",
+    "wf_name": "Triggers"
+  },
+  {
+    "scope": "page:bTHUC",
+    "path": "properties",
+    "wf_id": "bTGRk",
+    "wf_name": "Custom_States"
+  },
+  {
+    "scope": "page:bTHda",
+    "path": "properties",
+    "wf_id": "bTGRk",
+    "wf_name": "Custom_States"
+  },
+  {
+    "scope": "page:bTHda",
+    "path": "properties",
+    "wf_id": "bTKiE",
+    "wf_name": "Triggers"
+  },
+  {
+    "scope": "page:bTHmx",
+    "path": "properties",
+    "wf_id": "bTGRk",
+    "wf_name": "Custom_States"
+  },
+  {
+    "scope": "page:bTHmx",
+    "path": "properties",
+    "wf_id": "bTKpx",
+    "wf_name": "Triggers"
+  },
+  {
+    "scope": "page:bTHmx",
+    "path": "properties",
+    "wf_id": "bTLQC",
+    "wf_name": "PageLoaded"
+  },
+  {
+    "scope": "page:bTHwP",
+    "path": "properties",
+    "wf_id": "bTIBS",
+    "wf_name": "Toggle"
+  },
+  {
+    "scope": "page:bTHwP",
+    "path": "properties",
+    "wf_id": "bTIBT",
+    "wf_name": "Navigation"
+  },
+  {
+    "scope": "page:bTHwP",
+    "path": "properties",
+    "wf_id": "bTIBU",
+    "wf_name": "UserIn"
+  },
+  {
+    "scope": "page:bTHwP",
+    "path": "properties",
+    "wf_id": "bTICU",
+    "wf_name": "RedefinirSenha"
+  },
+  {
+    "scope": "page:bTHzs",
+    "path": "properties",
+    "wf_id": "bTIBA",
+    "wf_name": "Toggle"
+  },
+  {
+    "scope": "page:bTHzs",
+    "path": "properties",
+    "wf_id": "bTIBB",
+    "wf_name": "Navigation"
+  },
+  {
+    "scope": "page:bTHzs",
+    "path": "properties",
+    "wf_id": "bTIBC",
+    "wf_name": "CreateAccount"
+  },
+  {
+    "scope": "page:bTHzs",
+    "path": "properties",
+    "wf_id": "bTIBO",
+    "wf_name": "UserIn"
+  },
+  {
+    "scope": "page:bTJTJ",
+    "path": "properties",
+    "wf_id": "bTGRk",
+    "wf_name": "Custom_States"
+  },
+  {
+    "scope": "page:bTJTJ",
+    "path": "properties",
+    "wf_id": "bTJrK",
+    "wf_name": "Page is loaded"
+  },
+  {
+    "scope": "page:bTJTJ",
+    "path": "properties",
+    "wf_id": "bTKgg",
+    "wf_name": "Trigger"
+  },
+  {
+    "scope": "page:bTJTJ",
+    "path": "properties",
+    "wf_id": "bTKqs",
+    "wf_name": "EveryTime"
+  },
+  {
+    "scope": "page:bTLVA",
+    "path": "properties",
+    "wf_id": "bTLVK",
+    "wf_name": "Triggers"
+  },
+  {
+    "scope": "page:bTLlM",
+    "path": "properties",
+    "wf_id": "bTGRk",
+    "wf_name": "Custom_States"
+  },
+  {
+    "scope": "page:bTLlM",
+    "path": "properties",
+    "wf_id": "bTKpx",
+    "wf_name": "Triggers"
+  },
+  {
+    "scope": "page:bTLlM",
+    "path": "properties",
+    "wf_id": "bTLQC",
+    "wf_name": "PageLoaded"
+  },
+  {
+    "scope": "page:bTINw0",
+    "path": "properties",
+    "wf_id": "bTGRk",
+    "wf_name": "Custom_States"
+  },
+  {
+    "scope": "page:bTINw0",
+    "path": "properties",
+    "wf_id": "bTKjx",
+    "wf_name": "Triggers"
+  },
+  {
+    "scope": "page:bTINw0",
+    "path": "properties",
+    "wf_id": "bTKkn",
+    "wf_name": "PageLoaded"
+  }
+]

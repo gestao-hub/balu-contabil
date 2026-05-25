@@ -1,0 +1,11 @@
+[
+  {
+    "id": "0",
+    "name": null,
+    "type": "State",
+    "condition": "CurrentUser → Message:user_role_option_role_user → Message:equals properties= type='OneOptionValue' is_slidable=False → Message:and_ type='CurrentUser' is_slidable=False",
+    "properties": [
+      "bgcolor"
+    ]
+  }
+]

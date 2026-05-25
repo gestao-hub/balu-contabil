@@ -1,0 +1,132 @@
+{
+  "user": {
+    "display": "User",
+    "fields": {
+      "username_text": {
+        "display": "Uuid_Supabase",
+        "value": "text"
+      },
+      "expired_at_date": {
+        "display": "Expired_at",
+        "value": "date"
+      },
+      "logo_user_image": {
+        "display": "Logo_user",
+        "value": "image"
+      },
+      "access_token_text": {
+        "display": "Access_token",
+        "value": "text"
+      },
+      "refresh_token_text": {
+        "display": "Refresh_token",
+        "value": "text"
+      },
+      "current_company_text": {
+        "display": "Current_Company",
+        "value": "text"
+      },
+      "background_color_text": {
+        "display": "Background_color",
+        "value": "text"
+      },
+      "empresa_fiscal_id_text": {
+        "display": "empresa_fiscal_id",
+        "value": "text"
+      },
+      "user_role_option_role_user": {
+        "display": "User_role",
+        "value": "option.role_user"
+      }
+    },
+    "privacy_role": {
+      "everyone": {
+        "display": "everyone",
+        "permissions": {
+          "view_all": false,
+          "search_for": false,
+          "auto_binding": false,
+          "view_attachments": false
+        }
+      },
+      "users_own_data": {
+        "condition": {
+          "next": {
+            "args": {
+              "type": "CurrentUser"
+            },
+            "type": "Message",
+            "name": "equals"
+          },
+          "type": "InjectedValue"
+        },
+        "display": "User's own data",
+        "permissions": {
+          "view_all": true,
+          "search_for": true,
+          "auto_binding": false,
+          "view_attachments": true
+        }
+      }
+    }
+  },
+  "role_user": {
+    "display": "Role_user",
+    "deleted": true
+  },
+  "aux_produtos": {
+    "display": "Aux_produtos",
+    "fields": {
+      "ncm_text": {
+        "display": "NCM",
+        "value": "text"
+      },
+      "cfop_text": {
+        "display": "CFOP",
+        "value": "text"
+      },
+      "codigo_text": {
+        "display": "Codigo",
+        "value": "text"
+      },
+      "descricao_text": {
+        "display": "Descricao",
+        "value": "text"
+      },
+      "finalizado_text": {
+        "display": "Finalizado - deleted",
+        "value": "text",
+        "deleted": true
+      },
+      "id_company_text": {
+        "display": "Id_company",
+        "value": "text"
+      },
+      "finalizado_boolean": {
+        "display": "Finalizado",
+        "value": "boolean"
+      },
+      "typenf_option_tiponf": {
+        "display": "TypeNF",
+        "value": "option.tiponf"
+      },
+      "unidade_comercial_text": {
+        "display": "Unidade_comercial",
+        "value": "text"
+      },
+      "quantidade_comercial_number": {
+        "display": "Quantidade comercial",
+        "value": "number"
+      },
+      "valor_unitario_comercial_number": {
+        "display": "Valor_unitario_comercial",
+        "value": "number"
+      },
+      "unidade_comercial_option_unidade_comercial": {
+        "display": "Unidade_comercial - deleted",
+        "value": "option.unidade_comercial",
+        "deleted": true
+      }
+    }
+  }
+}

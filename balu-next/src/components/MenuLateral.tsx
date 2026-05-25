@@ -1,0 +1,177 @@
+'use client';
+
+// Origem: reusable Bubble nomeado `Menu(i)` (FloatingGroup, 16 workflows).
+// Workflows: navegação por ChangePage + carregar dados do usuário/empresa
+// (DisplayGroupData) + Change Company (PATCH /profiles → MakeChangeCurrentUser → RefreshPage).
+// States Bubble: `open_` (bool), `selecionado_` (text) — substituídos por
+// usePathname() para o item ativo e useState para o toggle aberto/fechado.
+
+import { useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import {
+  Home, Users, FileText, Calculator, Settings, Building2,
+  ChevronDown, Menu as MenuIcon, X, LogOut,
+} from 'lucide-react';
+import { createBrowserClient } from '@/lib/supabase/browser';
+import { useToast } from '@/components/Toaster';
+
+// Os values batem com o option set Bubble (lowercase). Para exibição, label é capitalizada.
+type Role = 'empresa' | 'contador';
+const ROLE_LABEL: Record<Role, string> = { empresa: 'Empresa', contador: 'Contador' };
+
+export type MenuLateralProps = {
+  userName: string;
+  userRole: Role;
+  companies: { id: string; nome: string }[];
+  currentCompanyId: string | null;
+};
+
+type NavItem = { href: string; label: string; Icon: React.ComponentType<{ className?: string }>; roles?: Role[] };
+
+const NAV: NavItem[] = [
+  { href: '/',                      label: 'Início',         Icon: Home },
+  { href: '/clientes',              label: 'Clientes',       Icon: Users },
+  { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText },
+  { href: '/impostos',              label: 'Impostos',       Icon: Calculator },
+  { href: '/configuracoes',         label: 'Configurações',  Icon: Settings },
+  // TODO(honorarios): rota /honorarios ainda não gerada — adicionar a NAV quando criada
+];
+
+export default function MenuLateral({
+  userName, userRole, companies, currentCompanyId,
+}: MenuLateralProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const toast = useToast();
+  const [open, setOpen] = useState(true);
+  const [switching, setSwitching] = useState(false);
+  const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
+
+  const currentCompany = companies.find((c) => c.id === currentCompanyId);
+  const items = NAV.filter((i) => !i.roles || i.roles.includes(userRole));
+
+  async function changeCompany(companyId: string) {
+    if (companyId === currentCompanyId) return;
+    setSwitching(true);
+    const supabase = createBrowserClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.replace('/login'); return; }
+    const { error } = await supabase
+      .from('profiles')
+      .update({ current_company: companyId })
+      .eq('id', user.id);
+    if (error) {
+      toast('error', `Não foi possível trocar de empresa: ${error.message}`);
+      setSwitching(false);
+      return;
+    }
+    toast('success', 'Empresa alterada');
+    setCompanyMenuOpen(false);
+    router.refresh();
+  }
+
+  async function signOut() {
+    const supabase = createBrowserClient();
+    await supabase.auth.signOut();
+    router.replace('/login');
+  }
+
+  return (
+    <aside
+      className={`relative flex flex-col border-r border-zinc-200 bg-white transition-[width] duration-200 ${
+        open ? 'w-60' : 'w-16'
+      }`}
+    >
+      <button
+        type="button"
+        aria-label={open ? 'Recolher menu' : 'Expandir menu'}
+        onClick={() => setOpen((v) => !v)}
+        className="absolute -right-3 top-4 grid size-6 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm hover:text-primary"
+      >
+        {open ? <X className="size-3" /> : <MenuIcon className="size-3" />}
+      </button>
+
+      {/* Cabeçalho com usuário + empresa */}
+      <div className="border-b border-zinc-200 p-3">
+        {open ? (
+          <>
+            <p className="truncate text-sm font-semibold text-brand-navy">{userName}</p>
+            <p className="text-xs text-zinc-500">{ROLE_LABEL[userRole] ?? userRole}</p>
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setCompanyMenuOpen((v) => !v)}
+                disabled={switching}
+                className="flex w-full items-center justify-between gap-2 rounded-md border border-zinc-200 px-2 py-1.5 text-left text-xs hover:border-primary disabled:opacity-50"
+              >
+                <span className="flex items-center gap-1.5 truncate">
+                  <Building2 className="size-3.5 shrink-0 text-primary" />
+                  <span className="truncate">{currentCompany?.nome ?? 'Selecionar empresa'}</span>
+                </span>
+                <ChevronDown className={`size-3.5 transition-transform ${companyMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {companyMenuOpen && (
+                <ul className="mt-1 max-h-60 overflow-auto rounded-md border border-zinc-200 bg-white shadow-sm">
+                  {companies.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => changeCompany(c.id)}
+                        className={`w-full truncate px-2 py-1.5 text-left text-xs hover:bg-zinc-50 ${
+                          c.id === currentCompanyId ? 'font-semibold text-primary' : ''
+                        }`}
+                      >
+                        {c.nome}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="grid place-items-center">
+            <Building2 className="size-5 text-primary" />
+          </div>
+        )}
+      </div>
+
+      {/* Navegação */}
+      <nav className="flex-1 overflow-y-auto p-2">
+        <ul className="flex flex-col gap-1">
+          {items.map(({ href, label, Icon }) => {
+            const active = pathname === href || (href !== '/' && pathname.startsWith(href));
+            return (
+              <li key={href}>
+                <Link
+                  href={href}
+                  className={`flex items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors ${
+                    active
+                      ? 'bg-primary/10 text-primary font-semibold'
+                      : 'text-zinc-700 hover:bg-zinc-50'
+                  }`}
+                >
+                  <Icon className="size-4 shrink-0" />
+                  {open && <span className="truncate">{label}</span>}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      {/* Sair */}
+      <div className="border-t border-zinc-200 p-2">
+        <button
+          type="button"
+          onClick={signOut}
+          className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+        >
+          <LogOut className="size-4 shrink-0" />
+          {open && <span>Sair</span>}
+        </button>
+      </div>
+    </aside>
+  );
+}

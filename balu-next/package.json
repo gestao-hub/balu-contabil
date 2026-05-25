@@ -1,0 +1,38 @@
+{
+  "name": "balu-next",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:e2e": "playwright test",
+    "gen:schema": "python3 ../bubble-to-prd/skills/gen_schema.py ../bubble-to-prd/slices .",
+    "gen:routes": "python3 ../bubble-to-prd/skills/gen_routes.py ../bubble-to-prd/slices .",
+    "gen:clients": "python3 ../bubble-to-prd/skills/gen_clients.py ../bubble-to-prd/slices .",
+    "gen:all": "npm run gen:schema && npm run gen:routes && npm run gen:clients"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.45.4",
+    "lucide-react": "^0.460.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@playwright/test": "^1.48.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.2"
+  }
+}

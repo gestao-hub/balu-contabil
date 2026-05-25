@@ -1,0 +1,28 @@
+[
+  {
+    "id": "bTIHU0",
+    "name": "bTIHU0",
+    "trigger": "CustomEvent",
+    "actions": [
+      {
+        "id": "0",
+        "type": "apiconnector2-bTIGQ.bTIHM0"
+      },
+      {
+        "id": "1",
+        "type": "MakeChangeCurrentUser"
+      }
+    ]
+  },
+  {
+    "id": "bTIHr0",
+    "name": "bTIHr0",
+    "trigger": "PageLoaded",
+    "actions": [
+      {
+        "id": "0",
+        "type": "TriggerCustomEvent"
+      }
+    ]
+  }
+]

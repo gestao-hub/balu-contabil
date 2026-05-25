@@ -1,0 +1,296 @@
+{
+  "id": "bTLFP",
+  "type": "CustomDefinition",
+  "name": "Group",
+  "props": {
+    "height": 200,
+    "element_type": "Group",
+    "default_width": 200,
+    "container_layout": "column",
+    "background_style": "none",
+    "min_width_px": 0,
+    "width": 200
+  },
+  "children": [
+    {
+      "id": "bTLFa",
+      "type": "Group",
+      "name": "Group A",
+      "props": {
+        "height": 280,
+        "left": 0,
+        "border_roundness": 12,
+        "border_color": "rgba(255,255,255,1)",
+        "container_layout": "column",
+        "collapse_when_hidden": true,
+        "boxshadow_color": "rgba(0,0,0,0.05)",
+        "padding_right": 5,
+        "padding_left": 5,
+        "background_style": "bgcolor",
+        "border_style": "solid",
+        "boxshadow_style": "outset",
+        "width": 280,
+        "boxshadow_horizontal": 0,
+        "horiz_alignment": "center",
+        "padding_bottom": 5,
+        "zindex": 5,
+        "top": 0,
+        "padding_top": 5
+      },
+      "children": [
+        {
+          "id": "bTGUE",
+          "type": "Group",
+          "name": "Group A",
+          "props": {
+            "height": 30,
+            "left": 11.5,
+            "container_layout": "relative",
+            "collapse_when_hidden": true,
+            "width": 28.5,
+            "horiz_alignment": "flex-end",
+            "zindex": 7,
+            "top": 7.5
+          },
+          "children": [
+            {
+              "id": "bTGUG",
+              "type": "Icon",
+              "name": "Icon A",
+              "props": {
+                "height": 30,
+                "left": -5,
+                "icon": "material outlined filter_alt",
+                "collapse_when_hidden": true,
+                "width": 30,
+                "horiz_alignment": "center",
+                "zindex": 1,
+                "top": 12.5
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bTLFg",
+      "type": "GroupFocus",
+      "name": "GroupFocus A",
+      "props": {
+        "height": 221,
+        "left": -85,
+        "border_roundness": 12,
+        "border_color": "rgba(199,199,199,1)",
+        "container_layout": "column",
+        "collapse_when_hidden": true,
+        "boxshadow_color": "rgba(0,0,0,0.05)",
+        "border_style": "solid",
+        "width": 285,
+        "horiz_alignment": "flex-start",
+        "zindex": 6,
+        "top": -21,
+        "boxshadow_blur": 4
+      },
+      "children": [
+        {
+          "id": "bTLGE",
+          "type": "Group",
+          "name": "Group B",
+          "props": {
+            "height": 0,
+            "left": 0,
+            "container_layout": "column",
+            "collapse_when_hidden": true,
+            "row_gap": 12,
+            "padding_right": 20,
+            "padding_left": 20,
+            "width": 0,
+            "horiz_alignment": "flex-start",
+            "padding_bottom": 20,
+            "zindex": 4,
+            "top": 0,
+            "padding_top": 20
+          },
+          "children": [
+            {
+              "id": "bTKQR",
+              "type": "Group",
+              "name": "Group B",
+              "props": {
+                "height": 0,
+                "left": 0,
+                "container_layout": "column",
+                "collapse_when_hidden": true,
+                "row_gap": 8,
+                "width": 0,
+                "horiz_alignment": "flex-start",
+                "zindex": 5,
+                "top": 0
+              },
+              "children": [
+                {
+                  "id": "bTKQW",
+                  "type": "Text",
+                  "name": "Text A",
+                  "props": {
+                    "height": 36,
+                    "text": {
+                      "entries": {
+                        "0": "Data inicial:"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "left": 0,
+                    "collapse_when_hidden": true,
+                    "width": 100,
+                    "horiz_alignment": "flex-start",
+                    "font_size": 13,
+                    "zindex": 2,
+                    "top": 0
+                  }
+                },
+                {
+                  "id": "bTLGF",
+                  "type": "DateInput",
+                  "name": "Date/TimePicker A",
+                  "props": {
+                    "height": 48,
+                    "left": -20,
+                    "collapse_when_hidden": true,
+                    "width": 250,
+                    "horiz_alignment": "flex-start",
+                    "placeholder": {
+                      "entries": {
+                        "0": "Digite seu email"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "top": -20
+                  }
+                }
+              ]
+            },
+            {
+              "id": "bTLGQ",
+              "type": "Group",
+              "name": "Group C",
+              "props": {
+                "height": 0,
+                "left": 10,
+                "container_layout": "column",
+                "collapse_when_hidden": true,
+                "row_gap": 8,
+                "width": 0,
+                "horiz_alignment": "flex-start",
+                "zindex": 5,
+                "top": 10
+              },
+              "children": [
+                {
+                  "id": "bTKQW",
+                  "type": "Text",
+                  "name": "Text B",
+                  "props": {
+                    "height": 36,
+                    "text": {
+                      "entries": {
+                        "0": "Data final:"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "left": 0,
+                    "collapse_when_hidden": true,
+                    "width": 100,
+                    "horiz_alignment": "flex-start",
+                    "font_size": 13,
+                    "zindex": 2,
+                    "top": 0
+                  }
+                },
+                {
+                  "id": "bTLGF",
+                  "type": "DateInput",
+                  "name": "Date/TimePicker B",
+                  "props": {
+                    "height": 48,
+                    "left": -20,
+                    "collapse_when_hidden": true,
+                    "width": 250,
+                    "horiz_alignment": "flex-start",
+                    "placeholder": {
+                      "entries": {
+                        "0": "Digite seu email"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "top": -20
+                  }
+                }
+              ]
+            },
+            {
+              "id": "bTLHI",
+              "type": "Group",
+              "name": "Group D",
+              "props": {
+                "height": 0,
+                "left": 20,
+                "container_layout": "column",
+                "collapse_when_hidden": true,
+                "row_gap": 4,
+                "width": 0,
+                "horiz_alignment": "flex-start",
+                "zindex": 7,
+                "top": 176.375
+              },
+              "children": [
+                {
+                  "id": "bTLHM",
+                  "type": "Button",
+                  "name": "Button A",
+                  "props": {
+                    "height": 44,
+                    "text": {
+                      "entries": {
+                        "0": "Aplicar filtro"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "left": -20,
+                    "icon": "material outlined star_border",
+                    "collapse_when_hidden": true,
+                    "width": 150,
+                    "horiz_alignment": "flex-start",
+                    "zindex": 6,
+                    "top": -176.375
+                  }
+                },
+                {
+                  "id": "bTLHN",
+                  "type": "Button",
+                  "name": "Button B",
+                  "props": {
+                    "height": 44,
+                    "text": {
+                      "entries": {
+                        "0": "Limpar"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "left": -20,
+                    "icon": "material outlined star_border",
+                    "collapse_when_hidden": true,
+                    "width": 150,
+                    "horiz_alignment": "flex-start",
+                    "zindex": 6,
+                    "top": -176.375
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
