@@ -586,6 +586,44 @@
       "createdAt": "2026-05-25T14:48:34.226604+00:00",
       "updatedAt": "2026-05-25T14:56:19.802307+00:00",
       "order": 10
+    },
+    {
+      "id": "2a06f614-49f1-4669-94e5-2620f26370df",
+      "createdAt": "2026-05-25T20:46:39.391288+00:00",
+      "order": 2,
+      "title": "Auth: Tipo de conta + confirmação de senha (`/cadastro`)",
+      "status": "done",
+      "priority": "medium",
+      "estimate": "S",
+      "labels": [
+        "auth",
+        "cadastro"
+      ],
+      "dependencies": [],
+      "description": "Melhorias no cadastro de usuário (fora dos PRs numerados do plano).\n\n- Dropdown \"Tipo de conta\" com valores `Empresa`/`Contador` (+ placeholder vazio).\n- Campo \"Confirmar senha\" com validação client-side (`handleSubmit`) e server-side (`signupAction`).\n- `signupAction` envia o tipo no metadata sob a chave `type`.\n- Trigger `handle_new_user_role` (migration `0002`) lê `raw_user_meta_data->>'type'` e cria o registro em `role_types` (default `Empresa`).\n\nCommits: `1594e50`, `4df6899`.\n\n**Pendente**: aplicar a migration `0002` no Supabase hospedado para o trigger existir no banco.",
+      "checklist": [
+        {
+          "text": "Dropdown \"Tipo de conta\" (Empresa/Contador) no /cadastro",
+          "checked": true
+        },
+        {
+          "text": "Campo \"Confirmar senha\" + validação (client + server)",
+          "checked": true
+        },
+        {
+          "text": "signupAction envia `type` no metadata",
+          "checked": true
+        },
+        {
+          "text": "Trigger handle_new_user_role (0002) → role_types",
+          "checked": true
+        },
+        {
+          "text": "Aplicar 0002 no Supabase hospedado",
+          "checked": false
+        }
+      ],
+      "updatedAt": "2026-05-25T20:46:39.391288+00:00"
     }
   ]
 }

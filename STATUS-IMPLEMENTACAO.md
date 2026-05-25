@@ -19,10 +19,12 @@
 | 1.1 | Dashboard `/` (4 cards + lista de pendências) | ✅ código (tsc + build OK); ⏳ runtime aguarda Supabase | `9d0461f` |
 | 1.2 | Listagem `/notas_fiscais` (4 filtros + export CSV) | ✅ código (tsc + build OK); ⏳ runtime aguarda Supabase | `4fe1e80` |
 | 1.3 | Detalhe + cancelamento `/notas_fiscais/[id]` | 🆕 próximo | — |
+| Auth | Cadastro: dropdown "Tipo de conta" + "Confirmar senha"; tipo gravado em `role_types` via trigger | ✅ código (tsc OK); ⏳ aplicar trigger `0002` no Supabase | `1594e50`, `4df6899` |
 
 - **Baseline git**: commit `2ff8fd6` (estado pré-Day-1). `excluviapainel.bubble` ficou **fora** do versionamento (continha PII + tokens; slices já extraídos e limpos).
 - **Ambiente**: deps instaladas; `tsc --noEmit` e `next build` verificados limpos. Falta `.env.local` com credenciais Supabase para verificação de runtime.
 - **Descoberta**: `Database = any` não impede o parser de select-string do supabase-js de tipar embeds to-one (`clientes(...)`) como array — usar `as unknown as` nesses joins.
+- **Cadastro/auth (fora dos PRs do plano)**: `/cadastro` ganhou dropdown "Tipo de conta" (`Empresa`/`Contador`) + campo "Confirmar senha" (validação client + server). O tipo vai no metadata do usuário sob a chave `type`; o trigger `handle_new_user_role` (migration `0002`) lê `raw_user_meta_data->>'type'` e cria o registro em `role_types` (default `Empresa` quando ausente). **Pendente**: aplicar `0002` no Supabase hospedado.
 
 ---
 
@@ -108,7 +110,7 @@
 | Action | Arquivo | Função |
 |---|---|---|
 | `loginAction` | `app/(public)/login/actions.ts` | Supabase signin |
-| `signupAction` | `app/(public)/cadastro/actions.ts` | Supabase signup (trigger cria profile) |
+| `signupAction` | `app/(public)/cadastro/actions.ts` | Supabase signup; envia `full_name` + `type` no metadata; trigger cria registro em `role_types` |
 | `requestResetAction` + `updatePasswordAction` | `app/(public)/reset_pw/actions.ts` | Reset 2 telas |
 | `createClienteAction` + `updateClienteAction` + `softDeleteClienteAction` | `app/(auth)/clientes/actions.ts` | CRUD cliente com dedup CPF/CNPJ |
 | `updateCompanyAction` | `app/(auth)/configuracoes/actions.ts` | PATCH companies |
