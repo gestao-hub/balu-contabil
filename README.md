@@ -213,10 +213,13 @@ npx playwright test
 | Webhook receiver Focus NFe | route handler em `/api/webhooks/focus` |
 
 ### Próximas iterações 🔜
+Já implementadas nesta rodada (código pronto, `tsc`/`build` OK, **runtime pendente de Supabase**):
+
+- **`/`** — ✅ dashboard home (PR 1.1 — 4 cards + lista de pendências)
+- **`/notas_fiscais`** — ✅ listagem com filtros + export CSV (PR 1.2)
+
 Páginas que ainda têm o template stub (cabeçalho `// @generated`):
 
-- **`/`** — dashboard home (PRD §1.1)
-- **`/notas_fiscais`** — listagem com filtros (PRD §10)
 - **`/notas_fiscais/[id]`** — detalhe + cancelamento (PRD §10.1)
 - **`/notas_fiscais/emissao`** — form NFe/NFCe/NFSe (PRD §10.2 — fluxo mais complexo)
 - **`/impostos`** — dashboard de declarações e guias (PRD §11.1)
@@ -359,7 +362,8 @@ Leia o **Apêndice A** de `PLANO-4-DIAS.md`. Resumo:
 - ✅ **Build limpo**: `tsc --noEmit` e `next build` zero erros
 - ✅ **Playwright**: 12/12 testes passando (smoke + walkthrough desktop + mobile)
 - ✅ **Rotas reais** (5): `/login`, `/cadastro`, `/reset_pw`, `/clientes`, `/configuracoes`
-- ⚠️ **Rotas stub** (6): `/`, `/notas_fiscais`, `/notas_fiscais/[id]`, `/notas_fiscais/emissao`, `/impostos`, `/impostos/novo` — **escopo dos 4 dias**
+- 🟡 **Implementadas, runtime pendente** (2): `/` (PR 1.1) e `/notas_fiscais` (PR 1.2) — código pronto + `tsc`/`build` OK; falta logar com Supabase real
+- ⚠️ **Rotas stub** (4): `/notas_fiscais/[id]`, `/notas_fiscais/emissao`, `/impostos`, `/impostos/novo` — **escopo restante**
 - ✅ **Schema**: 13 tabelas + RLS + triggers + RPCs aplicáveis em Supabase
 - ✅ **Clientes API endurecidos**: Focus (retry, status, download), Serpro (cache token, envelope helper), n8n (HMAC)
 - ✅ **Webhook receiver**: `app/api/webhooks/focus/route.ts`
@@ -416,4 +420,4 @@ npx playwright test         # E2E
 
 ---
 
-**Última atualização**: pipeline completo, 44 arquivos no `balu-next/src/`, zero erros de TypeScript, 6/6 testes Playwright passando, 12 rotas compilando em produção.
+**Última atualização** (2026-05-25): Day 1 em andamento — PR 1.1 (dashboard `/`) e PR 1.2 (listagem `/notas_fiscais` + filtros + CSV) implementados e commitados na branch `feat/day1-dashboard`. `tsc --noEmit` e `next build` limpos (13 rotas). Verificação de runtime pendente de credenciais Supabase. Próximo: PR 1.3 (detalhe + cancelamento da nota). Ver `STATUS-IMPLEMENTACAO.md` §0.

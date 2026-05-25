@@ -38,7 +38,7 @@ Usuário logado vê um **dashboard útil** ao entrar (não mais stub vazio) e co
 
 ### PRs sugeridos
 
-#### PR 1.1 — Dashboard home (`/`)
+#### PR 1.1 — Dashboard home (`/`) — ✅ FEITO (commit `9d0461f`, código; runtime pendente Supabase)
 **Spec**: `V1-FUNCIONALIDADES.md` §5.1 + §5.2
 
 Arquivos a criar/editar:
@@ -59,7 +59,7 @@ Reusa: `<MenuLateral>`, `useToast()`, padrão de `app/(auth)/clientes/page.tsx`.
 - [ ] Lista de pendências carrega de dados reais
 - [ ] `tsc --noEmit` zero erros
 
-#### PR 1.2 — Listagem de notas (`/notas_fiscais`)
+#### PR 1.2 — Listagem de notas (`/notas_fiscais`) — ✅ FEITO (commit `4fe1e80`, código; runtime pendente Supabase)
 **Spec**: `V1-FUNCIONALIDADES.md` §3.2
 
 Arquivos:
@@ -77,7 +77,7 @@ Filtros: período (FilterPeriodo), tipo (TipoNF dropdown), status (Status_nfs), 
 - [ ] Export CSV baixa arquivo válido
 - [ ] Linha clicável navega para `/notas_fiscais/<id>`
 
-#### PR 1.3 — Detalhe + cancelamento (`/notas_fiscais/[id]`)
+#### PR 1.3 — Detalhe + cancelamento (`/notas_fiscais/[id]`) — 🆕 PRÓXIMO
 **Spec**: `V1-FUNCIONALIDADES.md` §3.5 + PRD §10.1
 
 Arquivos:

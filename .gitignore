@@ -27,6 +27,9 @@ balu-next/.playwright/
 # ── Claude Code (config local da máquina) ────────────────────
 .claude/settings.local.json
 
+# ── Repo de referência clonado (fora do versionamento) ───────
+superpowers-kanban/
+
 # ── Diversos ─────────────────────────────────────────────────
 *.log
 .DS_Store

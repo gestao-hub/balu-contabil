@@ -10,6 +10,22 @@
 
 ---
 
+## 0. Progresso da execução (PLANO-4-DIAS)
+
+> Atualizado em **2026-05-25**. Branch: `feat/day1-dashboard`. Cadência: PR a PR, com revisão.
+
+| PR | Escopo | Estado | Commit |
+|---|---|---|---|
+| 1.1 | Dashboard `/` (4 cards + lista de pendências) | ✅ código (tsc + build OK); ⏳ runtime aguarda Supabase | `9d0461f` |
+| 1.2 | Listagem `/notas_fiscais` (4 filtros + export CSV) | ✅ código (tsc + build OK); ⏳ runtime aguarda Supabase | `4fe1e80` |
+| 1.3 | Detalhe + cancelamento `/notas_fiscais/[id]` | 🆕 próximo | — |
+
+- **Baseline git**: commit `2ff8fd6` (estado pré-Day-1). `excluviapainel.bubble` ficou **fora** do versionamento (continha PII + tokens; slices já extraídos e limpos).
+- **Ambiente**: deps instaladas; `tsc --noEmit` e `next build` verificados limpos. Falta `.env.local` com credenciais Supabase para verificação de runtime.
+- **Descoberta**: `Database = any` não impede o parser de select-string do supabase-js de tipar embeds to-one (`clientes(...)`) como array — usar `as unknown as` nesses joins.
+
+---
+
 ## 1. Matriz por feature da v1
 
 ### §1. Onboarding com IA Educacional
@@ -30,7 +46,7 @@
 | Feature | Status | Reusa | Falta |
 |---|---|---|---|
 | 3.1 Emissor NFS-e integrado | 🚧 | `src/lib/clients/focus-nfe.ts` (emit + status + cancel + download + retry + `generateRef`), webhook receiver `app/api/webhooks/focus/route.ts`, tabela `notas_fiscais` | rota `app/(auth)/notas_fiscais/emissao/page.tsx` (hoje stub), `<EmissaoForm>`, server action `emitirNotaAction` |
-| 3.2 Histórico exportável | 🆕 | `<FilterPeriodo>` componente | rota `app/(auth)/notas_fiscais/page.tsx` (stub), tabela `<NotasFiscaisList>`, export CSV |
+| 3.2 Histórico exportável | ✅ | **PR 1.2**: `notas_fiscais/page.tsx` + `NotasFiscaisList.tsx` (4 filtros) + `actions.ts` (`exportNotasCsvAction`) | verificação runtime (Supabase) |
 | 3.3 Preview imposto ANTES de emitir | 🆕 | `apuracoes_fiscais` para RBT12 | `src/lib/fiscal/preview.ts`, componente `<PreviewImpostoCard>` reativo |
 | 3.4 Alerta limite faturamento | 🆕 | `apuracoes_fiscais.rbt12`, `empresas_fiscais.Code_regime_tributario` | `<LimiteFaturamentoBanner>` no `(auth)/layout.tsx`, função `getLimiteStatus` |
 | 3.5 XML + PDF automáticos | 🚧 | `focus.baixarDanfe`, `focus.baixarXmlNfe` já existem | UI para download na rota `[id]/page.tsx`, cache opcional em Storage bucket `notas-arquivos` |
@@ -45,8 +61,8 @@
 ### §5. Painel Leigo do Empresário
 | Feature | Status | Reusa | Falta |
 |---|---|---|---|
-| 5.1 Dashboard 24/7 | 🆕 | `MenuLateral` (sidebar pronto), queries Supabase | rota `app/(auth)/page.tsx` (hoje stub), `<DashboardCard>` reusável, Promise.all de 4 queries |
-| 5.2 Lista "O que você precisa fazer" | 🆕 | nada | function `getPendingActions`, componente `<PendingActionsList>`, badge no `MenuLateral` |
+| 5.1 Dashboard 24/7 | ✅ | **PR 1.1**: `app/(auth)/page.tsx` + `<DashboardCard>` + `lib/dashboard/queries.ts` (`getDashboardMetrics`, queries em paralelo) | verificação runtime; cards "limite de faturamento" (§3.4) ainda não |
+| 5.2 Lista "O que você precisa fazer" | 🚧 | **PR 1.1**: `getPendingActions` + `<PendingActionsList>` (DAS vencido/vencendo, notas pendentes) | badge no `MenuLateral`; pendência de certificado A1 (schema não guarda validade) |
 | 5.3 Visualizar/pagar impostos em poucos cliques | 🆕 | `guias_fiscais` schema | componente `<PagarGuiaModal>`, action `marcarGuiaPagaAction` |
 | 5.4 Repositório de documentos | 🆕 | `notas_fiscais`, `guias_fiscais`, `arquivos_auxiliares`, `declaracoes_fiscais`, `supabase-storage.ts` | rota `app/(auth)/documentos/page.tsx`, agrupamento client-side |
 
@@ -83,6 +99,9 @@
 | `<ClientesListClient>` | `ClientesListClient.tsx` | tabela + busca + filtros — referência de padrão para listagens |
 | `<CreateCompanyDialog>` | `CreateCompanyDialog.tsx` | onboarding empresa — referência de padrão para wizards |
 | `<DadosEmpresaForm>` | `app/(auth)/configuracoes/DadosEmpresaForm.tsx` | edição de empresa — referência de form Zod-validado |
+| `<DashboardCard>` | `components/DashboardCard.tsx` | card de métrica do dashboard (title/Icon/value/subtitle/tone/action) — **PR 1.1** |
+| `<PendingActionsList>` | `components/PendingActionsList.tsx` | lista "O que você precisa fazer" com severidade + CTA — **PR 1.1** |
+| `<NotasFiscaisList>` | `app/(auth)/notas_fiscais/NotasFiscaisList.tsx` | listagem com 4 filtros + export CSV + linha clicável — **PR 1.2** (referência de listagem com filtros server-side) |
 
 ### 2.2 Server Actions prontas
 
@@ -94,6 +113,9 @@
 | `createClienteAction` + `updateClienteAction` + `softDeleteClienteAction` | `app/(auth)/clientes/actions.ts` | CRUD cliente com dedup CPF/CNPJ |
 | `updateCompanyAction` | `app/(auth)/configuracoes/actions.ts` | PATCH companies |
 | `lookupCnpjAction` + `lookupCepAction` + `createCompanyAction` | `app/(auth)/onboarding/actions.ts` | Focus CNPJ + ViaCEP + insert |
+| `exportNotasCsvAction` | `app/(auth)/notas_fiscais/actions.ts` | re-consulta notas com filtros e devolve CSV (BOM UTF-8, `;`) — **PR 1.2** |
+
+> Funções server-side (não-actions): `getDashboardMetrics` + `getPendingActions` em `lib/dashboard/queries.ts` (**PR 1.1**, `import 'server-only'`).
 
 ### 2.3 Clientes API (`src/lib/clients/`)
 
