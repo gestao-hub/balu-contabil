@@ -11,7 +11,7 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
   const password_confirm = String(formData.get('password_confirm') ?? '');
-  const user_role = String(formData.get('user_role') ?? '').trim();
+  const role_type = String(formData.get('role_type') ?? '').trim();
 
   if (!full_name || !email || !password) {
     return { error: 'Preencha todos os campos.' };
@@ -22,16 +22,19 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
   if (password !== password_confirm) {
     return { error: 'As senhas não conferem.' };
   }
-  // "" = placeholder → cai no default 'empresa' do banco. Só validamos quando preenchido.
-  if (user_role && user_role !== 'empresa' && user_role !== 'contador') {
+  // "" = placeholder (não escolhido). Só validamos quando preenchido.
+  if (role_type && role_type !== 'Empresa' && role_type !== 'Contador') {
     return { error: 'Tipo de conta inválido.' };
   }
 
+  // O tipo escolhido vai no metadata sob a chave `type`; o trigger no banco lê
+  // raw_user_meta_data->>'type' e cria o registro em role_types após o signup
+  // (quando ausente, o trigger usa default 'Empresa').
   const supabase = await createServerClient();
   const { error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: user_role ? { full_name, user_role } : { full_name } },
+    options: { data: role_type ? { full_name, type: role_type } : { full_name } },
   });
 
   if (error) {

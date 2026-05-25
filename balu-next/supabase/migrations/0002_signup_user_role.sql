@@ -1,20 +1,37 @@
--- Customização 0002: persistir o tipo de conta escolhido no cadastro.
--- O form de cadastro envia `user_role` em raw_user_meta_data; o trigger
--- handle_new_user passa a copiá-lo para profiles.user_role.
--- Valores inválidos ou ausentes caem no default 'empresa' (mesma constraint da 0001).
+-- Customização 0002: criar registro de tipo de conta após o cadastro.
+-- O form de cadastro envia o valor escolhido em raw_user_meta_data->>'role_type'
+-- com valores 'Empresa' | 'Contador' (ausente quando não selecionado).
+-- Este trigger lê esse metadata e cria o registro em role_type.
+--
+-- TODO (edição manual):
+--   - confirmar o nome da tabela: role_type vs role_types
+--   - ajustar o cast ::<enum> conforme o tipo da coluna `type`
 
-create or replace function public.handle_new_user() returns trigger
-language plpgsql security definer as $$
-declare
-  v_role text := new.raw_user_meta_data->>'user_role';
+create or replace function public.handle_new_user_role()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
 begin
-  if v_role is null or v_role not in ('empresa', 'contador') then
-    v_role := 'empresa';
-  end if;
-
-  insert into public.profiles (id, user_role)
-  values (new.id, v_role)
-  on conflict do nothing;
+  insert into public.role_types (
+    user_id,
+    type
+  )
+  values (
+    new.id,
+    coalesce(
+      new.raw_user_meta_data->>'type',
+      'Empresa'
+    )::user_types
+  );
 
   return new;
-end; $$;
+end;
+$$;
+
+
+create trigger on_auth_user_created_role
+after insert on auth.users
+for each row
+execute function public.handle_new_user_role();
