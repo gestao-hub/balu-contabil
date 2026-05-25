@@ -18,6 +18,7 @@ export default function CadastroPage() {
     const fd = new FormData(e.currentTarget);
     const email = String(fd.get('email') ?? '');
     const password = String(fd.get('password') ?? '');
+    const passwordConfirm = String(fd.get('password_confirm') ?? '');
     if (!EMAIL_RE.test(email)) {
       e.preventDefault();
       setClientError('Informe um e-mail válido.');
@@ -26,6 +27,11 @@ export default function CadastroPage() {
     if (password.length < 6) {
       e.preventDefault();
       setClientError('A senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (password !== passwordConfirm) {
+      e.preventDefault();
+      setClientError('As senhas não conferem.');
       return;
     }
     setClientError(null);
@@ -100,6 +106,21 @@ export default function CadastroPage() {
               className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <p className="text-xs text-zinc-500 mt-1">Mínimo 6 caracteres.</p>
+          </div>
+
+          <div>
+            <label htmlFor="password_confirm" className="block text-sm font-medium text-zinc-700 mb-1">
+              Confirmar senha
+            </label>
+            <input
+              id="password_confirm"
+              name="password_confirm"
+              type="password"
+              required
+              minLength={6}
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
           </div>
 
           {errorMsg && (

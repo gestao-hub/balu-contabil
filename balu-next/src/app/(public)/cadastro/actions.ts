@@ -10,6 +10,7 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
   const full_name = String(formData.get('full_name') ?? '').trim();
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
+  const password_confirm = String(formData.get('password_confirm') ?? '');
   const user_role = String(formData.get('user_role') ?? '').trim();
 
   if (!full_name || !email || !password) {
@@ -17,6 +18,9 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
   }
   if (password.length < 6) {
     return { error: 'A senha deve ter pelo menos 6 caracteres.' };
+  }
+  if (password !== password_confirm) {
+    return { error: 'As senhas não conferem.' };
   }
   // "" = placeholder → cai no default 'empresa' do banco. Só validamos quando preenchido.
   if (user_role && user_role !== 'empresa' && user_role !== 'contador') {
