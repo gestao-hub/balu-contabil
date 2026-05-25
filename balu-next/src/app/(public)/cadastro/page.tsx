@@ -57,6 +57,22 @@ export default function CadastroPage() {
           </div>
 
           <div>
+            <label htmlFor="user_role" className="block text-sm font-medium text-zinc-700 mb-1">
+              Tipo de conta
+            </label>
+            <select
+              id="user_role"
+              name="user_role"
+              defaultValue=""
+              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value=""></option>
+              <option value="empresa">Empresa</option>
+              <option value="contador">Contador</option>
+            </select>
+          </div>
+
+          <div>
             <label htmlFor="email" className="block text-sm font-medium text-zinc-700 mb-1">
               E-mail
             </label>
