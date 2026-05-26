@@ -7,25 +7,30 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Download } from 'lucide-react';
-import type { Tables } from '@/types/database';
 import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import { useToast } from '@/components/Toaster';
 import { exportNotasCsvAction } from './actions';
 
-export type NotaListRow = Pick<
-  Tables['notas_fiscais'],
-  'id' | 'tipo_nf' | 'numero_nf' | 'serie' | 'chave_acesso' | 'data_emissao' | 'valor_total' | 'status'
-> & {
-  clientes: { razao_social: string | null; document: string | null } | null;
+// Tabela real `notas_fiscais` é minimalista: o nome do cliente é derivado de
+// payload_focusnfe.destinatario (não há FK cliente_id). `referencia` é o identificador.
+export type NotaListRow = {
+  id: string;
+  tipo_documento: string;
+  referencia: string;
+  data_emissao: string;
+  valor_total: number;
+  status: string;
+  cliente_nome: string | null;
 };
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
-const TIPO_LABEL: Record<string, string> = { nfe: 'NF-e', nfce: 'NFC-e', nfse: 'NFS-e' };
+const TIPO_LABEL: Record<string, string> = { NFe: 'NF-e', NFCe: 'NFC-e', NFSe: 'NFS-e' };
 const STATUS_META: Record<string, { label: string; cls: string }> = {
-  ativa: { label: 'Autorizada', cls: 'bg-success/10 text-success' },
-  pendente: { label: 'Pendente', cls: 'bg-alert/10 text-alert' },
-  cancelada: { label: 'Cancelada', cls: 'bg-destructive/10 text-destructive' },
+  autorizada: { label: 'Autorizada', cls: 'bg-success/10 text-success' },
+  processando: { label: 'Processando', cls: 'bg-alert/10 text-alert' },
+  rejeitada: { label: 'Rejeitada', cls: 'bg-destructive/10 text-destructive' },
+  cancelada: { label: 'Cancelada', cls: 'bg-zinc-100 text-zinc-600' },
 };
 
 function fmtData(iso: string | null): string {
@@ -44,7 +49,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return initial.filter((n) => {
-      if (tipo !== 'todos' && n.tipo_nf !== tipo) return false;
+      if (tipo !== 'todos' && n.tipo_documento !== tipo) return false;
       if (status !== 'todos' && n.status !== status) return false;
       if (periodo.start || periodo.end) {
         const d = n.data_emissao?.slice(0, 10) ?? null;
@@ -53,7 +58,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
         if (periodo.end && d > periodo.end) return false;
       }
       if (q) {
-        const hay = `${n.numero_nf ?? ''} ${n.chave_acesso ?? ''} ${n.clientes?.razao_social ?? ''} ${n.clientes?.document ?? ''}`.toLowerCase();
+        const hay = `${n.referencia ?? ''} ${n.cliente_nome ?? ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -100,7 +105,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por número, chave, cliente ou documento"
+            placeholder="Buscar por referência ou cliente"
             className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
           />
         </div>
@@ -113,9 +118,9 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none"
           >
             <option value="todos">Todos os tipos</option>
-            <option value="nfe">NF-e</option>
-            <option value="nfce">NFC-e</option>
-            <option value="nfse">NFS-e</option>
+            <option value="NFe">NF-e</option>
+            <option value="NFCe">NFC-e</option>
+            <option value="NFSe">NFS-e</option>
           </select>
 
           <select
@@ -125,8 +130,9 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none"
           >
             <option value="todos">Todos os status</option>
-            <option value="ativa">Autorizada</option>
-            <option value="pendente">Pendente</option>
+            <option value="autorizada">Autorizada</option>
+            <option value="processando">Processando</option>
+            <option value="rejeitada">Rejeitada</option>
             <option value="cancelada">Cancelada</option>
           </select>
 
@@ -150,7 +156,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             <tr>
               <th className="px-4 py-3 font-medium">Data</th>
               <th className="px-4 py-3 font-medium">Tipo</th>
-              <th className="px-4 py-3 font-medium">Número</th>
+              <th className="px-4 py-3 font-medium">Referência</th>
               <th className="px-4 py-3 font-medium">Cliente</th>
               <th className="px-4 py-3 font-medium text-right">Valor</th>
               <th className="px-4 py-3 font-medium">Status</th>
@@ -175,10 +181,10 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
                     className="cursor-pointer hover:bg-zinc-50/60"
                   >
                     <td className="px-4 py-3 text-zinc-700">{fmtData(n.data_emissao)}</td>
-                    <td className="px-4 py-3 text-zinc-700">{TIPO_LABEL[n.tipo_nf] ?? n.tipo_nf}</td>
-                    <td className="px-4 py-3 text-zinc-700">{n.numero_nf ?? '—'}</td>
+                    <td className="px-4 py-3 text-zinc-700">{TIPO_LABEL[n.tipo_documento] ?? n.tipo_documento}</td>
+                    <td className="px-4 py-3 text-zinc-700">{n.referencia ?? '—'}</td>
                     <td className="px-4 py-3 font-medium text-brand-navy">
-                      {n.clientes?.razao_social ?? '—'}
+                      {n.cliente_nome ?? '—'}
                     </td>
                     <td className="px-4 py-3 text-right text-zinc-700">
                       {n.valor_total != null ? brl.format(n.valor_total) : '—'}

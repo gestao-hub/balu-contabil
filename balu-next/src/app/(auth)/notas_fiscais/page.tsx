@@ -20,14 +20,18 @@ export default async function NotasFiscaisPage() {
     if (companyId) {
       const { data } = await supabase
         .from('notas_fiscais')
-        .select(
-          'id, tipo_nf, numero_nf, serie, chave_acesso, data_emissao, valor_total, status, clientes(razao_social, document)',
-        )
+        .select('id, tipo_documento, referencia, data_emissao, valor_total, status, payload_focusnfe')
         .eq('company_id', companyId)
         .order('data_emissao', { ascending: false, nullsFirst: false })
         .limit(50);
-      // supabase-js tipa embed to-one como array; no runtime vem objeto. Cast via unknown.
-      notas = (data ?? []) as unknown as NotaListRow[];
+
+      type NotaRaw = Omit<NotaListRow, 'cliente_nome'> & {
+        payload_focusnfe: { destinatario?: { razao_social?: string | null } | null } | null;
+      };
+      notas = ((data ?? []) as unknown as NotaRaw[]).map(({ payload_focusnfe, ...n }) => ({
+        ...n,
+        cliente_nome: payload_focusnfe?.destinatario?.razao_social ?? null,
+      }));
     }
   }
 

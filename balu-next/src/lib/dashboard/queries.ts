@@ -31,12 +31,6 @@ function monthBounds(now = new Date()) {
   return { start: start.toISOString(), next: next.toISOString() };
 }
 
-/** Converte competência 'YYYYMM' → 'MM/YYYY' para exibição. */
-function fmtCompetencia(comp: string | null): string {
-  if (!comp || comp.length !== 6) return comp ?? '—';
-  return `${comp.slice(4, 6)}/${comp.slice(0, 4)}`;
-}
-
 /** Dias entre hoje (00:00) e uma data `YYYY-MM-DD`. Negativo = no passado. */
 function diasAte(dateOnly: string): number {
   const today = new Date();
@@ -49,12 +43,12 @@ export async function getDashboardMetrics(sb: SB, companyId: string): Promise<Da
   const { start, next } = monthBounds();
 
   const [notasMesRes, ultimaRes, guiaRes] = await Promise.all([
-    // Receita do mês: notas ATIVAS emitidas na competência atual.
+    // Receita do mês: notas AUTORIZADAS emitidas na competência atual.
     sb
       .from('notas_fiscais')
       .select('valor_total')
       .eq('company_id', companyId)
-      .eq('status', 'ativa')
+      .eq('status', 'autorizada')
       .gte('data_emissao', start)
       .lt('data_emissao', next),
     // Última nota emitida (qualquer status), mais recente por data_emissao.
@@ -69,8 +63,8 @@ export async function getDashboardMetrics(sb: SB, companyId: string): Promise<Da
     sb
       .from('guias_fiscais')
       .select('*')
-      .eq('empresa_id', companyId)
-      .neq('status', 'paga')
+      .eq('company_id', companyId)
+      .neq('status', 'pago')
       .not('data_vencimento', 'is', null)
       .order('data_vencimento', { ascending: true })
       .limit(1)
@@ -94,9 +88,9 @@ export async function getPendingActions(sb: SB, companyId: string): Promise<Pend
   const [guiasRes, notasPendRes] = await Promise.all([
     sb
       .from('guias_fiscais')
-      .select('id, competencia, data_vencimento, status')
-      .eq('empresa_id', companyId)
-      .neq('status', 'paga')
+      .select('id, competencia_referencia, data_vencimento, status')
+      .eq('company_id', companyId)
+      .neq('status', 'pago')
       .not('data_vencimento', 'is', null)
       .order('data_vencimento', { ascending: true })
       .limit(20),
@@ -104,16 +98,16 @@ export async function getPendingActions(sb: SB, companyId: string): Promise<Pend
       .from('notas_fiscais')
       .select('id')
       .eq('company_id', companyId)
-      .eq('status', 'pendente')
+      .eq('status', 'processando')
       .limit(50),
   ]);
 
-  type GuiaPend = Pick<Row<'guias_fiscais'>, 'id' | 'competencia' | 'data_vencimento' | 'status'>;
+  type GuiaPend = Pick<Row<'guias_fiscais'>, 'id' | 'competencia_referencia' | 'data_vencimento' | 'status'>;
   const guias = (guiasRes.data ?? []) as GuiaPend[];
   for (const g of guias) {
     if (!g.data_vencimento) continue;
     const dias = diasAte(g.data_vencimento);
-    const comp = fmtCompetencia(g.competencia);
+    const comp = g.competencia_referencia ?? '—';
     if (dias < 0) {
       actions.push({
         id: `guia-${g.id}`,

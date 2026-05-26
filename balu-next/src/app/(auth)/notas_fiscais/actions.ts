@@ -19,14 +19,14 @@ export type ExportResult =
   | { ok: false; error: string };
 
 type ExportRow = {
-  tipo_nf: string;
-  numero_nf: string | null;
-  serie: string | null;
-  chave_acesso: string | null;
+  tipo_documento: string;
+  referencia: string | null;
   data_emissao: string | null;
   valor_total: number | null;
   status: string | null;
-  clientes: { razao_social: string | null; document: string | null } | null;
+  payload_focusnfe: {
+    destinatario?: { razao_social?: string | null; cnpj?: string | null; cpf?: string | null } | null;
+  } | null;
 };
 
 /** Escapa um campo para CSV (separador ';', padrão pt-BR/Excel). */
@@ -52,12 +52,12 @@ export async function exportNotasCsvAction(filtros: NotasFiltros): Promise<Expor
 
   let q = supabase
     .from('notas_fiscais')
-    .select('tipo_nf, numero_nf, serie, chave_acesso, data_emissao, valor_total, status, clientes(razao_social, document)')
+    .select('tipo_documento, referencia, data_emissao, valor_total, status, payload_focusnfe')
     .eq('company_id', companyId)
     .order('data_emissao', { ascending: false, nullsFirst: false })
     .limit(1000);
 
-  if (filtros.tipo) q = q.eq('tipo_nf', filtros.tipo);
+  if (filtros.tipo) q = q.eq('tipo_documento', filtros.tipo);
   if (filtros.status) q = q.eq('status', filtros.status);
   if (filtros.start) q = q.gte('data_emissao', `${filtros.start}T00:00:00`);
   if (filtros.end) q = q.lte('data_emissao', `${filtros.end}T23:59:59`);
@@ -65,44 +65,35 @@ export async function exportNotasCsvAction(filtros: NotasFiltros): Promise<Expor
   const { data, error } = await q;
   if (error) return { ok: false, error: error.message };
 
-  // supabase-js tipa embed to-one como array; no runtime vem objeto. Cast via unknown.
   let rows = (data ?? []) as unknown as ExportRow[];
+
+  // Nome/documento do cliente vêm do payload_focusnfe.destinatario (não há FK cliente_id).
+  const clienteNome = (r: ExportRow) => r.payload_focusnfe?.destinatario?.razao_social ?? '';
+  const clienteDoc = (r: ExportRow) =>
+    r.payload_focusnfe?.destinatario?.cnpj ?? r.payload_focusnfe?.destinatario?.cpf ?? '';
 
   const text = filtros.text?.trim().toLowerCase();
   if (text) {
     rows = rows.filter(
       (r) =>
-        (r.numero_nf ?? '').toLowerCase().includes(text) ||
-        (r.chave_acesso ?? '').toLowerCase().includes(text) ||
-        (r.clientes?.razao_social ?? '').toLowerCase().includes(text) ||
-        (r.clientes?.document ?? '').toLowerCase().includes(text),
+        (r.referencia ?? '').toLowerCase().includes(text) ||
+        clienteNome(r).toLowerCase().includes(text) ||
+        clienteDoc(r).toLowerCase().includes(text),
     );
   }
 
-  const header = [
-    'Data emissão',
-    'Tipo',
-    'Número',
-    'Série',
-    'Cliente',
-    'Documento',
-    'Valor',
-    'Status',
-    'Chave de acesso',
-  ];
+  const header = ['Data emissão', 'Tipo', 'Referência', 'Cliente', 'Documento', 'Valor', 'Status'];
   const lines = [header.join(';')];
   for (const r of rows) {
     lines.push(
       [
         r.data_emissao ? new Date(r.data_emissao).toLocaleString('pt-BR') : '',
-        r.tipo_nf ?? '',
-        r.numero_nf ?? '',
-        r.serie ?? '',
-        r.clientes?.razao_social ?? '',
-        r.clientes?.document ?? '',
+        r.tipo_documento ?? '',
+        r.referencia ?? '',
+        clienteNome(r),
+        clienteDoc(r),
         r.valor_total != null ? r.valor_total.toFixed(2) : '',
         r.status ?? '',
-        r.chave_acesso ?? '',
       ]
         .map(esc)
         .join(';'),

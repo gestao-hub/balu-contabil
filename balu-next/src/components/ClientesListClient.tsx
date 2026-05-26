@@ -70,7 +70,8 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
       razao_social: c.razao_social ?? '',
       document: c.document ?? '',
       inscricao_estadual: c.inscricao_estadual ?? '',
-      indicador_inscricao_estadual: c.indicador_inscricao_estadual ?? 9,
+      indicador_inscricao_estadual:
+        c.indicador_inscricao_estadual != null ? Number(c.indicador_inscricao_estadual) : 9,
       inscricao_municipal: c.inscricao_municipal ?? '',
       email: c.email ?? '',
       telefone: c.telefone ?? '',
