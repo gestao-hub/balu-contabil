@@ -58,7 +58,9 @@ test.describe('Balu — cadastro form', () => {
   test('campos cadastro presentes', async ({ page }) => {
     await page.goto('/cadastro');
     await page.screenshot({ path: path.join(SHOTS, 'cadastro_initial.png'), fullPage: true });
-    await expect(page.locator('input[type="email"]')).toBeVisible();
-    await expect(page.locator('input[type="password"]')).toBeVisible();
+    await expect(page.locator('input[name="email"]')).toBeVisible();
+    await expect(page.locator('input[name="password"]')).toBeVisible();
+    // Campo de confirmação de senha (adicionado depois): garante locator não-ambíguo.
+    await expect(page.locator('input[name="password_confirm"]')).toBeVisible();
   });
 });
