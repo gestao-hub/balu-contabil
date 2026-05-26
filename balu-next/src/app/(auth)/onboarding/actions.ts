@@ -52,8 +52,12 @@ export async function lookupCnpjAction(cnpj: string): Promise<ActionResult<{ dat
     return { ok: false, error: 'CNPJ inválido.' };
   }
   try {
-    const env = (process.env.FOCUS_NFE_ENV === 'prod' ? 'prod' : 'hom') as 'prod' | 'hom';
-    const raw = await focus.consultarCnpj(d, env);
+    // A consulta de CNPJ (/v2/cnpjs) só existe em PRODUÇÃO na Focus — em
+    // homologação o endpoint retorna 404. É um serviço read-only da Receita,
+    // então forçamos 'prod' aqui independente de FOCUS_NFE_ENV (que continua
+    // valendo pra emissão/cancelamento em 'hom' durante os testes).
+    // Requer que o token de produção tenha a permissão de consulta de CNPJ.
+    const raw = await focus.consultarCnpj(d, 'prod');
     const data: CnpjLookup = {
       razao_social:   stringOrUndef(raw['razao_social'] ?? raw['nome']),
       nome_fantasia:  stringOrUndef(raw['nome_fantasia'] ?? raw['fantasia']),

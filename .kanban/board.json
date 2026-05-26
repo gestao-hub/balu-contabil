@@ -745,6 +745,42 @@
       "createdAt": "2026-05-26T20:19:46.094674+00:00",
       "updatedAt": "2026-05-26T20:19:46.094674+00:00",
       "order": 14
+    },
+    {
+      "id": "4d4e2b89-6498-4207-a054-a1e053a7f372",
+      "title": "BUG: busca por CNPJ no cadastro não retorna dados (token Focus não autentica)",
+      "status": "blocked",
+      "priority": "Alta",
+      "estimate": "",
+      "labels": [
+        "bug",
+        "cadastro",
+        "focus-nfe",
+        "blocked"
+      ],
+      "dependencies": [],
+      "description": "**Bug**: a busca por CNPJ no cadastro de empresa (`<CreateCompanyDialog>` → `lookupCnpjAction`) não retorna dados. O usuário digita o CNPJ e o preenchimento automático não acontece.\n\n**Causa raiz (investigada 2026-05-26)**: a credencial Focus NFe não autentica. Não é problema de código nem só de permissão de CNPJ.\n\nEvidências (token de `.env.local`, 32 chars, enviado correto via Basic Auth):\n| Endpoint | Ambiente | Retorno |\n|---|---|---|\n| GET /v2/nfe/{ref} | hom | 401 \"HTTP Basic: Access denied\" |\n| GET /v2/nfe/{ref} | prod | 401 \"HTTP Basic: Access denied\" |\n| GET /v2/cnpjs/{cnpj} | prod | 403 permissao_negada |\n| GET /v2/empresas | prod | 401 \"Permissão negada no Gateway. Contate o suporte técnico\" |\n\nDecisivo: um token válido em /v2/nfe/{ref-inexistente} retornaria 404 (nota não encontrada). Recebemos 401 → a autenticação não passa. Token inválido/inativo em todos os ambientes.\n\nAchado secundário: o endpoint /v2/cnpjs **só existe em produção** (404 em homologação). É serviço read-only da Receita.\n\n**Já feito**: `lookupCnpjAction` (onboarding/actions.ts:54) força `'prod'` na consulta de CNPJ, independente de FOCUS_NFE_ENV (emissão/cancelamento seguem em `hom`). Decisão do usuário 2026-05-26.\n\n**Bloqueado por**: token Focus de produção válido + com a consulta de CNPJ habilitada na conta (pode exigir contato com suporte Focus — ver mensagem do gateway).\n\n**Como validar a chave** (404 = OK, 401 = ainda inválido):\n`curl -s -o /dev/null -w \"%{http_code}\\n\" -u \"TOKEN:\" https://homologacao.focusnfe.com.br/v2/nfe/ref-qualquer`\n\nEmpresa de teste p/ o cadastro ponta a ponta: AL PISCINAS LTDA, CNPJ 10.358.425/0001-20.",
+      "checklist": [
+        {
+          "text": "Obter token Focus de produção que autentica (curl /v2/nfe → 404)",
+          "checked": false
+        },
+        {
+          "text": "Confirmar consulta de CNPJ habilitada na conta Focus (curl /v2/cnpjs → 200)",
+          "checked": false
+        },
+        {
+          "text": "Testar busca no /cadastro com AL PISCINAS (10.358.425/0001-20) preenchendo o form",
+          "checked": false
+        },
+        {
+          "text": "Tratar erro amigável quando a consulta falhar (toast em vez de form vazio)",
+          "checked": false
+        }
+      ],
+      "createdAt": "2026-05-26T20:52:57.428770+00:00",
+      "updatedAt": "2026-05-26T20:52:57.428770+00:00",
+      "order": 15
     }
   ]
 }
