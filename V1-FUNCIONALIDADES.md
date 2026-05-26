@@ -66,14 +66,20 @@ Hoje o `CreateCompanyDialog` busca dados via Focus NFe (`lookupCnpjAction`) quan
 ### 2.1. Abertura 100% online (MEI + ME sem sócio)
 **Status**: 🚧 parcial
 
-**Descrição**: o usuário escolhe entre **MEI** (mais simples, apenas RedeSim) e **ME sem sócio (SLU / EI)** (envolve contrato social digital e Junta Comercial). O fluxo apresenta no início qual caminho cabe melhor pelo perfil capturado em §1, mas permite escolher manualmente.
+**Descrição**: o usuário escolhe o tipo da empresa (`empresa_tipo` no banco ∈ `{MEI, EI, LTDA}`): **MEI** (mais simples, apenas RedeSim), **EI** (empresário individual) ou **LTDA** (envolve contrato social digital e Junta Comercial). O fluxo apresenta no início qual caminho cabe melhor pelo perfil capturado em §1, mas permite escolher manualmente.
 
 **Implementação**:
-- A tabela `abertura_empresas` **já existe** no schema (`supabase/migrations/0001_init.sql`) com 22 campos: titular, opções de razão social, tipo societário, capital, objeto, CNAE, regime, endereço sede, anexos, `processo_etapa`
-- Nova rota `app/(auth)/abertura/page.tsx` com wizard de 5 etapas (titular → endereço titular → dados empresa → endereço sede → anexos)
-- Server action `submitAberturaAction(payload)` que insere com `processo_etapa = 'recebido'`
-- Para **MEI**: integração com Portal do Empreendedor (gov.br) — viable via n8n + RPA ou redirect com pré-preenchimento
-- Para **ME**: integração RedeSim — via n8n webhook (já existe `n8n` client; criar novo endpoint)
+- A tabela `abertura_empresas` **já existe no banco real** (fonte da verdade — não usar o desenho da migration `0001`, que diverge). São ~50 colunas flat agrupadas por prefixo:
+  - `titular_*` — dados pessoais e endereço do titular (`titular_nome_completo` NOT NULL, `titular_cpf` varchar(14) NOT NULL **UNIQUE**, RG, nascimento, estado civil, nome da mãe, telefone, e-mail, nacionalidade default `brasileiro(a)`, naturalidade, CEP/logradouro/número/complemento/bairro/cidade/UF)
+  - `empresa_*` — `empresa_razao_social_1/2/3` (3 opções), `empresa_nome_fantasia`, `empresa_tipo` ∈ `{MEI, EI, LTDA}`, `empresa_capital_social` numeric(15,2), `empresa_objeto_social`, `empresa_cnae_principal`, `empresa_cnaes_secundarios` text[], `empresa_regime_tributario` ∈ `{MEI, Simples Nacional, Lucro Presumido, Lucro Real}`
+  - `sede_*` — `sede_mesmo_que_titular` bool, `sede_tipo_endereco` ∈ `{Residencial, Comercial, Virtual}` + CEP/logradouro/número/complemento/bairro/cidade/UF
+  - `doc_*` — caminhos de upload (texto), não jsonb: `doc_rg_frente`, `doc_rg_verso`, `doc_cnh_frente`, `doc_cnh_verso`, `doc_cpf`, `doc_comprovante_titular`, `doc_comprovante_sede`, `doc_declaracao_uso`
+  - `processo_*` — `processo_etapa` (ver §2.4), `processo_protocolo`, `processo_cnpj_emitido` varchar(18), `processo_observacoes`, `processo_atualizado_por`
+  - meta: `criado_em`/`atualizado_em` (timestamptz, nomes PT; trigger `trg_abertura_atualizado` → `set_atualizado_em`), `user_id` (FK `auth.users`), `company_id` (FK `companies`)
+- Nova rota `app/(auth)/abertura/page.tsx` com wizard de 5 etapas mapeadas aos grupos: (1) dados do titular → (2) endereço do titular → (3) dados da empresa → (4) endereço da sede (`sede_mesmo_que_titular` copia do titular) → (5) documentos (`doc_*`)
+- Server action `submitAberturaAction(payload)` que insere com `processo_etapa = 'recebido'`; tratar a violação de `UNIQUE(titular_cpf)` com mensagem amigável ("já existe uma solicitação de abertura para este CPF")
+- Para **MEI** (`empresa_tipo='MEI'`): integração com Portal do Empreendedor (gov.br) — viable via n8n + RPA ou redirect com pré-preenchimento
+- Para **EI/LTDA**: integração RedeSim — via n8n webhook (já existe `n8n` client; criar novo endpoint)
 
 ### 2.2. Checklist automático de documentos
 **Status**: 🆕 a fazer
@@ -83,7 +89,7 @@ Hoje o `CreateCompanyDialog` busca dados via Focus NFe (`lookupCnpjAction`) quan
 **Implementação**:
 - Componente `<ChecklistAbertura tipo={tipoSocietario} />` que renderiza lista a partir de constante `DOC_REQUIREMENTS` em `src/lib/abertura/requirements.ts`
 - Upload usa `src/lib/clients/supabase-storage.ts` (bucket `abertura-docs` — criar)
-- Cada doc enviado atualiza `abertura_empresas.anexos` (JSONB com `{tipo, path, uploaded_at}`)
+- Cada doc enviado grava o **caminho do arquivo na coluna `doc_*` correspondente** (texto), conforme o schema real — não há coluna `anexos` jsonb. Ex.: RG frente → `doc_rg_frente`, comprovante do titular → `doc_comprovante_titular`, comprovante da sede → `doc_comprovante_sede`, declaração de uso de endereço → `doc_declaracao_uso`
 
 ### 2.3. Geração/envio: Contrato social, solicitações Receita/Junta/Prefeitura
 **Status**: 🆕 a fazer
@@ -94,17 +100,17 @@ Hoje o `CreateCompanyDialog` busca dados via Focus NFe (`lookupCnpjAction`) quan
 - Template de contrato social em `src/lib/abertura/templates/contrato-social-slu.html`
 - Geração PDF: `puppeteer-core` + `@sparticuz/chromium` (serverless) ou serviço externo (ex: DocRaptor)
 - Assinatura digital: integração Clicksign (criar novo client em `src/lib/clients/clicksign.ts`)
-- Submissão Receita/Junta: n8n workflow ouvindo `abertura_empresas.processo_etapa = 'contrato_assinado'`
+- Submissão Receita/Junta: n8n workflow disparado na transição de `processo_etapa` para `enviado_receita` → `enviado_junta` → `enviado_prefeitura` (estados reais do banco). Obs.: o schema atual **não** tem estado dedicado de "contrato assinado"; se for necessário rastrear a assinatura como etapa própria, adicionar via migration aditiva ao check `abertura_empresas_processo_etapa_check`
 
 ### 2.4. Status em tempo real
 **Status**: 🆕 a fazer
 
-**Descrição**: timeline visual mostrando em que etapa do processo está (cadastro → docs → contrato → DBE → Junta → CNPJ emitido → habilitação fiscal). Etapas concluídas em verde, atual em azul pulsante, futuras em cinza. Cada mudança gera notificação por e-mail/WhatsApp.
+**Descrição**: timeline visual mostrando em que etapa do processo está (recebido → em análise → docs pendentes → enviado à Receita → enviado à Junta → enviado à Prefeitura → concluído). Etapas concluídas em verde, atual em azul pulsante, futuras em cinza. Cada mudança gera notificação por e-mail/WhatsApp.
 
 **Implementação**:
 - Componente `<AberturaTimeline etapa={processo_etapa} />` reusável
 - Realtime via Supabase channels: `supabase.channel('abertura:'+id).on('postgres_changes', ...)`
-- Estados canônicos (enum check constraint): `recebido | docs_pendentes | contrato_em_assinatura | dbe_solicitado | junta_em_analise | cnpj_emitido | habilitado`
+- Estados canônicos (check constraint `abertura_empresas_processo_etapa_check` no banco real): `recebido | em_analise | pendente_documentos | enviado_receita | enviado_junta | enviado_prefeitura | concluido | cancelado` (default `recebido`). O CNPJ resultante grava em `processo_cnpj_emitido`.
 
 ---
 

@@ -39,8 +39,8 @@
 ### §2. Abertura de Empresa Digital
 | Feature | Status | Reusa | Falta |
 |---|---|---|---|
-| 2.1 Abertura 100% online (MEI + ME sem sócio) | 🚧 | tabela `abertura_empresas` já no schema (22 campos) | rota `app/(auth)/abertura/page.tsx`, wizard 5 etapas, server action `submitAberturaAction`, integração RedeSim/Portal Empreendedor via n8n |
-| 2.2 Checklist automático de docs | 🆕 | `supabase-storage.ts` para upload | componente `<ChecklistAbertura>`, constante `DOC_REQUIREMENTS` por tipo societário, bucket novo `abertura-docs` |
+| 2.1 Abertura 100% online (MEI/EI/LTDA) | 🚧 | tabela `abertura_empresas` já existe **no banco real** (~50 colunas flat: `titular_*`/`empresa_*`/`sede_*`/`doc_*`/`processo_*`, `UNIQUE(titular_cpf)`) | rota `app/(auth)/abertura/page.tsx`, wizard 5 etapas, server action `submitAberturaAction`, integração RedeSim/Portal Empreendedor via n8n |
+| 2.2 Checklist automático de docs | 🆕 | `supabase-storage.ts` para upload | componente `<ChecklistAbertura>`, constante `DOC_REQUIREMENTS` por tipo societário, bucket novo `abertura-docs`, gravar caminho nas colunas `doc_*` (não jsonb) |
 | 2.3 Geração contrato + envio Receita/Junta/Prefeitura | 🆕 | nada | template HTML contrato, geração PDF (puppeteer/DocRaptor), integração Clicksign, n8n workflow de submissão |
 | 2.4 Status em tempo real | 🆕 | Supabase Realtime built-in | componente `<AberturaTimeline>`, enum check de `processo_etapa` |
 
