@@ -13,7 +13,7 @@ export default async function ClientesPage() {
     const { data: profile } = await supabase
       .from('profiles')
       .select('current_company')
-      .eq('id', user.id)
+      .eq('user_id', user.id)
       .single();
     const currentCompanyId = profile?.current_company as string | null;
 

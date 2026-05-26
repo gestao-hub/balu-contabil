@@ -104,11 +104,11 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada. Faça login novamente.' };
 
+  // `companies` não tem coluna `status` no banco real — não enviar.
   const payload = {
     ...parsed.data,
     user_id: user.id,
-    nome: parsed.data.nome ?? parsed.data.razao_social,
-    status: 'ativa',
+    nome: parsed.data.nome?.trim() || parsed.data.razao_social,
   };
 
   const { data: row, error } = await supabase
@@ -121,11 +121,20 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
     return { ok: false, error: error?.message ?? 'Falha ao criar empresa.' };
   }
 
-  const { error: rpcErr } = await supabase.rpc('add_company_to_profile', {
-    p_user_id: user.id,
-    p_company_id: row.id,
-  });
-  if (rpcErr) return { ok: false, error: rpcErr.message };
+  // Vincula a empresa ao perfil e define como atual. Não usamos o RPC
+  // add_company_to_profile: no banco ele escreve em company_id (não current_company)
+  // e assume um profile pré-existente — mas o trigger que criava profiles no signup
+  // não existe. Fazemos o upsert manual por user_id.
+  const { data: existingProfile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  const { error: profErr } = existingProfile
+    ? await supabase.from('profiles').update({ current_company: row.id }).eq('user_id', user.id)
+    : await supabase.from('profiles').insert({ user_id: user.id, current_company: row.id });
+  if (profErr) return { ok: false, error: profErr.message };
 
   revalidatePath('/');
   return { ok: true, id: row.id };

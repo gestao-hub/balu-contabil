@@ -60,7 +60,7 @@ export default function MenuLateral({
     const { error } = await supabase
       .from('profiles')
       .update({ current_company: companyId })
-      .eq('id', user.id);
+      .eq('user_id', user.id);
     if (error) {
       toast('error', `Não foi possível trocar de empresa: ${error.message}`);
       setSwitching(false);

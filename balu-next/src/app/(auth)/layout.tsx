@@ -11,17 +11,21 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   if (!user) redirect('/login');
 
   const [{ data: profile }, { data: companies }] = await Promise.all([
-    supabase.from('profiles').select('current_company, user_role').eq('id', user.id).single(),
+    supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle(),
     supabase.from('companies').select('id, nome').eq('user_id', user.id).order('nome'),
   ]);
 
+  // Papel do usuário vem do metadata do signup; profiles.user_role não existe no
+  // banco real (o tipo é gravado em role_types, não exposto ao client).
+  const userRole =
+    String(user.user_metadata?.type ?? '').toLowerCase() === 'contador' ? 'contador' : 'empresa';
   const needsOnboarding = !profile?.current_company;
 
   return (
     <div className="min-h-screen flex">
       <MenuLateral
         userName={user.email ?? 'Usuário'}
-        userRole={(profile?.user_role as 'empresa' | 'contador') ?? 'empresa'}
+        userRole={userRole}
         companies={companies ?? []}
         currentCompanyId={profile?.current_company ?? null}
       />

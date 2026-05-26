@@ -45,7 +45,7 @@ export async function exportNotasCsvAction(filtros: NotasFiltros): Promise<Expor
   const { data: profile } = await supabase
     .from('profiles')
     .select('current_company')
-    .eq('id', user.id)
+    .eq('user_id', user.id)
     .single();
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };

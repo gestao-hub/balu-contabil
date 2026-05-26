@@ -32,7 +32,7 @@ export default async function DashboardPage() {
     const { data: profile } = await supabase
       .from('profiles')
       .select('current_company')
-      .eq('id', user.id)
+      .eq('user_id', user.id)
       .single();
     companyId = (profile?.current_company ?? null) as string | null;
   }
