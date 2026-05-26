@@ -91,7 +91,7 @@
     {
       "id": "cd6a6b8e-4aac-417c-951a-7eaa53f5f433",
       "title": "Revisão Balu",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high",
       "estimate": "M (4-6h)",
       "labels": [
@@ -158,8 +158,8 @@
           "checked": true
         },
         {
-          "text": "Botão \"Pagar\" abre `<PagarGuiaModal>` (stub)",
-          "checked": false
+          "text": "Botão \"Pagar\" leva para /impostos (pagamento no Day 3 — sem modal, decisão 2026-05-26)",
+          "checked": true
         },
         {
           "text": "Lista ordenada por `data_emissao desc`",
@@ -195,7 +195,7 @@
         }
       ],
       "createdAt": "2026-05-25T14:56:03.642838+00:00",
-      "updatedAt": "2026-05-26T20:00:32.000Z",
+      "updatedAt": "2026-05-26T20:05:02.000Z",
       "order": 0
     },
     {
@@ -216,8 +216,8 @@
           "checked": false
         },
         {
-          "text": "Card \"Próxima guia\" tem botão \"Pagar\" que abre `<PagarGuiaModal>` (stub OK por hoje)",
-          "checked": false
+          "text": "Card \"Próxima obrigação\" tem botão \"Pagar\" que leva para /impostos (pagamento no Day 3, sem modal)",
+          "checked": true
         },
         {
           "text": "Lista de pendências carrega de dados reais",
@@ -229,7 +229,7 @@
         }
       ],
       "createdAt": "2026-05-25T14:48:34.226604+00:00",
-      "updatedAt": "2026-05-25T14:56:19.802307+00:00",
+      "updatedAt": "2026-05-26T20:05:02.000Z",
       "order": 0
     },
     {

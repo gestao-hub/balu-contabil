@@ -55,7 +55,7 @@ Reusa: `<MenuLateral>`, `useToast()`, padrão de `app/(auth)/clientes/page.tsx`.
 
 **DoD**:
 - [ ] `/` mostra 4 cards reais (não placeholder)
-- [ ] Card "Próxima guia" tem botão "Pagar" que abre `<PagarGuiaModal>` (stub OK por hoje — implementar real no Day 3)
+- [x] Card "Próxima obrigação" tem botão "Pagar" que **leva para `/impostos`** (onde o pagamento é implementado no Day 3 — decisão 2026-05-26, não usa modal)
 - [ ] Lista de pendências carrega de dados reais
 - [ ] `tsc --noEmit` zero erros
 
