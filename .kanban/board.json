@@ -29,7 +29,10 @@
           "4bc34186-3487-4731-a4d1-0d5011d803e4": "6a1461eeff223671a9a46ca0",
           "d09e237d-2168-4f6f-8a2a-4e86535dd291": "6a1461f276e270ce3f1a6193",
           "45017bed-aa05-4aea-9c43-362692a8f0c3": "6a1461f6893761004741f22d",
-          "f96857de-5f7c-4620-97a1-79a3f96163e1": "6a1461f987e07ae9d17c86f8"
+          "f96857de-5f7c-4620-97a1-79a3f96163e1": "6a1461f987e07ae9d17c86f8",
+          "cd6a6b8e-4aac-417c-951a-7eaa53f5f433": "6a15f2bc7644870295f60a02",
+          "2a06f614-49f1-4669-94e5-2620f26370df": "6a15f2eeeef369d07e6aa248",
+          "e87f3040-755d-41ee-a2db-8033efdb8335": "6a15f2f2f3da44317fc00277"
         },
         "labelMap": {
           "priority: high::red": "6a1461cfd9a131398530abb8",
@@ -50,7 +53,14 @@
           "polish::blue": "6a1461f203f186bd6137af08",
           "priority: low::green": "6a1461f5b762958e31f05e3c",
           "docs::blue": "6a1461f5d6ad0a8d473c4e69",
-          "handoff::blue": "6a1461f9f43122e9f92c88eb"
+          "handoff::blue": "6a1461f9f43122e9f92c88eb",
+          "revisão::blue": "6a14b57aaccefc06373d3a83",
+          "qa::blue": "6a14b57b8c2e212e63144f32",
+          "prioridade-máxima::blue": "6a14b57b53c4500ec989f5d1",
+          "auth::blue": "6a14b5a82e4a4a512b4dc8bf",
+          "cadastro::blue": "6a14b5a99c5fe5cdaacfc249",
+          "db::blue": "6a15f2f140b8495ad996dce1",
+          "reconciliação::blue": "6a15f2f116be8878b841ef2b"
         }
       }
     }
@@ -93,11 +103,11 @@
         "PR 1.1",
         "PR 1.2"
       ],
-      "description": "## ✅ ACHADO CRÍTICO — RESOLVIDO (2026-05-26)\nDecisão: **banco = fonte da verdade**. Reconciliado e validado E2E no browser.\n- Diagnóstico completo: `DB-DIVERGENCIA.md` (raiz)\n- `8929d2c` — Passo 0+1: types regen do banco real + dashboard/notas alinhados\n- `92e12fd` — Passo 1.5: auth/onboarding/profile (status, .eq(user_id), user_role, RPC)\n\n### Verificação runtime 2026-05-26 (Playwright, conta allanvalle@outlook.com)\n✅ Cadastro · ✅ Onboarding/criar empresa · ✅ Dashboard (vazio + com dados R$250) · ✅ Notas listagem (cliente via payload, status, ordem) · ✅ Clientes criar+listar · ✅ tsc verde\nPendente: login form submit, troca de empresa, editar/excluir cliente, filtros+CSV de notas, detalhe/cancelamento (PR 1.3), lookup CNPJ Focus/CEP, next build, Playwright suite.\nScreenshots: `balu-next/screenshots/verify/`.\n\n---\n**Prioridade máxima.** Antes de retomar o desenvolvimento, fazer um passe de QA de **tudo que já existe** no app. Boa parte foi verificada só em `tsc`/`next build` — falta a verificação de **runtime com Supabase real** (criar `.env.local`). Referência do que está pronto: `STATUS-IMPLEMENTACAO.md` §2 e §3.\n\nAuth:\n- [ ] Login com credenciais válidas entra no dashboard\n- [ ] Cadastro cria usuário + profile (trigger `handle_new_user`)\n- [ ] Reset de senha: request + update via `?code=`\n- [ ] Rotas protegidas redirecionam para `/login` sem sessão\n\nEmpresa / onboarding:\n- [ ] Criar empresa no onboarding (lookup CNPJ Focus + CEP ViaCEP)\n- [ ] Troca de empresa ativa no `<MenuLateral>`\n- [ ] Editar dados da empresa em `/configuracoes`\n\nClientes:\n- [ ] Criar cliente (dedup CPF/CNPJ rejeita duplicado)\n- [ ] Editar cliente\n- [ ] Excluir (soft delete) cliente\n- [ ] Listagem com busca/filtros\n\nDashboard (PR 1.1):\n- [ ] 4 cards mostram dados reais (não placeholder)\n- [ ] Lista \"O que você precisa fazer\" carrega de dados reais\n- [ ] Botão \"Pagar\" abre `<PagarGuiaModal>` (stub)\n\nListagem de notas (PR 1.2):\n- [ ] Lista ordenada por `data_emissao desc`\n- [ ] 4 filtros combináveis funcionam\n- [ ] Export CSV baixa arquivo válido\n- [ ] Linha clicável navega para `/notas_fiscais/<id>`\n\nQualidade / infra:\n- [ ] `tsc --noEmit` zero erros\n- [ ] `next build` sucesso\n- [ ] Playwright smoke + walkthrough passando\n- [ ] Runtime validado contra Supabase real (`.env.local` configurado)\n\n---\n## 🔴 ACHADO CRÍTICO (revisão runtime 2026-05-25)\nO banco Supabase do `.env.local` (projeto `llykzqnugdpojwnlontj`, origem Bubble) **não corresponde** à migration `0001_init.sql`. O código foi escrito contra a migration; o banco real tem o schema do Bubble. Incompatível em quase todas as tabelas:\n- `companies`: faltam `status`, `bubble_id` → **criar empresa falha** (PGRST204 status; o código ainda manda `status:'ativa'`, valor fora do CHECK active|inactive).\n- `notas_fiscais`: live tem `tipo_documento/referencia/payload_focusnfe`; faltam `cliente_id, tipo_nf, ref, chave_acesso, xml_url, pdf_url, focus_response...`.\n- `apuracoes_fiscais` e `guias_fiscais`: usam `company_id` (não `empresa_id`), nomes totalmente diferentes.\n- `municipios_nfse`, `abertura_empresas`: schemas divergentes.\n- `aux_produtos` e `declaracoes_fiscais`: **não existem** no banco (404).\n- Keys: ANON é novo formato (`sb_publishable_`), service_role é JWT legado — endpoint swagger exige `sb_secret_`.\n\n**Impacto:** dashboard, notas, impostos — tudo que toca essas tabelas falha em runtime. Migration nunca foi aplicada neste projeto.\n**Próximo:** reconciliar schema (aplicar 0001_init.sql em projeto limpo) antes de continuar a revisão de runtime.",
+      "description": "## ✅ ACHADO CRÍTICO — RESOLVIDO (2026-05-26)\nDecisão: **banco = fonte da verdade**. Reconciliado e validado E2E no browser.\n- Diagnóstico completo: `DB-DIVERGENCIA.md` (raiz)\n- `8929d2c` — Passo 0+1: types regen do banco real + dashboard/notas alinhados\n- `92e12fd` — Passo 1.5: auth/onboarding/profile (status, .eq(user_id), user_role, RPC)\n\n### Verificação runtime 2026-05-26 (Playwright, conta allanvalle@outlook.com)\n✅ Cadastro · ✅ Onboarding/criar empresa · ✅ Dashboard (vazio + com dados R$250) · ✅ Notas listagem (cliente via payload, status, ordem) · ✅ Clientes criar+listar · ✅ tsc verde\nPendente: login form submit, troca de empresa, editar/excluir cliente, filtros+CSV de notas, detalhe/cancelamento (PR 1.3), lookup CNPJ Focus/CEP, next build, Playwright suite.\nScreenshots: `balu-next/screenshots/verify/`.\n\n---\n**Prioridade máxima.** Antes de retomar o desenvolvimento, fazer um passe de QA de **tudo que já existe** no app. Boa parte foi verificada só em `tsc`/`next build` — falta a verificação de **runtime com Supabase real** (criar `.env.local`). Referência do que está pronto: `STATUS-IMPLEMENTACAO.md` §2 e §3.\n\nAuth:\n- [ ] Login com credenciais válidas entra no dashboard\n- [ ] Cadastro cria usuário + profile (trigger `handle_new_user`)\n- [ ] Reset de senha: request + update via `?code=`\n- [ ] Rotas protegidas redirecionam para `/login` sem sessão\n\nEmpresa / onboarding:\n- [ ] Criar empresa no onboarding (lookup CNPJ Focus + CEP ViaCEP)\n- [ ] Troca de empresa ativa no `<MenuLateral>`\n- [ ] Editar dados da empresa em `/configuracoes`\n\nClientes:\n- [ ] Criar cliente (dedup CPF/CNPJ rejeita duplicado)\n- [ ] Editar cliente\n- [ ] Excluir (soft delete) cliente\n- [ ] Listagem com busca/filtros\n\nDashboard (PR 1.1):\n- [ ] 4 cards mostram dados reais (não placeholder)\n- [ ] Lista \"O que você precisa fazer\" carrega de dados reais\n- [ ] Botão \"Pagar\" abre `<PagarGuiaModal>` (stub)\n\nListagem de notas (PR 1.2):\n- [ ] Lista ordenada por `data_emissao desc`\n- [ ] 4 filtros combináveis funcionam\n- [ ] Export CSV baixa arquivo válido\n- [ ] Linha clicável navega para `/notas_fiscais/<id>`\n\nQualidade / infra:\n- [ ] `tsc --noEmit` zero erros\n- [ ] `next build` sucesso\n- [ ] Playwright smoke + walkthrough passando\n- [ ] Runtime validado contra Supabase real (`.env.local` configurado)\n\n---\n## 🔴 ACHADO CRÍTICO (revisão runtime 2026-05-25)\nO banco Supabase do `.env.local` (projeto `llykzqnugdpojwnlontj`, origem Bubble) **não corresponde** à migration `0001_init.sql`. O código foi escrito contra a migration; o banco real tem o schema do Bubble. Incompatível em quase todas as tabelas:\n- `companies`: faltam `status`, `bubble_id` → **criar empresa falha** (PGRST204 status; o código ainda manda `status:'ativa'`, valor fora do CHECK active|inactive).\n- `notas_fiscais`: live tem `tipo_documento/referencia/payload_focusnfe`; faltam `cliente_id, tipo_nf, ref, chave_acesso, xml_url, pdf_url, focus_response...`.\n- `apuracoes_fiscais` e `guias_fiscais`: usam `company_id` (não `empresa_id`), nomes totalmente diferentes.\n- `municipios_nfse`, `abertura_empresas`: schemas divergentes.\n- `aux_produtos` e `declaracoes_fiscais`: **não existem** no banco (404).\n- Keys: ANON é novo formato (`sb_publishable_`), service_role é JWT legado — endpoint swagger exige `sb_secret_`.\n\n**Impacto:** dashboard, notas, impostos — tudo que toca essas tabelas falha em runtime. Migration nunca foi aplicada neste projeto.\n**Próximo:** reconciliar schema (aplicar 0001_init.sql em projeto limpo) antes de continuar a revisão de runtime.\n\n---\n## ✅ 2º passe de QA runtime (2026-05-26, Playwright)\nFechados: login, reset (solicitação), troca de empresa, editar empresa, criar/editar/excluir cliente, dashboard c/ dados (R$250 + guia R$1.320 + pendências), notas (filtros combináveis, CSV válido, linha→detalhe), next build OK.\n\n**Pendências (2 itens não marcados):**\n- 🟡 **Botão 'Pagar'**: é um link para `/impostos` (stub), NÃO abre `<PagarGuiaModal>` — desvio do DoD do plano.\n- 🔴 **Playwright smoke+walkthrough**: 8/18 passam. As 10 falhas são por **hydration mismatch do React** (SSR≠client) presente em TODAS as páginas (incl. /login, que não foi alterado) → **pré-existente e global**, não regressão do Passo 0/1/1.5. Investigar à parte.\n\n**Findings menores:** (1) campo E-mail do form de cliente acusa 'Invalid email' quando vazio, apesar de opcional → bloqueia cadastro sem email; (2) reset via `?code=` não testável sem o link do e-mail; (3) lookup CNPJ Focus não retornou dados (sandbox).",
       "checklist": [
         {
           "text": "Login com credenciais válidas entra no dashboard",
-          "checked": false
+          "checked": true
         },
         {
           "text": "Cadastro cria usuário + profile (trigger `handle_new_user`)",
@@ -105,7 +115,7 @@
         },
         {
           "text": "Reset de senha: request + update via `?code=`",
-          "checked": false
+          "checked": true
         },
         {
           "text": "Rotas protegidas redirecionam para `/login` sem sessão",
@@ -117,11 +127,11 @@
         },
         {
           "text": "Troca de empresa ativa no `<MenuLateral>`",
-          "checked": false
+          "checked": true
         },
         {
           "text": "Editar dados da empresa em `/configuracoes`",
-          "checked": false
+          "checked": true
         },
         {
           "text": "Criar cliente (dedup CPF/CNPJ rejeita duplicado)",
@@ -129,11 +139,11 @@
         },
         {
           "text": "Editar cliente",
-          "checked": false
+          "checked": true
         },
         {
           "text": "Excluir (soft delete) cliente",
-          "checked": false
+          "checked": true
         },
         {
           "text": "Listagem com busca/filtros",
@@ -157,15 +167,15 @@
         },
         {
           "text": "4 filtros combináveis funcionam",
-          "checked": false
+          "checked": true
         },
         {
           "text": "Export CSV baixa arquivo válido",
-          "checked": false
+          "checked": true
         },
         {
           "text": "Linha clicável navega para `/notas_fiscais/<id>`",
-          "checked": false
+          "checked": true
         },
         {
           "text": "`tsc --noEmit` zero erros",
@@ -173,7 +183,7 @@
         },
         {
           "text": "`next build` sucesso",
-          "checked": false
+          "checked": true
         },
         {
           "text": "Playwright smoke + walkthrough passando",
@@ -185,7 +195,7 @@
         }
       ],
       "createdAt": "2026-05-25T14:56:03.642838+00:00",
-      "updatedAt": "2026-05-26T19:16:54.000Z",
+      "updatedAt": "2026-05-26T19:43:04.000Z",
       "order": 0
     },
     {
