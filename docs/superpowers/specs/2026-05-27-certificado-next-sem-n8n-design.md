@@ -141,12 +141,10 @@ export async function autenticarProcurador(material: CertMaterial): Promise<Proc
 - **Manual:** upload de `.pfx` de teste → objeto `{uid}.enc` no bucket; `arquivos_auxiliares` com metadados e `cert_password = null`; disparar auth lazy → `empresas_fiscais.certificado_*` preenchido; toast de sucesso.
 
 ## Premissas
-**Confirmada:**
-- `SERPRO_CONSUMER_KEY/SECRET` são **globais do Balu** (contratante), reusados de `serpro.ts`, já presentes no `.env.local`. (No n8n vinham no body, mas são as credenciais globais.)
-
-**A verificar na implementação:**
-- Endpoint/headers de autenticação SERPRO conforme o `jsCode` `autenticacao_mTLS` do workflow (`autenticacao.sapi.serpro.gov.br/authenticate`, `role-type: TERCEIROS`).
-- `node-forge` abre os PFX A1 de teste sem necessidade de re-export (key+cert PEM bastam para o mTLS do Node).
+**Todas confirmadas** (validação manual em 2026-05-27 contra certificado A1 real "AL PISCINAS LTDA" + SERPRO de produção):
+- `SERPRO_CONSUMER_KEY/SECRET` são **globais do Balu** (contratante), reusados de `serpro.ts`, presentes no `.env.local`.
+- **`node-forge` abre o A1 real sem re-export** — cert com MAC SHA-1 + cifra legada (a que exigia `openssl -legacy` no n8n) abriu direto; key+cert PEM + metadados (CNPJ, validade, fingerprint) extraídos corretamente.
+- **Endpoint/headers SERPRO corretos** — `POST autenticacao.sapi.serpro.gov.br/authenticate` com `role-type: TERCEIROS`, Basic e `grant_type=client_credentials` retornou **HTTP 200** com `jwt_token` + `access_token` + `expires_in` (exatamente o shape de `parseAuthResponse`).
 
 ## Sequência de build sugerida
 1. `envelope.ts` + teste (isolado, sem deps externas).
