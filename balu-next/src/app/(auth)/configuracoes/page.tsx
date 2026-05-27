@@ -6,6 +6,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import DadosEmpresaForm from './DadosEmpresaForm';
 import RegimeTributarioForm from './RegimeTributarioForm';
 import NfseForm from './NfseForm';
+import CertificadoForm from './CertificadoForm';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 
 const TABS = [
@@ -57,6 +58,17 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     active === 'nfse' && company
       ? await resolveMunicipioNfse(supabase, company.municipio as string, company.uf as string)
       : null;
+
+  let certEnviadoEm: string | null = null;
+  if (active === 'certificado' && company) {
+    const { data: cert } = await supabase
+      .from('arquivos_auxiliares')
+      .select('created_at, updated_at')
+      .eq('unique_id_empresa', company.id as string)
+      .is('deleted_at', null)
+      .maybeSingle();
+    certEnviadoEm = (cert?.updated_at as string | null) ?? (cert?.created_at as string | null) ?? null;
+  }
 
   return (
     <main className="p-6">
@@ -142,6 +154,8 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           cidade={(company.municipio as string) ?? ''}
           uf={(company.uf as string) ?? ''}
         />
+      ) : active === 'certificado' ? (
+        <CertificadoForm key={company.id as string} enviadoEm={certEnviadoEm} />
       ) : (
         <TodoPanel tab={active} hasFiscal={!!empresaFiscal} />
       )}
