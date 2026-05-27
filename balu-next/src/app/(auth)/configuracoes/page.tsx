@@ -1,6 +1,6 @@
 // @custom — bubble-behavior: Configurações (PRD §8)
 // Server Component: carrega a empresa atual + empresa_fiscal vinculada e renderiza tabs.
-// Apenas a aba "Dados da empresa" está implementada; demais são TODOs claros.
+// Abas: Dados da empresa, Regime tributário, NFS-e e Certificado A1.
 import Link from 'next/link';
 import { createServerClient } from '@/lib/supabase/server';
 import DadosEmpresaForm from './DadosEmpresaForm';
@@ -154,29 +154,9 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           cidade={(company.municipio as string) ?? ''}
           uf={(company.uf as string) ?? ''}
         />
-      ) : active === 'certificado' ? (
-        <CertificadoForm key={company.id as string} enviadoEm={certEnviadoEm} />
       ) : (
-        <TodoPanel tab={active} hasFiscal={!!empresaFiscal} />
+        <CertificadoForm key={company.id as string} enviadoEm={certEnviadoEm} />
       )}
     </main>
-  );
-}
-
-function TodoPanel({ tab, hasFiscal }: { tab: TabKey; hasFiscal: boolean }) {
-  const labels: Record<TabKey, string> = {
-    dados: 'Dados da empresa',
-    regime: 'Regime tributário',
-    nfse: 'NFS-e (Focus / certificado / credenciais)',
-    certificado: 'Certificado digital A1 (upload + senha)',
-  };
-  return (
-    <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-6">
-      <h2 className="text-sm font-semibold text-zinc-700">TODO — {labels[tab]}</h2>
-      <p className="mt-1 text-sm text-zinc-500">
-        Esta aba ainda não foi implementada. Vinculada à tabela <code>empresas_fiscais</code>{' '}
-        {hasFiscal ? '(registro existente)' : '(nenhum registro ainda — será criado no primeiro save)'}.
-      </p>
-    </div>
   );
 }
