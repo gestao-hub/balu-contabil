@@ -311,7 +311,7 @@ Fluxo em múltiplas etapas:
 
 > **Implementação atual (Next.js — diverge do Bubble):**
 > - A busca de CNPJ na Focus foi **removida** do cadastro de empresa (passou a existir só no cadastro de cliente). Aqui o CNPJ é digitado e **validado pelos dígitos verificadores** (`CompanyCreateSchema` + `src/lib/validators/cnpj.ts`).
-> - **Endereço obrigatório**: `logradouro` (rua), `municipio` (cidade) e `uf` (estado) são exigidos; `cep`, número e bairro são **opcionais** (há endereços sem CEP). A busca por CEP (ViaCEP) segue disponível para autopreencher.
+> - **Endereço obrigatório**: `logradouro` (rua), `numero`, `municipio` (cidade) e `uf` (estado) são exigidos. Exceção do `numero`: o checkbox **"Sem número"** trava o campo e grava `sem_numero=true` (coluna em `companies`, default `false`). `cep` e `bairro` seguem **opcionais** (há endereços sem CEP). Busca por CEP (ViaCEP) disponível para autopreencher.
 > - Validação por `CompanyCreateSchema` no `createCompanyAction` e no `<CreateCompanyDialog>` (asteriscos de obrigatório em rua/cidade/UF).
 
 ### 6.8 `Filter_periodo`
@@ -372,7 +372,7 @@ Ver §6.2. Toda página protegida deve incluir o reusable `re_authentication`.
 
 > **Implementação atual (Next.js):**
 > - Cada aba abre em **modo leitura** (campos bloqueados + botão **Editar**); ao editar, o rodapé vira **Salvar** + **Cancelar** (Cancelar reverte aos valores salvos e re-bloqueia; salvar com sucesso re-bloqueia). O form remonta por `company.id` ao trocar de empresa (evita estado stale).
-> - **Dados da empresa** (✅ `DadosEmpresaForm` + `updateCompanyAction`): **CNPJ sempre bloqueado** (não editável); endereço (rua/cidade/estado) é **obrigatório também na edição** — valida o `CompanySchema` completo (não `.partial()`); CEP/número/bairro opcionais.
+> - **Dados da empresa** (✅ `DadosEmpresaForm` + `updateCompanyAction`): **CNPJ sempre bloqueado** (não editável); endereço (rua/número/cidade/estado) é **obrigatório também na edição** — valida o `CompanySchema` completo (não `.partial()`). `numero` tem o checkbox **"Sem número"** (trava o campo + grava `sem_numero=true`); CEP/bairro opcionais.
 > - **Regime tributário** (✅ `RegimeTributarioForm` + `upsertEmpresaFiscalAction` — PR 1.4): dropdown CRT (`Code_regime_tributario` 1-4 → `regime_tributario` `simples`/`mei`); "Faixa de atividade econômica" → `anexo_simples` (visível só se ≠ MEI); `usa_fator_r` (só Anexo III/V); `cnae_principal`. Upsert em `empresas_fiscais` por `empresa_id` (cria no 1º save, escopado por `owner_user_id`).
 > - **NFS-e** e **Certificado A1**: ainda stub (PRs 1.5 e 1.6).
 

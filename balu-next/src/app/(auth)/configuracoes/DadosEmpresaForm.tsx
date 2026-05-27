@@ -64,7 +64,29 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
       <Field label="Código município (IBGE)" value={form.codigo_municipio ?? ''} onChange={(v) => set('codigo_municipio', v)} disabled={locked} />
       <Field label="CEP" value={form.cep ?? ''} onChange={(v) => set('cep', v)} disabled={locked} />
       <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} disabled={locked} required className="col-span-2" />
-      <Field label="Número" value={form.numero ?? ''} onChange={(v) => set('numero', v)} disabled={locked} />
+      <div className="flex flex-col gap-1 text-sm">
+        <span className="text-xs font-medium text-zinc-600">
+          Número{!form.sem_numero && <span className="text-destructive"> *</span>}
+        </span>
+        <input
+          type="text"
+          value={form.numero ?? ''}
+          onChange={(e) => set('numero', e.target.value)}
+          disabled={locked || !!form.sem_numero}
+          required={!form.sem_numero}
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
+        />
+        <label className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
+          <input
+            type="checkbox"
+            checked={!!form.sem_numero}
+            disabled={locked}
+            onChange={(e) => setForm((prev) => ({ ...prev, sem_numero: e.target.checked, numero: e.target.checked ? '' : prev.numero }))}
+            className="size-4 rounded border-zinc-300 disabled:opacity-50"
+          />
+          Sem número
+        </label>
+      </div>
       <Field label="Bairro" value={form.bairro ?? ''} onChange={(v) => set('bairro', v)} disabled={locked} />
       <Field label="Município" value={form.municipio ?? ''} onChange={(v) => set('municipio', v)} disabled={locked} required />
       <Field label="UF" value={form.uf ?? ''} onChange={(v) => set('uf', v.toUpperCase().slice(0, 2))} disabled={locked} required />

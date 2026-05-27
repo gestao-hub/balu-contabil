@@ -23,17 +23,18 @@ export const ClienteSchema = z.object({
 });
 export type ClienteInput = z.infer<typeof ClienteSchema>;
 
-export const CompanySchema = z.object({
+const companyObject = z.object({
   cnpj: z.string().length(14, 'CNPJ deve ter 14 dígitos.'),
   razao_social: z.string().min(2),
   nome: z.string().optional(),
   inscricao_estadual: z.string().optional(),
   inscricao_municipal: z.string().optional(),
   codigo_municipio: z.string().optional(),
-  // Endereço obrigatório (foco rua/cidade/estado). CEP, número e bairro são
-  // opcionais — alguns endereços não têm CEP.
+  // Endereço obrigatório (rua/cidade/estado). CEP e bairro são opcionais.
+  // `numero` é obrigatório, EXCETO quando `sem_numero` = true (ver refine abaixo).
   logradouro: z.string().trim().min(1, 'Logradouro (rua) é obrigatório.'),
   numero: z.string().optional(),
+  sem_numero: z.boolean().optional(),
   bairro: z.string().optional(),
   municipio: z.string().trim().min(1, 'Município (cidade) é obrigatório.'),
   uf: z.string().trim().length(2, 'UF (estado) é obrigatória.'),
@@ -41,16 +42,22 @@ export const CompanySchema = z.object({
   telefone: z.string().optional(),
   email: z.string().email().optional(),
 });
-export type CompanyInput = z.infer<typeof CompanySchema>;
 
-// Cadastro de empresa: além do schema base, valida o CNPJ pelos dígitos
-// verificadores (na edição o CNPJ não é editável, então usa-se CompanySchema).
-export const CompanyCreateSchema = CompanySchema.extend({
-  cnpj: z
-    .string()
-    .length(14, 'CNPJ deve ter 14 dígitos.')
-    .refine(isValidCnpj, 'CNPJ inválido.'),
-});
+// Número obrigatório, salvo quando "Sem número" (sem_numero) estiver marcado.
+const numeroOuSemNumero = (d: { numero?: string; sem_numero?: boolean }) =>
+  d.sem_numero === true || (typeof d.numero === 'string' && d.numero.trim().length > 0);
+const numeroError = { message: 'Informe o número ou marque "Sem número".', path: ['numero'] };
+
+export const CompanySchema = companyObject.refine(numeroOuSemNumero, numeroError);
+export type CompanyInput = z.infer<typeof companyObject>;
+
+// Cadastro de empresa: valida também o CNPJ pelos dígitos verificadores
+// (na edição o CNPJ não é editável, então usa-se CompanySchema).
+export const CompanyCreateSchema = companyObject
+  .extend({
+    cnpj: z.string().length(14, 'CNPJ deve ter 14 dígitos.').refine(isValidCnpj, 'CNPJ inválido.'),
+  })
+  .refine(numeroOuSemNumero, numeroError);
 
 export const HonorarioSchema = z.object({
   cliente_id: z.string().uuid(),

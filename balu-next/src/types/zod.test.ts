@@ -24,20 +24,25 @@ describe('EmpresaFiscalSchema', () => {
 });
 
 describe('CompanySchema — endereço obrigatório (edição)', () => {
-  const base = { cnpj: '45987654000132', razao_social: 'Empresa X', logradouro: 'Rua A', municipio: 'Curitiba', uf: 'PR' };
+  const base = { cnpj: '45987654000132', razao_social: 'Empresa X', logradouro: 'Rua A', numero: '100', municipio: 'Curitiba', uf: 'PR' };
   it('aceita com endereço (CNPJ só por comprimento — edição não revalida dígitos)', () => {
     expect(CompanySchema.safeParse(base).success).toBe(true);
   });
   it('rejeita sem logradouro/municipio/uf', () => {
-    expect(CompanySchema.safeParse({ cnpj: '45987654000132', razao_social: 'Empresa X' }).success).toBe(false);
+    expect(CompanySchema.safeParse({ cnpj: '45987654000132', razao_social: 'Empresa X', numero: '100' }).success).toBe(false);
     expect(CompanySchema.safeParse({ ...base, logradouro: '' }).success).toBe(false);
     expect(CompanySchema.safeParse({ ...base, municipio: '' }).success).toBe(false);
     expect(CompanySchema.safeParse({ ...base, uf: '' }).success).toBe(false);
   });
+  it('número obrigatório, exceto quando sem_numero=true', () => {
+    expect(CompanySchema.safeParse({ ...base, numero: '' }).success).toBe(false);
+    expect(CompanySchema.safeParse({ ...base, numero: '', sem_numero: true }).success).toBe(true);
+    expect(CompanySchema.safeParse({ cnpj: '45987654000132', razao_social: 'Empresa X', logradouro: 'Rua A', municipio: 'Curitiba', uf: 'PR', sem_numero: true }).success).toBe(true);
+  });
 });
 
 describe('CompanyCreateSchema — cadastro (CNPJ válido + endereço)', () => {
-  const ok = { cnpj: '11222333000181', razao_social: 'Empresa X', logradouro: 'Rua A', municipio: 'Curitiba', uf: 'PR' };
+  const ok = { cnpj: '11222333000181', razao_social: 'Empresa X', logradouro: 'Rua A', numero: '100', municipio: 'Curitiba', uf: 'PR' };
   it('aceita cadastro com CNPJ válido + endereço', () => {
     expect(CompanyCreateSchema.safeParse(ok).success).toBe(true);
   });
@@ -46,5 +51,9 @@ describe('CompanyCreateSchema — cadastro (CNPJ válido + endereço)', () => {
   });
   it('rejeita endereço incompleto', () => {
     expect(CompanyCreateSchema.safeParse({ ...ok, logradouro: '' }).success).toBe(false);
+  });
+  it('número obrigatório, exceto quando sem_numero=true', () => {
+    expect(CompanyCreateSchema.safeParse({ ...ok, numero: '' }).success).toBe(false);
+    expect(CompanyCreateSchema.safeParse({ ...ok, numero: '', sem_numero: true }).success).toBe(true);
   });
 });

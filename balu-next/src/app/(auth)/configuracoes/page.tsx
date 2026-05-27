@@ -95,6 +95,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
             codigo_municipio: (company.codigo_municipio as string) ?? '',
             logradouro: (company.logradouro as string) ?? '',
             numero: (company.numero as string) ?? '',
+            sem_numero: (company.sem_numero as boolean) ?? false,
             bairro: (company.bairro as string) ?? '',
             municipio: (company.municipio as string) ?? '',
             uf: (company.uf as string) ?? '',

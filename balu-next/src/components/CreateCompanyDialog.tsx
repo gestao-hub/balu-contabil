@@ -31,6 +31,7 @@ const EMPTY: Form = {
   codigo_municipio: '',
   logradouro: '',
   numero: '',
+  sem_numero: false,
   bairro: '',
   municipio: '',
   uf: '',
@@ -182,7 +183,28 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
             <Field label="Inscrição estadual" value={form.inscricao_estadual ?? ''} onChange={(v) => set('inscricao_estadual', v)} />
             <Field label="Inscrição municipal" value={form.inscricao_municipal ?? ''} onChange={(v) => set('inscricao_municipal', v)} />
             <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} required className="col-span-2" />
-            <Field label="Número" value={form.numero ?? ''} onChange={(v) => set('numero', v)} />
+            <div className="flex flex-col gap-1 text-sm">
+              <span className="text-xs font-medium text-zinc-600">
+                Número{!form.sem_numero && <span className="text-destructive"> *</span>}
+              </span>
+              <input
+                type="text"
+                value={form.numero ?? ''}
+                onChange={(e) => set('numero', e.target.value)}
+                disabled={!!form.sem_numero}
+                required={!form.sem_numero}
+                className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
+              />
+              <label className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
+                <input
+                  type="checkbox"
+                  checked={!!form.sem_numero}
+                  onChange={(e) => setForm((prev) => ({ ...prev, sem_numero: e.target.checked, numero: e.target.checked ? '' : prev.numero }))}
+                  className="size-4 rounded border-zinc-300"
+                />
+                Sem número
+              </label>
+            </div>
             <Field label="Bairro" value={form.bairro ?? ''} onChange={(v) => set('bairro', v)} />
             <Field label="Município" value={form.municipio ?? ''} onChange={(v) => set('municipio', v)} required />
             <Field label="UF" value={form.uf ?? ''} onChange={(v) => set('uf', v.toUpperCase().slice(0, 2))} required />

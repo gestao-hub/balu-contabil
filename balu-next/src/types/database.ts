@@ -31,6 +31,7 @@ export type Tables = {
     codigo_municipio: string | null;
     logradouro: string | null;
     numero: string | null;
+    sem_numero: boolean | null;
     complemento: string | null;
     bairro: string | null;
     municipio: string | null;
