@@ -86,7 +86,8 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
     <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 max-w-3xl">
       <Field label="Razão social" value={form.razao_social ?? ''} onChange={(v) => set('razao_social', v)} disabled={locked} className="col-span-2" />
       <Field label="Nome fantasia" value={form.nome ?? ''} onChange={(v) => set('nome', v)} disabled={locked} className="col-span-2" />
-      <Field label="CNPJ" value={formatCnpj(form.cnpj ?? '')} onChange={(v) => set('cnpj', v)} disabled />
+      {/* CNPJ é sempre read-only: onChange no-op para o estado nunca receber o valor mascarado (mantém 14 dígitos). */}
+      <Field label="CNPJ" value={formatCnpj(form.cnpj ?? '')} onChange={() => {}} disabled />
       <Field label="Inscrição estadual" value={form.inscricao_estadual ?? ''} onChange={(v) => set('inscricao_estadual', v)} disabled={locked} />
       <Field label="Inscrição municipal" value={form.inscricao_municipal ?? ''} onChange={(v) => set('inscricao_municipal', v)} disabled={locked} />
       <Field label="Código município (IBGE)" value={form.codigo_municipio ?? ''} onChange={(v) => set('codigo_municipio', v)} disabled={locked} />
