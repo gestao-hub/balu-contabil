@@ -37,6 +37,9 @@ superpowers-kanban/
 .kanban/board.json
 docs/superpowers/plans/*-board.csv
 
+# ── Imagens/assets de teste (não versionar) ─────────────────
+empresa_test.jpeg
+
 # ── Diversos ─────────────────────────────────────────────────
 *.log
 .DS_Store
