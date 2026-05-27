@@ -21,7 +21,9 @@ export async function requestResetAction(_prev: ResetState, formData: FormData):
 
   const supabase = await createServerClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/reset_pw?code=1`,
+    // O link do e-mail passa primeiro pelo /auth/callback, que troca o `code`
+    // por sessão (cookies) e então redireciona para o form de nova senha.
+    redirectTo: `${origin}/auth/callback?next=${encodeURIComponent('/reset_pw?step=update')}`,
   });
 
   if (error) return { error: error.message };

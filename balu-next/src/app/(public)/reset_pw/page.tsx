@@ -24,7 +24,10 @@ export default function ResetPwPage() {
 
 function ResetPwInner() {
   const params = useSearchParams();
-  const hasCode = params.get('code') !== null;
+  // O /auth/callback redireciona para cá com `step=update` após estabelecer a
+  // sessão de recuperação; ou com `error=…` se o link falhou.
+  const showUpdate = params.get('step') === 'update';
+  const errorParam = params.get('error');
 
   return (
     <main className="w-full max-w-sm px-6">
@@ -32,11 +35,17 @@ function ResetPwInner() {
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-primary">Balu</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            {hasCode ? 'Defina uma nova senha' : 'Recuperar acesso'}
+            {showUpdate ? 'Defina uma nova senha' : 'Recuperar acesso'}
           </p>
         </div>
 
-        {hasCode ? <UpdatePasswordForm /> : <RequestResetForm />}
+        {errorParam && (
+          <p className="mb-4 text-sm text-destructive bg-red-50 border border-red-100 rounded-md px-3 py-2">
+            {errorParam}
+          </p>
+        )}
+
+        {showUpdate ? <UpdatePasswordForm /> : <RequestResetForm />}
 
         <div className="mt-6 text-center text-sm">
           <Link href="/login" className="text-primary hover:underline">
