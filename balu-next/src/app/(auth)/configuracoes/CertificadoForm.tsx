@@ -10,6 +10,7 @@ import { uploadCertificadoAction } from './actions';
 export default function CertificadoForm({ enviadoEm }: { enviadoEm: string | null }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploadingRef = useRef(false); // latch síncrono contra duplo-envio
   const [senha, setSenha] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -18,6 +19,8 @@ export default function CertificadoForm({ enviadoEm }: { enviadoEm: string | nul
   async function doUpload() {
     const file = fileRef.current?.files?.[0];
     if (!file) return;
+    if (uploadingRef.current) return; // ignora duplo-clique antes do re-render
+    uploadingRef.current = true;
     setBusy(true);
     try {
       const fd = new FormData();
@@ -29,7 +32,11 @@ export default function CertificadoForm({ enviadoEm }: { enviadoEm: string | nul
       else toast('success', 'Certificado enviado.');
       setSenha('');
       if (fileRef.current) fileRef.current.value = '';
+    } catch (err) {
+      toast('error', 'Erro inesperado ao enviar o certificado.');
+      console.error(err);
     } finally {
+      uploadingRef.current = false;
       setBusy(false);
       setConfirmOpen(false);
     }
