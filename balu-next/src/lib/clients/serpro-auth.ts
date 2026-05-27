@@ -24,7 +24,7 @@ export function parseAuthResponse(raw: unknown): ProcuradorTokens {
 
 /**
  * mTLS: usa key+cert do certificado da empresa como cert cliente TLS.
- * `consumer key/secret` globais do Baly via env (Basic auth), role-type TERCEIROS.
+ * `consumer key/secret` globais do Balu via env (Basic auth), role-type TERCEIROS.
  */
 export async function autenticarProcurador(keyPem: string, certPem: string): Promise<ProcuradorTokens> {
   const ck = process.env.SERPRO_CONSUMER_KEY;
@@ -52,9 +52,18 @@ export async function autenticarProcurador(keyPem: string, certPem: string): Pro
       (res) => {
         let data = '';
         res.on('data', (c) => (data += c));
-        res.on('end', () => resolve(data));
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 400) {
+            reject(new Error(`SERPRO /authenticate → ${res.statusCode}: ${data.slice(0, 200)}`));
+          } else {
+            resolve(data);
+          }
+        });
       },
     );
+    req.setTimeout(10_000, () => {
+      req.destroy(new Error('SERPRO /authenticate: timeout (10s).'));
+    });
     req.on('error', reject);
     req.write(body);
     req.end();
