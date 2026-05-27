@@ -17,4 +17,8 @@ describe('EmpresaFiscalSchema', () => {
     const r = EmpresaFiscalSchema.partial().safeParse({ regime_tributario: 'mei', Code_regime_tributario: '4' });
     expect(r.success).toBe(true);
   });
+  it('rejeita cnae_principal vazio', () => {
+    const r = EmpresaFiscalSchema.partial().safeParse({ cnae_principal: '' });
+    expect(r.success).toBe(false);
+  });
 });

@@ -51,6 +51,7 @@ export const HonorarioSchema = z.object({
 export type HonorarioInput = z.infer<typeof HonorarioSchema>;
 
 export const EmpresaFiscalSchema = z.object({
+  // 'simples' abrange Code 1-3 (Simples Nacional e Regime Normal); 'mei' = Code 4
   regime_tributario: z.enum(['simples', 'mei']),
   Code_regime_tributario: z.enum(['1', '2', '3', '4']),
   anexo_simples: z.enum(['Anexo I', 'Anexo II', 'Anexo III', 'Anexo IV', 'Anexo V']).nullable().optional(),
