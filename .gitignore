@@ -33,6 +33,10 @@ balu-next/.playwright/
 # ── Repo de referência clonado (fora do versionamento) ───────
 superpowers-kanban/
 
+# ── Kanban local (estado volátil + export auto-gerado) ───────
+.kanban/board.json
+docs/superpowers/plans/*-board.csv
+
 # ── Diversos ─────────────────────────────────────────────────
 *.log
 .DS_Store
