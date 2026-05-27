@@ -57,3 +57,28 @@ describe('CompanyCreateSchema — cadastro (CNPJ válido + endereço)', () => {
     expect(CompanyCreateSchema.safeParse({ ...ok, numero: '', sem_numero: true }).success).toBe(true);
   });
 });
+
+describe('EmpresaFiscalSchema — campos NFS-e (PR 1.5)', () => {
+  it('aceita campos NFS-e (partial)', () => {
+    const r = EmpresaFiscalSchema.partial().safeParse({
+      municipio_id: '084333fa-1d48-4b6c-bdeb-b5da5cd3d73a',
+      inscricao_municipal: '12345',
+      serie_rps: 'RPS',
+      numero_rps_inicial: 1,
+      nfse_autenticacao_tipo: 'Login e Senha',
+      nfse_usuario_login: 'user',
+      nfse_senha_login: 'pass',
+      nfse_habilitada: true,
+      empresa_fiscal_ativada: true,
+    });
+    expect(r.success).toBe(true);
+  });
+  it('coage numero_rps_inicial de string', () => {
+    const r = EmpresaFiscalSchema.partial().safeParse({ numero_rps_inicial: '10' });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.numero_rps_inicial).toBe(10);
+  });
+  it('rejeita municipio_id não-uuid', () => {
+    expect(EmpresaFiscalSchema.partial().safeParse({ municipio_id: 'abc' }).success).toBe(false);
+  });
+});

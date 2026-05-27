@@ -76,5 +76,16 @@ export const EmpresaFiscalSchema = z.object({
   anexo_simples: z.enum(['Anexo I', 'Anexo II', 'Anexo III', 'Anexo IV', 'Anexo V']).nullable().optional(),
   usa_fator_r: z.boolean().nullable().optional(),
   cnae_principal: z.string().trim().min(1, 'CNAE inválido.').nullable().optional(),
+  // NFS-e (PR 1.5) — todos opcionais (o upsert é parcial).
+  municipio_id: z.string().uuid().nullable().optional(),
+  inscricao_municipal: z.string().nullable().optional(),
+  serie_rps: z.string().nullable().optional(),
+  numero_rps_inicial: z.coerce.number().int().nonnegative().nullable().optional(),
+  nfse_autenticacao_tipo: z.string().nullable().optional(),
+  nfse_usuario_login: z.string().nullable().optional(),
+  nfse_senha_login: z.string().nullable().optional(),
+  nfse_token_api: z.string().nullable().optional(),
+  nfse_habilitada: z.boolean().nullable().optional(),
+  empresa_fiscal_ativada: z.boolean().nullable().optional(),
 });
 export type EmpresaFiscalInput = z.infer<typeof EmpresaFiscalSchema>;
