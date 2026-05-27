@@ -4,6 +4,7 @@
 import { useRef, useState } from 'react';
 import { Loader2, Upload, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
+import PopupConfirm from '@/components/PopupConfirm';
 import { uploadCertificadoAction } from './actions';
 
 export default function CertificadoForm({ enviadoEm }: { enviadoEm: string | null }) {
@@ -11,12 +12,12 @@ export default function CertificadoForm({ enviadoEm }: { enviadoEm: string | nul
   const fileRef = useRef<HTMLInputElement>(null);
   const [senha, setSenha] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  // Sobe o certificado de fato. Fecha o modal ao terminar; reseta o form só no sucesso.
+  async function doUpload() {
     const file = fileRef.current?.files?.[0];
-    if (!file) { toast('warning', 'Selecione o arquivo do certificado (.pfx).'); return; }
-    if (!senha.trim()) { toast('warning', 'Informe a senha do certificado.'); return; }
+    if (!file) return;
     setBusy(true);
     try {
       const fd = new FormData();
@@ -30,11 +31,22 @@ export default function CertificadoForm({ enviadoEm }: { enviadoEm: string | nul
       if (fileRef.current) fileRef.current.value = '';
     } finally {
       setBusy(false);
+      setConfirmOpen(false);
     }
   }
 
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const file = fileRef.current?.files?.[0];
+    if (!file) { toast('warning', 'Selecione o arquivo do certificado (.pfx).'); return; }
+    if (!senha.trim()) { toast('warning', 'Informe a senha do certificado.'); return; }
+    if (enviadoEm) setConfirmOpen(true); // substituição → confirma antes
+    else void doUpload();                // primeiro envio → direto
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="max-w-xl space-y-5">
+    <>
+      <form onSubmit={handleSubmit} className="max-w-xl space-y-5">
       <div className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm">
         <ShieldCheck className={`size-5 ${enviadoEm ? 'text-success' : 'text-zinc-400'}`} />
         <span className="text-zinc-700">
@@ -77,5 +89,18 @@ export default function CertificadoForm({ enviadoEm }: { enviadoEm: string | nul
         </button>
       </div>
     </form>
+
+      <PopupConfirm
+        open={confirmOpen}
+        variant="destructive"
+        title="Substituir certificado?"
+        description="A troca do certificado afeta a emissão de notas fiscais e os fluxos que dependem dele. Confirme que o novo arquivo (.pfx/.p12) e a senha estão corretos e válidos antes de continuar."
+        confirmLabel="Substituir certificado"
+        cancelLabel="Cancelar"
+        busy={busy}
+        onConfirm={doUpload}
+        onCancel={() => setConfirmOpen(false)}
+      />
+    </>
   );
 }
