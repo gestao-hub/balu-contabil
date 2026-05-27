@@ -112,10 +112,12 @@ export async function uploadCertificadoAction(
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
   const buf = await file.arrayBuffer();
+  // Sanitiza o nome: remove separadores de caminho p/ evitar path traversal no bucket.
+  const safeName = file.name.replace(/[\\/]/g, '_');
 
   let path: string;
   try {
-    ({ path } = await storageUploadCertificado(buf, file.name, companyId));
+    ({ path } = await storageUploadCertificado(buf, safeName, companyId));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Falha ao enviar o arquivo.' };
   }
