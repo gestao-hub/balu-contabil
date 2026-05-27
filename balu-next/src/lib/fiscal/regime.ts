@@ -54,6 +54,8 @@ export type RegimePatch = {
 // - Fator R só vale p/ Anexo III/V; caso contrário força false
 export function normalizeRegimePatch(patch: RegimePatch): RegimePatch {
   const out: RegimePatch = { ...patch };
+  // Só sincroniza quando há um Code de fato: code vazio/ausente = "não selecionado",
+  // não fabricamos regime_tributario nesse caso.
   if (out.Code_regime_tributario) {
     out.regime_tributario = tipoFromCode(out.Code_regime_tributario);
   }

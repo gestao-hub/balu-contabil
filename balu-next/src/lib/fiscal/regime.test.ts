@@ -25,6 +25,14 @@ describe('regime helpers', () => {
     expect(fatorRAplicavel('Anexo I')).toBe(false);
     expect(fatorRAplicavel(null)).toBe(false);
   });
+  it('tipoFromCode aceita 2 e undefined', () => {
+    expect(tipoFromCode('2')).toBe('simples');
+    expect(tipoFromCode(undefined)).toBe('simples');
+  });
+  it('faixaFromAnexo/anexoFromFaixa lidam com null/undefined', () => {
+    expect(faixaFromAnexo(null)).toBeNull();
+    expect(anexoFromFaixa(undefined)).toBeNull();
+  });
 });
 
 describe('normalizeRegimePatch', () => {
@@ -44,5 +52,13 @@ describe('normalizeRegimePatch', () => {
   it('mantém Fator R em Anexo III', () => {
     const out = normalizeRegimePatch({ Code_regime_tributario: '1', anexo_simples: 'Anexo III', usa_fator_r: true });
     expect(out.usa_fator_r).toBe(true);
+  });
+  it('patch parcial sem Code: força Fator R conforme anexo, não toca regime_tributario', () => {
+    const out = normalizeRegimePatch({ anexo_simples: 'Anexo II', usa_fator_r: true });
+    expect(out.usa_fator_r).toBe(false);
+    expect(out.regime_tributario).toBeUndefined();
+  });
+  it('code vazio não sincroniza regime_tributario', () => {
+    expect(normalizeRegimePatch({ Code_regime_tributario: '' }).regime_tributario).toBeUndefined();
   });
 });
