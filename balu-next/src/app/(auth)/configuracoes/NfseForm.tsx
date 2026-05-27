@@ -20,9 +20,6 @@ export type MunicipioInfo = {
 };
 
 type Initial = {
-  inscricao_municipal?: string | null;
-  serie_rps?: string | null;
-  numero_rps_inicial?: number | null;
   nfse_usuario_login?: string | null;
   nfse_senha_login?: string | null;
   nfse_token_api?: string | null;
@@ -39,9 +36,6 @@ type Props = {
 
 export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
   const toast = useToast();
-  const [im, setIm] = useState(initial?.inscricao_municipal ?? '');
-  const [serie, setSerie] = useState(initial?.serie_rps ?? '');
-  const [numeroRps, setNumeroRps] = useState(initial?.numero_rps_inicial != null ? String(initial.numero_rps_inicial) : '');
   const [usuario, setUsuario] = useState(initial?.nfse_usuario_login ?? '');
   const [senha, setSenha] = useState(initial?.nfse_senha_login ?? '');
   const [token, setToken] = useState(initial?.nfse_token_api ?? '');
@@ -66,9 +60,6 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
   const cred = credenciaisDaAutenticacao(municipio.autenticacao);
 
   function resetFromInitial() {
-    setIm(initial?.inscricao_municipal ?? '');
-    setSerie(initial?.serie_rps ?? '');
-    setNumeroRps(initial?.numero_rps_inicial != null ? String(initial.numero_rps_inicial) : '');
     setUsuario(initial?.nfse_usuario_login ?? '');
     setSenha(initial?.nfse_senha_login ?? '');
     setToken(initial?.nfse_token_api ?? '');
@@ -91,9 +82,6 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
       const r = await upsertEmpresaFiscalAction({
         municipio_id: mun.id,
         nfse_autenticacao_tipo: mun.autenticacao ?? null,
-        inscricao_municipal: im.trim() || null,
-        serie_rps: serie.trim() || null,
-        numero_rps_inicial: numeroRps.trim() ? Number(numeroRps) : null,
         nfse_usuario_login: cred.login ? (usuario.trim() || null) : null,
         nfse_senha_login: cred.login ? (senha.trim() || null) : null,
         nfse_token_api: cred.token ? (token.trim() || null) : null,
@@ -121,11 +109,11 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Inscrição municipal" value={im} onChange={setIm} disabled={locked} />
-        <Field label="Série RPS" value={serie} onChange={setSerie} disabled={locked} />
-        <Field label="Número RPS inicial" value={numeroRps} onChange={(v) => setNumeroRps(v.replace(/\D/g, ''))} disabled={locked} />
-      </div>
+      {/* @deferred — Inscrição municipal foi movida para a aba "Dados da empresa"
+          (companies.inscricao_municipal, fonte única). Série RPS e Número RPS inicial
+          ficam ocultos até validação; valores preservados em empresas_fiscais porque o
+          submit omite esses campos do patch parcial.
+          Ver docs/superpowers/specs/2026-05-27-nfse-campos-empresa-design.md */}
 
       {cred.certificado && (
         <p className="rounded-md bg-alert/10 px-3 py-2 text-sm text-alert">
