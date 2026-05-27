@@ -57,12 +57,3 @@ export async function removeCertificado(path: string): Promise<void> {
   const { error } = await admin().storage.from(BUCKET).remove([path]);
   if (error) throw new Error(`Supabase Storage remove falhou: ${error.message}`);
 }
-
-/**
- * Converte um File (browser, recebido via FormData) em string base64.
- * Chamável de Server Actions que recebem FormData.
- */
-export async function fileToBase64(file: File): Promise<string> {
-  const buf = Buffer.from(await file.arrayBuffer());
-  return buf.toString('base64');
-}

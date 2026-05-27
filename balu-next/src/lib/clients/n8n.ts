@@ -42,6 +42,4 @@ export const n8n = {
   consolidarReceitas:  (p: { empresa_id: string; competencia: string }) => post('/webhook/consolidar_receitas_fiscais', p),
   calcularRbt12:       (p: { empresa_id: string; competencia: string }) => post('/webhook/calcular_rbt12', p),
   consultaDasMei:      (p: { empresa_id: string; competencia: string }) => post('/webhook/consulta_das_mei', p),
-  postAutenticacao:    (p: { empresa_id: string; consumer_key: string; consumer_secret: string }) => post('/webhook/post-autenticacao', p),
-  uploadCertificado:   (p: { unique_id_empresa: string; unique_id_bubble: string; file_base64: string; cert_password: string }) => post('/webhook/upload-certificado', p),
 };
