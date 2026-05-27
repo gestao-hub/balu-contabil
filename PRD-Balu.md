@@ -361,7 +361,7 @@ Ver §6.2. Toda página protegida deve incluir o reusable `re_authentication`.
    - **Dados da empresa**: razão social, fantasia, IE, IM, endereço, contato → PATCH em `companies`.
    - **Regime tributário**: dropdown com `Regime_tributario_empresa`. Se MEI → bloqueia campos não aplicáveis. Se Simples → libera `anexo_simples` e `usa_fator_r`.
    - **CNAE principal** (formato `XXXX-X/YY`).
-   - **NFS-e**: município (atrelado a `municipios_nfse`), série RPS, número inicial, credenciais do portal municipal, flags específicas do município (carregadas do `municipios_nfse`).
+   - **NFS-e**: o **município é o do endereço da empresa** — não é escolhido nesta aba (por isso o endereço, incl. cidade/estado, é obrigatório no cadastro/edição). O sistema casa `companies.municipio` + `uf` com `municipios_nfse` (por **nome + estado** — a base de 1512 municípios **não tem código IBGE**, e há homônimos entre estados) para derivar provedor, tipo de autenticação e flags. Se o município não estiver na base, NFS-e fica indisponível ali. Campos próprios da aba: série RPS, número inicial e as credenciais exigidas pelo tipo de autenticação do município.
    - **Certificado digital A1**: upload `.pfx` + senha.
      - Upload do arquivo para Supabase Storage (`POST /storage/v1/object/company-certificates/{filename}`).
      - Insere em `arquivos_auxiliares` (`POST /rest/v1/arquivos_auxiliares`) com `supabase_file_path` e `cert_password`.
