@@ -41,7 +41,8 @@ export async function upsertEmpresaFiscalAction(patch: RegimePatch): Promise<Act
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
   }
-  const data = normalizeRegimePatch(parsed.data);
+  // Inclui os campos NFS-e (parsed.data) + normalização de regime por cima.
+  const data = { ...parsed.data, ...normalizeRegimePatch(parsed.data) };
 
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
