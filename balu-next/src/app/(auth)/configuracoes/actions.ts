@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { CompanySchema, type CompanyInput, EmpresaFiscalSchema, type EmpresaFiscalInput } from '@/types/zod';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
-import { uploadCertificado as storageUploadCertificado } from '@/lib/clients/supabase-storage';
+import { uploadCertificado as storageUploadCertificado, removeCertificado as storageRemoveCertificado } from '@/lib/clients/supabase-storage';
 import { n8n } from '@/lib/clients/n8n';
 import { validateCertificadoUpload } from '@/lib/fiscal/certificado';
 
@@ -125,11 +125,12 @@ export async function uploadCertificadoAction(
   // Upsert em arquivos_auxiliares por unique_id_empresa (reusa unique_id_bubble se já existe).
   const { data: existing } = await supabase
     .from('arquivos_auxiliares')
-    .select('id, unique_id_bubble')
+    .select('id, unique_id_bubble, supabase_file_path')
     .eq('unique_id_empresa', companyId)
     .is('deleted_at', null)
     .maybeSingle();
   const uniqueIdBubble = (existing?.unique_id_bubble as string | null) ?? crypto.randomUUID();
+  const oldPath = (existing?.supabase_file_path as string | null) ?? null;
 
   if (existing) {
     const { error } = await supabase
@@ -142,6 +143,17 @@ export async function uploadCertificadoAction(
       .from('arquivos_auxiliares')
       .insert({ unique_id_empresa: companyId, unique_id_bubble: uniqueIdBubble, supabase_file_path: path, cert_password: senha });
     if (error) return { ok: false, error: error.message };
+  }
+
+  // Limpa o objeto antigo do bucket quando o nome mudou. Se o path for o mesmo,
+  // o upsert já sobrescreveu o arquivo — removê-lo apagaria o que acabou de subir.
+  // Best-effort: falha aqui não invalida o upload (no pior caso, sobra um órfão).
+  if (oldPath && oldPath !== path) {
+    try {
+      await storageRemoveCertificado(oldPath);
+    } catch {
+      /* órfão tolerável — não falha o envio */
+    }
   }
 
   // Notifica o n8n DEPOIS de salvar — falha do n8n não perde o certificado.
