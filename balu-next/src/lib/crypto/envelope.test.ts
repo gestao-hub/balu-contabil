@@ -32,4 +32,8 @@ describe('envelope AES-256-GCM', () => {
     process.env.CERT_ENC_KEY = Buffer.alloc(16, 1).toString('base64');
     expect(() => encryptBlob(Buffer.from('x'))).toThrow(/32 bytes/);
   });
+
+  it('lança para blob curto demais (corrompido)', () => {
+    expect(() => decryptBlob(Buffer.alloc(10))).toThrow(/curto/);
+  });
 });

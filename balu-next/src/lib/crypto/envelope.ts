@@ -27,6 +27,9 @@ export function encryptBlob(plaintext: Buffer): Buffer {
 }
 
 export function decryptBlob(blob: Buffer): Buffer {
+  if (blob.length < IV_LEN + TAG_LEN) {
+    throw new Error('decryptBlob: blob curto demais (corrompido ou chave errada).');
+  }
   const iv = blob.subarray(0, IV_LEN);
   const tag = blob.subarray(IV_LEN, IV_LEN + TAG_LEN);
   const ct = blob.subarray(IV_LEN + TAG_LEN);
