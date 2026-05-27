@@ -5,10 +5,10 @@
 // Reusable equivalente a `PU_create_client` / `PU_edit_client` do Bubble.
 
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Search, Loader2 } from 'lucide-react';
 import { ClienteSchema, type ClienteInput } from '@/types/zod';
 import { useToast } from '@/components/Toaster';
-import { createClienteAction, updateClienteAction } from '@/app/(auth)/clientes/actions';
+import { createClienteAction, updateClienteAction, lookupCnpjAction } from '@/app/(auth)/clientes/actions';
 
 export type ClienteFormDialogProps = {
   open: boolean;
@@ -42,6 +42,7 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
   const toast = useToast();
   const [form, setForm] = useState<ClienteInput>({ ...EMPTY, ...(initial ?? {}) } as ClienteInput);
   const [busy, setBusy] = useState(false);
+  const [busyCnpj, setBusyCnpj] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -62,6 +63,37 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
 
   function update<K extends keyof ClienteInput>(key: K, value: ClienteInput[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  // Busca de CNPJ na Focus para pré-preencher o cliente PJ (não existe no cadastro de empresa).
+  async function handleLookupCnpj() {
+    const digits = (form.document ?? '').replace(/\D/g, '');
+    if (digits.length !== 14) {
+      toast('warning', 'Informe um CNPJ com 14 dígitos.');
+      return;
+    }
+    setBusyCnpj(true);
+    try {
+      const r = await lookupCnpjAction(digits);
+      if (!r.ok) { toast('error', r.error); return; }
+      const d = r.data ?? {};
+      setForm((prev) => ({
+        ...prev,
+        razao_social: d.razao_social ?? prev.razao_social,
+        logradouro: d.logradouro ?? prev.logradouro,
+        numero: d.numero ?? prev.numero,
+        complemento: d.complemento ?? prev.complemento,
+        bairro: d.bairro ?? prev.bairro,
+        municipio: d.municipio ?? prev.municipio,
+        uf: d.uf ?? prev.uf,
+        cep: d.cep ?? prev.cep,
+        telefone: d.telefone ?? prev.telefone,
+        email: d.email ?? prev.email,
+      }));
+      toast('success', 'Dados do CNPJ carregados.');
+    } finally {
+      setBusyCnpj(false);
+    }
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -140,12 +172,26 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
               />
             </Field>
             <Field label={docLabel} error={errors.document} required>
-              <input
-                value={form.document}
-                onChange={(e) => update('document', e.target.value.replace(/\D/g, ''))}
-                maxLength={form.person_type === 'PF' ? 11 : 14}
-                className={inputCls}
-              />
+              <div className="flex items-start gap-2">
+                <input
+                  value={form.document}
+                  onChange={(e) => update('document', e.target.value.replace(/\D/g, ''))}
+                  maxLength={form.person_type === 'PF' ? 11 : 14}
+                  className={`${inputCls} flex-1`}
+                />
+                {form.person_type === 'PJ' && (
+                  <button
+                    type="button"
+                    onClick={handleLookupCnpj}
+                    disabled={busyCnpj}
+                    title="Buscar dados do CNPJ na Receita"
+                    className="mt-1 inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    {busyCnpj ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+                    Buscar
+                  </button>
+                )}
+              </div>
             </Field>
 
             {form.person_type === 'PJ' && (

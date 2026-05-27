@@ -1,28 +1,14 @@
 // @custom — bubble-behavior: Create_company (PRD §6.7)
 // Server actions usadas pelo <CreateCompanyDialog>:
-//  - lookupCnpjAction:  consulta Focus NFe (server-only) e retorna dados pré-preenchimento
 //  - lookupCepAction:   consulta ViaCEP e retorna endereço
 //  - createCompanyAction: insere em `companies` + chama RPC add_company_to_profile
+// A consulta de CNPJ na Focus saiu daqui: agora só o cadastro de CLIENTE a usa
+// (ver lookupCnpjAction em app/(auth)/clientes/actions.ts).
 'use server';
 
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
-import { focus } from '@/lib/clients/focus-nfe';
 import { CompanySchema, type CompanyInput } from '@/types/zod';
-
-export type CnpjLookup = {
-  razao_social?: string;
-  nome_fantasia?: string;
-  logradouro?: string;
-  numero?: string;
-  complemento?: string;
-  bairro?: string;
-  municipio?: string;
-  uf?: string;
-  cep?: string;
-  telefone?: string;
-  email?: string;
-};
 
 export type CepLookup = {
   logradouro?: string;
@@ -44,37 +30,6 @@ function normCnpj(s: string): string {
 
 function normCep(s: string): string {
   return onlyDigits(s).slice(0, 8);
-}
-
-export async function lookupCnpjAction(cnpj: string): Promise<ActionResult<{ data: CnpjLookup }>> {
-  const d = normCnpj(cnpj);
-  if (d.length !== 14 || /^0+$/.test(d)) {
-    return { ok: false, error: 'CNPJ inválido.' };
-  }
-  try {
-    // A consulta de CNPJ (/v2/cnpjs) só existe em PRODUÇÃO na Focus — em
-    // homologação o endpoint retorna 404. É um serviço read-only da Receita,
-    // então forçamos 'prod' aqui independente de FOCUS_NFE_ENV (que continua
-    // valendo pra emissão/cancelamento em 'hom' durante os testes).
-    // Requer que o token de produção tenha a permissão de consulta de CNPJ.
-    const raw = await focus.consultarCnpj(d, 'prod');
-    const data: CnpjLookup = {
-      razao_social:   stringOrUndef(raw['razao_social'] ?? raw['nome']),
-      nome_fantasia:  stringOrUndef(raw['nome_fantasia'] ?? raw['fantasia']),
-      logradouro:     stringOrUndef(raw['logradouro']),
-      numero:         stringOrUndef(raw['numero']),
-      complemento:    stringOrUndef(raw['complemento']),
-      bairro:         stringOrUndef(raw['bairro']),
-      municipio:      stringOrUndef(raw['municipio']),
-      uf:             stringOrUndef(raw['uf']),
-      cep:            stringOrUndef(raw['cep'])?.replace(/\D+/g, ''),
-      telefone:       stringOrUndef(raw['telefone']),
-      email:          stringOrUndef(raw['email']),
-    };
-    return { ok: true, data };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Falha ao consultar CNPJ.' };
-  }
 }
 
 export async function lookupCepAction(cep: string): Promise<ActionResult<{ data: CepLookup }>> {

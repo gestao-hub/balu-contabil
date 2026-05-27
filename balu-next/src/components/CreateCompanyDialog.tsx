@@ -4,11 +4,10 @@
 // Não é wizard: tudo fica numa só tela, etapas são apenas seções colapsáveis lógicas.
 
 import { useEffect, useRef, useState } from 'react';
-import { Building2, Search, MapPin, X, Loader2 } from 'lucide-react';
+import { Building2, MapPin, X, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { CompanySchema, type CompanyInput } from '@/types/zod';
 import {
-  lookupCnpjAction,
   lookupCepAction,
   createCompanyAction,
 } from '@/app/(auth)/onboarding/actions';
@@ -44,7 +43,6 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
   const dialogRef = useRef<HTMLDialogElement>(null);
   const toast = useToast();
   const [form, setForm] = useState<Form>(EMPTY);
-  const [busyCnpj, setBusyCnpj] = useState(false);
   const [busyCep, setBusyCep] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -57,35 +55,6 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
 
   function set<K extends keyof Form>(k: K, v: Form[K]) {
     setForm((prev) => ({ ...prev, [k]: v }));
-  }
-
-  async function handleLookupCnpj() {
-    if (!form.cnpj || form.cnpj.replace(/\D+/g, '').length < 14) {
-      toast('warning', 'Informe um CNPJ com 14 dígitos.');
-      return;
-    }
-    setBusyCnpj(true);
-    try {
-      const r = await lookupCnpjAction(form.cnpj);
-      if (!r.ok) { toast('error', r.error); return; }
-      setForm((prev) => ({
-        ...prev,
-        cnpj: prev.cnpj.replace(/\D+/g, '').padStart(14, '0').slice(-14),
-        razao_social: r.data.razao_social ?? prev.razao_social,
-        nome: r.data.nome_fantasia ?? prev.nome,
-        logradouro: r.data.logradouro ?? prev.logradouro,
-        numero: r.data.numero ?? prev.numero,
-        bairro: r.data.bairro ?? prev.bairro,
-        municipio: r.data.municipio ?? prev.municipio,
-        uf: r.data.uf ?? prev.uf,
-        cep: r.data.cep ?? prev.cep,
-        telefone: r.data.telefone ?? prev.telefone,
-        email: r.data.email ?? prev.email,
-      }));
-      toast('success', 'Dados do CNPJ carregados.');
-    } finally {
-      setBusyCnpj(false);
-    }
   }
 
   async function handleLookupCep() {
@@ -155,7 +124,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
                 {forceCreate ? 'Cadastre sua primeira empresa' : 'Nova empresa'}
               </h2>
               <p className="text-sm text-zinc-500">
-                Informe o CNPJ para preencher automaticamente.
+                Preencha os dados da sua empresa.
               </p>
             </div>
           </div>
@@ -166,29 +135,18 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
           )}
         </header>
 
-        {/* Etapa 1 — CNPJ */}
+        {/* Etapa 1 — CNPJ (preenchimento manual; a busca na Focus fica só no cadastro de cliente) */}
         <section className="mb-5">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">1. CNPJ</h3>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="00.000.000/0000-00"
-              value={form.cnpj}
-              onChange={(e) => set('cnpj', e.target.value)}
-              className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm"
-              required
-            />
-            <button
-              type="button"
-              onClick={handleLookupCnpj}
-              disabled={busyCnpj}
-              className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-            >
-              {busyCnpj ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
-              Buscar dados
-            </button>
-          </div>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="00.000.000/0000-00"
+            value={form.cnpj}
+            onChange={(e) => set('cnpj', e.target.value)}
+            className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            required
+          />
         </section>
 
         {/* Etapa 2 — CEP */}

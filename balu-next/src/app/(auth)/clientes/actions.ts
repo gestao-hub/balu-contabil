@@ -5,9 +5,24 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
+import { focus } from '@/lib/clients/focus-nfe';
 import { ClienteSchema, type ClienteInput } from '@/types/zod';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
+
+export type CnpjLookup = {
+  razao_social?: string;
+  nome_fantasia?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  municipio?: string;
+  uf?: string;
+  cep?: string;
+  telefone?: string;
+  email?: string;
+};
 
 type Ctx =
   | { error: string }
@@ -92,4 +107,44 @@ export async function softDeleteClienteAction(id: string): Promise<ActionResult>
   if (error) return { ok: false, error: error.message };
   revalidatePath('/clientes');
   return { ok: true };
+}
+
+// Consulta de CNPJ na Focus para pré-preencher o cadastro de CLIENTE (PJ).
+// (No cadastro de empresa essa busca foi removida — só cliente usa.)
+function onlyDigits(s: string): string {
+  return (s ?? '').replace(/\D+/g, '');
+}
+function normCnpj(s: string): string {
+  return onlyDigits(s).padStart(14, '0').slice(-14);
+}
+function stringOrUndef(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  const s = String(v).trim();
+  return s.length ? s : undefined;
+}
+
+export async function lookupCnpjAction(cnpj: string): Promise<ActionResult<CnpjLookup>> {
+  const d = normCnpj(cnpj);
+  if (d.length !== 14 || /^0+$/.test(d)) return { ok: false, error: 'CNPJ inválido.' };
+  try {
+    // A consulta /v2/cnpjs só existe em PRODUÇÃO na Focus (404 em homologação).
+    // É read-only da Receita, então forçamos 'prod' independente de FOCUS_NFE_ENV.
+    const raw = await focus.consultarCnpj(d, 'prod');
+    const data: CnpjLookup = {
+      razao_social:   stringOrUndef(raw['razao_social'] ?? raw['nome']),
+      nome_fantasia:  stringOrUndef(raw['nome_fantasia'] ?? raw['fantasia']),
+      logradouro:     stringOrUndef(raw['logradouro']),
+      numero:         stringOrUndef(raw['numero']),
+      complemento:    stringOrUndef(raw['complemento']),
+      bairro:         stringOrUndef(raw['bairro']),
+      municipio:      stringOrUndef(raw['municipio']),
+      uf:             stringOrUndef(raw['uf']),
+      cep:            stringOrUndef(raw['cep'])?.replace(/\D+/g, ''),
+      telefone:       stringOrUndef(raw['telefone']),
+      email:          stringOrUndef(raw['email']),
+    };
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Falha ao consultar CNPJ.' };
+  }
 }
