@@ -7,7 +7,7 @@ import { Loader2, Save, Pencil } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import {
   REGIME_OPTIONS, FAIXA_OPTIONS,
-  isMei, anexoFromFaixa, faixaFromAnexo, fatorRAplicavel,
+  isMei, anexoFromFaixa, faixaFromAnexo, fatorRAplicavel, type RegimeCode,
 } from '@/lib/fiscal/regime';
 import { upsertEmpresaFiscalAction } from './actions';
 
@@ -50,7 +50,7 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
     setBusy(true);
     try {
       const r = await upsertEmpresaFiscalAction({
-        Code_regime_tributario: code,
+        Code_regime_tributario: code as RegimeCode,
         anexo_simples: mei ? null : anexo,
         usa_fator_r: mostraFatorR ? fatorR : false,
         cnae_principal: cnae.trim() || null,

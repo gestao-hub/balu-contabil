@@ -4,8 +4,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
-import { CompanySchema, type CompanyInput, EmpresaFiscalSchema } from '@/types/zod';
-import { normalizeRegimePatch, type RegimePatch } from '@/lib/fiscal/regime';
+import { CompanySchema, type CompanyInput, EmpresaFiscalSchema, type EmpresaFiscalInput } from '@/types/zod';
+import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -36,7 +36,7 @@ export async function updateCompanyAction(id: string, patch: Partial<CompanyInpu
   return { ok: true };
 }
 
-export async function upsertEmpresaFiscalAction(patch: RegimePatch): Promise<ActionResult> {
+export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInput>): Promise<ActionResult> {
   const parsed = EmpresaFiscalSchema.partial().safeParse(patch);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
