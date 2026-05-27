@@ -6,9 +6,11 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { CompanySchema, type CompanyInput, EmpresaFiscalSchema, type EmpresaFiscalInput } from '@/types/zod';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
-import { uploadCertificado as storageUploadCertificado, removeCertificado as storageRemoveCertificado } from '@/lib/clients/supabase-storage';
-import { n8n } from '@/lib/clients/n8n';
+import { uploadCertificado as storageUploadCertificado } from '@/lib/clients/supabase-storage';
 import { validateCertificadoUpload } from '@/lib/fiscal/certificado';
+import { parsePkcs12, type CertMaterial } from '@/lib/fiscal/pkcs12';
+import { encryptBlob } from '@/lib/crypto/envelope';
+import { autenticarProcurador } from '@/lib/clients/serpro-auth';
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -111,62 +113,74 @@ export async function uploadCertificadoAction(
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
-  const buf = await file.arrayBuffer();
-  // Sanitiza o nome: remove separadores de caminho p/ evitar path traversal no bucket.
-  const safeName = file.name.replace(/[\\/]/g, '_');
-
-  let path: string;
+  // Abre o PFX legado com node-forge (valida a senha de verdade) e extrai metadados.
+  const buf = Buffer.from(await file.arrayBuffer());
+  let material: CertMaterial;
   try {
-    ({ path } = await storageUploadCertificado(buf, safeName, companyId));
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Falha ao enviar o arquivo.' };
+    material = parsePkcs12(buf, senha);
+  } catch {
+    return { ok: false, error: 'Não foi possível abrir o certificado. Verifique o arquivo e a senha.' };
+  }
+  if (new Date(material.notAfter).getTime() < Date.now()) {
+    return { ok: false, error: `Certificado expirado em ${new Date(material.notAfter).toLocaleDateString('pt-BR')}.` };
   }
 
-  // Upsert em arquivos_auxiliares por unique_id_empresa (reusa unique_id_bubble se já existe).
+  // Re-cifra o material de chave (key+cert+cadeia) com a chave do app; a senha do cert é descartada.
+  const blob = encryptBlob(
+    Buffer.from(JSON.stringify({ keyPem: material.keyPem, certPem: material.certPem, chainPem: material.chainPem }), 'utf8'),
+  );
+
+  // Reaproveita unique_id_bubble se já existe registro pra empresa.
   const { data: existing } = await supabase
     .from('arquivos_auxiliares')
-    .select('id, unique_id_bubble, supabase_file_path')
+    .select('id, unique_id_bubble')
     .eq('unique_id_empresa', companyId)
     .is('deleted_at', null)
     .maybeSingle();
   const uniqueIdBubble = (existing?.unique_id_bubble as string | null) ?? crypto.randomUUID();
-  const oldPath = (existing?.supabase_file_path as string | null) ?? null;
 
+  let path: string;
+  try {
+    ({ path } = await storageUploadCertificado(blob, `${uniqueIdBubble}.enc`, companyId));
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Falha ao enviar o arquivo.' };
+  }
+
+  const row = {
+    supabase_file_path: path,
+    storage_key: path,
+    cert_password: null,
+    cert_not_after: material.notAfter,
+    cert_subject_cn: material.subjectCN,
+    cert_cnpj: material.cnpj,
+    cert_fingerprint: material.fingerprintSha256,
+    updated_at: new Date().toISOString(),
+  };
   if (existing) {
-    const { error } = await supabase
-      .from('arquivos_auxiliares')
-      .update({ supabase_file_path: path, cert_password: senha, updated_at: new Date().toISOString() })
-      .eq('id', (existing as { id: string }).id);
+    const { error } = await supabase.from('arquivos_auxiliares').update(row).eq('id', (existing as { id: string }).id);
     if (error) return { ok: false, error: error.message };
   } else {
     const { error } = await supabase
       .from('arquivos_auxiliares')
-      .insert({ unique_id_empresa: companyId, unique_id_bubble: uniqueIdBubble, supabase_file_path: path, cert_password: senha });
+      .insert({ unique_id_empresa: companyId, unique_id_bubble: uniqueIdBubble, ...row });
     if (error) return { ok: false, error: error.message };
   }
 
-  // Limpa o objeto antigo do bucket quando o nome mudou. Se o path for o mesmo,
-  // o upsert já sobrescreveu o arquivo — removê-lo apagaria o que acabou de subir.
-  // Best-effort: falha aqui não invalida o upload (no pior caso, sobra um órfão).
-  if (oldPath && oldPath !== path) {
-    try {
-      await storageRemoveCertificado(oldPath);
-    } catch {
-      /* órfão tolerável — não falha o envio */
-    }
-  }
-
-  // Notifica o n8n DEPOIS de salvar — falha do n8n não perde o certificado.
+  // Best-effort: autentica na SERPRO e cacheia o JWT. Falha não perde o certificado.
   let warning: string | undefined;
   try {
-    await n8n.uploadCertificado({
-      unique_id_empresa: companyId,
-      unique_id_bubble: uniqueIdBubble,
-      file_base64: Buffer.from(buf).toString('base64'),
-      cert_password: senha,
-    });
+    const tokens = await autenticarProcurador(material.keyPem, material.certPem + material.chainPem);
+    await supabase
+      .from('empresas_fiscais')
+      .update({
+        certificado_jwt: tokens.jwt,
+        certificado_access_token: tokens.accessToken,
+        certificado_token_expiration: tokens.expiration,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('empresa_id', companyId);
   } catch {
-    warning = 'Certificado salvo, mas o processamento (n8n) falhou — será reprocessado.';
+    warning = 'Certificado salvo, mas a autenticação na SERPRO falhou — será refeita depois.';
   }
 
   revalidatePath('/configuracoes');
