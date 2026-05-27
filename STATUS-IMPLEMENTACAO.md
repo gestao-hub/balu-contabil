@@ -99,8 +99,8 @@
 | `<PopupConfirm>` | `PopupConfirm.tsx` | confirmação destructiva ou neutra; props `variant='destructive'`, `busy`, etc. |
 | `<ClienteFormDialog>` | `ClienteFormDialog.tsx` | popup criar/editar cliente — referência de padrão para outros forms |
 | `<ClientesListClient>` | `ClientesListClient.tsx` | tabela + busca + filtros — referência de padrão para listagens |
-| `<CreateCompanyDialog>` | `CreateCompanyDialog.tsx` | onboarding empresa — referência de padrão para wizards |
-| `<DadosEmpresaForm>` | `app/(auth)/configuracoes/DadosEmpresaForm.tsx` | edição de empresa — modo leitura/edição (Editar → Salvar/Cancelar), CNPJ fixo, endereço (rua/cidade/estado) obrigatório |
+| `<CreateCompanyDialog>` | `CreateCompanyDialog.tsx` | onboarding empresa — referência de padrão para wizards; máscara CNPJ/CEP (`formatCnpj`/`formatCep`) + ViaCEP |
+| `<DadosEmpresaForm>` | `app/(auth)/configuracoes/DadosEmpresaForm.tsx` | edição de empresa — modo leitura/edição (Editar → Salvar/Cancelar), CNPJ fixo, endereço (rua/cidade/estado) obrigatório; máscara CNPJ/CEP + botão Buscar (ViaCEP). CNPJ/CEP gravam só dígitos |
 | `<RegimeTributarioForm>` | `app/(auth)/configuracoes/RegimeTributarioForm.tsx` | aba Regime tributário (PR 1.4) — dropdown CRT + faixa→anexo + Fator R; mesmo padrão de modo leitura/edição |
 | `<NfseForm>` | `app/(auth)/configuracoes/NfseForm.tsx` | aba NFS-e (PR 1.5) — município resolvido do endereço; credenciais por tipo de autenticação; toggle ativação; mesmo modo leitura/edição |
 | `<CertificadoForm>` | `app/(auth)/configuracoes/CertificadoForm.tsx` | aba Certificado A1 (PR 1.6) — upload `.pfx`/`.p12` + senha (write-only); status "enviado em {data}"; botão Enviar/Substituir |
@@ -120,7 +120,7 @@
 | `lookupCepAction` + `createCompanyAction` | `app/(auth)/onboarding/actions.ts` | ViaCEP + insert via `CompanyCreateSchema` (CNPJ validado por dígitos + endereço obrigatório). A busca de CNPJ na Focus saiu daqui → `clientes/actions.ts` |
 | `exportNotasCsvAction` | `app/(auth)/notas_fiscais/actions.ts` | re-consulta notas com filtros e devolve CSV (BOM UTF-8, `;`) — **PR 1.2** |
 
-> Funções server-side (não-actions): `getDashboardMetrics` + `getPendingActions` em `lib/dashboard/queries.ts` (**PR 1.1**, `import 'server-only'`); `resolveMunicipioNfse(supabase, municipio, uf)` em `lib/fiscal/municipio-nfse.server.ts` (**PR 1.5**, casa endereço→`municipios_nfse` por nome+UF). Helpers puros: `lib/fiscal/regime.ts` (PR 1.4), `lib/fiscal/municipio-nfse.ts` (PR 1.5) e `lib/fiscal/certificado.ts` (PR 1.6 — `validateCertificadoUpload`: extensão `.pfx`/`.p12`, ≤1MB, senha).
+> Funções server-side (não-actions): `getDashboardMetrics` + `getPendingActions` em `lib/dashboard/queries.ts` (**PR 1.1**, `import 'server-only'`); `resolveMunicipioNfse(supabase, municipio, uf)` em `lib/fiscal/municipio-nfse.server.ts` (**PR 1.5**, casa endereço→`municipios_nfse` por nome+UF). Helpers puros: `lib/fiscal/regime.ts` (PR 1.4), `lib/fiscal/municipio-nfse.ts` (PR 1.5), `lib/fiscal/certificado.ts` (PR 1.6 — `validateCertificadoUpload`: extensão `.pfx`/`.p12`, ≤1MB, senha) e `lib/format/masks.ts` (`formatCnpj`/`formatCep` — máscaras de input; valor persistido é só dígitos).
 
 ### 2.3 Clientes API (`src/lib/clients/`)
 
