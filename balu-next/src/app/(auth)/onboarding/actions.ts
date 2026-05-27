@@ -8,7 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
-import { CompanySchema, type CompanyInput } from '@/types/zod';
+import { CompanyCreateSchema, type CompanyInput } from '@/types/zod';
 
 export type CepLookup = {
   logradouro?: string;
@@ -54,7 +54,7 @@ export async function lookupCepAction(cep: string): Promise<ActionResult<{ data:
 }
 
 export async function createCompanyAction(input: CompanyInput): Promise<ActionResult<{ id: string }>> {
-  const parsed = CompanySchema.safeParse({ ...input, cnpj: normCnpj(input?.cnpj ?? '') });
+  const parsed = CompanyCreateSchema.safeParse({ ...input, cnpj: normCnpj(input?.cnpj ?? '') });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
   }

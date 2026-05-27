@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Building2, MapPin, X, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
-import { CompanySchema, type CompanyInput } from '@/types/zod';
+import { CompanyCreateSchema, type CompanyInput } from '@/types/zod';
 import {
   lookupCepAction,
   createCompanyAction,
@@ -81,7 +81,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = CompanySchema.safeParse({
+    const parsed = CompanyCreateSchema.safeParse({
       ...form,
       cnpj: form.cnpj.replace(/\D+/g, '').padStart(14, '0').slice(-14),
       email: form.email || undefined,
@@ -181,11 +181,11 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
             <Field label="Nome fantasia" value={form.nome ?? ''} onChange={(v) => set('nome', v)} className="col-span-2" />
             <Field label="Inscrição estadual" value={form.inscricao_estadual ?? ''} onChange={(v) => set('inscricao_estadual', v)} />
             <Field label="Inscrição municipal" value={form.inscricao_municipal ?? ''} onChange={(v) => set('inscricao_municipal', v)} />
-            <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} className="col-span-2" />
+            <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} required className="col-span-2" />
             <Field label="Número" value={form.numero ?? ''} onChange={(v) => set('numero', v)} />
             <Field label="Bairro" value={form.bairro ?? ''} onChange={(v) => set('bairro', v)} />
-            <Field label="Município" value={form.municipio ?? ''} onChange={(v) => set('municipio', v)} />
-            <Field label="UF" value={form.uf ?? ''} onChange={(v) => set('uf', v.toUpperCase().slice(0, 2))} />
+            <Field label="Município" value={form.municipio ?? ''} onChange={(v) => set('municipio', v)} required />
+            <Field label="UF" value={form.uf ?? ''} onChange={(v) => set('uf', v.toUpperCase().slice(0, 2))} required />
             <Field label="Telefone" value={form.telefone ?? ''} onChange={(v) => set('telefone', v)} />
             <Field label="E-mail" type="email" value={form.email ?? ''} onChange={(v) => set('email', v)} />
           </div>

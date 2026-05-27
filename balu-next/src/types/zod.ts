@@ -1,6 +1,7 @@
 // Auto-gerado — esquemas Zod para os payloads mais usados.
 // Estender conforme as pages forem implementadas.
 import { z } from 'zod';
+import { isValidCnpj } from '@/lib/validators/cnpj';
 
 export const ClienteSchema = z.object({
   person_type: z.enum(['PF','PJ']),
@@ -23,22 +24,33 @@ export const ClienteSchema = z.object({
 export type ClienteInput = z.infer<typeof ClienteSchema>;
 
 export const CompanySchema = z.object({
-  cnpj: z.string().length(14),
+  cnpj: z.string().length(14, 'CNPJ deve ter 14 dígitos.'),
   razao_social: z.string().min(2),
   nome: z.string().optional(),
   inscricao_estadual: z.string().optional(),
   inscricao_municipal: z.string().optional(),
   codigo_municipio: z.string().optional(),
-  logradouro: z.string().optional(),
+  // Endereço obrigatório (foco rua/cidade/estado). CEP, número e bairro são
+  // opcionais — alguns endereços não têm CEP.
+  logradouro: z.string().trim().min(1, 'Logradouro (rua) é obrigatório.'),
   numero: z.string().optional(),
   bairro: z.string().optional(),
-  municipio: z.string().optional(),
-  uf: z.string().length(2).optional(),
+  municipio: z.string().trim().min(1, 'Município (cidade) é obrigatório.'),
+  uf: z.string().trim().length(2, 'UF (estado) é obrigatória.'),
   cep: z.string().optional(),
   telefone: z.string().optional(),
   email: z.string().email().optional(),
 });
 export type CompanyInput = z.infer<typeof CompanySchema>;
+
+// Cadastro de empresa: além do schema base, valida o CNPJ pelos dígitos
+// verificadores (na edição o CNPJ não é editável, então usa-se CompanySchema).
+export const CompanyCreateSchema = CompanySchema.extend({
+  cnpj: z
+    .string()
+    .length(14, 'CNPJ deve ter 14 dígitos.')
+    .refine(isValidCnpj, 'CNPJ inválido.'),
+});
 
 export const HonorarioSchema = z.object({
   cliente_id: z.string().uuid(),

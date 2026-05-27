@@ -12,8 +12,9 @@ type ActionResult = { ok: true } | { ok: false; error: string };
 export async function updateCompanyAction(id: string, patch: Partial<CompanyInput>): Promise<ActionResult> {
   if (!id) return { ok: false, error: 'ID da empresa ausente.' };
 
-  // Validamos via .partial() — todos opcionais para PATCH.
-  const parsed = CompanySchema.partial().safeParse(patch);
+  // Validação completa: o form de edição envia todos os campos, e o endereço
+  // (rua/cidade/estado) é obrigatório — então NÃO usamos .partial() aqui.
+  const parsed = CompanySchema.safeParse(patch);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
   }

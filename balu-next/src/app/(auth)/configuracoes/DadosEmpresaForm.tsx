@@ -33,7 +33,8 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = CompanySchema.partial().safeParse({
+    // Validação completa (endereço rua/cidade/estado é obrigatório).
+    const parsed = CompanySchema.safeParse({
       ...form,
       email: form.email || undefined,
       uf: form.uf ? form.uf.toUpperCase() : undefined,
@@ -62,11 +63,11 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
       <Field label="Inscrição municipal" value={form.inscricao_municipal ?? ''} onChange={(v) => set('inscricao_municipal', v)} disabled={locked} />
       <Field label="Código município (IBGE)" value={form.codigo_municipio ?? ''} onChange={(v) => set('codigo_municipio', v)} disabled={locked} />
       <Field label="CEP" value={form.cep ?? ''} onChange={(v) => set('cep', v)} disabled={locked} />
-      <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} disabled={locked} className="col-span-2" />
+      <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} disabled={locked} required className="col-span-2" />
       <Field label="Número" value={form.numero ?? ''} onChange={(v) => set('numero', v)} disabled={locked} />
       <Field label="Bairro" value={form.bairro ?? ''} onChange={(v) => set('bairro', v)} disabled={locked} />
-      <Field label="Município" value={form.municipio ?? ''} onChange={(v) => set('municipio', v)} disabled={locked} />
-      <Field label="UF" value={form.uf ?? ''} onChange={(v) => set('uf', v.toUpperCase().slice(0, 2))} disabled={locked} />
+      <Field label="Município" value={form.municipio ?? ''} onChange={(v) => set('municipio', v)} disabled={locked} required />
+      <Field label="UF" value={form.uf ?? ''} onChange={(v) => set('uf', v.toUpperCase().slice(0, 2))} disabled={locked} required />
       <Field label="Telefone" value={form.telefone ?? ''} onChange={(v) => set('telefone', v)} disabled={locked} />
       <Field label="E-mail" type="email" value={form.email ?? ''} onChange={(v) => set('email', v)} disabled={locked} />
 
@@ -106,23 +107,27 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
 }
 
 function Field({
-  label, value, onChange, type = 'text', disabled = false, className = '',
+  label, value, onChange, type = 'text', disabled = false, required = false, className = '',
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
   disabled?: boolean;
+  required?: boolean;
   className?: string;
 }) {
   return (
     <label className={`flex flex-col gap-1 text-sm ${className}`}>
-      <span className="text-xs font-medium text-zinc-600">{label}</span>
+      <span className="text-xs font-medium text-zinc-600">
+        {label}{required && <span className="text-destructive"> *</span>}
+      </span>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
+        required={required}
         className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
       />
     </label>
