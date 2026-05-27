@@ -100,7 +100,8 @@
 | `<ClienteFormDialog>` | `ClienteFormDialog.tsx` | popup criar/editar cliente — referência de padrão para outros forms |
 | `<ClientesListClient>` | `ClientesListClient.tsx` | tabela + busca + filtros — referência de padrão para listagens |
 | `<CreateCompanyDialog>` | `CreateCompanyDialog.tsx` | onboarding empresa — referência de padrão para wizards |
-| `<DadosEmpresaForm>` | `app/(auth)/configuracoes/DadosEmpresaForm.tsx` | edição de empresa — referência de form Zod-validado |
+| `<DadosEmpresaForm>` | `app/(auth)/configuracoes/DadosEmpresaForm.tsx` | edição de empresa — modo leitura/edição (Editar → Salvar/Cancelar), CNPJ fixo, endereço (rua/cidade/estado) obrigatório |
+| `<RegimeTributarioForm>` | `app/(auth)/configuracoes/RegimeTributarioForm.tsx` | aba Regime tributário (PR 1.4) — dropdown CRT + faixa→anexo + Fator R; mesmo padrão de modo leitura/edição |
 | `<DashboardCard>` | `components/DashboardCard.tsx` | card de métrica do dashboard (title/Icon/value/subtitle/tone/action) — **PR 1.1** |
 | `<PendingActionsList>` | `components/PendingActionsList.tsx` | lista "O que você precisa fazer" com severidade + CTA — **PR 1.1** |
 | `<NotasFiscaisList>` | `app/(auth)/notas_fiscais/NotasFiscaisList.tsx` | listagem com 4 filtros + export CSV + linha clicável — **PR 1.2** (referência de listagem com filtros server-side) |
@@ -112,9 +113,9 @@
 | `loginAction` | `app/(public)/login/actions.ts` | Supabase signin |
 | `signupAction` | `app/(public)/cadastro/actions.ts` | Supabase signup; envia `full_name` + `type` no metadata; trigger cria registro em `role_types` |
 | `requestResetAction` + `updatePasswordAction` | `app/(public)/reset_pw/actions.ts` | Reset 2 telas |
-| `createClienteAction` + `updateClienteAction` + `softDeleteClienteAction` | `app/(auth)/clientes/actions.ts` | CRUD cliente com dedup CPF/CNPJ |
-| `updateCompanyAction` | `app/(auth)/configuracoes/actions.ts` | PATCH companies |
-| `lookupCnpjAction` + `lookupCepAction` + `createCompanyAction` | `app/(auth)/onboarding/actions.ts` | Focus CNPJ + ViaCEP + insert |
+| `createClienteAction` + `updateClienteAction` + `softDeleteClienteAction` + `lookupCnpjAction` | `app/(auth)/clientes/actions.ts` | CRUD cliente com dedup CPF/CNPJ; `lookupCnpjAction` consulta Focus p/ pré-preencher cliente PJ |
+| `updateCompanyAction` + `upsertEmpresaFiscalAction` | `app/(auth)/configuracoes/actions.ts` | PATCH companies (validação completa — endereço obrigatório, escopo `user_id`); upsert `empresas_fiscais` por `empresa_id`/`owner_user_id` (PR 1.4) |
+| `lookupCepAction` + `createCompanyAction` | `app/(auth)/onboarding/actions.ts` | ViaCEP + insert via `CompanyCreateSchema` (CNPJ validado por dígitos + endereço obrigatório). A busca de CNPJ na Focus saiu daqui → `clientes/actions.ts` |
 | `exportNotasCsvAction` | `app/(auth)/notas_fiscais/actions.ts` | re-consulta notas com filtros e devolve CSV (BOM UTF-8, `;`) — **PR 1.2** |
 
 > Funções server-side (não-actions): `getDashboardMetrics` + `getPendingActions` em `lib/dashboard/queries.ts` (**PR 1.1**, `import 'server-only'`).
@@ -146,7 +147,7 @@ Todos têm `import 'server-only'` — só chamar de server actions ou route hand
 
 - `database.ts` — `Tables` nominais + `Row<T>` helper. `Database = any` por design (sem CLI Supabase).
 - `enums.ts` — 26 option sets do Bubble como const arrays
-- `zod.ts` — `ClienteSchema`, `CompanySchema`, `HonorarioSchema`
+- `zod.ts` — `ClienteSchema`, `CompanySchema` (endereço rua/cidade/estado obrigatório), `CompanyCreateSchema` (CNPJ por dígitos verificadores), `EmpresaFiscalSchema`, `HonorarioSchema`. Validador em `src/lib/validators/cnpj.ts` (`isValidCnpj`)
 
 ### 2.6 Configuração / Tooling
 

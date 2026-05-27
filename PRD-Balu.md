@@ -309,6 +309,11 @@ Fluxo em múltiplas etapas:
 5. Atualiza `CurrentUser.current_company` e fecha popup com `RefreshPage`.
 6. Estado `possui_empresa_` impede criação duplicada quando o usuário já é dono de uma empresa.
 
+> **Implementação atual (Next.js — diverge do Bubble):**
+> - A busca de CNPJ na Focus foi **removida** do cadastro de empresa (passou a existir só no cadastro de cliente). Aqui o CNPJ é digitado e **validado pelos dígitos verificadores** (`CompanyCreateSchema` + `src/lib/validators/cnpj.ts`).
+> - **Endereço obrigatório**: `logradouro` (rua), `municipio` (cidade) e `uf` (estado) são exigidos; `cep`, número e bairro são **opcionais** (há endereços sem CEP). A busca por CEP (ViaCEP) segue disponível para autopreencher.
+> - Validação por `CompanyCreateSchema` no `createCompanyAction` e no `<CreateCompanyDialog>` (asteriscos de obrigatório em rua/cidade/UF).
+
 ### 6.8 `Filter_periodo`
 Date range com estados `data_inicial_` e `data_final_`. Disparo de custom event `Filtered(start, end)` para o pai aplicar filtro nas listas.
 
@@ -364,6 +369,12 @@ Ver §6.2. Toda página protegida deve incluir o reusable `re_authentication`.
    - **Credenciais Serpro/Integra**: usuário/contador envia `Consumer_key` + `Consumer_Secret` → `POST /webhook/post-autenticacao`.
 5. Salvar usa **Empresa fiscal editar_novo** (`PATCH /rest/v1/empresas_fiscais?unique_id_bubble=eq.{id}`) com até 40+ campos.
 6. Após salvar com sucesso, dispara `Mensageria.Trigger_BEP("Success", "Configurações salvas")`.
+
+> **Implementação atual (Next.js):**
+> - Cada aba abre em **modo leitura** (campos bloqueados + botão **Editar**); ao editar, o rodapé vira **Salvar** + **Cancelar** (Cancelar reverte aos valores salvos e re-bloqueia; salvar com sucesso re-bloqueia). O form remonta por `company.id` ao trocar de empresa (evita estado stale).
+> - **Dados da empresa** (✅ `DadosEmpresaForm` + `updateCompanyAction`): **CNPJ sempre bloqueado** (não editável); endereço (rua/cidade/estado) é **obrigatório também na edição** — valida o `CompanySchema` completo (não `.partial()`); CEP/número/bairro opcionais.
+> - **Regime tributário** (✅ `RegimeTributarioForm` + `upsertEmpresaFiscalAction` — PR 1.4): dropdown CRT (`Code_regime_tributario` 1-4 → `regime_tributario` `simples`/`mei`); "Faixa de atividade econômica" → `anexo_simples` (visível só se ≠ MEI); `usa_fator_r` (só Anexo III/V); `cnae_principal`. Upsert em `empresas_fiscais` por `empresa_id` (cria no 1º save, escopado por `owner_user_id`).
+> - **NFS-e** e **Certificado A1**: ainda stub (PRs 1.5 e 1.6).
 
 ---
 
