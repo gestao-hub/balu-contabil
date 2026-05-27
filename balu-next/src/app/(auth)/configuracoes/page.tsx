@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { createServerClient } from '@/lib/supabase/server';
 import DadosEmpresaForm from './DadosEmpresaForm';
+import RegimeTributarioForm from './RegimeTributarioForm';
 
 const TABS = [
   { key: 'dados', label: 'Dados da empresa' },
@@ -99,6 +100,17 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
             telefone: (company.telefone as string) ?? '',
             email: (company.email as string) ?? '',
           }}
+        />
+      ) : active === 'regime' ? (
+        <RegimeTributarioForm
+          initial={
+            empresaFiscal as {
+              Code_regime_tributario?: string | null;
+              anexo_simples?: string | null;
+              usa_fator_r?: boolean | null;
+              cnae_principal?: string | null;
+            } | null
+          }
         />
       ) : (
         <TodoPanel tab={active} hasFiscal={!!empresaFiscal} />

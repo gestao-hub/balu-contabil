@@ -93,6 +93,7 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
       <label className="col-span-2 flex flex-col gap-1 text-sm">
         <span className="text-xs font-medium text-zinc-600">CNAE principal</span>
         <input
+          type="text"
           value={cnae}
           onChange={(e) => setCnae(e.target.value)}
           placeholder="0000-0/00"
