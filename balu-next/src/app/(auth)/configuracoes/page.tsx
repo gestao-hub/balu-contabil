@@ -84,6 +84,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         <p className="text-sm text-zinc-500">Cadastre uma empresa para acessar as configurações.</p>
       ) : active === 'dados' ? (
         <DadosEmpresaForm
+          key={company.id as string}
           id={company.id as string}
           initial={{
             cnpj: (company.cnpj as string) ?? '',
@@ -104,6 +105,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         />
       ) : active === 'regime' ? (
         <RegimeTributarioForm
+          key={company.id as string}
           initial={
             empresaFiscal as {
               Code_regime_tributario?: string | null;
