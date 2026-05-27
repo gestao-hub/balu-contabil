@@ -140,9 +140,6 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           key={company.id as string}
           initial={
             empresaFiscal as {
-              inscricao_municipal?: string | null;
-              serie_rps?: string | null;
-              numero_rps_inicial?: number | null;
               nfse_usuario_login?: string | null;
               nfse_senha_login?: string | null;
               nfse_token_api?: string | null;
