@@ -31,20 +31,29 @@ export function parsePkcs12(pfx: Buffer, senha: string): CertMaterial {
 
   const privateKey = findPrivateKey(p12);
   const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] ?? [];
-  if (certBags.length === 0 || !certBags[0].cert) {
+  const certs = certBags
+    .map((b) => b.cert)
+    .filter((c): c is forge.pki.Certificate => Boolean(c));
+  if (certs.length === 0) {
     throw new Error('Certificado não encontrado no arquivo.');
   }
-  const leaf = certBags[0].cert;
+  // O leaf é o cert cuja chave pública casa com a chave privada (ordem dos bags não é garantida).
+  const matchesKey = (c: forge.pki.Certificate) => {
+    const pub = c.publicKey as forge.pki.rsa.PublicKey;
+    return pub?.n != null && pub.n.equals(privateKey.n);
+  };
+  const leaf = certs.find(matchesKey) ?? certs[0];
 
   const keyPem = forge.pki.privateKeyToPem(privateKey);
   const certPem = forge.pki.certificateToPem(leaf);
-  const chainPem = certBags
-    .slice(1)
-    .map((b) => (b.cert ? forge.pki.certificateToPem(b.cert) : ''))
+  const chainPem = certs
+    .filter((c) => c !== leaf)
+    .map((c) => forge.pki.certificateToPem(c))
     .join('');
 
   const cn = (leaf.subject.getField('CN')?.value as string | undefined) ?? '';
-  const cnpjMatch = cn.match(/(\d{14})\s*$/);
+  // e-CNPJ traz o CNPJ no CN ("NOME:CNPJ"), às vezes com sufixo de versão ("NOME:CNPJ:00001").
+  const cnpjMatch = cn.match(/(\d{14})(?:\D|$)/);
 
   const derCert = forge.asn1.toDer(forge.pki.certificateToAsn1(leaf)).getBytes();
   const md = forge.md.sha256.create();

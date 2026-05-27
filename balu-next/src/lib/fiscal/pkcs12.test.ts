@@ -4,7 +4,7 @@ import { parsePkcs12 } from './pkcs12';
 
 // Gera um PFX de teste (3DES — cifra legada, bom proxy do A1 real) com senha conhecida.
 function makeP12(password: string, validForDays = 365): Buffer {
-  const keys = forge.pki.rsa.generateKeyPair(1024);
+  const keys = forge.pki.rsa.generateKeyPair(1024); // 1024 bits: fraco mas rápido — só para teste
   const cert = forge.pki.createCertificate();
   cert.publicKey = keys.publicKey;
   cert.serialNumber = '01';
@@ -40,5 +40,36 @@ describe('parsePkcs12', () => {
     const pfx = makeP12('s', -10); // expirou há 10 dias
     const m = parsePkcs12(pfx, 's');
     expect(new Date(m.notAfter).getTime()).toBeLessThan(Date.now());
+  });
+
+  it('seleciona o leaf pela chave mesmo quando o CA vem antes na ordem dos bags', () => {
+    // CA self-signed (chave própria) + leaf (chave própria). A chave do PFX é a do LEAF.
+    const caKeys = forge.pki.rsa.generateKeyPair(1024); // 1024 bits: fraco mas rápido — só para teste
+    const ca = forge.pki.createCertificate();
+    ca.publicKey = caKeys.publicKey;
+    ca.serialNumber = '02';
+    ca.validity.notBefore = new Date(Date.now() - 86_400_000);
+    ca.validity.notAfter = new Date(Date.now() + 365 * 86_400_000);
+    ca.setSubject([{ name: 'commonName', value: 'AC RAIZ TESTE' }]);
+    ca.setIssuer([{ name: 'commonName', value: 'AC RAIZ TESTE' }]);
+    ca.sign(caKeys.privateKey, forge.md.sha256.create());
+
+    const leafKeys = forge.pki.rsa.generateKeyPair(1024); // 1024 bits: fraco mas rápido — só para teste
+    const leaf = forge.pki.createCertificate();
+    leaf.publicKey = leafKeys.publicKey;
+    leaf.serialNumber = '03';
+    leaf.validity.notBefore = new Date(Date.now() - 86_400_000);
+    leaf.validity.notAfter = new Date(Date.now() + 365 * 86_400_000);
+    leaf.setSubject([{ name: 'commonName', value: 'EMPRESA LEAF LTDA:99888777000166' }]);
+    leaf.setIssuer([{ name: 'commonName', value: 'AC RAIZ TESTE' }]);
+    leaf.sign(caKeys.privateKey, forge.md.sha256.create());
+
+    // CA primeiro, leaf depois; a chave privada é a do leaf.
+    const asn1 = forge.pkcs12.toPkcs12Asn1(leafKeys.privateKey, [ca, leaf], 'p', { algorithm: '3des' });
+    const pfx = Buffer.from(forge.asn1.toDer(asn1).getBytes(), 'binary');
+
+    const m = parsePkcs12(pfx, 'p');
+    expect(m.subjectCN).toBe('EMPRESA LEAF LTDA:99888777000166');
+    expect(m.cnpj).toBe('99888777000166');
   });
 });
