@@ -32,6 +32,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
   function handleCancel() {
     setForm(initial);
     setEditing(false);
+    setBusyCep(false); // reseta caso um lookup de CEP esteja em voo ao cancelar
   }
 
   async function handleLookupCep() {
@@ -95,6 +96,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
           <input
             type="text"
             inputMode="numeric"
+            placeholder="00000-000"
             value={formatCep(form.cep ?? '')}
             onChange={(e) => set('cep', formatCep(e.target.value))}
             disabled={locked}
