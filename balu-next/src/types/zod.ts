@@ -49,3 +49,12 @@ export const HonorarioSchema = z.object({
   observacao: z.string().optional(),
 });
 export type HonorarioInput = z.infer<typeof HonorarioSchema>;
+
+export const EmpresaFiscalSchema = z.object({
+  regime_tributario: z.enum(['simples', 'mei']),
+  Code_regime_tributario: z.enum(['1', '2', '3', '4']),
+  anexo_simples: z.enum(['Anexo I', 'Anexo II', 'Anexo III', 'Anexo IV', 'Anexo V']).nullable().optional(),
+  usa_fator_r: z.boolean().nullable().optional(),
+  cnae_principal: z.string().trim().min(1, 'CNAE inválido.').nullable().optional(),
+});
+export type EmpresaFiscalInput = z.infer<typeof EmpresaFiscalSchema>;
