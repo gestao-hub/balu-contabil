@@ -91,8 +91,20 @@ Mobile: existe a view nativa **Home** (`bTHDZ`).
 
 **`empresas_fiscais`** (configuração fiscal/NFS-e de cada empresa)
 - `id`, `empresa_id` (FK companies), `municipio_id`
-- `cnpj`, `regime_tributario`, `Code_regime_tributario` (1=Simples, 2=Lucro Presumido, 3=Lucro Real, 4=MEI)
-- `cnae_principal`, `anexo_simples` (Anexo I–V), `usa_fator_r` (bool)
+- `cnpj`, `regime_tributario`, `Code_regime_tributario`
+    Descrição / Code / Type_empresa
+    Simples Nacional / 1 / Simples
+    Simples Nacional — Excesso de sublimite de receita bruta / 2 / Simples
+    Regime Normal (Lucro Real ou Presumido) / 3 / Simples
+    Simples Nacional — MEI / 4 / mei
+- `anexo_simples` (Anexo I–V) — input "Faixa de atividade econômica" (option set; visível só quando regime ≠ MEI, Code ≠ 4):
+    Atividade / Anexo
+    I Comércio / Anexo I
+    II Indústria / Anexo II
+    III Serviços comuns / Anexo III
+    IV Serviços com folha relevante / Anexo IV
+    V Serviços especializados / Anexo V
+- `cnae_principal`, `usa_fator_r` (bool — só faz sentido p/ serviços, Anexo III/V)
 - `inscricao_municipal`, `serie_rps`, `numero_rps_inicial`
 - Credenciais portal municipal: `login_responsavel`, `senha_responsavel`, `token_portal`
 - Flags por município: `requer_liberacao_rps`, `requer_liberacao_webservice`, `requer_aidf`, `requer_cadastro_homologacao`, `emitir_nota_homol_antes_producao`, `credenciais_por_ambiente`, `requer_token_portal`, `im_zeros_esquerda`, `requer_cadastro_tomador`, `valor_iss_obrigatorio`, `cancelamento_so_portal`, `serie_rps_so_numeros`
