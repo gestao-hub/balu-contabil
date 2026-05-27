@@ -11,10 +11,11 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, Settings, Building2,
-  ChevronDown, Menu as MenuIcon, X, LogOut,
+  ChevronDown, Menu as MenuIcon, X, LogOut, Plus,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
+import CreateCompanyDialog from '@/components/CreateCompanyDialog';
 
 // Os values batem com o option set Bubble (lowercase). Para exibição, label é capitalizada.
 type Role = 'empresa' | 'contador';
@@ -47,6 +48,8 @@ export default function MenuLateral({
   const [open, setOpen] = useState(true);
   const [switching, setSwitching] = useState(false);
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const isDev = process.env.NODE_ENV !== 'production';
 
   const currentCompany = companies.find((c) => c.id === currentCompanyId);
   const items = NAV.filter((i) => !i.roles || i.roles.includes(userRole));
@@ -129,6 +132,16 @@ export default function MenuLateral({
                 </ul>
               )}
             </div>
+            {isDev && (
+              <button
+                type="button"
+                onClick={() => setAddOpen(true)}
+                className="mt-2 flex w-full items-center gap-1.5 rounded-md border border-dashed border-zinc-300 px-2 py-1.5 text-xs text-zinc-600 hover:border-primary hover:text-primary"
+              >
+                <Plus className="size-3.5 shrink-0" />
+                Nova empresa
+              </button>
+            )}
           </>
         ) : (
           <div className="grid place-items-center">
@@ -172,6 +185,14 @@ export default function MenuLateral({
           {open && <span>Sair</span>}
         </button>
       </div>
+
+      {isDev && (
+        <CreateCompanyDialog
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          onCreated={() => { setAddOpen(false); router.refresh(); }}
+        />
+      )}
     </aside>
   );
 }
