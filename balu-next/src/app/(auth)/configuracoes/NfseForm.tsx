@@ -82,6 +82,8 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // TS não estreita o prop `municipio` dentro deste closure async (apesar do
+    // early-return acima); cópia local garante o narrowing. NÃO remover.
     const mun = municipio;
     if (!mun) return;
     setBusy(true);
@@ -95,7 +97,7 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
         nfse_usuario_login: cred.login ? (usuario.trim() || null) : null,
         nfse_senha_login: cred.login ? (senha.trim() || null) : null,
         nfse_token_api: cred.token ? (token.trim() || null) : null,
-        nfse_habilitada: ativada,
+        nfse_habilitada: ativada,         // espelha empresa_fiscal_ativada (v1: toggle único)
         empresa_fiscal_ativada: ativada,
       });
       if (!r.ok) { toast('error', r.error); return; }
