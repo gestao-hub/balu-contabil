@@ -126,9 +126,14 @@ export async function uploadCertificadoAction(
   }
 
   // Re-cifra o material de chave (key+cert+cadeia) com a chave do app; a senha do cert é descartada.
-  const blob = encryptBlob(
-    Buffer.from(JSON.stringify({ keyPem: material.keyPem, certPem: material.certPem, chainPem: material.chainPem }), 'utf8'),
-  );
+  let blob: Buffer;
+  try {
+    blob = encryptBlob(
+      Buffer.from(JSON.stringify({ keyPem: material.keyPem, certPem: material.certPem, chainPem: material.chainPem }), 'utf8'),
+    );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro interno ao cifrar o certificado.' };
+  }
 
   // Reaproveita unique_id_bubble se já existe registro pra empresa.
   const { data: existing } = await supabase
@@ -170,7 +175,7 @@ export async function uploadCertificadoAction(
   let warning: string | undefined;
   try {
     const tokens = await autenticarProcurador(material.keyPem, material.certPem + material.chainPem);
-    await supabase
+    const { data: fiscalRows } = await supabase
       .from('empresas_fiscais')
       .update({
         certificado_jwt: tokens.jwt,
@@ -178,7 +183,11 @@ export async function uploadCertificadoAction(
         certificado_token_expiration: tokens.expiration,
         updated_at: new Date().toISOString(),
       })
-      .eq('empresa_id', companyId);
+      .eq('empresa_id', companyId)
+      .select('empresa_id');
+    if (!fiscalRows || fiscalRows.length === 0) {
+      warning = 'Certificado salvo. Conclua o cadastro fiscal (NFS-e) para ativar a autenticação na SERPRO.';
+    }
   } catch {
     warning = 'Certificado salvo, mas a autenticação na SERPRO falhou — será refeita depois.';
   }

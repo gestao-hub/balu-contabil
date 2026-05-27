@@ -21,7 +21,7 @@ function admin(): SupabaseClient {
 }
 
 /**
- * Faz upload de certificado .pfx/.p12 no bucket privado `company-certificates`,
+ * Faz upload de um blob cifrado (envelope AES-GCM opaco) no bucket privado `company-certificates`,
  * sob o path `${companyId}/${fileName}`. Retorna `{path}` em caso de sucesso.
  */
 export async function uploadCertificado(
@@ -39,7 +39,7 @@ export async function uploadCertificado(
     .storage
     .from(BUCKET)
     .upload(path, data, {
-      contentType: 'application/x-pkcs12',
+      contentType: 'application/octet-stream',
       upsert: true,
     });
 
