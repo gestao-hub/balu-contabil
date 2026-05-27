@@ -18,6 +18,9 @@ describe('formatCnpj', () => {
     expect(formatCnpj('11.222.333/0001-81')).toBe('11.222.333/0001-81');
     expect(formatCnpj('abc11def222')).toBe('11.222');
   });
+  it('retorna vazio para entrada vazia (estado de mount do input)', () => {
+    expect(formatCnpj('')).toBe('');
+  });
 });
 
 describe('formatCep', () => {
@@ -32,5 +35,8 @@ describe('formatCep', () => {
   it('trunca acima de 8 dígitos e é idempotente', () => {
     expect(formatCep('800100009999')).toBe('80010-000');
     expect(formatCep('80010-000')).toBe('80010-000');
+  });
+  it('retorna vazio para entrada vazia (estado de mount do input)', () => {
+    expect(formatCep('')).toBe('');
   });
 });
