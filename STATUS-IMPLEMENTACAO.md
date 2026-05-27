@@ -102,6 +102,7 @@
 | `<CreateCompanyDialog>` | `CreateCompanyDialog.tsx` | onboarding empresa — referência de padrão para wizards |
 | `<DadosEmpresaForm>` | `app/(auth)/configuracoes/DadosEmpresaForm.tsx` | edição de empresa — modo leitura/edição (Editar → Salvar/Cancelar), CNPJ fixo, endereço (rua/cidade/estado) obrigatório |
 | `<RegimeTributarioForm>` | `app/(auth)/configuracoes/RegimeTributarioForm.tsx` | aba Regime tributário (PR 1.4) — dropdown CRT + faixa→anexo + Fator R; mesmo padrão de modo leitura/edição |
+| `<NfseForm>` | `app/(auth)/configuracoes/NfseForm.tsx` | aba NFS-e (PR 1.5) — município resolvido do endereço; credenciais por tipo de autenticação; toggle ativação; mesmo modo leitura/edição |
 | `<DashboardCard>` | `components/DashboardCard.tsx` | card de métrica do dashboard (title/Icon/value/subtitle/tone/action) — **PR 1.1** |
 | `<PendingActionsList>` | `components/PendingActionsList.tsx` | lista "O que você precisa fazer" com severidade + CTA — **PR 1.1** |
 | `<NotasFiscaisList>` | `app/(auth)/notas_fiscais/NotasFiscaisList.tsx` | listagem com 4 filtros + export CSV + linha clicável — **PR 1.2** (referência de listagem com filtros server-side) |
@@ -118,7 +119,7 @@
 | `lookupCepAction` + `createCompanyAction` | `app/(auth)/onboarding/actions.ts` | ViaCEP + insert via `CompanyCreateSchema` (CNPJ validado por dígitos + endereço obrigatório). A busca de CNPJ na Focus saiu daqui → `clientes/actions.ts` |
 | `exportNotasCsvAction` | `app/(auth)/notas_fiscais/actions.ts` | re-consulta notas com filtros e devolve CSV (BOM UTF-8, `;`) — **PR 1.2** |
 
-> Funções server-side (não-actions): `getDashboardMetrics` + `getPendingActions` em `lib/dashboard/queries.ts` (**PR 1.1**, `import 'server-only'`).
+> Funções server-side (não-actions): `getDashboardMetrics` + `getPendingActions` em `lib/dashboard/queries.ts` (**PR 1.1**, `import 'server-only'`); `resolveMunicipioNfse(supabase, municipio, uf)` em `lib/fiscal/municipio-nfse.server.ts` (**PR 1.5**, casa endereço→`municipios_nfse` por nome+UF). Helpers puros: `lib/fiscal/regime.ts` (PR 1.4) e `lib/fiscal/municipio-nfse.ts` (PR 1.5).
 
 ### 2.3 Clientes API (`src/lib/clients/`)
 
@@ -147,7 +148,7 @@ Todos têm `import 'server-only'` — só chamar de server actions ou route hand
 
 - `database.ts` — `Tables` nominais + `Row<T>` helper. `Database = any` por design (sem CLI Supabase).
 - `enums.ts` — 26 option sets do Bubble como const arrays
-- `zod.ts` — `ClienteSchema`, `CompanySchema` (endereço rua/cidade/estado obrigatório), `CompanyCreateSchema` (CNPJ por dígitos verificadores), `EmpresaFiscalSchema`, `HonorarioSchema`. Validador em `src/lib/validators/cnpj.ts` (`isValidCnpj`)
+- `zod.ts` — `ClienteSchema`, `CompanySchema` (endereço rua/número/cidade/estado obrigatório; número com `sem_numero`), `CompanyCreateSchema` (CNPJ por dígitos verificadores), `EmpresaFiscalSchema` (regime + NFS-e), `HonorarioSchema`. Validador em `src/lib/validators/cnpj.ts` (`isValidCnpj`)
 
 ### 2.6 Configuração / Tooling
 
