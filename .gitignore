@@ -40,6 +40,9 @@ docs/superpowers/plans/*-board.csv
 # ── Imagens/assets de teste (não versionar) ─────────────────
 empresa_test.jpeg
 
+# ── Exports de infra (n8n) — contêm secrets/PII, NUNCA versionar ─
+docs/n8n/
+
 # ── Diversos ─────────────────────────────────────────────────
 *.log
 .DS_Store
