@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { createServerClient } from '@/lib/supabase/server';
 import DadosEmpresaForm from './DadosEmpresaForm';
 import RegimeTributarioForm from './RegimeTributarioForm';
+import NfseForm from './NfseForm';
+import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 
 const TABS = [
   { key: 'dados', label: 'Dados da empresa' },
@@ -50,6 +52,11 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       empresaFiscal = ef ?? null;
     }
   }
+
+  const municipioNfse =
+    active === 'nfse' && company
+      ? await resolveMunicipioNfse(supabase, company.municipio as string, company.uf as string)
+      : null;
 
   return (
     <main className="p-6">
@@ -115,6 +122,25 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
               cnae_principal?: string | null;
             } | null
           }
+        />
+      ) : active === 'nfse' ? (
+        <NfseForm
+          key={company.id as string}
+          initial={
+            empresaFiscal as {
+              inscricao_municipal?: string | null;
+              serie_rps?: string | null;
+              numero_rps_inicial?: number | null;
+              nfse_usuario_login?: string | null;
+              nfse_senha_login?: string | null;
+              nfse_token_api?: string | null;
+              nfse_habilitada?: boolean | null;
+              empresa_fiscal_ativada?: boolean | null;
+            } | null
+          }
+          municipio={municipioNfse}
+          cidade={(company.municipio as string) ?? ''}
+          uf={(company.uf as string) ?? ''}
         />
       ) : (
         <TodoPanel tab={active} hasFiscal={!!empresaFiscal} />
