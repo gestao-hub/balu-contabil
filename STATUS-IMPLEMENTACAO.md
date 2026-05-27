@@ -103,6 +103,7 @@
 | `<DadosEmpresaForm>` | `app/(auth)/configuracoes/DadosEmpresaForm.tsx` | edição de empresa — modo leitura/edição (Editar → Salvar/Cancelar), CNPJ fixo, endereço (rua/cidade/estado) obrigatório |
 | `<RegimeTributarioForm>` | `app/(auth)/configuracoes/RegimeTributarioForm.tsx` | aba Regime tributário (PR 1.4) — dropdown CRT + faixa→anexo + Fator R; mesmo padrão de modo leitura/edição |
 | `<NfseForm>` | `app/(auth)/configuracoes/NfseForm.tsx` | aba NFS-e (PR 1.5) — município resolvido do endereço; credenciais por tipo de autenticação; toggle ativação; mesmo modo leitura/edição |
+| `<CertificadoForm>` | `app/(auth)/configuracoes/CertificadoForm.tsx` | aba Certificado A1 (PR 1.6) — upload `.pfx`/`.p12` + senha (write-only); status "enviado em {data}"; botão Enviar/Substituir |
 | `<DashboardCard>` | `components/DashboardCard.tsx` | card de métrica do dashboard (title/Icon/value/subtitle/tone/action) — **PR 1.1** |
 | `<PendingActionsList>` | `components/PendingActionsList.tsx` | lista "O que você precisa fazer" com severidade + CTA — **PR 1.1** |
 | `<NotasFiscaisList>` | `app/(auth)/notas_fiscais/NotasFiscaisList.tsx` | listagem com 4 filtros + export CSV + linha clicável — **PR 1.2** (referência de listagem com filtros server-side) |
@@ -115,11 +116,11 @@
 | `signupAction` | `app/(public)/cadastro/actions.ts` | Supabase signup; envia `full_name` + `type` no metadata; trigger cria registro em `role_types` |
 | `requestResetAction` + `updatePasswordAction` | `app/(public)/reset_pw/actions.ts` | Reset 2 telas |
 | `createClienteAction` + `updateClienteAction` + `softDeleteClienteAction` + `lookupCnpjAction` | `app/(auth)/clientes/actions.ts` | CRUD cliente com dedup CPF/CNPJ; `lookupCnpjAction` consulta Focus p/ pré-preencher cliente PJ |
-| `updateCompanyAction` + `upsertEmpresaFiscalAction` | `app/(auth)/configuracoes/actions.ts` | PATCH companies (validação completa — endereço obrigatório, escopo `user_id`); upsert `empresas_fiscais` por `empresa_id`/`owner_user_id` (PR 1.4) |
+| `updateCompanyAction` + `upsertEmpresaFiscalAction` + `uploadCertificadoAction` | `app/(auth)/configuracoes/actions.ts` | PATCH companies (validação completa — endereço obrigatório, escopo `user_id`); upsert `empresas_fiscais` por `empresa_id`/`owner_user_id` (PR 1.4); upload de certificado A1 → Storage + upsert `arquivos_auxiliares` + n8n best-effort, remove objeto antigo ao trocar de nome (PR 1.6) |
 | `lookupCepAction` + `createCompanyAction` | `app/(auth)/onboarding/actions.ts` | ViaCEP + insert via `CompanyCreateSchema` (CNPJ validado por dígitos + endereço obrigatório). A busca de CNPJ na Focus saiu daqui → `clientes/actions.ts` |
 | `exportNotasCsvAction` | `app/(auth)/notas_fiscais/actions.ts` | re-consulta notas com filtros e devolve CSV (BOM UTF-8, `;`) — **PR 1.2** |
 
-> Funções server-side (não-actions): `getDashboardMetrics` + `getPendingActions` em `lib/dashboard/queries.ts` (**PR 1.1**, `import 'server-only'`); `resolveMunicipioNfse(supabase, municipio, uf)` em `lib/fiscal/municipio-nfse.server.ts` (**PR 1.5**, casa endereço→`municipios_nfse` por nome+UF). Helpers puros: `lib/fiscal/regime.ts` (PR 1.4) e `lib/fiscal/municipio-nfse.ts` (PR 1.5).
+> Funções server-side (não-actions): `getDashboardMetrics` + `getPendingActions` em `lib/dashboard/queries.ts` (**PR 1.1**, `import 'server-only'`); `resolveMunicipioNfse(supabase, municipio, uf)` em `lib/fiscal/municipio-nfse.server.ts` (**PR 1.5**, casa endereço→`municipios_nfse` por nome+UF). Helpers puros: `lib/fiscal/regime.ts` (PR 1.4), `lib/fiscal/municipio-nfse.ts` (PR 1.5) e `lib/fiscal/certificado.ts` (PR 1.6 — `validateCertificadoUpload`: extensão `.pfx`/`.p12`, ≤1MB, senha).
 
 ### 2.3 Clientes API (`src/lib/clients/`)
 
@@ -130,7 +131,7 @@ Todos têm `import 'server-only'` — só chamar de server actions ou route hand
 | `focus` (`focus-nfe.ts`) | `consultarCnpj`, `emitirNfe`, `emitirNfce`, `emitirNfse`, `consultarStatusNfe/Nfce/Nfse`, `baixarDanfe`, `baixarXmlNfe`, `cancelarNfe/Nfce/Nfse` (valida `justificativa.length ≥ 15`), `generateRef(empresaId)` | retry exponencial em 502/503/504 |
 | `serpro` (`serpro.ts`) | `transmitirDeclaracao`, `emitirDas`, `consultarDeclaracao`, helper `buildEnvelope`, `normalizeCnpj`, `_resetSerproTokenCache` (teste). Constantes `SERPRO_SERVICES`, `Tipo`, `TRIBUTO_CODIGOS` | cache de token module-scoped |
 | `n8n` (`n8n.ts`) | `consolidarReceitas`, `calcularRbt12`, `consultaDasMei`, `postAutenticacao`, `uploadCertificado` | HMAC SHA-256 em todo body via `N8N_WEBHOOK_SECRET` |
-| `supabase-storage` (`supabase-storage.ts`) | `uploadCertificado(file, fileName, companyId)`, `fileToBase64(File)` | usa `service_role`, bucket `company-certificates` |
+| `supabase-storage` (`supabase-storage.ts`) | `uploadCertificado(file, fileName, companyId)`, `removeCertificado(path)`, `fileToBase64(File)` | usa `service_role`, bucket `company-certificates` |
 | `_endpoints` (`_endpoints.ts`) | `ENDPOINTS` (catálogo bruto dos 81 endpoints do Bubble) | referência só |
 
 ### 2.4 Schema Supabase (`supabase/migrations/0001_init.sql`)
