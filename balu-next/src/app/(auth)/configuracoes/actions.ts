@@ -4,8 +4,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
-import { CompanySchema, type CompanyInput } from '@/types/zod';
-import { EmpresaFiscalSchema } from '@/types/zod';
+import { CompanySchema, type CompanyInput, EmpresaFiscalSchema } from '@/types/zod';
 import { normalizeRegimePatch, type RegimePatch } from '@/lib/fiscal/regime';
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -59,13 +58,15 @@ export async function upsertEmpresaFiscalAction(patch: RegimePatch): Promise<Act
     .from('empresas_fiscais')
     .select('id')
     .eq('empresa_id', companyId)
+    .eq('owner_user_id', user.id)
     .maybeSingle();
 
   if (existing) {
     const { error } = await supabase
       .from('empresas_fiscais')
       .update({ ...data, updated_at: new Date().toISOString() })
-      .eq('empresa_id', companyId);
+      .eq('empresa_id', companyId)
+      .eq('owner_user_id', user.id);
     if (error) return { ok: false, error: error.message };
   } else {
     const { data: company } = await supabase
