@@ -11,6 +11,7 @@ import {
   lookupCepAction,
   createCompanyAction,
 } from '@/app/(auth)/onboarding/actions';
+import { formatCnpj, formatCep } from '@/lib/format/masks';
 
 type Props = {
   open: boolean;
@@ -85,6 +86,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
     const parsed = CompanyCreateSchema.safeParse({
       ...form,
       cnpj: form.cnpj.replace(/\D+/g, '').padStart(14, '0').slice(-14),
+      cep: form.cep ? form.cep.replace(/\D+/g, '') : undefined,
       email: form.email || undefined,
       uf: form.uf ? form.uf.toUpperCase() : undefined,
     });
@@ -144,7 +146,8 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
             inputMode="numeric"
             placeholder="00.000.000/0000-00"
             value={form.cnpj}
-            onChange={(e) => set('cnpj', e.target.value)}
+            onChange={(e) => set('cnpj', formatCnpj(e.target.value))}
+            maxLength={18}
             className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
             required
           />
@@ -159,7 +162,8 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
               inputMode="numeric"
               placeholder="00000-000"
               value={form.cep ?? ''}
-              onChange={(e) => set('cep', e.target.value)}
+              onChange={(e) => set('cep', formatCep(e.target.value))}
+              maxLength={9}
               className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm"
             />
             <button
