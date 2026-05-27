@@ -7,7 +7,7 @@ import { useToast } from '@/components/Toaster';
 import PopupConfirm from '@/components/PopupConfirm';
 import { uploadCertificadoAction } from './actions';
 
-export default function CertificadoForm({ enviadoEm }: { enviadoEm: string | null }) {
+export default function CertificadoForm({ enviadoEm, validoAte }: { enviadoEm: string | null; validoAte?: string | null }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadingRef = useRef(false); // latch síncrono contra duplo-envio
@@ -58,7 +58,9 @@ export default function CertificadoForm({ enviadoEm }: { enviadoEm: string | nul
         <ShieldCheck className={`size-5 ${enviadoEm ? 'text-success' : 'text-zinc-400'}`} />
         <span className="text-zinc-700">
           {enviadoEm
-            ? `Certificado enviado em ${new Date(enviadoEm).toLocaleString('pt-BR')}.`
+            ? `Certificado enviado em ${new Date(enviadoEm).toLocaleString('pt-BR')}.${
+                validoAte ? ` Válido até ${new Date(validoAte).toLocaleDateString('pt-BR')}.` : ''
+              }`
             : 'Nenhum certificado enviado.'}
         </span>
       </div>

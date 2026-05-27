@@ -60,14 +60,16 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       : null;
 
   let certEnviadoEm: string | null = null;
+  let certValidoAte: string | null = null;
   if (active === 'certificado' && company) {
     const { data: cert } = await supabase
       .from('arquivos_auxiliares')
-      .select('created_at, updated_at')
+      .select('created_at, updated_at, cert_not_after')
       .eq('unique_id_empresa', company.id as string)
       .is('deleted_at', null)
       .maybeSingle();
     certEnviadoEm = (cert?.updated_at as string | null) ?? (cert?.created_at as string | null) ?? null;
+    certValidoAte = (cert?.cert_not_after as string | null) ?? null;
   }
 
   return (
@@ -152,7 +154,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           uf={(company.uf as string) ?? ''}
         />
       ) : (
-        <CertificadoForm key={company.id as string} enviadoEm={certEnviadoEm} />
+        <CertificadoForm key={company.id as string} enviadoEm={certEnviadoEm} validoAte={certValidoAte} />
       )}
     </main>
   );
