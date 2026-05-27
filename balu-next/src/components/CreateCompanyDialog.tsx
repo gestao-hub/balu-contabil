@@ -3,7 +3,7 @@
 // Popup único com 3 etapas visíveis (CNPJ → CEP → revisão).
 // Não é wizard: tudo fica numa só tela, etapas são apenas seções colapsáveis lógicas.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Building2, MapPin, X, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { CompanyCreateSchema, type CompanyInput } from '@/types/zod';
@@ -44,6 +44,7 @@ const EMPTY: Form = {
 export default function CreateCompanyDialog({ open, forceCreate = false, onClose, onCreated }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const toast = useToast();
+  const titleId = useId(); // id único por instância — evita aria-labelledby duplicado
   const [form, setForm] = useState<Form>(EMPTY);
   const [busyCep, setBusyCep] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -53,6 +54,15 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
     if (!d) return;
     if (open && !d.open) d.showModal();
     if (!open && d.open) d.close();
+  }, [open]);
+
+  // Reabrir o popup (ex.: botão "Nova empresa" do menu) deve começar limpo.
+  useEffect(() => {
+    if (!open) {
+      setForm(EMPTY);
+      setBusyCep(false);
+      setSubmitting(false);
+    }
   }, [open]);
 
   function set<K extends keyof Form>(k: K, v: Form[K]) {
@@ -112,7 +122,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
   return (
     <dialog
       ref={dialogRef}
-      aria-labelledby="create-company-title"
+      aria-labelledby={titleId}
       onCancel={(e) => { e.preventDefault(); if (!forceCreate) onClose?.(); }}
       className="rounded-xl border border-zinc-200 p-0 shadow-xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
     >
@@ -123,7 +133,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
               <Building2 className="size-5" />
             </span>
             <div>
-              <h2 id="create-company-title" className="text-lg font-semibold text-brand-navy">
+              <h2 id={titleId} className="text-lg font-semibold text-brand-navy">
                 {forceCreate ? 'Cadastre sua primeira empresa' : 'Nova empresa'}
               </h2>
               <p className="text-sm text-zinc-500">
