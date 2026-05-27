@@ -1,9 +1,17 @@
 # Certificado A1 — Balu assume o ciclo de vida (sem n8n) · design
 
 **Data:** 2026-05-27
-**Status:** aprovado (brainstorming) — pronto para writing-plans
+**Status:** ✅ implementado e mergeado em `main` (`ba47ddb`, 2026-05-27); premissas validadas contra cert real + SERPRO prod.
 **Branch base:** `feat/pr-1.6-certificado`
 **Fontes:** PRD §8; workflow n8n `api serpro integra contador` (dissecado, `docs/n8n/`, redigido); infra existente `supabase-storage.ts`, `serpro.ts`, `n8n.ts`, tabelas `arquivos_auxiliares` / `empresas_fiscais`.
+
+## Status de implementação (o que mudou vs. o desenho)
+Construído conforme o desenho, com estes ajustes intencionais:
+- **Envelope = JSON**, não `Buffer.concat`: cifra-se `JSON.stringify({keyPem, certPem, chainPem})` (separável de forma inequívoca na leitura). Ver §4.
+- **Auth SERPRO acontece no upload (best-effort)**, não como refresh lazy. O **§5 (refresh sob demanda) e o `downloadCertificado` do §6 foram DEFERIDOS** — só fazem sentido junto do consumidor downstream (enviar o `certificado_jwt` nas chamadas fiscais), que está fora de escopo. O `.enc` já fica persistido para esse consumidor futuro.
+- **Endurecimentos vindos do code review**: leaf escolhido por casamento da chave (ordem-independente) no `pkcs12.ts`; timeout + status HTTP no `serpro-auth.ts`; `content-type` do blob = `application/octet-stream`; guarda de tamanho no `decryptBlob`; erro de cifra tratado na action.
+- **UI**: a exibição da validade ("Válido até") foi incluída (estava como possível extra).
+- **Pendências manuais** (fora do código): aplicada a migration `0003` ✓; falta rotacionar `service_role` + `Consumer_Secret` e desativar os webhooks n8n.
 
 ## Contexto
 
@@ -93,19 +101,20 @@ export async function autenticarProcurador(material: CertMaterial): Promise<Proc
 3. `buf = await file.arrayBuffer()`; `material = parsePkcs12(buf, senha)`.
    - Senha incorreta → `{ ok:false, error:'Senha do certificado incorreta.' }`.
    - `material.notAfter < now` → `{ ok:false, error:'Certificado expirado em <data>.' }` (bloqueia).
-4. `blob = encryptBlob(Buffer.concat([keyPem, certPem, chainPem]))` (PEM concatenado, separável na leitura).
+4. `blob = encryptBlob(Buffer.from(JSON.stringify({ keyPem, certPem, chainPem })))` (envelope JSON, separável de forma inequívoca na leitura).
 5. `storageUpload(blob, '{uid}.enc', companyId)` no bucket privado (service_role).
 6. Upsert em `arquivos_auxiliares` por `unique_id_empresa = companyId`: `storage_key`, `cert_not_after`, `cert_subject_cn`, `cert_cnpj`, `cert_fingerprint`, `cert_password = null`, `updated_at`.
 7. `revalidatePath('/configuracoes')`. **Não chama n8n.**
 - Falha de SERPRO **não** participa do upload (auth é lazy/separada) → upload bem-sucedido independe da SERPRO no ar (mantém princípio "salva primeiro").
 
-### 5. Auth SERPRO sob demanda
+### 5. Auth SERPRO sob demanda — ⚠️ DEFERIDO (ver Status de implementação)
+> Não construído. Na entrega, a autenticação acontece **best-effort no upload** (a action já tem o material em mãos). O refresh lazy abaixo só vale a pena junto do consumidor downstream do `certificado_jwt`.
 - Função (em `serpro-auth.ts` ou helper): dado `companyId`, lê `empresas_fiscais.certificado_*`; se `certificado_token_expiration` válido (com skew) → retorna cache; senão → baixa `.enc`, `decryptBlob`, separa PEM, `autenticarProcurador`, grava tokens em `empresas_fiscais`, retorna.
 - Sem cron: renova quando uma chamada precisar e o cache estiver vencido.
 
 ### 6. `supabase-storage.ts` — ajuste
-- `uploadCertificado(blob, '{uid}.enc', companyId)` grava o blob cifrado.
-- `downloadCertificado(storageKey) → Buffer` (novo) para a auth lazy.
+- `uploadCertificado(blob, '{uid}.enc', companyId)` grava o blob cifrado (`content-type: application/octet-stream`). Removido o `fileToBase64` (era só pro n8n).
+- ~~`downloadCertificado(storageKey) → Buffer` (novo) para a auth lazy~~ — ⚠️ **DEFERIDO** junto do §5 (sem consumidor ainda).
 - Continua usando service_role; bucket permanece privado.
 
 ### 7. Banco — migration + tipos
