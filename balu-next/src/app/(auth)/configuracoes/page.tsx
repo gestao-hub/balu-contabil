@@ -45,6 +45,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         .from('empresas_fiscais')
         .select('*')
         .eq('empresa_id', profile.current_company)
+        .is('deleted_at', null)
         .maybeSingle();
       empresaFiscal = ef ?? null;
     }

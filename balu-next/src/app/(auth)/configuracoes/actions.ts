@@ -59,6 +59,7 @@ export async function upsertEmpresaFiscalAction(patch: RegimePatch): Promise<Act
     .select('id')
     .eq('empresa_id', companyId)
     .eq('owner_user_id', user.id)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (existing) {
