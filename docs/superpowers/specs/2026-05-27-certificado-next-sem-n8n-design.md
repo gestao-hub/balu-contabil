@@ -140,8 +140,11 @@ export async function autenticarProcurador(material: CertMaterial): Promise<Proc
 - `tsc --noEmit` zero erros.
 - **Manual:** upload de `.pfx` de teste → objeto `{uid}.enc` no bucket; `arquivos_auxiliares` com metadados e `cert_password = null`; disparar auth lazy → `empresas_fiscais.certificado_*` preenchido; toast de sucesso.
 
-## Premissas a confirmar na implementação
-- `SERPRO_CONSUMER_KEY/SECRET` são **globais do Balu** (contratante), reusados de `serpro.ts`. (No n8n vinham no body, mas os valores conferem com credenciais globais.)
+## Premissas
+**Confirmada:**
+- `SERPRO_CONSUMER_KEY/SECRET` são **globais do Balu** (contratante), reusados de `serpro.ts`, já presentes no `.env.local`. (No n8n vinham no body, mas são as credenciais globais.)
+
+**A verificar na implementação:**
 - Endpoint/headers de autenticação SERPRO conforme o `jsCode` `autenticacao_mTLS` do workflow (`autenticacao.sapi.serpro.gov.br/authenticate`, `role-type: TERCEIROS`).
 - `node-forge` abre os PFX A1 de teste sem necessidade de re-export (key+cert PEM bastam para o mTLS do Node).
 
