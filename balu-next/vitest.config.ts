@@ -10,6 +10,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // No-op stub: server-only lança em Client Components, mas em vitest/node é inerte.
+      'server-only': fileURLToPath(new URL('./src/__mocks__/server-only.ts', import.meta.url)),
     },
   },
 });
