@@ -4,9 +4,11 @@
 // "Salvar" + "Cancelar". Cancelar reverte aos valores salvos; salvar re-bloqueia.
 // CNPJ permanece sempre bloqueado.
 import { useState } from 'react';
-import { Loader2, Save, Pencil } from 'lucide-react';
+import { Loader2, Save, Pencil, MapPin } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { CompanySchema, type CompanyInput } from '@/types/zod';
+import { formatCnpj, formatCep } from '@/lib/format/masks';
+import { lookupCepAction } from '@/app/(auth)/onboarding/actions';
 import { updateCompanyAction } from './actions';
 
 type Props = {
@@ -19,6 +21,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
   const [form, setForm] = useState<Partial<CompanyInput>>(initial);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [busyCep, setBusyCep] = useState(false);
 
   const locked = !editing;
 
@@ -31,11 +34,35 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
     setEditing(false);
   }
 
+  async function handleLookupCep() {
+    const digits = (form.cep ?? '').replace(/\D+/g, '');
+    if (digits.length !== 8) {
+      toast('warning', 'Informe um CEP com 8 dígitos.');
+      return;
+    }
+    setBusyCep(true);
+    try {
+      const r = await lookupCepAction(digits);
+      if (!r.ok) { toast('error', r.error); return; }
+      setForm((prev) => ({
+        ...prev,
+        logradouro: r.data.logradouro ?? prev.logradouro,
+        bairro: r.data.bairro ?? prev.bairro,
+        municipio: r.data.municipio ?? prev.municipio,
+        uf: r.data.uf ?? prev.uf,
+      }));
+      toast('success', 'Endereço preenchido.');
+    } finally {
+      setBusyCep(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     // Validação completa (endereço rua/cidade/estado é obrigatório).
     const parsed = CompanySchema.safeParse({
       ...form,
+      cep: form.cep ? form.cep.replace(/\D+/g, '') : undefined,
       email: form.email || undefined,
       uf: form.uf ? form.uf.toUpperCase() : undefined,
     });
@@ -58,11 +85,33 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
     <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 max-w-3xl">
       <Field label="Razão social" value={form.razao_social ?? ''} onChange={(v) => set('razao_social', v)} disabled={locked} className="col-span-2" />
       <Field label="Nome fantasia" value={form.nome ?? ''} onChange={(v) => set('nome', v)} disabled={locked} className="col-span-2" />
-      <Field label="CNPJ" value={form.cnpj ?? ''} onChange={(v) => set('cnpj', v)} disabled />
+      <Field label="CNPJ" value={formatCnpj(form.cnpj ?? '')} onChange={(v) => set('cnpj', v)} disabled />
       <Field label="Inscrição estadual" value={form.inscricao_estadual ?? ''} onChange={(v) => set('inscricao_estadual', v)} disabled={locked} />
       <Field label="Inscrição municipal" value={form.inscricao_municipal ?? ''} onChange={(v) => set('inscricao_municipal', v)} disabled={locked} />
       <Field label="Código município (IBGE)" value={form.codigo_municipio ?? ''} onChange={(v) => set('codigo_municipio', v)} disabled={locked} />
-      <Field label="CEP" value={form.cep ?? ''} onChange={(v) => set('cep', v)} disabled={locked} />
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-xs font-medium text-zinc-600">CEP</span>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={formatCep(form.cep ?? '')}
+            onChange={(e) => set('cep', formatCep(e.target.value))}
+            disabled={locked}
+            maxLength={9}
+            className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
+          />
+          <button
+            type="button"
+            onClick={handleLookupCep}
+            disabled={locked || busyCep}
+            className="inline-flex items-center gap-1 rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+          >
+            {busyCep ? <Loader2 className="size-4 animate-spin" /> : <MapPin className="size-4" />}
+            Buscar
+          </button>
+        </div>
+      </label>
       <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} disabled={locked} required className="col-span-2" />
       <div className="flex flex-col gap-1 text-sm">
         <span className="text-xs font-medium text-zinc-600">
