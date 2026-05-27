@@ -109,9 +109,9 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
       const r = await createCompanyAction(parsed.data);
       if (!r.ok) { toast('error', r.error); return; }
       toast('success', 'Empresa criada!');
+      // No sucesso, quem fecha é o onCreated do caller (ex.: menu → setAddOpen(false)+refresh).
+      // No onboarding (forceCreate, sem onCreated) o popup some via layout após revalidatePath('/').
       onCreated?.(r.id);
-      if (!forceCreate) onClose?.();
-      // Após criar, o layout faz revalidatePath('/') e o popup fecha sozinho via prop `open`.
     } finally {
       setSubmitting(false);
     }

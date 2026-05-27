@@ -135,7 +135,7 @@ export default function MenuLateral({
             {isDev && (
               <button
                 type="button"
-                onClick={() => setAddOpen(true)}
+                onClick={() => { setCompanyMenuOpen(false); setAddOpen(true); }}
                 className="mt-2 flex w-full items-center gap-1.5 rounded-md border border-dashed border-zinc-300 px-2 py-1.5 text-xs text-zinc-600 hover:border-primary hover:text-primary"
               >
                 <Plus className="size-3.5 shrink-0" />
