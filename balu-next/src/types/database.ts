@@ -217,6 +217,10 @@ export type Tables = {
     supabase_file_path: string | null;
     storage_key: string | null;
     cert_password: string | null;
+    cert_not_after: string | null;
+    cert_subject_cn: string | null;
+    cert_cnpj: string | null;
+    cert_fingerprint: string | null;
     created_at: string | null;
     updated_at: string | null;
     deleted_at: string | null;
