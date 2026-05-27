@@ -1,7 +1,9 @@
 'use client';
 // @custom — PR 1.4: aba "Regime tributário" das Configurações (PRD §8).
+// Abre em modo leitura (campos bloqueados + botão "Editar"); ao editar, o footer
+// vira "Salvar" + "Cancelar". Cancelar reverte aos últimos valores; salvar re-bloqueia.
 import { useState } from 'react';
-import { Loader2, Save } from 'lucide-react';
+import { Loader2, Save, Pencil } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import {
   REGIME_OPTIONS, FAIXA_OPTIONS,
@@ -22,11 +24,25 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
   const [faixa, setFaixa] = useState<string>(faixaFromAnexo(initial?.anexo_simples ?? null) ?? '');
   const [fatorR, setFatorR] = useState<boolean>(!!initial?.usa_fator_r);
   const [cnae, setCnae] = useState<string>(initial?.cnae_principal ?? '');
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const mei = isMei(code);
   const anexo = anexoFromFaixa(faixa);
   const mostraFatorR = !mei && fatorRAplicavel(anexo);
+  const locked = !editing;
+
+  function resetFromInitial() {
+    setCode(initial?.Code_regime_tributario ?? '');
+    setFaixa(faixaFromAnexo(initial?.anexo_simples ?? null) ?? '');
+    setFatorR(!!initial?.usa_fator_r);
+    setCnae(initial?.cnae_principal ?? '');
+  }
+
+  function handleCancel() {
+    resetFromInitial();
+    setEditing(false);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,6 +57,7 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
       });
       if (!r.ok) { toast('error', r.error); return; }
       toast('success', 'Regime tributário salvo.');
+      setEditing(false);
     } finally {
       setBusy(false);
     }
@@ -53,7 +70,8 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
         <select
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          disabled={locked}
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
         >
           <option value="">Selecione…</option>
           {REGIME_OPTIONS.map((o) => (
@@ -68,7 +86,8 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
           <select
             value={faixa}
             onChange={(e) => setFaixa(e.target.value)}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            disabled={locked}
+            className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
           >
             <option value="">Selecione…</option>
             {FAIXA_OPTIONS.map((o) => (
@@ -84,7 +103,8 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
             type="checkbox"
             checked={fatorR}
             onChange={(e) => setFatorR(e.target.checked)}
-            className="size-4 rounded border-zinc-300"
+            disabled={locked}
+            className="size-4 rounded border-zinc-300 disabled:opacity-50"
           />
           <span className="text-zinc-700">Usa Fator R (serviços — Anexo III/V)</span>
         </label>
@@ -97,19 +117,41 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
           value={cnae}
           onChange={(e) => setCnae(e.target.value)}
           placeholder="0000-0/00"
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          disabled={locked}
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
         />
       </label>
 
-      <div className="col-span-2 mt-2 flex justify-end">
-        <button
-          type="submit"
-          disabled={busy}
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-          Salvar
-        </button>
+      <div className="col-span-2 mt-2 flex justify-end gap-2">
+        {editing ? (
+          <>
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={busy}
+              className="rounded-md border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Salvar
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            <Pencil className="size-4" />
+            Editar
+          </button>
+        )}
       </div>
     </form>
   );
