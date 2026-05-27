@@ -1,4 +1,5 @@
 import 'server-only';
+// @custom — PR 1.5: resolver de município NFS-e (server-only, Supabase).
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeNome } from './municipio-nfse';
 
