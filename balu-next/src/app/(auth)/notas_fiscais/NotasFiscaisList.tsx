@@ -5,8 +5,9 @@
 // badges, linha clicável → detalhe, export CSV. Padrão de ClientesListClient.
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, Download } from 'lucide-react';
+import { Search, Download, FileText } from 'lucide-react';
 import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import { useToast } from '@/components/Toaster';
 import { exportNotasCsvAction } from './actions';
@@ -26,10 +27,12 @@ export type NotaListRow = {
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const TIPO_LABEL: Record<string, string> = { NFe: 'NF-e', NFCe: 'NFC-e', NFSe: 'NFS-e' };
+// Status canônico do Balu (alinhado com mapStatusFocus e emitirNotaAction):
+//   pendente | ativa | cancelada | erro
 const STATUS_META: Record<string, { label: string; cls: string }> = {
-  autorizada: { label: 'Autorizada', cls: 'bg-success/10 text-success' },
-  processando: { label: 'Processando', cls: 'bg-alert/10 text-alert' },
-  rejeitada: { label: 'Rejeitada', cls: 'bg-destructive/10 text-destructive' },
+  ativa: { label: 'Ativa', cls: 'bg-success/10 text-success' },
+  pendente: { label: 'Pendente', cls: 'bg-alert/10 text-alert' },
+  erro: { label: 'Erro', cls: 'bg-destructive/10 text-destructive' },
   cancelada: { label: 'Cancelada', cls: 'bg-zinc-100 text-zinc-600' },
 };
 
@@ -130,9 +133,9 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none"
           >
             <option value="todos">Todos os status</option>
-            <option value="autorizada">Autorizada</option>
-            <option value="processando">Processando</option>
-            <option value="rejeitada">Rejeitada</option>
+            <option value="ativa">Ativa</option>
+            <option value="pendente">Pendente</option>
+            <option value="erro">Erro</option>
             <option value="cancelada">Cancelada</option>
           </select>
 
@@ -147,6 +150,14 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             <Download className="size-4" />
             {exporting ? 'Exportando…' : 'Exportar CSV'}
           </button>
+
+          <Link
+            href="/notas_fiscais/emissao"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            <FileText className="size-4" />
+            Emitir nova
+          </Link>
         </div>
       </div>
 
