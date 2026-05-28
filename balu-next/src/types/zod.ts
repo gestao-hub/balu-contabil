@@ -41,6 +41,10 @@ const companyObject = z.object({
   cep: z.string().optional(),
   telefone: z.string().optional(),
   email: z.string().email().optional(),
+  // Regime tributário (mora em empresas_fiscais; coletado no cadastro pra alimentar
+  // o POST /v2/empresas da Focus). Opcional aqui pra não quebrar o form de edição;
+  // o CompanyCreateSchema reforça como obrigatório.
+  Code_regime_tributario: z.enum(['1', '2', '3', '4']).optional(),
 });
 
 // Número obrigatório, salvo quando "Sem número" (sem_numero) estiver marcado.
@@ -56,6 +60,9 @@ export type CompanyInput = z.infer<typeof companyObject>;
 export const CompanyCreateSchema = companyObject
   .extend({
     cnpj: z.string().length(14, 'CNPJ deve ter 14 dígitos.').refine(isValidCnpj, 'CNPJ inválido.'),
+    Code_regime_tributario: z.enum(['1', '2', '3', '4'], {
+      errorMap: () => ({ message: 'Selecione o regime tributário.' }),
+    }),
   })
   .refine(numeroOuSemNumero, numeroError);
 

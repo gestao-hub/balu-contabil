@@ -101,10 +101,32 @@ async function call<T>(
   throw lastErr ?? new Error(`Focus ${method} ${path} → falhou após ${MAX_RETRIES} tentativas`);
 }
 
+/**
+ * Resposta esperada do POST /v2/empresas (revenda). O campo crítico é `token_producao` /
+ * `token_homologacao` — devolvido pela Focus, usado como Basic-auth nas chamadas
+ * por-empresa (atualizar, enviar cert via PUT). A doc lista vários outros campos
+ * (id, status, etc); aqui só fixamos os que consumimos.
+ */
+export type FocusEmpresaCriada = {
+  token_producao?: string;
+  token_homologacao?: string;
+  cnpj?: string;
+  // Demais campos devolvidos pela Focus chegam mas não tipamos.
+  [k: string]: unknown;
+};
+
 export const focus = {
   /** GET /v2/cnpjs/:cnpj — consulta dados de empresa */
   consultarCnpj: (cnpj: string, env: FocusEnv = 'prod') =>
     call<Record<string, unknown>>(env, 'GET', `/v2/cnpjs/${cnpj}`),
+
+  /**
+   * POST /v2/empresas — cadastra empresa na Focus (API de revenda). Retorna token
+   * próprio da empresa (consumido nos PUTs subsequentes).
+   * Default `hom` por segurança — Focus 1 só exercita homologação.
+   */
+  criarEmpresa: (payload: Record<string, unknown>, env: FocusEnv = 'hom') =>
+    call<FocusEmpresaCriada>(env, 'POST', `/v2/empresas`, payload),
 
   // ---------- Emissão ----------
   /** POST /v2/nfe?ref=:ref — emissão NFe (idempotente por ref) */

@@ -39,6 +39,10 @@ export type Tables = {
     cep: string | null;
     telefone: string | null;
     email: string | null;
+    focus_token: string | null;
+    focus_status: string | null;
+    focus_last_check: string | null;
+    focus_last_error: string | null;
     created_at: string | null;
     updated_at: string | null;
     deleted_at: string | null;
