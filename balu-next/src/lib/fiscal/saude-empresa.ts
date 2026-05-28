@@ -1,0 +1,247 @@
+// @custom — Focus 3: helpers puros pra montar o painel "Saúde da empresa".
+// Recebe o estado já resolvido (companies + arquivos_auxiliares + empresas_fiscais
+// + municipios_nfse) e devolve a lista de 5 checks com status + ação contextual.
+// Sem deps de React/Supabase — testável isoladamente (saude-empresa.test.ts).
+
+export type CheckStatus = 'ok' | 'pendente' | 'erro';
+export type CheckActionKey = 'sync_focus' | 'upload_cert' | 'reauth_serpro' | 'editar_endereco' | null;
+
+export type CheckResult = {
+  key: 'cidade_nfse' | 'cert_presente' | 'cert_valido' | 'serpro' | 'focus_cadastro';
+  label: string;
+  status: CheckStatus;
+  hint: string;
+  action: CheckActionKey;
+  /** Timestamp ISO da última verificação relevante, se aplicável. */
+  lastCheck?: string | null;
+};
+
+export type SaudeState = {
+  // Endereço atual (pra check 1)
+  municipio: string | null;
+  uf: string | null;
+  // Resolvido por resolveMunicipioNfse: presença = município conhecido; null = desconhecido
+  municipioInfo: {
+    producao_disponivel: string | null;
+    homologacao_disponivel: string | null;
+    provedor: string | null;
+  } | null;
+  // Cert (arquivos_auxiliares)
+  certPresente: boolean;
+  certNotAfter: string | null;   // ISO; null se ausente
+  // SERPRO (empresas_fiscais)
+  serproTokenExpiration: string | null; // ISO; null se nunca autenticado
+  // Focus (companies)
+  focusStatus: 'ok' | 'erro' | null;
+  focusToken: string | null;
+  focusLastCheck: string | null;
+  focusLastError: string | null;
+};
+
+const SKEW_MS = 5 * 60 * 1000;
+
+/** Retorna true se a data ISO está no futuro (com folga `skew`). */
+export function isInFutureISO(iso: string | null, now: Date = new Date(), skewMs = 0): boolean {
+  if (!iso) return false;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return false;
+  return t - skewMs > now.getTime();
+}
+
+/** Dias entre `iso` e `now` (positivo se no futuro, negativo se no passado). */
+export function daysUntilISO(iso: string | null, now: Date = new Date()): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return Math.floor((t - now.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+export function buildSaudeChecks(state: SaudeState, now: Date = new Date()): CheckResult[] {
+  return [
+    cidadeNfseCheck(state),
+    certPresenteCheck(state),
+    certValidoCheck(state, now),
+    serproCheck(state, now),
+    focusCadastroCheck(state),
+  ];
+}
+
+function cidadeNfseCheck(state: SaudeState): CheckResult {
+  const lugar = state.municipio && state.uf ? `${state.municipio}/${state.uf}` : '—';
+  if (!state.municipio || !state.uf) {
+    return {
+      key: 'cidade_nfse',
+      label: 'Cidade credenciada para NFS-e',
+      status: 'pendente',
+      hint: 'Endereço da empresa incompleto. Preencha em "Dados da empresa".',
+      action: 'editar_endereco',
+    };
+  }
+  if (!state.municipioInfo) {
+    return {
+      key: 'cidade_nfse',
+      label: 'Cidade credenciada para NFS-e',
+      status: 'erro',
+      hint: `${lugar} ainda não consta na base de municípios com NFS-e suportada.`,
+      action: null,
+    };
+  }
+  const prod = state.municipioInfo.producao_disponivel;
+  if (prod && prod.toLowerCase() === 'sim') {
+    return {
+      key: 'cidade_nfse',
+      label: 'Cidade credenciada para NFS-e',
+      status: 'ok',
+      hint: `${lugar} · provedor ${state.municipioInfo.provedor ?? '—'}`,
+      action: null,
+    };
+  }
+  return {
+    key: 'cidade_nfse',
+    label: 'Cidade credenciada para NFS-e',
+    status: 'pendente',
+    hint: `${lugar} suportada apenas em homologação (produção ainda não disponível).`,
+    action: null,
+  };
+}
+
+function certPresenteCheck(state: SaudeState): CheckResult {
+  if (state.certPresente) {
+    return {
+      key: 'cert_presente',
+      label: 'Certificado A1 enviado',
+      status: 'ok',
+      hint: 'Certificado armazenado de forma segura.',
+      action: null,
+    };
+  }
+  return {
+    key: 'cert_presente',
+    label: 'Certificado A1 enviado',
+    status: 'pendente',
+    hint: 'Nenhum certificado foi enviado. Suba o .pfx em "Emissão fiscal".',
+    action: 'upload_cert',
+  };
+}
+
+function certValidoCheck(state: SaudeState, now: Date): CheckResult {
+  if (!state.certPresente) {
+    return {
+      key: 'cert_valido',
+      label: 'Certificado A1 válido',
+      status: 'pendente',
+      hint: 'Sem certificado para verificar.',
+      action: null,
+    };
+  }
+  if (!state.certNotAfter) {
+    return {
+      key: 'cert_valido',
+      label: 'Certificado A1 válido',
+      status: 'pendente',
+      hint: 'Data de validade não detectada — re-upload pode resolver.',
+      action: 'upload_cert',
+    };
+  }
+  const days = daysUntilISO(state.certNotAfter, now);
+  if (days != null && days < 0) {
+    return {
+      key: 'cert_valido',
+      label: 'Certificado A1 válido',
+      status: 'erro',
+      hint: `Expirado em ${formatBR(state.certNotAfter)} (${-days} dia(s) atrás). Suba um novo.`,
+      action: 'upload_cert',
+      lastCheck: state.certNotAfter,
+    };
+  }
+  if (days != null && days <= 30) {
+    return {
+      key: 'cert_valido',
+      label: 'Certificado A1 válido',
+      status: 'pendente',
+      hint: `Vence em ${days} dia(s) (${formatBR(state.certNotAfter)}). Renove em breve.`,
+      action: 'upload_cert',
+      lastCheck: state.certNotAfter,
+    };
+  }
+  return {
+    key: 'cert_valido',
+    label: 'Certificado A1 válido',
+    status: 'ok',
+    hint: `Válido até ${formatBR(state.certNotAfter)}${days != null ? ` (${days} dia(s))` : ''}.`,
+    action: null,
+    lastCheck: state.certNotAfter,
+  };
+}
+
+function serproCheck(state: SaudeState, now: Date): CheckResult {
+  if (!state.serproTokenExpiration) {
+    return {
+      key: 'serpro',
+      label: 'SERPRO conectada',
+      status: 'pendente',
+      hint: 'Token nunca foi obtido. Requer certificado A1 válido para autenticar.',
+      action: 'reauth_serpro',
+    };
+  }
+  if (!isInFutureISO(state.serproTokenExpiration, now, SKEW_MS)) {
+    return {
+      key: 'serpro',
+      label: 'SERPRO conectada',
+      status: 'pendente',
+      hint: `Token expirado em ${formatBR(state.serproTokenExpiration)}. Será renovado na próxima chamada.`,
+      action: 'reauth_serpro',
+      lastCheck: state.serproTokenExpiration,
+    };
+  }
+  return {
+    key: 'serpro',
+    label: 'SERPRO conectada',
+    status: 'ok',
+    hint: `Token válido até ${formatBR(state.serproTokenExpiration)}.`,
+    action: null,
+    lastCheck: state.serproTokenExpiration,
+  };
+}
+
+function focusCadastroCheck(state: SaudeState): CheckResult {
+  if (state.focusStatus === 'ok' && state.focusToken) {
+    return {
+      key: 'focus_cadastro',
+      label: 'Cadastro na Focus funcional',
+      status: 'ok',
+      hint: `Empresa cadastrada na Focus${state.focusLastCheck ? ` em ${formatBR(state.focusLastCheck)}` : ''}.`,
+      action: null,
+      lastCheck: state.focusLastCheck,
+    };
+  }
+  if (state.focusStatus === 'erro') {
+    return {
+      key: 'focus_cadastro',
+      label: 'Cadastro na Focus funcional',
+      status: 'erro',
+      hint: state.focusLastError
+        ? `Última tentativa falhou: ${truncate(state.focusLastError, 140)}`
+        : 'Última tentativa de cadastro na Focus falhou.',
+      action: 'sync_focus',
+      lastCheck: state.focusLastCheck,
+    };
+  }
+  return {
+    key: 'focus_cadastro',
+    label: 'Cadastro na Focus funcional',
+    status: 'pendente',
+    hint: 'Empresa ainda não foi cadastrada na Focus.',
+    action: 'sync_focus',
+  };
+}
+
+function formatBR(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}

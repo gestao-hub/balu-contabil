@@ -9,8 +9,7 @@
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { CompanyCreateSchema, type CompanyInput } from '@/types/zod';
-import { focus } from '@/lib/clients/focus-nfe';
-import { buildFocusEmpresaPayload } from '@/lib/fiscal/focus-empresa-payload';
+import { syncEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 
 export type CepLookup = {
@@ -115,77 +114,16 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
     console.warn('[createCompany] empresas_fiscais insert falhou:', fiscalErr.message);
   }
 
-  // POST best-effort na Focus (homologação). Falha NÃO bloqueia o cadastro:
-  // resultado fica em companies.focus_status + focus_last_error, exibido no
-  // painel "Saúde da empresa" (Focus 3) com botão de retry.
-  await cadastrarEmpresaNaFocus(supabase, row.id, companyFields, Code_regime_tributario);
+  // POST best-effort na Focus. Falha NÃO bloqueia o cadastro: resultado fica
+  // em companies.focus_status + focus_last_error, exibido no painel "Saúde da
+  // empresa" (Focus 3) com botão de retry.
+  const sync = await syncEmpresaNaFocus(supabase, row.id);
+  if (!sync.ok) {
+    console.warn('[createCompany] Focus POST falhou:', sync.error);
+  }
 
   revalidatePath('/');
   return { ok: true, id: row.id };
-}
-
-/**
- * Best-effort: monta payload, chama POST /v2/empresas em homologação, persiste
- * token+status em companies. Toda falha é capturada e gravada como `focus_status='erro'`
- * — nunca lança pra fora. Caller deve seguir o fluxo independente do resultado.
- */
-type CompanyFieldsForFocus = Omit<CompanyInput, 'Code_regime_tributario'> & {
-  cnpj: string; // já normalizado (14 dígitos)
-};
-
-async function cadastrarEmpresaNaFocus(
-  supabase: Awaited<ReturnType<typeof createServerClient>>,
-  companyId: string,
-  companyFields: CompanyFieldsForFocus,
-  regimeCode: '1' | '2' | '3' | '4',
-): Promise<void> {
-  const now = new Date().toISOString();
-  try {
-    const focusPayload = buildFocusEmpresaPayload(
-      {
-        cnpj: companyFields.cnpj,
-        razao_social: companyFields.razao_social,
-        nome: companyFields.nome ?? null,
-        logradouro: companyFields.logradouro,
-        numero: companyFields.numero ?? null,
-        sem_numero: companyFields.sem_numero ?? null,
-        complemento: null, // companyObject não tem complemento ainda; fica vazio
-        bairro: companyFields.bairro ?? null,
-        municipio: companyFields.municipio,
-        uf: companyFields.uf,
-        cep: companyFields.cep ?? null,
-        email: companyFields.email ?? null,
-        telefone: companyFields.telefone ?? null,
-        inscricao_estadual: companyFields.inscricao_estadual ?? null,
-        inscricao_municipal: companyFields.inscricao_municipal ?? null,
-      },
-      regimeCode,
-    );
-
-    const resp = await focus.criarEmpresa(focusPayload, 'hom');
-    const token = resp.token_homologacao ?? resp.token_producao ?? null;
-
-    await supabase
-      .from('companies')
-      .update({
-        focus_token: token,
-        focus_status: 'ok',
-        focus_last_check: now,
-        focus_last_error: null,
-      })
-      .eq('id', companyId);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn('[createCompany] Focus POST falhou:', msg);
-    await supabase
-      .from('companies')
-      .update({
-        focus_status: 'erro',
-        focus_last_check: now,
-        focus_last_error: msg.slice(0, 500),
-      })
-      .eq('id', companyId);
-  }
 }
 
 function stringOrUndef(v: unknown): string | undefined {

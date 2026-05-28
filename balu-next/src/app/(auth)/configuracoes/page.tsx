@@ -7,12 +7,15 @@ import { createServerClient } from '@/lib/supabase/server';
 import DadosEmpresaForm from './DadosEmpresaForm';
 import RegimeTributarioForm from './RegimeTributarioForm';
 import EmissaoFiscalTab from './EmissaoFiscalTab';
+import SaudeEmpresaTab from './SaudeEmpresaTab';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
+import type { SaudeState } from '@/lib/fiscal/saude-empresa';
 
 const TABS = [
   { key: 'dados', label: 'Dados da empresa' },
   { key: 'regime', label: 'Regime tributário' },
   { key: 'fiscal', label: 'Emissão fiscal' },
+  { key: 'saude', label: 'Saúde da empresa' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 // Compat: aliases das URLs antigas pra não quebrar bookmarks/links.
@@ -57,22 +60,46 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     }
   }
 
-  const municipioNfse =
-    active === 'fiscal' && company
-      ? await resolveMunicipioNfse(supabase, company.municipio as string, company.uf as string)
-      : null;
+  const needsMunicipio = (active === 'fiscal' || active === 'saude') && !!company;
+  const municipioNfse = needsMunicipio
+    ? await resolveMunicipioNfse(supabase, company!.municipio as string, company!.uf as string)
+    : null;
 
   let certEnviadoEm: string | null = null;
   let certValidoAte: string | null = null;
-  if (active === 'fiscal' && company) {
+  let certStorageKey: string | null = null;
+  if ((active === 'fiscal' || active === 'saude') && company) {
     const { data: cert } = await supabase
       .from('arquivos_auxiliares')
-      .select('created_at, updated_at, cert_not_after')
+      .select('created_at, updated_at, cert_not_after, storage_key')
       .eq('unique_id_empresa', company.id as string)
       .is('deleted_at', null)
       .maybeSingle();
     certEnviadoEm = (cert?.updated_at as string | null) ?? (cert?.created_at as string | null) ?? null;
     certValidoAte = (cert?.cert_not_after as string | null) ?? null;
+    certStorageKey = (cert?.storage_key as string | null) ?? null;
+  }
+
+  let saudeState: SaudeState | null = null;
+  if (active === 'saude' && company) {
+    saudeState = {
+      municipio: (company.municipio as string | null) ?? null,
+      uf: (company.uf as string | null) ?? null,
+      municipioInfo: municipioNfse
+        ? {
+            producao_disponivel: (municipioNfse as { producao_disponivel?: string | null }).producao_disponivel ?? null,
+            homologacao_disponivel: (municipioNfse as { homologacao_disponivel?: string | null }).homologacao_disponivel ?? null,
+            provedor: (municipioNfse as { provedor?: string | null }).provedor ?? null,
+          }
+        : null,
+      certPresente: !!certStorageKey,
+      certNotAfter: certValidoAte,
+      serproTokenExpiration: (empresaFiscal?.certificado_token_expiration as string | null) ?? null,
+      focusStatus: (company.focus_status as 'ok' | 'erro' | null) ?? null,
+      focusToken: (company.focus_token as string | null) ?? null,
+      focusLastCheck: (company.focus_last_check as string | null) ?? null,
+      focusLastError: (company.focus_last_error as string | null) ?? null,
+    };
   }
 
   return (
@@ -140,7 +167,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
             } | null
           }
         />
-      ) : (
+      ) : active === 'fiscal' ? (
         <EmissaoFiscalTab
           key={company.id as string}
           companyId={company.id as string}
@@ -162,7 +189,9 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           focusLastCheck={(company.focus_last_check as string | null) ?? null}
           focusToken={(company.focus_token as string | null) ?? null}
         />
-      )}
+      ) : saudeState ? (
+        <SaudeEmpresaTab key={company.id as string} state={saudeState} />
+      ) : null}
     </main>
   );
 }
