@@ -39,6 +39,10 @@ export type Tables = {
     cep: string | null;
     telefone: string | null;
     email: string | null;
+    focus_token: string | null;
+    focus_status: string | null;
+    focus_last_check: string | null;
+    focus_last_error: string | null;
     created_at: string | null;
     updated_at: string | null;
     deleted_at: string | null;
@@ -125,6 +129,12 @@ export type Tables = {
     nota_homol_emitida: boolean | null;
     nfse_habilitada: boolean | null;
     empresa_fiscal_ativada: boolean | null;
+    focus_empresa_id: number | null;
+    focus_codigo_municipio: string | null;
+    focus_habilita_nfse: boolean | null;
+    focus_habilita_nfsen_producao: boolean | null;
+    focus_habilita_nfsen_homologacao: boolean | null;
+    focus_sync_em: string | null;
     created_at: string | null;
     updated_at: string | null;
     deleted_at: string | null;

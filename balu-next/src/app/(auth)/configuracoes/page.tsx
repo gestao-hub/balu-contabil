@@ -1,27 +1,33 @@
 // @custom — bubble-behavior: Configurações (PRD §8)
 // Server Component: carrega a empresa atual + empresa_fiscal vinculada e renderiza tabs.
-// Abas: Dados da empresa, Regime tributário, NFS-e e Certificado A1.
+// Abas: Dados da empresa, Regime tributário, Emissão fiscal (Cert + NFS-e + Status Focus).
+// Focus 4: as antigas abas "NFS-e" e "Certificado A1" viraram seções da nova aba.
 import Link from 'next/link';
 import { createServerClient } from '@/lib/supabase/server';
 import DadosEmpresaForm from './DadosEmpresaForm';
 import RegimeTributarioForm from './RegimeTributarioForm';
-import NfseForm from './NfseForm';
-import CertificadoForm from './CertificadoForm';
+import EmissaoFiscalTab from './EmissaoFiscalTab';
+import SaudeEmpresaTab from './SaudeEmpresaTab';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
+import type { SaudeState } from '@/lib/fiscal/saude-empresa';
 
 const TABS = [
   { key: 'dados', label: 'Dados da empresa' },
   { key: 'regime', label: 'Regime tributário' },
-  { key: 'nfse', label: 'NFS-e' },
-  { key: 'certificado', label: 'Certificado A1' },
+  { key: 'fiscal', label: 'Emissão fiscal' },
+  { key: 'saude', label: 'Saúde da empresa' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
+// Compat: aliases das URLs antigas pra não quebrar bookmarks/links.
+const TAB_ALIASES: Record<string, TabKey> = { nfse: 'fiscal', certificado: 'fiscal' };
 
 type SP = Promise<{ tab?: string }>;
 
 export default async function ConfiguracoesPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
-  const active: TabKey = (TABS.find((t) => t.key === sp.tab)?.key ?? 'dados') as TabKey;
+  const requested = sp.tab ?? '';
+  const aliased = TAB_ALIASES[requested] ?? requested;
+  const active: TabKey = (TABS.find((t) => t.key === aliased)?.key ?? 'dados') as TabKey;
 
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -54,22 +60,62 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     }
   }
 
-  const municipioNfse =
-    active === 'nfse' && company
-      ? await resolveMunicipioNfse(supabase, company.municipio as string, company.uf as string)
-      : null;
+  const needsMunicipio = (active === 'fiscal' || active === 'saude') && !!company;
+  const municipioNfse = needsMunicipio
+    ? await resolveMunicipioNfse(supabase, company!.municipio as string, company!.uf as string)
+    : null;
 
   let certEnviadoEm: string | null = null;
   let certValidoAte: string | null = null;
-  if (active === 'certificado' && company) {
+  let certStorageKey: string | null = null;
+  if ((active === 'fiscal' || active === 'saude') && company) {
     const { data: cert } = await supabase
       .from('arquivos_auxiliares')
-      .select('created_at, updated_at, cert_not_after')
+      .select('created_at, updated_at, cert_not_after, storage_key')
       .eq('unique_id_empresa', company.id as string)
       .is('deleted_at', null)
       .maybeSingle();
     certEnviadoEm = (cert?.updated_at as string | null) ?? (cert?.created_at as string | null) ?? null;
     certValidoAte = (cert?.cert_not_after as string | null) ?? null;
+    certStorageKey = (cert?.storage_key as string | null) ?? null;
+  }
+
+  let saudeState: SaudeState | null = null;
+  if (active === 'saude' && company) {
+    const focusSyncEm = (empresaFiscal?.focus_sync_em as string | null) ?? null;
+    saudeState = {
+      municipio: (company.municipio as string | null) ?? null,
+      uf: (company.uf as string | null) ?? null,
+      // codigo IBGE: preferir o snapshot da Focus (foi confirmado pelo POST);
+      // cair pra companies.codigo_municipio (preenchido por consulta CNPJ).
+      codigoMunicipio:
+        ((empresaFiscal?.focus_codigo_municipio as string | null) ?? null) ||
+        ((company.codigo_municipio as string | null) ?? null),
+      municipioInfo: municipioNfse
+        ? {
+            producao_disponivel: (municipioNfse as { producao_disponivel?: string | null }).producao_disponivel ?? null,
+            homologacao_disponivel: (municipioNfse as { homologacao_disponivel?: string | null }).homologacao_disponivel ?? null,
+            provedor: (municipioNfse as { provedor?: string | null }).provedor ?? null,
+          }
+        : null,
+      certPresente: !!certStorageKey,
+      certNotAfter: certValidoAte,
+      serproTokenExpiration: (empresaFiscal?.certificado_token_expiration as string | null) ?? null,
+      focusStatus: (company.focus_status as 'ok' | 'erro' | null) ?? null,
+      focusToken: (company.focus_token as string | null) ?? null,
+      focusLastCheck: (company.focus_last_check as string | null) ?? null,
+      focusLastError: (company.focus_last_error as string | null) ?? null,
+      // Focus 2.0: snapshot só vira "presente" depois do GET após POST/PUT.
+      // Sem focus_sync_em → snapshot null → fallback pra municipios_nfse.
+      focusSnapshot: focusSyncEm
+        ? {
+            habilitaNfse: (empresaFiscal?.focus_habilita_nfse as boolean | null) ?? null,
+            habilitaNfsenProducao: (empresaFiscal?.focus_habilita_nfsen_producao as boolean | null) ?? null,
+            habilitaNfsenHomologacao: (empresaFiscal?.focus_habilita_nfsen_homologacao as boolean | null) ?? null,
+            syncEm: focusSyncEm,
+          }
+        : null,
+    };
   }
 
   return (
@@ -137,10 +183,13 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
             } | null
           }
         />
-      ) : active === 'nfse' ? (
-        <NfseForm
+      ) : active === 'fiscal' ? (
+        <EmissaoFiscalTab
           key={company.id as string}
-          initial={
+          companyId={company.id as string}
+          certEnviadoEm={certEnviadoEm}
+          certValidoAte={certValidoAte}
+          nfseInitial={
             empresaFiscal as {
               nfse_usuario_login?: string | null;
               nfse_senha_login?: string | null;
@@ -152,10 +201,13 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           municipio={municipioNfse}
           cidade={(company.municipio as string) ?? ''}
           uf={(company.uf as string) ?? ''}
+          focusStatus={(company.focus_status as 'ok' | 'erro' | null) ?? null}
+          focusLastCheck={(company.focus_last_check as string | null) ?? null}
+          focusToken={(company.focus_token as string | null) ?? null}
         />
-      ) : (
-        <CertificadoForm key={company.id as string} enviadoEm={certEnviadoEm} validoAte={certValidoAte} />
-      )}
+      ) : saudeState ? (
+        <SaudeEmpresaTab key={company.id as string} state={saudeState} />
+      ) : null}
     </main>
   );
 }

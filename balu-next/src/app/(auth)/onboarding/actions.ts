@@ -9,6 +9,8 @@
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { CompanyCreateSchema, type CompanyInput } from '@/types/zod';
+import { syncEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
+import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 
 export type CepLookup = {
   logradouro?: string;
@@ -63,11 +65,14 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada. Faça login novamente.' };
 
-  // `companies` não tem coluna `status` no banco real — não enviar.
+  // Code_regime_tributario mora em empresas_fiscais, não em companies — separa
+  // antes do insert pra não tentar gravar coluna inexistente.
+  const { Code_regime_tributario, ...companyFields } = parsed.data;
+
   const payload = {
-    ...parsed.data,
+    ...companyFields,
     user_id: user.id,
-    nome: parsed.data.nome?.trim() || parsed.data.razao_social,
+    nome: companyFields.nome?.trim() || companyFields.razao_social,
   };
 
   const { data: row, error } = await supabase
@@ -94,6 +99,28 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
     ? await supabase.from('profiles').update({ current_company: row.id }).eq('user_id', user.id)
     : await supabase.from('profiles').insert({ user_id: user.id, current_company: row.id });
   if (profErr) return { ok: false, error: profErr.message };
+
+  // empresas_fiscais: insere com regime + owner. Falha aqui não rejeita a empresa
+  // (usuário pode reconfigurar depois na aba Regime tributário).
+  const fiscalPatch = normalizeRegimePatch({ Code_regime_tributario });
+  const { error: fiscalErr } = await supabase.from('empresas_fiscais').insert({
+    empresa_id: row.id,
+    owner_user_id: user.id,
+    cnpj: companyFields.cnpj,
+    ...fiscalPatch,
+  });
+  if (fiscalErr) {
+    // Loga e segue — não bloqueia o cadastro.
+    console.warn('[createCompany] empresas_fiscais insert falhou:', fiscalErr.message);
+  }
+
+  // POST best-effort na Focus. Falha NÃO bloqueia o cadastro: resultado fica
+  // em companies.focus_status + focus_last_error, exibido no painel "Saúde da
+  // empresa" (Focus 3) com botão de retry.
+  const sync = await syncEmpresaNaFocus(supabase, row.id);
+  if (!sync.ok) {
+    console.warn('[createCompany] Focus POST falhou:', sync.error);
+  }
 
   revalidatePath('/');
   return { ok: true, id: row.id };

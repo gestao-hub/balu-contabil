@@ -26,6 +26,9 @@ balu-next/.playwright/
 
 # ── Artefatos do Playwright MCP (snapshots/console — efêmeros) ─
 .playwright-mcp/
+balu-next/.playwright-mcp/
+# Screenshots .png salvos no root pelo playwright MCP (cwd do processo) — efêmeros
+/*.png
 
 # ── Claude Code (config local da máquina) ────────────────────
 .claude/settings.local.json

@@ -42,7 +42,7 @@ describe('CompanySchema — endereço obrigatório (edição)', () => {
 });
 
 describe('CompanyCreateSchema — cadastro (CNPJ válido + endereço)', () => {
-  const ok = { cnpj: '11222333000181', razao_social: 'Empresa X', logradouro: 'Rua A', numero: '100', municipio: 'Curitiba', uf: 'PR' };
+  const ok = { cnpj: '11222333000181', razao_social: 'Empresa X', logradouro: 'Rua A', numero: '100', municipio: 'Curitiba', uf: 'PR', Code_regime_tributario: '1' as const };
   it('aceita cadastro com CNPJ válido + endereço', () => {
     expect(CompanyCreateSchema.safeParse(ok).success).toBe(true);
   });
@@ -55,6 +55,11 @@ describe('CompanyCreateSchema — cadastro (CNPJ válido + endereço)', () => {
   it('número obrigatório, exceto quando sem_numero=true', () => {
     expect(CompanyCreateSchema.safeParse({ ...ok, numero: '' }).success).toBe(false);
     expect(CompanyCreateSchema.safeParse({ ...ok, numero: '', sem_numero: true }).success).toBe(true);
+  });
+  it('exige Code_regime_tributario no cadastro', () => {
+    const { Code_regime_tributario: _omit, ...semRegime } = ok;
+    expect(CompanyCreateSchema.safeParse(semRegime).success).toBe(false);
+    expect(CompanyCreateSchema.safeParse({ ...ok, Code_regime_tributario: '5' }).success).toBe(false);
   });
 });
 

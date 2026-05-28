@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { CompanySchema, type CompanyInput, EmpresaFiscalSchema, type EmpresaFiscalInput } from '@/types/zod';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
+import { syncEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
 import { uploadCertificado as storageUploadCertificado } from '@/lib/clients/supabase-storage';
 import { validateCertificadoUpload } from '@/lib/fiscal/certificado';
 import { parsePkcs12, type CertMaterial } from '@/lib/fiscal/pkcs12';
@@ -194,4 +195,25 @@ export async function uploadCertificadoAction(
 
   revalidatePath('/configuracoes');
   return { ok: true, warning };
+}
+
+/**
+ * Botão "Cadastrar na Focus agora" / "Tentar novamente" no painel de Saúde.
+ * Reusa o helper de sync (mesmo caminho do cadastro inicial).
+ */
+export async function retryFocusEmpresaAction(): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('current_company')
+    .eq('user_id', user.id)
+    .single();
+  if (!profile?.current_company) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  const result = await syncEmpresaNaFocus(supabase, profile.current_company);
+  revalidatePath('/configuracoes');
+  return result.ok ? { ok: true } : { ok: false, error: result.error };
 }

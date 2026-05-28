@@ -101,10 +101,66 @@ async function call<T>(
   throw lastErr ?? new Error(`Focus ${method} ${path} → falhou após ${MAX_RETRIES} tentativas`);
 }
 
+/**
+ * Resposta esperada do POST /v2/empresas (revenda). O campo crítico é `token_producao` /
+ * `token_homologacao` — devolvido pela Focus, usado como Basic-auth nas chamadas
+ * por-empresa (atualizar, enviar cert via PUT). A doc lista vários outros campos
+ * (id, status, etc); aqui só fixamos os que consumimos.
+ */
+export type FocusEmpresaCriada = {
+  token_producao?: string;
+  token_homologacao?: string;
+  cnpj?: string;
+  id?: number;
+  // Demais campos devolvidos pela Focus chegam mas não tipamos.
+  [k: string]: unknown;
+};
+
+/**
+ * Snapshot do estado da empresa na Focus, devolvido por GET /v2/empresas/:id.
+ * Usado pra alimentar empresas_fiscais.focus_* (Focus 2.0). Mantemos só os
+ * campos que a UI/lógica do Balu consome — Focus devolve dezenas, ignoramos.
+ */
+export type FocusEmpresaSnapshot = {
+  id: number;
+  cnpj: string;
+  municipio?: string | null;
+  codigo_municipio?: string | null;
+  uf?: string | null;
+  habilita_nfse?: boolean | null;
+  habilita_nfsen_producao?: boolean | null;
+  habilita_nfsen_homologacao?: boolean | null;
+  habilita_nfe?: boolean | null;
+  habilita_nfce?: boolean | null;
+  // Demais campos passam direto via index signature.
+  [k: string]: unknown;
+};
+
 export const focus = {
   /** GET /v2/cnpjs/:cnpj — consulta dados de empresa */
   consultarCnpj: (cnpj: string, env: FocusEnv = 'prod') =>
     call<Record<string, unknown>>(env, 'GET', `/v2/cnpjs/${cnpj}`),
+
+  /**
+   * POST /v2/empresas — cadastra empresa na API de **revenda** da Focus. Retorna
+   * `token_homologacao` + `token_producao` próprios da empresa (consumidos nos PUTs
+   * subsequentes para emissão em cada ambiente).
+   *
+   * **Importante:** o endpoint de revenda **só existe em `api.focusnfe.com.br`** —
+   * não há versão em `homologacao.focusnfe.com.br` (a "homologação" é por-EMPRESA,
+   * aplica-se às emissões, não ao cadastro). O parâmetro `env` aqui é ignorado
+   * para o caminho da requisição; mantemos a assinatura simétrica com os demais
+   * métodos pra não vazar o detalhe pro caller. Default ignorado por design.
+   */
+  criarEmpresa: (payload: Record<string, unknown>, _env: FocusEnv = 'hom') =>
+    call<FocusEmpresaCriada>('prod', 'POST', `/v2/empresas`, payload),
+
+  /**
+   * GET /v2/empresas/:id — consulta empresa por id numérico devolvido no POST.
+   * Mesmo motivo de `criarEmpresa`: revenda só existe em `api.focusnfe.com.br`.
+   */
+  consultarEmpresa: (id: number, _env: FocusEnv = 'hom') =>
+    call<FocusEmpresaSnapshot>('prod', 'GET', `/v2/empresas/${id}`),
 
   // ---------- Emissão ----------
   /** POST /v2/nfe?ref=:ref — emissão NFe (idempotente por ref) */

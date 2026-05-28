@@ -117,7 +117,7 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
 
       {cred.certificado && (
         <p className="rounded-md bg-alert/10 px-3 py-2 text-sm text-alert">
-          Este município exige <strong>Certificado Digital A1</strong> — configure na aba "Certificado A1".
+          Este município exige <strong>Certificado Digital A1</strong> — envie na seção acima.
         </p>
       )}
 

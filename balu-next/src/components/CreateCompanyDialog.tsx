@@ -12,6 +12,7 @@ import {
   createCompanyAction,
 } from '@/app/(auth)/onboarding/actions';
 import { formatCnpj, formatCep } from '@/lib/format/masks';
+import { REGIME_OPTIONS, type RegimeCode } from '@/lib/fiscal/regime';
 
 type Props = {
   open: boolean;
@@ -39,6 +40,7 @@ const EMPTY: Form = {
   cep: '',
   telefone: '',
   email: '',
+  Code_regime_tributario: undefined,
 };
 
 export default function CreateCompanyDialog({ open, forceCreate = false, onClose, onCreated }: Props) {
@@ -224,6 +226,22 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
             <Field label="UF" value={form.uf ?? ''} onChange={(v) => set('uf', v.toUpperCase().slice(0, 2))} required />
             <Field label="Telefone" value={form.telefone ?? ''} onChange={(v) => set('telefone', v)} />
             <Field label="E-mail" type="email" value={form.email ?? ''} onChange={(v) => set('email', v)} />
+            <label className="col-span-2 flex flex-col gap-1 text-sm">
+              <span className="text-xs font-medium text-zinc-600">
+                Regime tributário<span className="text-destructive"> *</span>
+              </span>
+              <select
+                value={form.Code_regime_tributario ?? ''}
+                onChange={(e) => set('Code_regime_tributario', (e.target.value || undefined) as RegimeCode | undefined)}
+                required
+                className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+              >
+                <option value="">Selecione…</option>
+                {REGIME_OPTIONS.map((o) => (
+                  <option key={o.code} value={o.code}>{o.label}</option>
+                ))}
+              </select>
+            </label>
           </div>
         </section>
 
