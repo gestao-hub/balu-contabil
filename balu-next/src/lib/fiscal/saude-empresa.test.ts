@@ -257,6 +257,23 @@ describe('buildSaudeGroups — 4 grupos com roll-up', () => {
     expect(focus.meta).toMatch(/mudanças não sincronizadas/);
   });
 
+  it('focus.meta: jitter de ~3s do trigger updated_at NÃO conta como drift (cenário real do sync)', () => {
+    // Caso real visto na AL Piscinas em 28/05/2026:
+    //   focus_sync_em        = 21:56:09.020
+    //   companies.updated_at = 21:56:10.673 (+1.6s)
+    //   empresas_fiscais.updated_at = 21:56:11.527 (+2.5s)
+    // Sem margem >2s, drift fantasma. Com margem 60s, fica OK.
+    const groups = buildSaudeGroups({
+      ...BASE,
+      focusSnapshot: { ...BASE.focusSnapshot!, syncEm: '2026-05-28T21:56:09.020Z' },
+      companiesUpdatedAt: '2026-05-28T21:56:10.673Z',
+      empresaFiscalUpdatedAt: '2026-05-28T21:56:11.527Z',
+    }, new Date('2026-05-28T21:56:20Z'));
+    const focus = groups.find((g) => g.key === 'focus')!;
+    expect(focus.status).toBe('ok');
+    expect(focus.meta).toMatch(/Sincronizado em/);
+  });
+
   it('focus.meta: sem cadastro (syncEm null) → sem meta', () => {
     const groups = buildSaudeGroups(
       { ...BASE, focusToken: null, focusStatus: null, focusSnapshot: null },
