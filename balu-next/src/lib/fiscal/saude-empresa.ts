@@ -87,6 +87,89 @@ export function buildSaudeChecks(state: SaudeState, now: Date = new Date()): Che
 }
 
 /**
+ * Grupo de checks: alguns itens são agregados num card único (Cert + Focus
+ * cadastro). O status do grupo é a roll-up dos items (erro > pendente > ok).
+ */
+export type CheckGroup = {
+  key: 'cidade' | 'certificado' | 'serpro' | 'focus';
+  label: string;
+  items: CheckResult[];
+  /** Roll-up: se algum item tem erro, grupo = erro; se algum pendente, grupo = pendente; senão ok. */
+  status: CheckStatus;
+  /** Ação contextual no header do grupo (priorizada do primeiro item não-ok). */
+  action: CheckActionKey;
+};
+
+/** Roll-up de status: erro > pendente > ok. */
+function rollupStatus(items: CheckResult[]): CheckStatus {
+  if (items.some((i) => i.status === 'erro')) return 'erro';
+  if (items.some((i) => i.status === 'pendente')) return 'pendente';
+  return 'ok';
+}
+
+/** Ação do grupo: pega do primeiro item não-ok (com fallback null). */
+function pickGroupAction(items: CheckResult[]): CheckActionKey {
+  const firstNotOk = items.find((i) => i.status !== 'ok' && i.action);
+  return firstNotOk?.action ?? null;
+}
+
+/**
+ * Versão agregada do `buildSaudeChecks` que monta 4 grupos para a UI:
+ *   1. Cidade credenciada para NFS-e   (1 item)
+ *   2. Certificado A1                  (2 itens: enviado, válido)
+ *   3. SERPRO conectada                (1 item)
+ *   4. Cadastro na Focus               (2 itens: empresa cadastrada, autenticação)
+ */
+export function buildSaudeGroups(state: SaudeState, now: Date = new Date()): CheckGroup[] {
+  const cidade = cidadeNfseCheck(state, now);
+  const certEnviado = certPresenteCheck(state);
+  const certValido = certValidoCheck(state, now);
+  const serpro = serproCheck(state, now);
+  const focusEmpresa = focusEmpresaCadastradaCheck(state);
+  const focusAuth = focusAutenticacaoCheck(state);
+
+  const certItems = [
+    { ...certEnviado, label: 'Enviado' },
+    { ...certValido, label: 'Válido' },
+  ];
+  const focusItems = [
+    { ...focusEmpresa, label: 'Empresa cadastrada' },
+    { ...focusAuth, label: 'Autenticação funcionando' },
+  ];
+
+  return [
+    {
+      key: 'cidade',
+      label: cidade.label,
+      items: [cidade],
+      status: cidade.status,
+      action: cidade.action,
+    },
+    {
+      key: 'certificado',
+      label: 'Certificado A1',
+      items: certItems,
+      status: rollupStatus(certItems),
+      action: pickGroupAction(certItems),
+    },
+    {
+      key: 'serpro',
+      label: serpro.label,
+      items: [serpro],
+      status: serpro.status,
+      action: serpro.action,
+    },
+    {
+      key: 'focus',
+      label: 'Cadastro na Focus',
+      items: focusItems,
+      status: rollupStatus(focusItems),
+      action: pickGroupAction(focusItems),
+    },
+  ];
+}
+
+/**
  * "A Focus ATENDE essa cidade?" — pura capacidade do produto, independente da
  * empresa do usuário. Não consome o snapshot da empresa: o snapshot informa
  * o cadastro DELA, não a oferta da Focus.
@@ -261,16 +344,91 @@ function serproCheck(state: SaudeState, now: Date): CheckResult {
 }
 
 /**
- * "Empresa PRONTA pra emitir na Focus?" — agregado das 3 condições mínimas:
- *  (i)   cadastro inicial feito (focus_token presente, focus_status='ok')
- *  (ii)  alguma habilitação ligada no painel Focus (habilita_nfse OU
- *        habilita_nfsen_producao OU habilita_nfe…) — feito pelo PUT do Focus 2.1
- *  (iii) certificado A1 presente no Balu (que será enviado pra Focus no PUT)
- *
- * Estados:
- *   ✓ ok      → todas as 3 ok
- *   ⚠ pendente → (i) ok mas (ii) ou (iii) falta
- *   ✗ erro    → focus_status='erro' OU sem cadastro nenhum
+ * Sub-check 5a — "A empresa existe na Focus?"
+ * Granularidade: só o cadastro inicial. NÃO julga se está habilitada nem se tem
+ * cert. Aceitação: focus_token presente E focus_status='ok'.
+ */
+function focusEmpresaCadastradaCheck(state: SaudeState): CheckResult {
+  const label = 'Empresa cadastrada';
+  if (state.focusStatus === 'erro') {
+    return {
+      key: 'focus_cadastro', label,
+      status: 'erro',
+      hint: state.focusLastError
+        ? `Última tentativa falhou: ${truncate(state.focusLastError, 140)}`
+        : 'Última tentativa de cadastro na Focus falhou.',
+      action: 'sync_focus',
+      lastCheck: state.focusLastCheck,
+    };
+  }
+  if (state.focusToken && state.focusStatus === 'ok') {
+    return {
+      key: 'focus_cadastro', label,
+      status: 'ok',
+      hint: state.focusLastCheck
+        ? `Cadastrada na Focus em ${formatBR(state.focusLastCheck)}.`
+        : 'Cadastrada na Focus.',
+      action: null,
+      lastCheck: state.focusLastCheck,
+    };
+  }
+  return {
+    key: 'focus_cadastro', label,
+    status: 'pendente',
+    hint: 'Empresa ainda não foi cadastrada na Focus.',
+    action: 'sync_focus',
+  };
+}
+
+/**
+ * Sub-check 5b — "A autenticação na Focus está funcionando?"
+ * Aceitação: alguma `habilita_*=true` no snapshot E cert A1 presente no Balu
+ * (o cert vai ser enviado pra Focus no PUT 2.1; pré-requisito).
+ * Não faz sentido avaliar quando a empresa nem foi cadastrada (5a fica `pendente`
+ * e este aqui também `pendente` por dependência).
+ */
+function focusAutenticacaoCheck(state: SaudeState): CheckResult {
+  const label = 'Autenticação funcionando';
+
+  if (!state.focusToken || state.focusStatus !== 'ok') {
+    return {
+      key: 'focus_cadastro', label,
+      status: 'pendente',
+      hint: 'Aguarda o cadastro da empresa na Focus.',
+      action: null,
+    };
+  }
+
+  const habilitada =
+    state.focusSnapshot?.habilitaNfse === true ||
+    state.focusSnapshot?.habilitaNfsenProducao === true ||
+    state.focusSnapshot?.habilitaNfsenHomologacao === true;
+  const certOnFile = state.certPresente;
+
+  if (habilitada && certOnFile) {
+    return {
+      key: 'focus_cadastro', label,
+      status: 'ok',
+      hint: 'Habilitada para emissão (cert + flag na Focus).',
+      action: null,
+    };
+  }
+
+  const faltas: string[] = [];
+  if (!habilitada) faltas.push('habilitação na Focus (NFS-e / NFSe Nacional)');
+  if (!certOnFile) faltas.push('certificado A1');
+
+  return {
+    key: 'focus_cadastro', label,
+    status: 'pendente',
+    hint: `Faltam: ${faltas.join(', ')}. Será feito pelo PUT enriquecendo (Focus 2.1).`,
+    action: 'sync_focus',
+  };
+}
+
+/**
+ * @deprecated — use `buildSaudeGroups` na UI. Mantido só para compatibilidade
+ * de testes legados; agrega 5a+5b internamente.
  */
 function focusCadastroCheck(state: SaudeState): CheckResult {
   const label = 'Cadastro na Focus funcional';

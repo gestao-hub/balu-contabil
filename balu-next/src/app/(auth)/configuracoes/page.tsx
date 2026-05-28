@@ -15,11 +15,15 @@ const TABS = [
   { key: 'dados', label: 'Dados da empresa' },
   { key: 'regime', label: 'Regime tributário' },
   { key: 'fiscal', label: 'Emissão fiscal' },
-  { key: 'saude', label: 'Saúde da empresa' },
+  { key: 'diagnostico', label: 'Diagnóstico' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 // Compat: aliases das URLs antigas pra não quebrar bookmarks/links.
-const TAB_ALIASES: Record<string, TabKey> = { nfse: 'fiscal', certificado: 'fiscal' };
+const TAB_ALIASES: Record<string, TabKey> = {
+  nfse: 'fiscal',
+  certificado: 'fiscal',
+  saude: 'diagnostico', // renomeada — manter o link antigo funcional
+};
 
 type SP = Promise<{ tab?: string }>;
 
@@ -60,7 +64,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     }
   }
 
-  const needsMunicipio = (active === 'fiscal' || active === 'saude') && !!company;
+  const needsMunicipio = (active === 'fiscal' || active === 'diagnostico') && !!company;
   const municipioNfse = needsMunicipio
     ? await resolveMunicipioNfse(supabase, company!.municipio as string, company!.uf as string)
     : null;
@@ -68,7 +72,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   let certEnviadoEm: string | null = null;
   let certValidoAte: string | null = null;
   let certStorageKey: string | null = null;
-  if ((active === 'fiscal' || active === 'saude') && company) {
+  if ((active === 'fiscal' || active === 'diagnostico') && company) {
     const { data: cert } = await supabase
       .from('arquivos_auxiliares')
       .select('created_at, updated_at, cert_not_after, storage_key')
@@ -81,7 +85,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   }
 
   let saudeState: SaudeState | null = null;
-  if (active === 'saude' && company) {
+  if (active === 'diagnostico' && company) {
     const focusSyncEm = (empresaFiscal?.focus_sync_em as string | null) ?? null;
     saudeState = {
       municipio: (company.municipio as string | null) ?? null,
@@ -201,9 +205,6 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           municipio={municipioNfse}
           cidade={(company.municipio as string) ?? ''}
           uf={(company.uf as string) ?? ''}
-          focusStatus={(company.focus_status as 'ok' | 'erro' | null) ?? null}
-          focusLastCheck={(company.focus_last_check as string | null) ?? null}
-          focusToken={(company.focus_token as string | null) ?? null}
         />
       ) : saudeState ? (
         <SaudeEmpresaTab key={company.id as string} state={saudeState} />

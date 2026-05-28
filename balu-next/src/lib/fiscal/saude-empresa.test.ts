@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildSaudeChecks,
+  buildSaudeGroups,
   isInFutureISO,
   daysUntilISO,
   type SaudeState,
@@ -162,6 +163,77 @@ describe('serpro', () => {
     const checks = buildSaudeChecks({ ...BASE, serproTokenExpiration: '2026-05-28T11:00:00Z' }, NOW);
     expect(checks[3]!.status).toBe('pendente');
     expect(checks[3]!.hint).toMatch(/expirado/i);
+  });
+});
+
+describe('buildSaudeGroups — 4 grupos com roll-up', () => {
+  it('retorna 4 grupos na ordem: cidade, certificado, serpro, focus', () => {
+    const groups = buildSaudeGroups(BASE, NOW);
+    expect(groups.map((g) => g.key)).toEqual(['cidade', 'certificado', 'serpro', 'focus']);
+  });
+
+  it('cidade e serpro têm 1 item; certificado e focus têm 2', () => {
+    const groups = buildSaudeGroups(BASE, NOW);
+    expect(groups[0]!.items).toHaveLength(1);
+    expect(groups[1]!.items).toHaveLength(2);
+    expect(groups[2]!.items).toHaveLength(1);
+    expect(groups[3]!.items).toHaveLength(2);
+  });
+
+  it('certificado: roll-up erro quando algum item está erro', () => {
+    const groups = buildSaudeGroups({ ...BASE, certNotAfter: '2026-04-01T00:00:00Z' }, NOW);
+    const cert = groups.find((g) => g.key === 'certificado')!;
+    expect(cert.status).toBe('erro');
+    expect(cert.items[1]!.status).toBe('erro'); // Válido
+  });
+
+  it('certificado: roll-up pendente quando enviado=false e válido=pendente', () => {
+    const groups = buildSaudeGroups({ ...BASE, certPresente: false, certNotAfter: null }, NOW);
+    const cert = groups.find((g) => g.key === 'certificado')!;
+    expect(cert.status).toBe('pendente');
+    expect(cert.items.every((i) => i.status === 'pendente')).toBe(true);
+  });
+
+  it('certificado: roll-up ok quando ambos itens ok', () => {
+    const groups = buildSaudeGroups(BASE, NOW);
+    const cert = groups.find((g) => g.key === 'certificado')!;
+    expect(cert.status).toBe('ok');
+  });
+
+  it('focus: separado em "Empresa cadastrada" + "Autenticação funcionando"', () => {
+    const groups = buildSaudeGroups(BASE, NOW);
+    const focus = groups.find((g) => g.key === 'focus')!;
+    expect(focus.items[0]!.label).toBe('Empresa cadastrada');
+    expect(focus.items[1]!.label).toBe('Autenticação funcionando');
+  });
+
+  it('focus: cadastrada=ok mas autenticação=pendente → grupo pendente (caso AL Piscinas)', () => {
+    const groups = buildSaudeGroups(
+      {
+        ...BASE,
+        focusSnapshot: { habilitaNfse: false, habilitaNfsenProducao: null, habilitaNfsenHomologacao: null, syncEm: 'x' },
+      },
+      NOW,
+    );
+    const focus = groups.find((g) => g.key === 'focus')!;
+    expect(focus.status).toBe('pendente');
+    expect(focus.items[0]!.status).toBe('ok');       // cadastrada
+    expect(focus.items[1]!.status).toBe('pendente'); // autenticação
+    expect(focus.items[1]!.hint).toMatch(/habilitação/);
+  });
+
+  it('focus: erro → erro no grupo + erro no item "Empresa cadastrada"', () => {
+    const groups = buildSaudeGroups({ ...BASE, focusStatus: 'erro', focusLastError: 'oops' }, NOW);
+    const focus = groups.find((g) => g.key === 'focus')!;
+    expect(focus.status).toBe('erro');
+    expect(focus.items[0]!.status).toBe('erro');
+    expect(focus.items[1]!.status).toBe('pendente'); // 5b aguarda 5a
+  });
+
+  it('action do grupo: vem do primeiro item não-ok com action', () => {
+    const groups = buildSaudeGroups({ ...BASE, certPresente: false, certNotAfter: null }, NOW);
+    const cert = groups.find((g) => g.key === 'certificado')!;
+    expect(cert.action).toBe('upload_cert');
   });
 });
 

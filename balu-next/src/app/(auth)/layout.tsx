@@ -21,15 +21,19 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
     String(user.user_metadata?.type ?? '').toLowerCase() === 'contador' ? 'contador' : 'empresa';
   const needsOnboarding = !profile?.current_company;
 
+  // Layout SaaS: sidebar fixa no viewport, área principal com scroll próprio.
+  // `h-screen overflow-hidden` no wrapper trava a página em 100vh; o `<main>`
+  // de cada rota fica em um `overflow-y-auto` próprio, e o scrollbar aparece
+  // ao lado do conteúdo (sem mover a sidebar).
   return (
-    <div className="min-h-screen flex">
+    <div className="h-screen flex overflow-hidden">
       <MenuLateral
         userName={user.email ?? 'Usuário'}
         userRole={userRole}
         companies={companies ?? []}
         currentCompanyId={profile?.current_company ?? null}
       />
-      <div className="flex-1">{children}</div>
+      <div className="flex-1 overflow-y-auto">{children}</div>
       {needsOnboarding && (
         <CreateCompanyDialog open={true} forceCreate={true} />
       )}
