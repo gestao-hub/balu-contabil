@@ -20,17 +20,37 @@ export default async function NotasFiscaisPage() {
     if (companyId) {
       const { data } = await supabase
         .from('notas_fiscais')
-        .select('id, tipo_documento, referencia, data_emissao, valor_total, status, payload_focusnfe')
+        .select('id, tipo_documento, referencia, data_emissao, valor_total, status, cliente_id, payload_focusnfe')
         .eq('company_id', companyId)
         .order('data_emissao', { ascending: false, nullsFirst: false })
         .limit(50);
 
       type NotaRaw = Omit<NotaListRow, 'cliente_nome'> & {
+        cliente_id: string | null;
         payload_focusnfe: { destinatario?: { razao_social?: string | null } | null } | null;
       };
-      notas = ((data ?? []) as unknown as NotaRaw[]).map(({ payload_focusnfe, ...n }) => ({
+      const rows = (data ?? []) as unknown as NotaRaw[];
+
+      // Resolve nome do cliente: notas novas (PR 2.1+) usam cliente_id; notas
+      // legadas (Bubble) caem no fallback payload_focusnfe.destinatario.razao_social.
+      const ids = Array.from(new Set(rows.map((r) => r.cliente_id).filter((id): id is string => !!id)));
+      const nomePorId: Record<string, string> = {};
+      if (ids.length > 0) {
+        const { data: clientes } = await supabase
+          .from('clientes')
+          .select('id, razao_social')
+          .in('id', ids);
+        for (const c of clientes ?? []) {
+          nomePorId[c.id as string] = (c.razao_social as string | null) ?? '';
+        }
+      }
+
+      notas = rows.map(({ payload_focusnfe, cliente_id, ...n }) => ({
         ...n,
-        cliente_nome: payload_focusnfe?.destinatario?.razao_social ?? null,
+        cliente_nome:
+          (cliente_id && nomePorId[cliente_id]) ||
+          payload_focusnfe?.destinatario?.razao_social ||
+          null,
       }));
     }
   }

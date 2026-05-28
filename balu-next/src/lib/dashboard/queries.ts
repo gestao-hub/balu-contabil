@@ -43,12 +43,13 @@ export async function getDashboardMetrics(sb: SB, companyId: string): Promise<Da
   const { start, next } = monthBounds();
 
   const [notasMesRes, ultimaRes, guiaRes] = await Promise.all([
-    // Receita do mês: notas AUTORIZADAS emitidas na competência atual.
+    // Receita do mês: notas AUTORIZADAS (= 'ativa' no nosso vocabulário canônico,
+    // alinhado com `mapStatusFocus`) emitidas na competência atual.
     sb
       .from('notas_fiscais')
       .select('valor_total')
       .eq('company_id', companyId)
-      .eq('status', 'autorizada')
+      .eq('status', 'ativa')
       .gte('data_emissao', start)
       .lt('data_emissao', next),
     // Última nota emitida (qualquer status), mais recente por data_emissao.
@@ -59,12 +60,13 @@ export async function getDashboardMetrics(sb: SB, companyId: string): Promise<Da
       .order('data_emissao', { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle(),
-    // Próxima guia em aberto, por vencimento mais próximo.
+    // Próxima guia em aberto, por vencimento mais próximo. Status canônico
+    // de guias_fiscais (PRD §4.25): pendente/gerada/paga/vencida/erro.
     sb
       .from('guias_fiscais')
       .select('*')
       .eq('company_id', companyId)
-      .neq('status', 'pago')
+      .neq('status', 'paga')
       .not('data_vencimento', 'is', null)
       .order('data_vencimento', { ascending: true })
       .limit(1)
@@ -90,15 +92,16 @@ export async function getPendingActions(sb: SB, companyId: string): Promise<Pend
       .from('guias_fiscais')
       .select('id, competencia_referencia, data_vencimento, status')
       .eq('company_id', companyId)
-      .neq('status', 'pago')
+      .neq('status', 'paga')
       .not('data_vencimento', 'is', null)
       .order('data_vencimento', { ascending: true })
       .limit(20),
+    // Notas pendentes = aguardando autorização da SEFAZ (canônico: 'pendente').
     sb
       .from('notas_fiscais')
       .select('id')
       .eq('company_id', companyId)
-      .eq('status', 'processando')
+      .eq('status', 'pendente')
       .limit(50),
   ]);
 
