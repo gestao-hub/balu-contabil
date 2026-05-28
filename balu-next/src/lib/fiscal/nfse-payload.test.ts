@@ -3,6 +3,8 @@ import {
   buildNfsePayload,
   regimeToOpcaoSimples,
   gerarNumeroDps,
+  toBrasiliaISO,
+  toDateOnlyBrt,
   type NfsePrestadorCompany,
   type NfsePrestadorFiscal,
   type NfseTomador,
@@ -29,6 +31,27 @@ const SERVICO: NfseServico = {
   valor: 1000,
   aliquotaIssPercentual: 5,
 };
+
+describe('toBrasiliaISO', () => {
+  it('15:30 UTC → 12:30-03:00 mesmo dia', () => {
+    expect(toBrasiliaISO(new Date('2026-05-28T15:30:00Z'))).toBe('2026-05-28T12:30:00-03:00');
+  });
+  it('02:00 UTC → 23:00-03:00 do dia anterior', () => {
+    expect(toBrasiliaISO(new Date('2026-05-28T02:00:00Z'))).toBe('2026-05-27T23:00:00-03:00');
+  });
+  it('formata segundos com zero-padding', () => {
+    expect(toBrasiliaISO(new Date('2026-05-28T15:30:05Z'))).toBe('2026-05-28T12:30:05-03:00');
+  });
+});
+
+describe('toDateOnlyBrt', () => {
+  it('02:00 UTC vira dia anterior em BRT', () => {
+    expect(toDateOnlyBrt(new Date('2026-05-28T02:00:00Z'))).toBe('2026-05-27');
+  });
+  it('15:30 UTC mesmo dia', () => {
+    expect(toDateOnlyBrt(new Date('2026-05-28T15:30:00Z'))).toBe('2026-05-28');
+  });
+});
 
 describe('regimeToOpcaoSimples (enum NFSe Nacional 1=Não Optante, 2=MEI, 3=ME/EPP)', () => {
   it('1 Simples → 3 ME/EPP', () => expect(regimeToOpcaoSimples('1')).toBe(3));
@@ -63,9 +86,11 @@ describe('buildNfsePayload', () => {
     expect(p.finalidade_emissao).toBe(0);    // 0 = NFS-e regular
     expect(p.regime_especial_tributacao).toBe(0); // 0 = Nenhum
     expect(p.codigo_opcao_simples_nacional).toBe(3); // ME/EPP
-    expect(p.percentual_aliquota_relativa_municipio).toBe(5);
+    // Optante SN não envia alíquota (Focus calcula via Sistema Nacional).
+    expect(p.percentual_aliquota_relativa_municipio).toBeUndefined();
     expect(p.emitente_dps).toBe(1);
-    expect(p.data_emissao).toBe('2026-05-28T15:30:00.000Z');
+    // BRT offset -03:00 (NOW=15:30 UTC = 12:30 BRT; -2s de segurança = 12:29:58)
+    expect(p.data_emissao).toBe('2026-05-28T12:29:58-03:00');
     expect(p.data_competencia).toBe('2026-05-28');
   });
 
@@ -82,11 +107,17 @@ describe('buildNfsePayload', () => {
     expect(p.cnpj_tomador).toBe('12345678000100');
   });
 
-  it('aliquota>0 vira percentual_aliquota_relativa_municipio (mapeado, não convertido)', () => {
-    const p = buildNfsePayload(PRESTADOR_COMPANY, PRESTADOR_FISCAL, TOMADOR_PJ,
+  it('aliquota só entra pra NÃO optante SN (regime 3)', () => {
+    // Optante SN: ignora alíquota
+    const pSN = buildNfsePayload(PRESTADOR_COMPANY, PRESTADOR_FISCAL, TOMADOR_PJ,
       { ...SERVICO, valor: 1234.567, aliquotaIssPercentual: 7 }, NOW);
-    expect(p.valor_servico).toBe(1234.57);
-    expect(p.percentual_aliquota_relativa_municipio).toBe(7);
+    expect(pSN.valor_servico).toBe(1234.57);
+    expect(pSN.percentual_aliquota_relativa_municipio).toBeUndefined();
+
+    // Lucro Real/Presumido (regime 3): manda alíquota
+    const pNS = buildNfsePayload(PRESTADOR_COMPANY, { Code_regime_tributario: '3' }, TOMADOR_PJ,
+      { ...SERVICO, valor: 1234.567, aliquotaIssPercentual: 7 }, NOW);
+    expect(pNS.percentual_aliquota_relativa_municipio).toBe(7);
   });
 
   it('razão social do tomador vazia → lança', () => {
