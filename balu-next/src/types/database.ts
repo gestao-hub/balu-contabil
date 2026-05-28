@@ -139,6 +139,17 @@ export type Tables = {
     valor_total: number;
     payload_focusnfe: Json;
     created_at: string | null;
+    chave_acesso: string | null;
+    cliente_id: string | null;
+    protocolo_autorizacao: string | null;
+    xml_url: string | null;
+    pdf_url: string | null;
+    qrcode: string | null;
+    numero_nf: string | null;
+    serie: string | null;
+    cancelled_at: string | null;
+    cancellation_reason: string | null;
+    updated_at: string | null;
   };
   apuracoes_fiscais: {
     id: string;
