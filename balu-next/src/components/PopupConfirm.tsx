@@ -4,7 +4,7 @@
 // O reusable original não tem UI explícita no tree (plugin externo); reconstruído
 // como <dialog> nativo com Tailwind + ações tipadas.
 
-import { useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 export type PopupConfirmProps = {
@@ -22,6 +22,8 @@ export type PopupConfirmProps = {
   onCancel: () => void;
   /** Se true, mostra spinner no botão Confirmar e bloqueia interação. */
   busy?: boolean;
+  /** Conteúdo extra renderizado entre a descrição e os botões (ex.: um campo de justificativa). */
+  children?: ReactNode;
 };
 
 export default function PopupConfirm({
@@ -34,6 +36,7 @@ export default function PopupConfirm({
   onConfirm,
   onCancel,
   busy = false,
+  children,
 }: PopupConfirmProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -69,6 +72,8 @@ export default function PopupConfirm({
             )}
           </div>
         </div>
+
+        {children && <div className="mt-4">{children}</div>}
 
         <div className="mt-6 flex justify-end gap-2">
           <button
