@@ -1,11 +1,13 @@
 'use client';
-// @custom — Focus 3: client island do botão "Cadastrar/Tentar novamente" na Focus.
+// @custom — Focus 2.1/3: client island do botão "Sincronizar com Focus" no Diagnóstico.
+// Adaptativo: a action decide POST (cadastro inicial) ou PUT (atualização)
+// baseado em `companies.focus_token`. UI mostra sempre "Sincronizar".
 import { useState, useTransition } from 'react';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
-import { retryFocusEmpresaAction } from './actions';
+import { syncFocusEmpresaAction } from './actions';
 
-export default function RetryFocusButton() {
+export default function SyncFocusButton() {
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState(false);
@@ -15,7 +17,7 @@ export default function RetryFocusButton() {
     setBusy(true);
     startTransition(async () => {
       try {
-        const r = await retryFocusEmpresaAction();
+        const r = await syncFocusEmpresaAction();
         if (r.ok) toast('success', 'Empresa sincronizada na Focus.');
         else toast('error', r.error);
       } finally {
@@ -34,7 +36,7 @@ export default function RetryFocusButton() {
       className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 shrink-0 whitespace-nowrap"
     >
       {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-      {loading ? 'Sincronizando…' : 'Cadastrar na Focus agora'}
+      {loading ? 'Sincronizando…' : 'Sincronizar com Focus'}
     </button>
   );
 }

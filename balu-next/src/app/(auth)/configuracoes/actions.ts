@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { CompanySchema, type CompanyInput, EmpresaFiscalSchema, type EmpresaFiscalInput } from '@/types/zod';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
-import { syncEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
+import { syncEmpresaNaFocus, atualizarEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
 import { uploadCertificado as storageUploadCertificado } from '@/lib/clients/supabase-storage';
 import { validateCertificadoUpload } from '@/lib/fiscal/certificado';
 import { parsePkcs12, type CertMaterial } from '@/lib/fiscal/pkcs12';
@@ -198,10 +198,15 @@ export async function uploadCertificadoAction(
 }
 
 /**
- * Botão "Cadastrar na Focus agora" / "Tentar novamente" no painel de Saúde.
- * Reusa o helper de sync (mesmo caminho do cadastro inicial).
+ * Botão "Sincronizar com Focus" no Diagnóstico.
+ *
+ * Comportamento adaptativo:
+ *  - Empresa SEM `focus_token`  → POST /v2/empresas (cadastro inicial — Focus 1)
+ *  - Empresa COM `focus_token`  → PUT /v2/empresas/:cnpj (atualização — Focus 2.1)
+ *
+ * Idempotente: clicar várias vezes só re-sincroniza estado.
  */
-export async function retryFocusEmpresaAction(): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function syncFocusEmpresaAction(): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
@@ -211,9 +216,22 @@ export async function retryFocusEmpresaAction(): Promise<{ ok: true } | { ok: fa
     .select('current_company')
     .eq('user_id', user.id)
     .single();
-  if (!profile?.current_company) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyId = profile?.current_company as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
-  const result = await syncEmpresaNaFocus(supabase, profile.current_company);
+  const { data: company } = await supabase
+    .from('companies')
+    .select('focus_token')
+    .eq('id', companyId)
+    .single();
+
+  const result = company?.focus_token
+    ? await atualizarEmpresaNaFocus(supabase, companyId, 'hom')
+    : await syncEmpresaNaFocus(supabase, companyId);
+
   revalidatePath('/configuracoes');
   return result.ok ? { ok: true } : { ok: false, error: result.error };
 }
+
+/** @deprecated use syncFocusEmpresaAction. Mantido pra não quebrar callers durante a migração. */
+export const retryFocusEmpresaAction = syncFocusEmpresaAction;

@@ -27,6 +27,9 @@ const BASE: SaudeState = {
     habilitaNfsenHomologacao: null,
     syncEm: '2026-05-28T10:00:00Z',
   },
+  // Sem drift (updated_at ≤ syncEm) — happy path do BASE.
+  companiesUpdatedAt: '2026-05-28T09:00:00Z',
+  empresaFiscalUpdatedAt: '2026-05-28T09:30:00Z',
 };
 
 describe('isInFutureISO', () => {
@@ -234,6 +237,43 @@ describe('buildSaudeGroups — 4 grupos com roll-up', () => {
     const groups = buildSaudeGroups({ ...BASE, certPresente: false, certNotAfter: null }, NOW);
     const cert = groups.find((g) => g.key === 'certificado')!;
     expect(cert.action).toBe('upload_cert');
+  });
+
+  it('focus.meta: sem drift → "Sincronizado em ..."', () => {
+    const groups = buildSaudeGroups(BASE, NOW);
+    const focus = groups.find((g) => g.key === 'focus')!;
+    expect(focus.status).toBe('ok');
+    expect(focus.meta).toMatch(/Sincronizado em/);
+  });
+
+  it('focus.meta: COM drift (updated_at > syncEm) → grupo vira pendente + meta de drift', () => {
+    const groups = buildSaudeGroups(
+      { ...BASE, companiesUpdatedAt: '2026-05-28T11:30:00Z' /* > syncEm 10:00 */ },
+      NOW,
+    );
+    const focus = groups.find((g) => g.key === 'focus')!;
+    expect(focus.status).toBe('pendente');
+    expect(focus.action).toBe('sync_focus');
+    expect(focus.meta).toMatch(/mudanças não sincronizadas/);
+  });
+
+  it('focus.meta: sem cadastro (syncEm null) → sem meta', () => {
+    const groups = buildSaudeGroups(
+      { ...BASE, focusToken: null, focusStatus: null, focusSnapshot: null },
+      NOW,
+    );
+    const focus = groups.find((g) => g.key === 'focus')!;
+    expect(focus.meta).toBeUndefined();
+  });
+
+  it('focus.meta: drift por empresa_fiscal.updated_at também conta', () => {
+    const groups = buildSaudeGroups(
+      { ...BASE, empresaFiscalUpdatedAt: '2026-05-28T11:30:00Z' /* > syncEm */ },
+      NOW,
+    );
+    const focus = groups.find((g) => g.key === 'focus')!;
+    expect(focus.status).toBe('pendente');
+    expect(focus.meta).toMatch(/mudanças não sincronizadas/);
   });
 });
 
