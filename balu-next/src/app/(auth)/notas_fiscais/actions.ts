@@ -7,7 +7,7 @@
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { focus, type FocusEnv } from '@/lib/clients/focus-nfe';
-import { assertTipoDoc, validarJustificativa } from '@/lib/fiscal/notas-tipo';
+import { assertTipoDoc, validarJustificativa, type TipoDoc } from '@/lib/fiscal/notas-tipo';
 
 export type NotasFiltros = {
   start: string | null;
@@ -138,9 +138,16 @@ export async function cancelarNotaAction(
 
   const env: FocusEnv = 'hom'; // produção depende do token Focus (Blocked) + flags da empresa
   const justif = justificativa.trim();
+
+  let tipo: TipoDoc;
   try {
-    const tipo = assertTipoDoc(nota.tipo_documento as string);
-    const ref = nota.referencia as string;
+    tipo = assertTipoDoc(nota.tipo_documento as string);
+  } catch {
+    return { ok: false, error: 'Tipo de documento não suportado para cancelamento.' };
+  }
+  const ref = nota.referencia as string;
+
+  try {
     if (tipo === 'NFe') await focus.cancelarNfe(ref, justif, env);
     else if (tipo === 'NFCe') await focus.cancelarNfce(ref, justif, env);
     else await focus.cancelarNfse(ref, justif, env);
@@ -158,7 +165,11 @@ export async function cancelarNotaAction(
     })
     .eq('id', id)
     .eq('company_id', companyId);
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    // Focus já cancelou na SEFAZ, mas o update no banco falhou → divergência banco↔SEFAZ.
+    console.error('[cancelarNotaAction] Focus OK mas update no banco falhou', { id, error: error.message });
+    return { ok: false, error: 'Nota cancelada na SEFAZ, mas houve falha ao atualizar o sistema. Contate o suporte.' };
+  }
 
   revalidatePath('/notas_fiscais');
   revalidatePath(`/notas_fiscais/${id}`);
