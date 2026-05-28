@@ -12,14 +12,20 @@ import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import type { SaudeState } from '@/lib/fiscal/saude-empresa';
 
 const TABS = [
-  { key: 'dados', label: 'Dados da empresa' },
-  { key: 'regime', label: 'Regime tributário' },
-  { key: 'fiscal', label: 'Emissão fiscal' },
-  { key: 'saude', label: 'Saúde da empresa' },
+  { key: 'dados', label: 'Dados da empresa', highlight: false },
+  { key: 'regime', label: 'Regime tributário', highlight: false },
+  { key: 'fiscal', label: 'Emissão fiscal', highlight: false },
+  // `highlight: true` deixa a aba destacada com tom da cor primária (chama
+  // atenção pra ver pendências sem ser obnóxio).
+  { key: 'diagnostico', label: 'Diagnóstico', highlight: true },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 // Compat: aliases das URLs antigas pra não quebrar bookmarks/links.
-const TAB_ALIASES: Record<string, TabKey> = { nfse: 'fiscal', certificado: 'fiscal' };
+const TAB_ALIASES: Record<string, TabKey> = {
+  nfse: 'fiscal',
+  certificado: 'fiscal',
+  saude: 'diagnostico', // renomeada — manter o link antigo funcional
+};
 
 type SP = Promise<{ tab?: string }>;
 
@@ -60,7 +66,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     }
   }
 
-  const needsMunicipio = (active === 'fiscal' || active === 'saude') && !!company;
+  const needsMunicipio = (active === 'fiscal' || active === 'diagnostico') && !!company;
   const municipioNfse = needsMunicipio
     ? await resolveMunicipioNfse(supabase, company!.municipio as string, company!.uf as string)
     : null;
@@ -68,7 +74,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   let certEnviadoEm: string | null = null;
   let certValidoAte: string | null = null;
   let certStorageKey: string | null = null;
-  if ((active === 'fiscal' || active === 'saude') && company) {
+  if ((active === 'fiscal' || active === 'diagnostico') && company) {
     const { data: cert } = await supabase
       .from('arquivos_auxiliares')
       .select('created_at, updated_at, cert_not_after, storage_key')
@@ -81,7 +87,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   }
 
   let saudeState: SaudeState | null = null;
-  if (active === 'saude' && company) {
+  if (active === 'diagnostico' && company) {
     const focusSyncEm = (empresaFiscal?.focus_sync_em as string | null) ?? null;
     saudeState = {
       municipio: (company.municipio as string | null) ?? null,
@@ -131,13 +137,19 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         <ul className="flex gap-1">
           {TABS.map((t) => {
             const is = t.key === active;
+            // Aba ativa = cor primária forte + border. Aba inativa normal = zinc.
+            // Aba destacada (`highlight`) inativa = primária num tom mais suave
+            // (chama atenção sem competir com a ativa).
+            const cls = is
+              ? 'border-primary text-primary'
+              : t.highlight
+              ? 'border-transparent text-primary/70 hover:text-primary'
+              : 'border-transparent text-zinc-600 hover:text-zinc-900';
             return (
               <li key={t.key}>
                 <Link
                   href={`/configuracoes?tab=${t.key}`}
-                  className={`inline-block px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-                    is ? 'border-primary text-primary' : 'border-transparent text-zinc-600 hover:text-zinc-900'
-                  }`}
+                  className={`inline-block px-4 py-2 text-sm font-medium border-b-2 -mb-px ${cls}`}
                 >
                   {t.label}
                 </Link>
