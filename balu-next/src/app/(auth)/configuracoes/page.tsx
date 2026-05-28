@@ -1,27 +1,30 @@
 // @custom — bubble-behavior: Configurações (PRD §8)
 // Server Component: carrega a empresa atual + empresa_fiscal vinculada e renderiza tabs.
-// Abas: Dados da empresa, Regime tributário, NFS-e e Certificado A1.
+// Abas: Dados da empresa, Regime tributário, Emissão fiscal (Cert + NFS-e + Status Focus).
+// Focus 4: as antigas abas "NFS-e" e "Certificado A1" viraram seções da nova aba.
 import Link from 'next/link';
 import { createServerClient } from '@/lib/supabase/server';
 import DadosEmpresaForm from './DadosEmpresaForm';
 import RegimeTributarioForm from './RegimeTributarioForm';
-import NfseForm from './NfseForm';
-import CertificadoForm from './CertificadoForm';
+import EmissaoFiscalTab from './EmissaoFiscalTab';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 
 const TABS = [
   { key: 'dados', label: 'Dados da empresa' },
   { key: 'regime', label: 'Regime tributário' },
-  { key: 'nfse', label: 'NFS-e' },
-  { key: 'certificado', label: 'Certificado A1' },
+  { key: 'fiscal', label: 'Emissão fiscal' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
+// Compat: aliases das URLs antigas pra não quebrar bookmarks/links.
+const TAB_ALIASES: Record<string, TabKey> = { nfse: 'fiscal', certificado: 'fiscal' };
 
 type SP = Promise<{ tab?: string }>;
 
 export default async function ConfiguracoesPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
-  const active: TabKey = (TABS.find((t) => t.key === sp.tab)?.key ?? 'dados') as TabKey;
+  const requested = sp.tab ?? '';
+  const aliased = TAB_ALIASES[requested] ?? requested;
+  const active: TabKey = (TABS.find((t) => t.key === aliased)?.key ?? 'dados') as TabKey;
 
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -55,13 +58,13 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   }
 
   const municipioNfse =
-    active === 'nfse' && company
+    active === 'fiscal' && company
       ? await resolveMunicipioNfse(supabase, company.municipio as string, company.uf as string)
       : null;
 
   let certEnviadoEm: string | null = null;
   let certValidoAte: string | null = null;
-  if (active === 'certificado' && company) {
+  if (active === 'fiscal' && company) {
     const { data: cert } = await supabase
       .from('arquivos_auxiliares')
       .select('created_at, updated_at, cert_not_after')
@@ -137,10 +140,13 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
             } | null
           }
         />
-      ) : active === 'nfse' ? (
-        <NfseForm
+      ) : (
+        <EmissaoFiscalTab
           key={company.id as string}
-          initial={
+          companyId={company.id as string}
+          certEnviadoEm={certEnviadoEm}
+          certValidoAte={certValidoAte}
+          nfseInitial={
             empresaFiscal as {
               nfse_usuario_login?: string | null;
               nfse_senha_login?: string | null;
@@ -152,9 +158,10 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           municipio={municipioNfse}
           cidade={(company.municipio as string) ?? ''}
           uf={(company.uf as string) ?? ''}
+          focusStatus={(company.focus_status as 'ok' | 'erro' | null) ?? null}
+          focusLastCheck={(company.focus_last_check as string | null) ?? null}
+          focusToken={(company.focus_token as string | null) ?? null}
         />
-      ) : (
-        <CertificadoForm key={company.id as string} enviadoEm={certEnviadoEm} validoAte={certValidoAte} />
       )}
     </main>
   );
