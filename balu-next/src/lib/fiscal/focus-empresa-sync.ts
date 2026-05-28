@@ -9,8 +9,24 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { focus, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { buildFocusEmpresaPayload } from './focus-empresa-payload';
-import { buildFocusEmpresaUpdatePayload } from './focus-empresa-update-payload';
+import {
+  buildFocusEmpresaUpdatePayload,
+  withCertificado,
+  withCredenciaisPrefeitura,
+} from './focus-empresa-update-payload';
 import type { RegimeCode } from './regime';
+
+/**
+ * Extras opcionais pro PUT — usados nos momentos em que os secrets estão em
+ * memória natural (upload de cert, save da aba NFS-e). Por design, NÃO ficam
+ * persistidos pra serem reusados depois.
+ */
+export type AtualizarFocusExtras = {
+  /** Cert A1: PFX em base64 + senha (acoplado via withCertificado). */
+  certificado?: { base64: string; senha: string };
+  /** Credenciais prefeitura (município legado): acoplado via withCredenciaisPrefeitura. */
+  credenciaisPrefeitura?: { login: string; senha: string };
+};
 
 export type SyncFocusResult =
   | { ok: true; token: string | null }
@@ -148,13 +164,17 @@ async function snapshotFocusEmpresa(
  *   - companies.focus_token deve existir (cadastro inicial já feito).
  *     Se não existir, sugerimos rodar `syncEmpresaNaFocus` (POST) primeiro.
  *
- * Trigger: botão "Sincronizar com Focus" no Diagnóstico.
+ * Trigger:
+ *  - botão "Sincronizar com Focus" no Diagnóstico (sem extras → payload base puro)
+ *  - upload de certificado A1 (extras.certificado)
+ *  - save de credenciais prefeitura na aba NFS-e (extras.credenciaisPrefeitura)
  */
 export async function atualizarEmpresaNaFocus(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any, 'public', any>,
   companyId: string,
   env: FocusEnv = 'hom',
+  extras: AtualizarFocusExtras = {},
 ): Promise<SyncFocusResult> {
   const now = new Date().toISOString();
 
@@ -175,7 +195,7 @@ export async function atualizarEmpresaNaFocus(
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('Code_regime_tributario, nfse_usuario_login, nfse_senha_login, empresa_fiscal_ativada, focus_empresa_id, focus_codigo_municipio')
+    .select('Code_regime_tributario, empresa_fiscal_ativada, focus_empresa_id, focus_codigo_municipio')
     .eq('empresa_id', companyId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -200,7 +220,7 @@ export async function atualizarEmpresaNaFocus(
     null;
 
   try {
-    const payload = buildFocusEmpresaUpdatePayload(
+    let payload = buildFocusEmpresaUpdatePayload(
       {
         cnpj: company.cnpj,
         razao_social: company.razao_social,
@@ -220,13 +240,23 @@ export async function atualizarEmpresaNaFocus(
       },
       {
         Code_regime_tributario: fiscal.Code_regime_tributario as RegimeCode,
-        nfse_usuario_login: fiscal.nfse_usuario_login as string | null,
-        nfse_senha_login: fiscal.nfse_senha_login as string | null,
         empresa_fiscal_ativada: fiscal.empresa_fiscal_ativada as boolean | null,
       },
       codigoIbge,
       env,
     );
+
+    // Acopla extras quando o caller passou (upload de cert / save de credenciais).
+    if (extras.certificado) {
+      payload = withCertificado(payload, extras.certificado.base64, extras.certificado.senha);
+    }
+    if (extras.credenciaisPrefeitura) {
+      payload = withCredenciaisPrefeitura(
+        payload,
+        extras.credenciaisPrefeitura.login,
+        extras.credenciaisPrefeitura.senha,
+      );
+    }
 
     // PUT pela revenda — path usa o ID numérico interno (não o CNPJ).
     await focus.atualizarEmpresa(focusEmpresaId, payload as unknown as Record<string, unknown>, env);

@@ -117,10 +117,74 @@ Ambas aplicadas no Supabase em 2026-05-28.
 
 ## Pendências (em backlog)
 
-- **Focus 2.1 — PUT `/v2/empresas/:cnpj` enriquecendo**: cert base64 + senha (reaproveitada do upload, descartada após) + flags `habilita_*` + credenciais prefeitura. Decisão `habilita_nfse` vs `habilita_nfsen_producao` por cidade (aderente nacional → nfsen).
+- ~~**Focus 2.1 — PUT `/v2/empresas/:cnpj` enriquecendo**~~: **Concluído em 2026-05-28** (ver §"Continuação 2026-05-28" abaixo). PUT por **ID numérico** (não CNPJ), com payload base puro; cert e credenciais prefeitura saem em momentos dedicados (Focus 2.2).
+- ~~**Focus 2.2 — Upload do certificado A1**~~: **Concluído em 2026-05-28**. Cert acoplado ao PUT como `arquivo_certificado_base64` + `senha_certificado` no momento do upload local (senha em memória). Sem reempacotar PFX, sem mudar schema.
 - **Validar campos da Focus antes do PUT** (pedido do user): consultar empresas reais via `consultarEmpresa` pra mapear quais campos do snapshot são confiáveis e quais o user precisa fornecer no PUT.
 - **Lista de aderentes NFSe Nacional**: expandir a partir do CSV da Receita Federal (ou tabela dedicada com cron).
 - **Snapshot atualizado periodicamente**: hoje só atualiza após POST/PUT na Focus. Quando a Focus mudar algo no painel deles, nosso snapshot fica stale. Mitigação possível: botão "Atualizar status na Focus" ou TTL curto.
+
+---
+
+## Continuação 2026-05-28 — Focus 2.1 + 2.2
+
+### Mudanças de design vs versão original
+
+| Item | Versão original (planejada) | Versão entregue |
+|---|---|---|
+| Path do PUT | `/v2/empresas/:cnpj` | `/v2/empresas/:id` (ID numérico — empírico + doc) |
+| Cert A1 | Endpoint multipart `POST .../certificado` | Campos `arquivo_certificado_base64` + `senha_certificado` no mesmo PUT (não há endpoint multipart na revenda) |
+| Onde envia cert | Botão dedicado "Enviar cert pra Focus" | **No próprio `uploadCertificadoAction`** — único momento em que a senha PFX está em memória. Sem reempacotar. |
+| Onde envia credenciais prefeitura | Junto do botão "Sincronizar" | **No `upsertEmpresaFiscalAction`** (save da aba NFS-e) — quando login/senha vêm no patch |
+| Botão "Sincronizar" no Diagnóstico | Envia tudo (endereço + cert + credenciais) | Envia **apenas o payload base** (dados sem secrets) |
+
+### Arquitetura final
+
+```
+                  ┌─ payload base (endereço, regime, flags) ─┐
+buildFocusEmpresa │                                          │
+UpdatePayload  ───┤  +withCertificado(base64, senha)         │── PUT /v2/empresas/:id
+                  │  +withCredenciaisPrefeitura(login, senha)│
+                  └──────────────────────────────────────────┘
+
+Quem injeta o quê:
+- syncFocusEmpresaAction (botão Diagnóstico) ────► payload base puro
+- uploadCertificadoAction ────────────────────────► payload base + withCertificado
+- upsertEmpresaFiscalAction (com login+senha) ────► payload base + withCredenciaisPrefeitura
+```
+
+Todas as 3 entradas chamam o mesmo helper `atualizarEmpresaNaFocus(supabase, companyId, env, extras?)`. Best-effort: erro vira `warning` na UI, não bloqueia save local.
+
+### Drift detection
+
+Diagnóstico compara `max(companies.updated_at, empresas_fiscais.updated_at)` vs `focus_sync_em`. Se local for mais novo > 2s, o grupo "Cadastro na Focus" vira `pendente` com meta *"Há mudanças não sincronizadas desde …"*. Sem drift mostra *"Sincronizado em …"*.
+
+### Arquivos novos/alterados (2.1 + 2.2)
+
+- `src/lib/fiscal/focus-empresa-update-payload.ts` — mapper puro + helpers `withCertificado` / `withCredenciaisPrefeitura` (23 testes).
+- `src/lib/fiscal/focus-empresa-sync.ts` — `atualizarEmpresaNaFocus` com param `extras`.
+- `src/lib/clients/focus-nfe.ts` — novo método `focus.atualizarEmpresa(id, payload, env)` (PUT, id numérico, força base prod).
+- `src/lib/fiscal/saude-empresa.ts` — `detectFocusDrift` + meta no grupo focus.
+- `src/app/(auth)/configuracoes/actions.ts` — `syncFocusEmpresaAction` (POST se sem token, PUT se com); upload + upsert chamam Focus best-effort.
+- `src/app/(auth)/configuracoes/SyncFocusButton.tsx` — renomeado de RetryFocusButton; label "Sincronizar com Focus".
+- `src/app/(auth)/configuracoes/SaudeEmpresaTab.tsx` — renderiza `group.meta`.
+- `src/app/(auth)/configuracoes/NfseForm.tsx` — mostra `warning` (toast) vindo de Focus.
+- `scripts/focus2.1-put-smoke.ts`, `scripts/focus2.2-cert-smoke.ts` — smokes E2E.
+- `scripts/wipe-user.ts`, `scripts/wipe-companies.ts` — reset de testes.
+
+### Verificação (2026-05-28)
+
+- **Vitest:** 166/166 ok (helpers + drift + PUT mocked).
+- **tsc --noEmit + next build:** verdes.
+- **Smoke E2E real contra Focus hom (AL Piscinas, CNPJ 10358425000120):**
+  - Focus 1 (POST): `id=216780`, token gerado.
+  - Focus 2.2 (PUT + cert): `focus_habilita_nfsen_homologacao: true` (era null), `focus_status: ok`, `focus_last_error: null`.
+  - Conclusão: empresa **pronta pra emitir NFS-e em homologação** após upload do cert.
+
+### Decisões empíricas
+
+- **PUT por ID numérico:** doc oficial diz CNPJ, mas tentar com CNPJ retorna `404 nao_encontrado`. ID interno (devolvido pelo POST como `resp.id`) é o que funciona. Persistido em `empresas_fiscais.focus_empresa_id`.
+- **Cert via base64 no mesmo PUT:** doc da Focus revenda confirma — `arquivo_certificado_base64` + `senha_certificado` aceitam o PFX original sem reempacotar.
+- **Senha PFX nunca persiste:** usada uma vez no PUT, descartada. Defesa em profundidade documentada no comentário do action.
 
 ## Premissas confirmadas
 

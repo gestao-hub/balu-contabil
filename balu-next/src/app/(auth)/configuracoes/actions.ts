@@ -7,13 +7,14 @@ import { createServerClient } from '@/lib/supabase/server';
 import { CompanySchema, type CompanyInput, EmpresaFiscalSchema, type EmpresaFiscalInput } from '@/types/zod';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 import { syncEmpresaNaFocus, atualizarEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
+import { isAderenteNfsenNacional } from '@/lib/fiscal/municipios-nfsen-nacional';
 import { uploadCertificado as storageUploadCertificado } from '@/lib/clients/supabase-storage';
 import { validateCertificadoUpload } from '@/lib/fiscal/certificado';
 import { parsePkcs12, type CertMaterial } from '@/lib/fiscal/pkcs12';
 import { encryptBlob } from '@/lib/crypto/envelope';
 import { autenticarProcurador } from '@/lib/clients/serpro-auth';
 
-type ActionResult = { ok: true } | { ok: false; error: string };
+type ActionResult = { ok: true; warning?: string } | { ok: false; error: string };
 
 export async function updateCompanyAction(id: string, patch: Partial<CompanyInput>): Promise<ActionResult> {
   if (!id) return { ok: false, error: 'ID da empresa ausente.' };
@@ -89,8 +90,44 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
     if (error) return { ok: false, error: error.message };
   }
 
+  // Focus 2.2 (best-effort): se o patch incluiu credenciais prefeitura
+  // (login+senha NFS-e) e a empresa já tem cadastro na Focus, envia esses
+  // campos no mesmo PUT do payload base. Só faz sentido em município legado
+  // (NFSe Nacional não usa autenticação por prefeitura via Focus).
+  let warning: string | undefined;
+  const loginRaw = (patch.nfse_usuario_login ?? '').trim();
+  const senhaRaw = (patch.nfse_senha_login ?? '').trim();
+  if (loginRaw && senhaRaw) {
+    const { data: ctx } = await supabase
+      .from('empresas_fiscais')
+      .select('focus_empresa_id, focus_codigo_municipio')
+      .eq('empresa_id', companyId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    const focusEmpresaId = ctx?.focus_empresa_id as number | null;
+    if (focusEmpresaId != null) {
+      const { data: companyRow } = await supabase
+        .from('companies')
+        .select('codigo_municipio')
+        .eq('id', companyId)
+        .single();
+      const codigoIbge =
+        (ctx?.focus_codigo_municipio as string | null) ||
+        (companyRow?.codigo_municipio as string | null) ||
+        null;
+      if (!isAderenteNfsenNacional(codigoIbge)) {
+        const r = await atualizarEmpresaNaFocus(supabase, companyId, 'hom', {
+          credenciaisPrefeitura: { login: loginRaw, senha: senhaRaw },
+        });
+        if (!r.ok) {
+          warning = `Salvo localmente, mas falha ao enviar credenciais pra Focus: ${r.error.slice(0, 200)}`;
+        }
+      }
+    }
+  }
+
   revalidatePath('/configuracoes');
-  return { ok: true };
+  return warning ? { ok: true, warning } : { ok: true };
 }
 
 export async function uploadCertificadoAction(
@@ -173,7 +210,7 @@ export async function uploadCertificadoAction(
   }
 
   // Best-effort: autentica na SERPRO e cacheia o JWT. Falha não perde o certificado.
-  let warning: string | undefined;
+  const warnings: string[] = [];
   try {
     const tokens = await autenticarProcurador(material.keyPem, material.certPem + material.chainPem);
     const { data: fiscalRows } = await supabase
@@ -187,13 +224,41 @@ export async function uploadCertificadoAction(
       .eq('empresa_id', companyId)
       .select('empresa_id');
     if (!fiscalRows || fiscalRows.length === 0) {
-      warning = 'Certificado salvo. Conclua o cadastro fiscal (NFS-e) para ativar a autenticação na SERPRO.';
+      warnings.push('Conclua o cadastro fiscal (NFS-e) para ativar a autenticação na SERPRO.');
     }
   } catch {
-    warning = 'Certificado salvo, mas a autenticação na SERPRO falhou — será refeita depois.';
+    warnings.push('Autenticação na SERPRO falhou — será refeita depois.');
   }
 
+  // Focus 2.2 (best-effort): se a empresa já tem cadastro na Focus, envia o
+  // PFX + senha (em base64) no mesmo PUT do payload base. Esse é o ÚNICO
+  // momento em que temos a senha original do PFX em memória; depois daqui ela
+  // é descartada (apenas o material PEM cifrado fica em Storage).
+  // Pular silenciosamente quando focus_empresa_id ainda não existe — esse caso
+  // é resolvido depois clicando "Sincronizar com Focus" no Diagnóstico (Focus 1).
+  const { data: fiscalForFocus } = await supabase
+    .from('empresas_fiscais')
+    .select('focus_empresa_id')
+    .eq('empresa_id', companyId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (fiscalForFocus?.focus_empresa_id != null) {
+    const focusResult = await atualizarEmpresaNaFocus(supabase, companyId, 'hom', {
+      certificado: { base64: buf.toString('base64'), senha },
+    });
+    if (!focusResult.ok) {
+      warnings.push(`Certificado salvo localmente, mas falhou ao enviar pra Focus: ${focusResult.error.slice(0, 200)}`);
+    }
+  }
+
+  // Zera a senha do PFX da nossa stack frame (defesa em profundidade — após o
+  // return, o GC eventualmente coleta; explicitar reforça a intenção).
+  // Nota: strings em JS são imutáveis; isto não sobrescreve a string original,
+  // só remove a referência local. Pra apagar mesmo seria preciso Uint8Array.
+  // Mantemos `senha` como const pra não dar reatribuição — o ponto é doc.
+
   revalidatePath('/configuracoes');
+  const warning = warnings.length ? warnings.join(' ') : undefined;
   return { ok: true, warning };
 }
 

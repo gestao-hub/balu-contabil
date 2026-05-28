@@ -89,7 +89,10 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
         empresa_fiscal_ativada: ativada,
       });
       if (!r.ok) { toast('error', r.error); return; }
-      toast('success', 'Configuração de NFS-e salva.');
+      // r.warning vem do best-effort de envio das credenciais pra Focus
+      // (Focus 2.2): save local OK mas Focus rejeitou — mostra como warning.
+      if (r.warning) toast('warning', r.warning);
+      else toast('success', 'Configuração de NFS-e salva.');
       setEditing(false);
     } finally {
       setBusy(false);
