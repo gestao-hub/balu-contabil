@@ -1,8 +1,8 @@
 // @custom — implementado pela skill bubble-behavior
 'use server';
 
-import { headers } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
+import { getSiteUrl } from '@/lib/site-url';
 
 export type ResetState = { error?: string; success?: string } | undefined;
 
@@ -10,14 +10,10 @@ export async function requestResetAction(_prev: ResetState, formData: FormData):
   const email = String(formData.get('email') ?? '').trim();
   if (!email) return { error: 'Informe seu e-mail.' };
 
-  const hdrs = await headers();
-  const origin =
-    hdrs.get('origin') ??
-    (() => {
-      const host = hdrs.get('host');
-      const proto = hdrs.get('x-forwarded-proto') ?? 'https';
-      return host ? `${proto}://${host}` : '';
-    })();
+  // Base canônica via env (NEXT_PUBLIC_SITE_URL) — derivar de header `Host`/`Origin`
+  // é Host Header Injection: atacante manda reset com Host: evil.com e Supabase
+  // envia o link de redefinição apontando pro domínio dele.
+  const origin = getSiteUrl();
 
   const supabase = await createServerClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
