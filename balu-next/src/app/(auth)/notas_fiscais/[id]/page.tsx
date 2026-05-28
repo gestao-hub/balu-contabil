@@ -41,8 +41,21 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
 
   const payload = (nota.payload_focusnfe ?? {}) as unknown as Record<string, unknown>;
   const dest = (payload.destinatario ?? {}) as Record<string, unknown>;
-  const clienteNome = (dest.razao_social as string) ?? '—';
-  const clienteDoc = (dest.cnpj as string) ?? (dest.cpf as string) ?? '';
+
+  // Notas novas (PR 2.1+) têm cliente_id → busca em `clientes`. Notas legadas
+  // (Bubble) caem no fallback `payload_focusnfe.destinatario`.
+  let clienteNome = (dest.razao_social as string | undefined) ?? '—';
+  let clienteDoc = (dest.cnpj as string | undefined) ?? (dest.cpf as string | undefined) ?? '';
+  if (nota.cliente_id) {
+    const { data: cliente } = await supabase
+      .from('clientes').select('razao_social, document')
+      .eq('id', nota.cliente_id as string).maybeSingle();
+    if (cliente) {
+      clienteNome = (cliente.razao_social as string | null) ?? clienteNome;
+      clienteDoc = (cliente.document as string | null) ?? clienteDoc;
+    }
+  }
+
   const chave = (nota.chave_acesso as string) ?? (payload.chave_nfe as string) ?? '—';
   const protocolo = (nota.protocolo_autorizacao as string) ?? (payload.protocolo as string) ?? '—';
   const status = nota.status as string;
@@ -115,7 +128,7 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
             <div>
               <p className="font-medium text-amber-700">Processando autorização</p>
               <p className="mt-1 text-zinc-700">
-                A Focus enviou pra fila de validação da prefeitura. Recarregue em alguns segundos pra ver o resultado.
+                A Focus enviou pra fila de validação da prefeitura. Volte pra listagem e clique no ícone de atualizar ao lado do status.
               </p>
             </div>
           </div>

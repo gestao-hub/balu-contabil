@@ -31,7 +31,13 @@ type FocusCallback = {
   serie?: string | number;
   caminho_xml_nota_fiscal?: string;
   caminho_danfe?: string;
-  // NFSe Nacional / DPS
+  // NFSe Nacional / DPS (callback real, validado 2026-05-28):
+  //   url_danfse → S3 pré-assinada do PDF (USAR ESTE pra pdf_url)
+  //   caminho_xml_nota_fiscal → path relativo do XML (prependar base Focus)
+  //   url → consulta pública NFSe Nacional
+  //   codigo_verificacao → SEFAZ/Receita
+  url_danfse?: string;
+  url?: string;
   caminho_xml_nfse?: string;
   caminho_danfse?: string;
   numero_nfse?: string | number;
@@ -71,7 +77,11 @@ export async function POST(req: Request) {
       ? String(body.numero)
       : body.numero_nfse != null ? String(body.numero_nfse) : null;
     const serie = body.serie != null ? String(body.serie) : null;
-    const pdf = body.pdf_url ?? body.caminho_danfe ?? body.caminho_danfse ?? null;
+    // PDF: NFSe Nacional manda `url_danfse` (S3 pré-assinada, sem auth);
+    // NFe/NFCe legacy mandam `caminho_danfe` (path relativo da Focus).
+    const pdf =
+      body.pdf_url ?? body.url_danfse ?? body.caminho_danfe ?? body.caminho_danfse ?? null;
+    // XML: NFSe Nacional manda `caminho_xml_nota_fiscal` (relativo).
     const xml = body.xml_url ?? body.caminho_xml_nota_fiscal ?? body.caminho_xml_nfse ?? null;
     const protocolo = body.protocolo ?? null;
 

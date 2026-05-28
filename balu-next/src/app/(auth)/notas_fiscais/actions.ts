@@ -11,6 +11,7 @@ import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { assertTipoDoc, validarJustificativa, type TipoDoc } from '@/lib/fiscal/notas-tipo';
 import { buildNfsePayload } from '@/lib/fiscal/nfse-payload';
 import { traduzirErroFocus } from '@/lib/fiscal/focus-erro';
+import { mapStatusFocus } from '@/lib/fiscal/focus-status';
 import type { RegimeCode } from '@/lib/fiscal/regime';
 
 export type NotasFiltros = {
@@ -279,6 +280,99 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
   revalidatePath('/notas_fiscais');
   revalidatePath(`/notas_fiscais/${notaId}`);
   return { ok: true, notaId };
+}
+
+/**
+ * Atualiza o status de uma nota consultando a Focus (GET /v2/nfsen/:ref).
+ * Funciona como "polling manual": útil em dev local onde o webhook da Focus
+ * não chega (localhost não é alcançável) e em produção como redundância caso
+ * o webhook tenha falhado.
+ *
+ * Idempotente: chamar 2x não muda nada se a Focus retornar mesmo estado.
+ * Best-effort: só atualiza campos que vieram na resposta (preserva o que já
+ * estava — mesmo padrão do webhook handler em /api/webhooks/focus).
+ */
+export async function atualizarStatusNotaAction(
+  id: string,
+): Promise<{ ok: true; status: string } | { ok: false; error: string }> {
+  if (!id) return { ok: false, error: 'ID da nota ausente.' };
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  const { data: nota } = await supabase
+    .from('notas_fiscais')
+    .select('id, tipo_documento, referencia, payload_focusnfe')
+    .eq('id', id).eq('company_id', companyId).maybeSingle();
+  if (!nota) return { ok: false, error: 'Nota não encontrada.' };
+
+  const { data: company } = await supabase
+    .from('companies').select('focus_token').eq('id', companyId).single();
+  if (!company?.focus_token) {
+    return { ok: false, error: 'Empresa sem token Focus — sincronize no Diagnóstico.' };
+  }
+
+  // Hoje só temos NFSe Nacional implementada. Quando der suporte a NFe/NFCe
+  // aqui, branch por nota.tipo_documento ('NFe'|'NFCe'|'NFSe').
+  const ref = nota.referencia as string;
+  let resp: Record<string, unknown>;
+  try {
+    resp = await focus.consultarStatusNfse(ref, company.focus_token as string, 'hom');
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: traduzirErroFocus(msg) };
+  }
+
+  // Mesmo padrão do webhook: só atualiza colunas que vieram na resposta.
+  // NFSe Nacional manda `url_danfse` (S3 pré-assinada) e `caminho_xml_nota_fiscal`.
+  const chave = (resp.chave_nfe as string) ?? null;
+  const numero =
+    resp.numero != null ? String(resp.numero) :
+    resp.numero_nfse != null ? String(resp.numero_nfse) : null;
+  const serie = resp.serie != null ? String(resp.serie) : null;
+  const pdf =
+    (resp.pdf_url as string) ??
+    (resp.url_danfse as string) ??
+    (resp.caminho_danfe as string) ??
+    (resp.caminho_danfse as string) ??
+    null;
+  const xml =
+    (resp.xml_url as string) ??
+    (resp.caminho_xml_nota_fiscal as string) ??
+    (resp.caminho_xml_nfse as string) ??
+    null;
+  const protocolo = (resp.protocolo as string) ?? null;
+
+  const requestAnterior = (nota.payload_focusnfe as { request?: unknown } | null)?.request ?? null;
+  const newStatus = mapStatusFocus(resp.status as string | undefined);
+
+  const update: Record<string, unknown> = {
+    status: newStatus,
+    payload_focusnfe: requestAnterior
+      ? { request: requestAnterior, callback: resp }
+      : { callback: resp },
+    updated_at: new Date().toISOString(),
+  };
+  if (chave) update.chave_acesso = chave;
+  if (pdf) update.pdf_url = pdf;
+  if (xml) update.xml_url = xml;
+  if (protocolo) update.protocolo_autorizacao = protocolo;
+  if (numero) update.numero_nf = numero;
+  if (serie) update.serie = serie;
+
+  const { error } = await supabase
+    .from('notas_fiscais').update(update).eq('id', id).eq('company_id', companyId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/notas_fiscais/${id}`);
+  revalidatePath('/notas_fiscais');
+  return { ok: true, status: newStatus };
 }
 
 /**

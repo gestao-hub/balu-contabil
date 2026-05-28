@@ -11,6 +11,7 @@ import { Search, Download, FileText } from 'lucide-react';
 import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import { useToast } from '@/components/Toaster';
 import { exportNotasCsvAction } from './actions';
+import AtualizarStatusIcon from './AtualizarStatusIcon';
 
 // Tabela real `notas_fiscais` é minimalista: o nome do cliente é derivado de
 // payload_focusnfe.destinatario (não há FK cliente_id). `referencia` é o identificador.
@@ -201,13 +202,18 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
                       {n.valor_total != null ? brl.format(n.valor_total) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          st?.cls ?? 'bg-zinc-100 text-zinc-600'
-                        }`}
-                      >
-                        {st?.label ?? n.status ?? '—'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            st?.cls ?? 'bg-zinc-100 text-zinc-600'
+                          }`}
+                        >
+                          {st?.label ?? n.status ?? '—'}
+                        </span>
+                        {n.status === 'pendente' && (
+                          <AtualizarStatusIcon notaId={n.id} />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
