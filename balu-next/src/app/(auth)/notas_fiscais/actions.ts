@@ -4,7 +4,10 @@
 // Export CSV do histórico de notas. Re-consulta no servidor aplicando os mesmos
 // filtros da tela (período/tipo/status) + filtro de texto em memória.
 
+import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
+import { focus, type FocusEnv } from '@/lib/clients/focus-nfe';
+import { assertTipoDoc, validarJustificativa } from '@/lib/fiscal/notas-tipo';
 
 export type NotasFiltros = {
   start: string | null;
@@ -104,4 +107,60 @@ export async function exportNotasCsvAction(filtros: NotasFiltros): Promise<Expor
   const csv = '﻿' + lines.join('\r\n');
   const filename = `notas_fiscais_${new Date().toISOString().slice(0, 10)}.csv`;
   return { ok: true, csv, filename };
+}
+
+export async function cancelarNotaAction(
+  id: string,
+  justificativa: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const v = validarJustificativa(justificativa);
+  if (!v.ok) return v;
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('current_company')
+    .eq('user_id', user.id)
+    .single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  const { data: nota } = await supabase
+    .from('notas_fiscais')
+    .select('id, tipo_documento, referencia, status')
+    .eq('id', id)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  if (!nota) return { ok: false, error: 'Nota não encontrada.' };
+  if (nota.status !== 'ativa') return { ok: false, error: 'Só notas ativas podem ser canceladas.' };
+
+  const env: FocusEnv = 'hom'; // produção depende do token Focus (Blocked) + flags da empresa
+  const justif = justificativa.trim();
+  try {
+    const tipo = assertTipoDoc(nota.tipo_documento as string);
+    const ref = nota.referencia as string;
+    if (tipo === 'NFe') await focus.cancelarNfe(ref, justif, env);
+    else if (tipo === 'NFCe') await focus.cancelarNfce(ref, justif, env);
+    else await focus.cancelarNfse(ref, justif, env);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Falha ao cancelar na Focus.' };
+  }
+
+  const { error } = await supabase
+    .from('notas_fiscais')
+    .update({
+      status: 'cancelada',
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: justif,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('company_id', companyId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/notas_fiscais');
+  revalidatePath(`/notas_fiscais/${id}`);
+  return { ok: true };
 }
