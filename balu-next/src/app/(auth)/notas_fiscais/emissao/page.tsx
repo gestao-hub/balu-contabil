@@ -70,7 +70,9 @@ export default async function NotasFiscaisEmissaoPage({ searchParams }: { search
     );
   }
 
-  const env = fiscal.emitir_nota_homol_antes_producao === false ? 'producao' : 'homologação';
+  // MVP: emitirNotaAction sempre usa hom (ver comentário lá). Exibimos
+  // "homologação" pra refletir a realidade até suportarmos produção.
+  const env = 'homologação';
 
   return (
     <main className="p-6 max-w-3xl">

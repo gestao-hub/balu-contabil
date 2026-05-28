@@ -238,9 +238,17 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
   }
   const notaId = nota.id as string;
 
-  // Decide env: hom se empresa marcou "emitir em homologação antes de produção"
-  // (default true em onboarding) ou se a flag não está setada.
-  const env: FocusEnv = fiscal.emitir_nota_homol_antes_producao === false ? 'prod' : 'hom';
+  // MVP: SEMPRE emitir em homologação. Lógica original tinha 2 bugs:
+  //   1) Default `emitir_nota_homol_antes_producao = false` levava novas
+  //      empresas direto pra produção (contra intenção do user).
+  //   2) Token salvo é `token_homologacao` (vem do POST /v2/empresas inicial).
+  //      Mandar token-hom pra URL prod (api.focusnfe.com.br) dá 401.
+  // Quando suportarmos produção real, adicionamos um campo dedicado
+  // `ambiente_atual` ('hom'|'prod') em empresas_fiscais e migramos o token
+  // pra `token_producao` antes de chavear. Tarefa em backlog (PR 4.x).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _flagIgnoradaPorEnquanto = fiscal.emitir_nota_homol_antes_producao;
+  const env: FocusEnv = 'hom';
 
   try {
     const resp = await focus.emitirNfse(ref, payload, company.focus_token as string, env);
