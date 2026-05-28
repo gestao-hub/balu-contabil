@@ -56,6 +56,10 @@ export type SaudeState = {
     habilitaNfsenHomologacao: boolean | null;
     syncEm: string | null;
   } | null;
+  // Timestamps locais usados pra detectar drift Balu↔Focus (Focus 2.1).
+  // Quando max(updated_at) > focusSnapshot.syncEm, há mudanças não sincronizadas.
+  companiesUpdatedAt: string | null;
+  empresaFiscalUpdatedAt: string | null;
 };
 
 const SKEW_MS = 5 * 60 * 1000;
@@ -98,6 +102,8 @@ export type CheckGroup = {
   status: CheckStatus;
   /** Ação contextual no header do grupo (priorizada do primeiro item não-ok). */
   action: CheckActionKey;
+  /** Linha extra abaixo dos itens (ex: "Sincronizado em DD/MM HH:MM" ou alerta de drift). */
+  meta?: string;
 };
 
 /** Roll-up de status: erro > pendente > ok. */
@@ -105,6 +111,34 @@ function rollupStatus(items: CheckResult[]): CheckStatus {
   if (items.some((i) => i.status === 'erro')) return 'erro';
   if (items.some((i) => i.status === 'pendente')) return 'pendente';
   return 'ok';
+}
+
+/**
+ * "Há mudanças não sincronizadas com a Focus?"
+ * True quando o último save local (companies.updated_at ou empresa_fiscal.updated_at)
+ * é mais novo que focusSnapshot.syncEm. Sem syncEm ainda → false (cobre pelo
+ * estado "não cadastrada"; não queremos mostrar drift antes do primeiro POST).
+ */
+export function detectFocusDrift(state: SaudeState): { drift: boolean; lastEditAt: string | null } {
+  const syncAt = state.focusSnapshot?.syncEm ?? null;
+  if (!syncAt) return { drift: false, lastEditAt: null };
+
+  const candidates = [state.companiesUpdatedAt, state.empresaFiscalUpdatedAt]
+    .filter((t): t is string => !!t)
+    .map((t) => Date.parse(t))
+    .filter((t) => Number.isFinite(t));
+  if (candidates.length === 0) return { drift: false, lastEditAt: null };
+
+  const lastEdit = Math.max(...candidates);
+  const syncMs = Date.parse(syncAt);
+  if (!Number.isFinite(syncMs)) return { drift: false, lastEditAt: null };
+
+  // Margem de 2s pra evitar falso positivo quando updated_at ≈ syncEm.
+  const drift = lastEdit - syncMs > 2_000;
+  return {
+    drift,
+    lastEditAt: drift ? new Date(lastEdit).toISOString() : null,
+  };
 }
 
 /** Ação do grupo: pega do primeiro item não-ok (com fallback null). */
@@ -159,14 +193,48 @@ export function buildSaudeGroups(state: SaudeState, now: Date = new Date()): Che
       status: serpro.status,
       action: serpro.action,
     },
-    {
-      key: 'focus',
-      label: 'Cadastro na Focus',
-      items: focusItems,
-      status: rollupStatus(focusItems),
-      action: pickGroupAction(focusItems),
-    },
+    buildFocusGroup(state, focusItems),
   ];
+}
+
+/**
+ * Monta o grupo "Cadastro na Focus" aplicando drift detection.
+ * Se itens estão OK mas há mudanças locais não sincronizadas, downgrade pra pendente
+ * e expõe a ação "sync_focus".
+ *
+ * Meta line:
+ *  - cadastrado e sem drift → "Sincronizado em DD/MM HH:MM"
+ *  - cadastrado e com drift  → "Há mudanças não sincronizadas desde DD/MM HH:MM"
+ *  - não cadastrado          → sem meta
+ */
+function buildFocusGroup(state: SaudeState, items: CheckResult[]): CheckGroup {
+  const rolledUp = rollupStatus(items);
+  const action = pickGroupAction(items);
+  const syncAt = state.focusSnapshot?.syncEm ?? null;
+  const { drift, lastEditAt } = detectFocusDrift(state);
+
+  let status: CheckStatus = rolledUp;
+  let resolvedAction: CheckActionKey = action;
+  let meta: string | undefined;
+
+  if (syncAt && drift) {
+    // Itens individuais continuam refletindo o estado da Focus, mas o grupo
+    // sinaliza que há mudanças locais pendentes de PUT.
+    if (status === 'ok') status = 'pendente';
+    resolvedAction = 'sync_focus';
+    meta = `Há mudanças não sincronizadas desde ${formatBR(lastEditAt ?? '')}. Clique em Sincronizar.`;
+  } else if (syncAt) {
+    meta = `Sincronizado em ${formatBR(syncAt)}.`;
+  }
+
+  return {
+    key: 'focus',
+    label: 'Cadastro na Focus',
+    items,
+    status,
+    action: resolvedAction,
+    meta,
+  };
 }
 
 /**

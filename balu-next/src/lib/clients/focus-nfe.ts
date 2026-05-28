@@ -162,6 +162,23 @@ export const focus = {
   consultarEmpresa: (id: number, _env: FocusEnv = 'hom') =>
     call<FocusEmpresaSnapshot>('prod', 'GET', `/v2/empresas/${id}`),
 
+  /**
+   * PUT /v2/empresas/:id — atualiza cadastro da empresa na revenda Focus
+   * (regime, habilitação NFS-e, login/senha prefeitura, endereço editado).
+   *
+   * **Path usa o ID numérico interno** (devolvido pelo POST em `resp.id` e
+   * salvo em `empresas_fiscais.focus_empresa_id`), NÃO o CNPJ — confirmado
+   * empiricamente em 2026-05-28 (PUT por CNPJ retorna 404) e validado em
+   * https://doc.focusnfe.com.br/reference/atualizar_empresa.
+   *
+   * Idempotente: pode reenviar o mesmo payload sem efeito colateral. Mesmo
+   * que `criarEmpresa`/`consultarEmpresa`: revenda só vive em `api.focusnfe.com.br`,
+   * então força `'prod'`. O ambiente real (hom/prod) das emissões é decidido
+   * por `habilita_nfsen_homologacao` vs `habilita_nfsen_producao` no payload.
+   */
+  atualizarEmpresa: (id: number, payload: Record<string, unknown>, _env: FocusEnv = 'hom') =>
+    call<FocusEmpresaSnapshot>('prod', 'PUT', `/v2/empresas/${id}`, payload),
+
   // ---------- Emissão ----------
   /** POST /v2/nfe?ref=:ref — emissão NFe (idempotente por ref) */
   emitirNfe: (ref: string, payload: unknown, env: FocusEnv = 'hom') =>

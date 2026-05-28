@@ -169,3 +169,63 @@ describe('focus.consultarEmpresa', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('focus.atualizarEmpresa', () => {
+  it('PUT 200 com payload completo — usa ID NUMÉRICO no path e força base prod', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(async () =>
+        mockJsonResponse(200, {
+          id: 216635,
+          cnpj: '10358425000120',
+          habilita_nfsen_homologacao: true,
+        }),
+      );
+
+    const payload = { ...PAYLOAD, habilita_nfsen_homologacao: true };
+    const snap = await focus.atualizarEmpresa(216635, payload, 'hom');
+
+    expect(snap.habilita_nfsen_homologacao).toBe(true);
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    // Path usa id numérico, NÃO o CNPJ.
+    expect(url).toBe('https://api.focusnfe.com.br/v2/empresas/216635');
+    expect(init?.method).toBe('PUT');
+    const headers = init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Basic dGVzdC10b2tlbi0xMjM6');
+    expect(JSON.parse(init?.body as string)).toEqual(payload);
+  });
+
+  it('env=prod também usa api.focusnfe.com.br (revenda só em prod)', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(async () => mockJsonResponse(200, { id: 1 }));
+
+    await focus.atualizarEmpresa(216635, PAYLOAD, 'prod');
+    expect(fetchSpy.mock.calls[0]![0]).toBe(
+      'https://api.focusnfe.com.br/v2/empresas/216635',
+    );
+  });
+
+  it('422 (regra negócio) lança Error sem retry', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(async () =>
+        new Response(JSON.stringify({ codigo: 'regime_invalido' }), {
+          status: 422,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+    await expect(focus.atualizarEmpresa(216635, PAYLOAD, 'hom')).rejects.toThrow(/422/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('503 retenta até MAX_RETRIES', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response('', { status: 503 }));
+
+    await expect(focus.atualizarEmpresa(216635, PAYLOAD, 'hom')).rejects.toThrow(/503/);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  }, 10_000);
+});

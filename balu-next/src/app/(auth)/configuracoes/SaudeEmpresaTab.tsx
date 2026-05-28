@@ -11,7 +11,7 @@ import {
   type CheckStatus,
   type SaudeState,
 } from '@/lib/fiscal/saude-empresa';
-import RetryFocusButton from './RetryFocusButton';
+import SyncFocusButton from './SyncFocusButton';
 
 type Props = { state: SaudeState };
 
@@ -111,6 +111,11 @@ function GroupCard({ group }: { group: CheckGroup }) {
           </li>
         ))}
       </ul>
+      {group.meta && (
+        <p className="px-4 py-2 text-xs text-zinc-500 border-t border-zinc-100 bg-zinc-50/50">
+          {group.meta}
+        </p>
+      )}
     </div>
   );
 }
@@ -153,7 +158,7 @@ function CheckAction({
     );
   }
   if (action === 'sync_focus') {
-    return <RetryFocusButton />;
+    return <SyncFocusButton />;
   }
   if (action === 'reauth_serpro') {
     return (
