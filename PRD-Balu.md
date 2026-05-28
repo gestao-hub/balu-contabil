@@ -432,7 +432,8 @@ Ver §6.2. Toda página protegida deve incluir o reusable `re_authentication`.
 
 3. Validações antes do POST:
    - Empresa precisa de `empresa_fiscal_ativada=true`.
-   - Certificado A1 carregado.
+   - Certificado A1 carregado **no Balu/Storage**.
+     - ⚠️ **Achado 2026-05-27:** o certificado **nunca é registrado na Focus** por código (nem Bubble, nem n8n, nem Next) — seu único destino programático é a **SERPRO** (mTLS Integra Contador). Toda emissão Focus até hoje foi **homologação**. Para emissão em **produção**, a empresa+cert precisam ser cadastrados **no lado da Focus** (painel manual ou um `POST /v2/empresas` não construído). Pendência própria de emissão, independente do wire do `certificado_jwt` da SERPRO. Ver memória `balu-focus-cert-registration-gap`.
    - Para NFS-e: município deve estar em `municipios_nfse` e `requer_*` flags atendidas.
    - Soma dos pagamentos = total da nota.
 4. Em caso de sucesso: armazena retorno em `notas_fiscais` (`POST /notas_fiscais`), com `status="ativa"`, chave de acesso, número, série, links de XML/PDF.
