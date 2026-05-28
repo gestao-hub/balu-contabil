@@ -31,13 +31,19 @@ export async function GET(
     .eq('id', id).eq('company_id', companyId).maybeSingle();
   if (!nota) return new Response('nota não encontrada', { status: 404 });
 
+  // Download na Focus exige o token da EMPRESA (igual emissão).
+  const { data: company } = await supabase
+    .from('companies').select('focus_token').eq('id', companyId).single();
+  const focusToken = (company?.focus_token as string | null) ?? null;
+  if (!focusToken) return new Response('empresa sem token Focus — sincronize antes', { status: 409 });
+
   try {
     const tipo = assertTipoDoc(nota.tipo_documento as string);
     const ref = nota.referencia as string;
     if (formato === 'xml') {
-      const r = tipo === 'NFe' ? await focus.baixarXmlNfe(ref, ENV)
-        : tipo === 'NFCe' ? await focus.baixarXmlNfce(ref, ENV)
-        : await focus.baixarXmlNfse(ref, ENV);
+      const r = tipo === 'NFe' ? await focus.baixarXmlNfe(ref, focusToken, ENV)
+        : tipo === 'NFCe' ? await focus.baixarXmlNfce(ref, focusToken, ENV)
+        : await focus.baixarXmlNfse(ref, focusToken, ENV);
       return new Response(r.body, {
         headers: {
           'Content-Type': 'application/xml; charset=utf-8',
@@ -45,9 +51,9 @@ export async function GET(
         },
       });
     }
-    const r = tipo === 'NFe' ? await focus.baixarDanfe(ref, ENV)
-      : tipo === 'NFCe' ? await focus.baixarDanfeNfce(ref, ENV)
-      : await focus.baixarDanfeNfse(ref, ENV);
+    const r = tipo === 'NFe' ? await focus.baixarDanfe(ref, focusToken, ENV)
+      : tipo === 'NFCe' ? await focus.baixarDanfeNfce(ref, focusToken, ENV)
+      : await focus.baixarDanfeNfse(ref, focusToken, ENV);
     return new Response(Buffer.from(r.body), {
       headers: {
         'Content-Type': 'application/pdf',
