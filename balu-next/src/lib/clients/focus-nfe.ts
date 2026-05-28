@@ -8,8 +8,19 @@ const base = (env: 'prod' | 'hom') => (env === 'prod' ? PROD : HOM);
 
 export type FocusEnv = 'prod' | 'hom';
 
-function auth() {
-  const token = process.env.FOCUS_NFE_TOKEN;
+/**
+ * Monta o header Basic Auth.
+ *
+ * - Sem `tokenOverride`: usa `FOCUS_NFE_TOKEN` da env. Esse é o **token de
+ *   revenda** — único válido pros endpoints `/v2/empresas*` (cadastro,
+ *   atualização, snapshot).
+ * - Com `tokenOverride`: usa esse token. Pros endpoints de **emissão**
+ *   (`/v2/nfsen`, `/v2/nfse`, `/v2/nfe`, etc) a Focus exige o
+ *   `token_homologacao` ou `token_producao` específico da EMPRESA — salvo em
+ *   `companies.focus_token` após o POST inicial em `/v2/empresas`.
+ */
+function auth(tokenOverride?: string) {
+  const token = tokenOverride ?? process.env.FOCUS_NFE_TOKEN;
   if (!token) throw new Error('FOCUS_NFE_TOKEN não configurado');
   // Focus usa Basic Auth com token como username e senha vazia.
   return 'Basic ' + Buffer.from(token + ':').toString('base64');
@@ -46,6 +57,7 @@ async function call<T>(
   method: string,
   path: string,
   body?: unknown,
+  tokenOverride?: string,
 ): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -53,7 +65,7 @@ async function call<T>(
       const res = await fetch(`${base(env)}${path}`, {
         method,
         headers: {
-          Authorization: auth(),
+          Authorization: auth(tokenOverride),
           'Content-Type': 'application/json',
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -180,53 +192,59 @@ export const focus = {
     call<FocusEmpresaSnapshot>('prod', 'PUT', `/v2/empresas/${id}`, payload),
 
   // ---------- Emissão ----------
+  //
+  // Emissão exige o `token` da EMPRESA (vem do POST /v2/empresas e mora em
+  // `companies.focus_token`), NÃO o token de revenda. Daí `empresaToken` ser
+  // obrigatório nesses métodos. Quando esquecemos, a Focus retorna 401
+  // "HTTP Basic: Access denied" (descoberto em 2026-05-28).
+  //
   /** POST /v2/nfe?ref=:ref — emissão NFe (idempotente por ref) */
-  emitirNfe: (ref: string, payload: unknown, env: FocusEnv = 'hom') =>
-    call<Record<string, unknown>>(env, 'POST', `/v2/nfe?ref=${encodeURIComponent(ref)}`, payload),
+  emitirNfe: (ref: string, payload: unknown, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<Record<string, unknown>>(env, 'POST', `/v2/nfe?ref=${encodeURIComponent(ref)}`, payload, empresaToken),
   /** POST /v2/nfce?ref=:ref */
-  emitirNfce: (ref: string, payload: unknown, env: FocusEnv = 'hom') =>
-    call<Record<string, unknown>>(env, 'POST', `/v2/nfce?ref=${encodeURIComponent(ref)}`, payload),
-  /** POST /v2/nfsen?ref=:ref */
-  emitirNfse: (ref: string, payload: unknown, env: FocusEnv = 'hom') =>
-    call<Record<string, unknown>>(env, 'POST', `/v2/nfsen?ref=${encodeURIComponent(ref)}`, payload),
+  emitirNfce: (ref: string, payload: unknown, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<Record<string, unknown>>(env, 'POST', `/v2/nfce?ref=${encodeURIComponent(ref)}`, payload, empresaToken),
+  /** POST /v2/nfsen?ref=:ref (NFSe Nacional / DPS) */
+  emitirNfse: (ref: string, payload: unknown, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<Record<string, unknown>>(env, 'POST', `/v2/nfsen?ref=${encodeURIComponent(ref)}`, payload, empresaToken),
 
   // ---------- Status (polling) ----------
   /** GET /v2/nfe/:ref — consulta status da NFe */
-  consultarStatusNfe: (ref: string, env: FocusEnv = 'hom') =>
-    call<Record<string, unknown>>(env, 'GET', `/v2/nfe/${encodeURIComponent(ref)}`),
+  consultarStatusNfe: (ref: string, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<Record<string, unknown>>(env, 'GET', `/v2/nfe/${encodeURIComponent(ref)}`, undefined, empresaToken),
   /** GET /v2/nfce/:ref */
-  consultarStatusNfce: (ref: string, env: FocusEnv = 'hom') =>
-    call<Record<string, unknown>>(env, 'GET', `/v2/nfce/${encodeURIComponent(ref)}`),
+  consultarStatusNfce: (ref: string, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<Record<string, unknown>>(env, 'GET', `/v2/nfce/${encodeURIComponent(ref)}`, undefined, empresaToken),
   /** GET /v2/nfsen/:ref */
-  consultarStatusNfse: (ref: string, env: FocusEnv = 'hom') =>
-    call<Record<string, unknown>>(env, 'GET', `/v2/nfsen/${encodeURIComponent(ref)}`),
+  consultarStatusNfse: (ref: string, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<Record<string, unknown>>(env, 'GET', `/v2/nfsen/${encodeURIComponent(ref)}`, undefined, empresaToken),
 
-  // ---------- Download (binário/texto) ----------
+  // ---------- Download (binário/texto) — também exigem o token da empresa ----------
   /** GET /v2/nfe/:ref.pdf → DANFE em PDF (ArrayBuffer) */
-  baixarDanfe: (ref: string, env: FocusEnv = 'hom') =>
-    call<BinaryResponse>(env, 'GET', `/v2/nfe/${encodeURIComponent(ref)}.pdf`),
+  baixarDanfe: (ref: string, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<BinaryResponse>(env, 'GET', `/v2/nfe/${encodeURIComponent(ref)}.pdf`, undefined, empresaToken),
   /** GET /v2/nfe/:ref.xml → XML da NFe (string) */
-  baixarXmlNfe: (ref: string, env: FocusEnv = 'hom') =>
-    call<TextResponse>(env, 'GET', `/v2/nfe/${encodeURIComponent(ref)}.xml`),
+  baixarXmlNfe: (ref: string, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<TextResponse>(env, 'GET', `/v2/nfe/${encodeURIComponent(ref)}.xml`, undefined, empresaToken),
   /** GET /v2/nfce/:ref.pdf */
-  baixarDanfeNfce: (ref: string, env: FocusEnv = 'hom') =>
-    call<BinaryResponse>(env, 'GET', `/v2/nfce/${encodeURIComponent(ref)}.pdf`),
+  baixarDanfeNfce: (ref: string, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<BinaryResponse>(env, 'GET', `/v2/nfce/${encodeURIComponent(ref)}.pdf`, undefined, empresaToken),
   /** GET /v2/nfce/:ref.xml */
-  baixarXmlNfce: (ref: string, env: FocusEnv = 'hom') =>
-    call<TextResponse>(env, 'GET', `/v2/nfce/${encodeURIComponent(ref)}.xml`),
+  baixarXmlNfce: (ref: string, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<TextResponse>(env, 'GET', `/v2/nfce/${encodeURIComponent(ref)}.xml`, undefined, empresaToken),
   /** GET /v2/nfsen/:ref.pdf */
-  baixarDanfeNfse: (ref: string, env: FocusEnv = 'hom') =>
-    call<BinaryResponse>(env, 'GET', `/v2/nfsen/${encodeURIComponent(ref)}.pdf`),
+  baixarDanfeNfse: (ref: string, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<BinaryResponse>(env, 'GET', `/v2/nfsen/${encodeURIComponent(ref)}.pdf`, undefined, empresaToken),
   /** GET /v2/nfsen/:ref.xml */
-  baixarXmlNfse: (ref: string, env: FocusEnv = 'hom') =>
-    call<TextResponse>(env, 'GET', `/v2/nfsen/${encodeURIComponent(ref)}.xml`),
+  baixarXmlNfse: (ref: string, empresaToken: string, env: FocusEnv = 'hom') =>
+    call<TextResponse>(env, 'GET', `/v2/nfsen/${encodeURIComponent(ref)}.xml`, undefined, empresaToken),
 
-  // ---------- Cancelamento ----------
+  // ---------- Cancelamento — também usa token da empresa ----------
   /**
    * DELETE /v2/nfe/:ref — cancelar (justificativa mínima 15 chars por regra SEFAZ).
    * Valida ANTES do fetch.
    */
-  cancelarNfe: (ref: string, justificativa: string, env: FocusEnv = 'hom') => {
+  cancelarNfe: (ref: string, justificativa: string, empresaToken: string, env: FocusEnv = 'hom') => {
     if (!justificativa || justificativa.trim().length < 15) {
       throw new Error('Justificativa de cancelamento deve ter no mínimo 15 caracteres (regra SEFAZ).');
     }
@@ -235,10 +253,11 @@ export const focus = {
       'DELETE',
       `/v2/nfe/${encodeURIComponent(ref)}`,
       { justificativa },
+      empresaToken,
     );
   },
   /** DELETE /v2/nfce/:ref */
-  cancelarNfce: (ref: string, justificativa: string, env: FocusEnv = 'hom') => {
+  cancelarNfce: (ref: string, justificativa: string, empresaToken: string, env: FocusEnv = 'hom') => {
     if (!justificativa || justificativa.trim().length < 15) {
       throw new Error('Justificativa de cancelamento deve ter no mínimo 15 caracteres (regra SEFAZ).');
     }
@@ -247,10 +266,11 @@ export const focus = {
       'DELETE',
       `/v2/nfce/${encodeURIComponent(ref)}`,
       { justificativa },
+      empresaToken,
     );
   },
   /** DELETE /v2/nfsen/:ref */
-  cancelarNfse: (ref: string, justificativa: string, env: FocusEnv = 'hom') => {
+  cancelarNfse: (ref: string, justificativa: string, empresaToken: string, env: FocusEnv = 'hom') => {
     if (!justificativa || justificativa.trim().length < 15) {
       throw new Error('Justificativa de cancelamento deve ter no mínimo 15 caracteres.');
     }
@@ -259,6 +279,7 @@ export const focus = {
       'DELETE',
       `/v2/nfsen/${encodeURIComponent(ref)}`,
       { justificativa },
+      empresaToken,
     );
   },
 };
