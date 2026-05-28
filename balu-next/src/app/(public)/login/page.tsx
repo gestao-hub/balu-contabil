@@ -2,8 +2,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { Suspense, useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
+import { useSearchParams } from 'next/navigation';
 import { loginAction, type AuthState } from './actions';
 
 const initialState: AuthState = undefined;
@@ -48,11 +49,9 @@ export default function LoginPage() {
             />
           </div>
 
-          {state?.error && (
-            <p className="text-sm text-destructive bg-red-50 border border-red-100 rounded-md px-3 py-2">
-              {state.error}
-            </p>
-          )}
+          <Suspense fallback={null}>
+            <ErrorBanner stateError={state?.error} />
+          </Suspense>
 
           <SubmitButton />
         </form>
@@ -67,6 +66,20 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+// useSearchParams precisa de Suspense boundary no Next 15. Isolei o consumer
+// num componente filho pra não obrigar a página inteira a virar dinâmica.
+function ErrorBanner({ stateError }: { stateError?: string }) {
+  const sp = useSearchParams();
+  const queryError = sp.get('error');
+  const msg = stateError ?? queryError;
+  if (!msg) return null;
+  return (
+    <p className="text-sm text-destructive bg-red-50 border border-red-100 rounded-md px-3 py-2">
+      {msg}
+    </p>
   );
 }
 
