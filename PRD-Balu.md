@@ -406,6 +406,8 @@ Ver §6.2. Toda página protegida deve incluir o reusable `re_authentication`.
   - PATCH `notas_fiscais?id=eq.{id}` setando `status="cancelada"`, `cancelled_at=now`.
   - Idealmente também chama endpoint Focus de cancelamento (não consta como call ativa; backend/n8n deve cuidar).
 
+> **Implementação atual (Next.js) — ✅ PR 1.3** (`notas_fiscais/[id]/page.tsx` + `CancelarButton` + `cancelarNotaAction` + route handler de download): detalhe lê a nota por `id`+`company_id` (scoped; `notFound()` cross-company) e exibe cabeçalho/identificadores com fallback `coluna ?? payload_focusnfe ?? '—'`. Downloads XML/PDF via **route handler proxy** (`/notas_fiscais/[id]/download?formato=`) — o token Focus não vai ao client. Cancelamento: confirma justificativa (≥15, SEFAZ) → chama a Focus **primeiro** (`cancelarNfe/Nfce/Nfse` por `tipo_documento`) → PATCH `status='cancelada'`/`cancelled_at`/`cancellation_reason` **só no sucesso** (recusa da SEFAZ mantém a nota ativa). Colunas em migration `0004`. _Cancelamento/downloads exercitáveis só quando o **token Focus** destravar (Blocked hoje). Pré-requisito p/ os campos aparecerem: corrigir o **webhook** da Focus (`ref`→`referencia`), que hoje não popula `chave_acesso`/`protocolo`/`pdf_url`/`xml_url`._
+
 ### 10.2 Emissão (`/notas_fiscais_emissao`)
 1. Usuário escolhe `TipoNF`.
 2. Form muda conforme o tipo:

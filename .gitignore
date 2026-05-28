@@ -43,6 +43,9 @@ empresa_test.jpeg
 # ── Exports de infra (n8n) — contêm secrets/PII, NUNCA versionar ─
 docs/n8n/
 
+# ── Cache do vitest/vite (artefato de teste) ─────────────────
+.vite/
+
 # ── Diversos ─────────────────────────────────────────────────
 *.log
 .DS_Store
