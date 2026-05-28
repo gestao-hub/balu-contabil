@@ -81,8 +81,16 @@ export type NfsePayload = {
 
   // Reforma Tributária (obrigatórios a partir de 2026):
   consumidor_final: number;             // 0=Não, 1=Sim
+  /** Regime de apuração dos tributos do SN (obrigatório p/ optante ME/EPP/MEI). */
+  regime_tributario_simples_nacional?: number;
   codigo_indicador_operacao?: string;   // opcional 6c; presente quando o caso exige
   indicador_destinatario?: number;      // opcional, depende do contexto
+  /**
+   * Código NBS (Nomenclatura Brasileira de Serviços) — 9 dígitos.
+   * Exigido quando se declara info de IBS/CBS. Pra MVP usamos um default
+   * pelo grupo do `codigo_tributacao_nacional_iss`.
+   */
+  codigo_nbs?: string;
   ibs_cbs_situacao_tributaria: string;  // CST IBS/CBS (3 chars)
   ibs_cbs_classificacao_tributaria: string; // 6 chars
   valor_total_tributos_federais: number; // pode ser 0
@@ -168,10 +176,14 @@ export function buildNfsePayload(
   }
 
   const payload: NfsePayload = {
-    data_emissao: now.toISOString(),
+    // A Focus rejeita UTC (Z) como "data futura" porque o relógio dela é
+    // Brasília (-03:00). Geramos a string com offset BRT explícito pra evitar.
+    // Bonus: subtraímos 2s do `now` pra garantir que sempre fique <= "agora"
+    // no servidor da Focus quando há jitter de rede.
+    data_emissao: toBrasiliaISO(new Date(now.getTime() - 2_000)),
     serie_dps: 1,
     numero_dps: gerarNumeroDps(now),
-    data_competencia: toDateOnly(now),
+    data_competencia: toDateOnlyBrt(now),
     emitente_dps: 1, // 1 = prestador (caso default)
     codigo_municipio_emissora: codigoMunicipio,
     cnpj_prestador: cnpjPrestador,
@@ -187,12 +199,27 @@ export function buildNfsePayload(
     razao_social_tomador: razaoSocialTomador.slice(0, 150),
     // Reforma Tributária — defaults seguros pra MVP B2B:
     consumidor_final: 0,            // não é uso pessoal
+    // Obrigatório p/ optantes MEI/ME/EPP (opcao_simples_nacional 2 ou 3):
+    // 1 = apuração de tributos federais + ISS pelo SN (mais comum).
+    ...(prestadorFiscal.Code_regime_tributario === '3'
+      ? {}
+      : { regime_tributario_simples_nacional: 1 }),
     // `codigo_indicador_operacao` (cIndOp) é "obrigatório" pelo XSD apesar de
     // marcado `required: false` na doc Focus. Valor "020101" = operação padrão
     // de fornecimento B2B em território nacional (Anexo VII RTC). Vira input
     // do form quando der pra mostrar a tabela pro user; default seguro por agora.
-    codigo_indicador_operacao: '020101',
+    // `cIndOp` (Anexo VII RTC): 6 dígitos. Sentido econômico crítico:
+    //   020101 = imóvel (exige grupo informações do imóvel)
+    //   030101 = Inc III · estabelecimento do fornecedor (B2B comum)
+    //   030104 = Inc III · endereço diverso
+    //   100301 = Inc X · demais serviços em operações onerosas (fallback geral)
+    // Pra MVP de consultoria/escritório usamos 030101.
+    codigo_indicador_operacao: '030101',
     indicador_destinatario: 0,            // 0 = tomador é destinatário
+    // NBS (9d) é exigido sempre que mandamos IBS/CBS. Pra MVP usamos o NBS de
+    // "Consultoria em TI" (1.1501.20.00 = 115012000). Quando o form ficar
+    // robusto, inferimos do `codigoTributacao` ou pedimos pro user.
+    codigo_nbs: '115012000',
     ibs_cbs_situacao_tributaria: '000',   // tributação integral
     ibs_cbs_classificacao_tributaria: '000001', // serviço comum
     valor_total_tributos_federais: 0,
@@ -201,9 +228,11 @@ export function buildNfsePayload(
   if (cnpjTomador) payload.cnpj_tomador = cnpjTomador;
   else if (cpfTomador) payload.cpf_tomador = cpfTomador;
 
-  // Manda a alíquota também: pra municípios parametrizados a Focus ignora,
-  // pra não-parametrizados é necessária.
-  if (servico.aliquotaIssPercentual > 0) {
+  // Alíquota: NUNCA enviar pra optantes do SN — pra eles a Focus calcula via
+  // Sistema Nacional. Erro E0625 quando manda sendo ME/EPP/MEI sem retenção.
+  // Pra não-optantes (regime 3 = Lucro Real/Presumido), enviamos.
+  const isSimples = prestadorFiscal.Code_regime_tributario !== '3';
+  if (!isSimples && servico.aliquotaIssPercentual > 0) {
     payload.percentual_aliquota_relativa_municipio = round2(servico.aliquotaIssPercentual);
   }
 
@@ -214,9 +243,31 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function toDateOnly(d: Date): string {
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * Formata um `Date` no horário de Brasília (-03:00, sem DST).
+ *
+ * Output: `YYYY-MM-DDTHH:mm:ss-03:00`. A Focus rejeita strings com `Z` (UTC)
+ * porque seu relógio interno é BRT — sempre 3h antes — então toda data com
+ * Z parece "futura" pra ela.
+ */
+export function toBrasiliaISO(d: Date): string {
+  const brt = new Date(d.getTime() - BRT_OFFSET_MS);
+  const Y = brt.getUTCFullYear();
+  const M = String(brt.getUTCMonth() + 1).padStart(2, '0');
+  const D = String(brt.getUTCDate()).padStart(2, '0');
+  const h = String(brt.getUTCHours()).padStart(2, '0');
+  const m = String(brt.getUTCMinutes()).padStart(2, '0');
+  const s = String(brt.getUTCSeconds()).padStart(2, '0');
+  return `${Y}-${M}-${D}T${h}:${m}:${s}-03:00`;
+}
+
+/** Data-only (`YYYY-MM-DD`) no fuso de Brasília. */
+export function toDateOnlyBrt(d: Date): string {
+  const brt = new Date(d.getTime() - BRT_OFFSET_MS);
+  const Y = brt.getUTCFullYear();
+  const M = String(brt.getUTCMonth() + 1).padStart(2, '0');
+  const D = String(brt.getUTCDate()).padStart(2, '0');
+  return `${Y}-${M}-${D}`;
 }

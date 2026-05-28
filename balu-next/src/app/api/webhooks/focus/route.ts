@@ -62,8 +62,14 @@ export async function POST(req: Request) {
   try {
     const sb = admin();
 
+    // Coletando o que veio no callback. Callbacks de cancelamento normalmente só
+    // trazem `status` — qualquer campo ausente NÃO deve sobrescrever o valor
+    // gravado anteriormente (autorização). Por isso o `update` abaixo só inclui
+    // colunas quando o callback de fato as trouxe.
     const chave = body.chave_nfe ?? null;
-    const numero = body.numero != null ? String(body.numero) : (body.numero_nfse != null ? String(body.numero_nfse) : null);
+    const numero = body.numero != null
+      ? String(body.numero)
+      : body.numero_nfse != null ? String(body.numero_nfse) : null;
     const serie = body.serie != null ? String(body.serie) : null;
     const pdf = body.pdf_url ?? body.caminho_danfe ?? body.caminho_danfse ?? null;
     const xml = body.xml_url ?? body.caminho_xml_nota_fiscal ?? body.caminho_xml_nfse ?? null;
@@ -80,17 +86,19 @@ export async function POST(req: Request) {
 
     const update: Record<string, unknown> = {
       status: mapStatusFocus(body.status),
-      chave_acesso: chave,
-      pdf_url: pdf,
-      xml_url: xml,
-      protocolo_autorizacao: protocolo,
-      numero_nf: numero,
-      serie: serie,
       payload_focusnfe: requestAnterior
         ? { request: requestAnterior, callback: body }
         : { callback: body },
       updated_at: new Date().toISOString(),
     };
+    // Só inclui campos que VIERAM no callback — evita "limpar" dados gravados
+    // pelo callback de autorização anterior quando chega o de cancelamento.
+    if (chave) update.chave_acesso = chave;
+    if (pdf) update.pdf_url = pdf;
+    if (xml) update.xml_url = xml;
+    if (protocolo) update.protocolo_autorizacao = protocolo;
+    if (numero) update.numero_nf = numero;
+    if (serie) update.serie = serie;
 
     // Bug pré-existente fixado: a coluna é `referencia`, não `ref`.
     const { error } = await sb.from('notas_fiscais').update(update).eq('referencia', ref);
