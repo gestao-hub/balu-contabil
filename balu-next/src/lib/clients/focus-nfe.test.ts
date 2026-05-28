@@ -125,3 +125,47 @@ describe('focus.criarEmpresa', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('focus.consultarEmpresa', () => {
+  it('GET 200 retorna snapshot com flags habilita_*', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(async () =>
+        mockJsonResponse(200, {
+          id: 216635,
+          cnpj: '10358425000120',
+          municipio: 'Londrina',
+          codigo_municipio: '4113700',
+          uf: 'PR',
+          habilita_nfse: false,
+          habilita_nfsen_producao: true,
+          habilita_nfsen_homologacao: null,
+        }),
+      );
+
+    const snap = await focus.consultarEmpresa(216635, 'hom');
+
+    expect(snap.id).toBe(216635);
+    expect(snap.codigo_municipio).toBe('4113700');
+    expect(snap.habilita_nfsen_producao).toBe(true);
+    expect(snap.habilita_nfse).toBe(false);
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    // Mesma regra de revenda: sempre api.focusnfe.com.br.
+    expect(url).toBe('https://api.focusnfe.com.br/v2/empresas/216635');
+    expect(init?.method).toBe('GET');
+  });
+
+  it('404 lança Error com status (sem retry)', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(async () =>
+        new Response('{"codigo":"nao_encontrado"}', {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+    await expect(focus.consultarEmpresa(999_999, 'hom')).rejects.toThrow(/404/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});

@@ -82,6 +82,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
 
   let saudeState: SaudeState | null = null;
   if (active === 'saude' && company) {
+    const focusSyncEm = (empresaFiscal?.focus_sync_em as string | null) ?? null;
     saudeState = {
       municipio: (company.municipio as string | null) ?? null,
       uf: (company.uf as string | null) ?? null,
@@ -99,6 +100,16 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       focusToken: (company.focus_token as string | null) ?? null,
       focusLastCheck: (company.focus_last_check as string | null) ?? null,
       focusLastError: (company.focus_last_error as string | null) ?? null,
+      // Focus 2.0: snapshot só vira "presente" depois do GET após POST/PUT.
+      // Sem focus_sync_em → snapshot null → fallback pra municipios_nfse.
+      focusSnapshot: focusSyncEm
+        ? {
+            habilitaNfse: (empresaFiscal?.focus_habilita_nfse as boolean | null) ?? null,
+            habilitaNfsenProducao: (empresaFiscal?.focus_habilita_nfsen_producao as boolean | null) ?? null,
+            habilitaNfsenHomologacao: (empresaFiscal?.focus_habilita_nfsen_homologacao as boolean | null) ?? null,
+            syncEm: focusSyncEm,
+          }
+        : null,
     };
   }
 

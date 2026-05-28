@@ -19,6 +19,7 @@ const BASE: SaudeState = {
   focusToken: 'XYZ',
   focusLastCheck: '2026-05-28T11:00:00Z',
   focusLastError: null,
+  focusSnapshot: null,
 };
 
 describe('isInFutureISO', () => {
@@ -105,6 +106,92 @@ describe('cidade_nfse', () => {
     );
     expect(check!.status).toBe('pendente');
     expect(check!.hint).toMatch(/sem disponibilidade declarada/);
+  });
+
+  describe('Focus snapshot (Focus 2.0) — suplanta municipios_nfse', () => {
+    it('habilitaNfsenProducao=true → ok "NFSe Nacional" (caso Londrina pós-2026)', () => {
+      const [check] = buildSaudeChecks(
+        {
+          ...BASE,
+          // municipios_nfse aqui é o caso real do Londrina (tudo null), MAS
+          // o snapshot da Focus diz que está nacional → ok prevalece
+          municipioInfo: { producao_disponivel: null, homologacao_disponivel: null, provedor: null },
+          focusSnapshot: {
+            habilitaNfse: false,
+            habilitaNfsenProducao: true,
+            habilitaNfsenHomologacao: null,
+            syncEm: '2026-05-28T10:00:00Z',
+          },
+        },
+        NOW,
+      );
+      expect(check!.status).toBe('ok');
+      expect(check!.hint).toMatch(/NFSe Nacional/);
+    });
+
+    it('habilitaNfse=true → ok "NFS-e municipal"', () => {
+      const [check] = buildSaudeChecks(
+        {
+          ...BASE,
+          focusSnapshot: {
+            habilitaNfse: true,
+            habilitaNfsenProducao: null,
+            habilitaNfsenHomologacao: null,
+            syncEm: '2026-05-28T10:00:00Z',
+          },
+        },
+        NOW,
+      );
+      expect(check!.status).toBe('ok');
+      expect(check!.hint).toMatch(/NFS-e municipal/);
+    });
+
+    it('só hom nacional → pendente', () => {
+      const [check] = buildSaudeChecks(
+        {
+          ...BASE,
+          focusSnapshot: {
+            habilitaNfse: false,
+            habilitaNfsenProducao: false,
+            habilitaNfsenHomologacao: true,
+            syncEm: '2026-05-28T10:00:00Z',
+          },
+        },
+        NOW,
+      );
+      expect(check!.status).toBe('pendente');
+      expect(check!.hint).toMatch(/só em homologação/);
+    });
+
+    it('snapshot existe mas todas flags false/null → pendente "aguardando habilitação"', () => {
+      const [check] = buildSaudeChecks(
+        {
+          ...BASE,
+          focusSnapshot: {
+            habilitaNfse: false,
+            habilitaNfsenProducao: null,
+            habilitaNfsenHomologacao: null,
+            syncEm: '2026-05-28T10:00:00Z',
+          },
+        },
+        NOW,
+      );
+      expect(check!.status).toBe('pendente');
+      expect(check!.hint).toMatch(/aguardando habilitação/);
+    });
+
+    it('snapshot=null cai no fallback municipios_nfse (caso atual da Londrina)', () => {
+      const [check] = buildSaudeChecks(
+        {
+          ...BASE,
+          municipioInfo: { producao_disponivel: null, homologacao_disponivel: null, provedor: null },
+          focusSnapshot: null,
+        },
+        NOW,
+      );
+      expect(check!.status).toBe('pendente');
+      expect(check!.hint).toMatch(/sem provedor\/portais/);
+    });
   });
 });
 

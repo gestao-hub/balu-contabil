@@ -36,6 +36,16 @@ export type SaudeState = {
   focusToken: string | null;
   focusLastCheck: string | null;
   focusLastError: string | null;
+  // Snapshot Focus → empresas_fiscais (Focus 2.0). Quando preenchido, é a
+  // fonte de verdade para "está habilitada pra NFS-e?" (suplanta o lookup
+  // estático em municipios_nfse, especialmente pras cidades que migraram
+  // pra NFSe Nacional em 2026 — caso Londrina).
+  focusSnapshot: {
+    habilitaNfse: boolean | null;
+    habilitaNfsenProducao: boolean | null;
+    habilitaNfsenHomologacao: boolean | null;
+    syncEm: string | null;
+  } | null;
 };
 
 const SKEW_MS = 5 * 60 * 1000;
@@ -77,6 +87,49 @@ function cidadeNfseCheck(state: SaudeState): CheckResult {
       status: 'pendente',
       hint: 'Endereço da empresa incompleto. Preencha em "Dados da empresa".',
       action: 'editar_endereco',
+    };
+  }
+
+  // (a.5) Snapshot Focus disponível → fonte de verdade (Focus 2.0).
+  // Cobre o caso das cidades migradas pra NFSe Nacional (Londrina em 01/01/2026)
+  // que a `municipios_nfse` legacy do Bubble não reflete.
+  if (state.focusSnapshot) {
+    if (state.focusSnapshot.habilitaNfsenProducao === true) {
+      return {
+        key: 'cidade_nfse', label,
+        status: 'ok',
+        hint: `${lugar} · habilitada via NFSe Nacional (produção).`,
+        action: null,
+        lastCheck: state.focusSnapshot.syncEm,
+      };
+    }
+    if (state.focusSnapshot.habilitaNfse === true) {
+      return {
+        key: 'cidade_nfse', label,
+        status: 'ok',
+        hint: `${lugar} · habilitada via NFS-e municipal.`,
+        action: null,
+        lastCheck: state.focusSnapshot.syncEm,
+      };
+    }
+    if (state.focusSnapshot.habilitaNfsenHomologacao === true) {
+      return {
+        key: 'cidade_nfse', label,
+        status: 'pendente',
+        hint: `${lugar} · NFSe Nacional só em homologação (produção precisa ser habilitada).`,
+        action: null,
+        lastCheck: state.focusSnapshot.syncEm,
+      };
+    }
+    // Snapshot existe mas todas as flags = false/null → Focus conhece a empresa
+    // mas ela não foi habilitada pra emitir. Não é erro de cidade — é cadastro
+    // incompleto na Focus (vai ser resolvido pelo PUT do Focus 2.1).
+    return {
+      key: 'cidade_nfse', label,
+      status: 'pendente',
+      hint: `${lugar} · cadastro na Focus aguardando habilitação (será feito pelo PUT enriquecendo).`,
+      action: null,
+      lastCheck: state.focusSnapshot.syncEm,
     };
   }
 

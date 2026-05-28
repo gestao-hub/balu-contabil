@@ -111,7 +111,28 @@ export type FocusEmpresaCriada = {
   token_producao?: string;
   token_homologacao?: string;
   cnpj?: string;
+  id?: number;
   // Demais campos devolvidos pela Focus chegam mas não tipamos.
+  [k: string]: unknown;
+};
+
+/**
+ * Snapshot do estado da empresa na Focus, devolvido por GET /v2/empresas/:id.
+ * Usado pra alimentar empresas_fiscais.focus_* (Focus 2.0). Mantemos só os
+ * campos que a UI/lógica do Balu consome — Focus devolve dezenas, ignoramos.
+ */
+export type FocusEmpresaSnapshot = {
+  id: number;
+  cnpj: string;
+  municipio?: string | null;
+  codigo_municipio?: string | null;
+  uf?: string | null;
+  habilita_nfse?: boolean | null;
+  habilita_nfsen_producao?: boolean | null;
+  habilita_nfsen_homologacao?: boolean | null;
+  habilita_nfe?: boolean | null;
+  habilita_nfce?: boolean | null;
+  // Demais campos passam direto via index signature.
   [k: string]: unknown;
 };
 
@@ -133,6 +154,13 @@ export const focus = {
    */
   criarEmpresa: (payload: Record<string, unknown>, _env: FocusEnv = 'hom') =>
     call<FocusEmpresaCriada>('prod', 'POST', `/v2/empresas`, payload),
+
+  /**
+   * GET /v2/empresas/:id — consulta empresa por id numérico devolvido no POST.
+   * Mesmo motivo de `criarEmpresa`: revenda só existe em `api.focusnfe.com.br`.
+   */
+  consultarEmpresa: (id: number, _env: FocusEnv = 'hom') =>
+    call<FocusEmpresaSnapshot>('prod', 'GET', `/v2/empresas/${id}`),
 
   // ---------- Emissão ----------
   /** POST /v2/nfe?ref=:ref — emissão NFe (idempotente por ref) */

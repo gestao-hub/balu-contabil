@@ -78,6 +78,7 @@ export async function syncEmpresaNaFocus(
 
     const resp = await focus.criarEmpresa(payload, 'hom');
     const token = resp.token_homologacao ?? resp.token_producao ?? null;
+    const focusEmpresaId = typeof resp.id === 'number' ? resp.id : null;
 
     await supabase
       .from('companies')
@@ -89,11 +90,47 @@ export async function syncEmpresaNaFocus(
       })
       .eq('id', companyId);
 
+    // Snapshot best-effort (Focus 2.0): popula empresas_fiscais.focus_* via GET.
+    // Falha aqui NÃO desfaz o POST — log e seguimos.
+    if (focusEmpresaId != null) {
+      await snapshotFocusEmpresa(supabase, companyId, focusEmpresaId, now);
+    }
+
     return { ok: true, token };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await persistError(supabase, companyId, msg, now);
     return { ok: false, error: msg };
+  }
+}
+
+/**
+ * Lê GET /v2/empresas/:id da Focus e persiste o estado relevante em
+ * `empresas_fiscais.focus_*`. Best-effort: nunca lança, apenas loga em erro.
+ */
+async function snapshotFocusEmpresa(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, 'public', any>,
+  companyId: string,
+  focusEmpresaId: number,
+  now: string,
+): Promise<void> {
+  try {
+    const snap = await focus.consultarEmpresa(focusEmpresaId, 'hom');
+    await supabase
+      .from('empresas_fiscais')
+      .update({
+        focus_empresa_id: focusEmpresaId,
+        focus_codigo_municipio: snap.codigo_municipio ?? null,
+        focus_habilita_nfse: snap.habilita_nfse ?? null,
+        focus_habilita_nfsen_producao: snap.habilita_nfsen_producao ?? null,
+        focus_habilita_nfsen_homologacao: snap.habilita_nfsen_homologacao ?? null,
+        focus_sync_em: now,
+      })
+      .eq('empresa_id', companyId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[syncEmpresaNaFocus] snapshot GET falhou:', msg);
   }
 }
 
