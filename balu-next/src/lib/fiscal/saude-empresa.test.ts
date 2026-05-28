@@ -11,6 +11,7 @@ const NOW = new Date('2026-05-28T12:00:00Z');
 const BASE: SaudeState = {
   municipio: 'Londrina',
   uf: 'PR',
+  codigoMunicipio: null,
   municipioInfo: { producao_disponivel: 'sim', homologacao_disponivel: 'sim', provedor: 'ISSWeb' },
   certPresente: true,
   certNotAfter: '2027-03-20T00:00:00Z',
@@ -19,7 +20,12 @@ const BASE: SaudeState = {
   focusToken: 'XYZ',
   focusLastCheck: '2026-05-28T11:00:00Z',
   focusLastError: null,
-  focusSnapshot: null,
+  focusSnapshot: {
+    habilitaNfse: true,                // habilitada → check 5 ok
+    habilitaNfsenProducao: null,
+    habilitaNfsenHomologacao: null,
+    syncEm: '2026-05-28T10:00:00Z',
+  },
 };
 
 describe('isInFutureISO', () => {
@@ -63,35 +69,38 @@ describe('buildSaudeChecks — happy path (tudo ok)', () => {
   });
 });
 
-describe('cidade_nfse', () => {
+describe('cidade_nfse — pura capacidade Focus (independente da empresa)', () => {
   it('(a) pendente quando endereço incompleto', () => {
     const [check] = buildSaudeChecks({ ...BASE, municipio: null }, NOW);
     expect(check!.status).toBe('pendente');
     expect(check!.action).toBe('editar_endereco');
   });
-  it('(b) erro quando município não está na base', () => {
-    const [check] = buildSaudeChecks({ ...BASE, municipioInfo: null }, NOW);
+  it('(b) aderente NFSe Nacional (Londrina codigo 4113700) → ok, mesmo sem municipios_nfse', () => {
+    const [check] = buildSaudeChecks(
+      { ...BASE, codigoMunicipio: '4113700', municipioInfo: null },
+      NOW,
+    );
+    expect(check!.status).toBe('ok');
+    expect(check!.hint).toMatch(/NFSe Nacional/);
+  });
+  it('(c) erro quando município não consta em lugar nenhum', () => {
+    const [check] = buildSaudeChecks(
+      { ...BASE, codigoMunicipio: '9999999', municipioInfo: null },
+      NOW,
+    );
     expect(check!.status).toBe('erro');
     expect(check!.hint).toMatch(/não consta/);
   });
-  it('(c) pendente "cadastro incompleto" quando existe na base mas tudo null (caso Londrina)', () => {
-    const [check] = buildSaudeChecks(
-      { ...BASE, municipioInfo: { producao_disponivel: null, homologacao_disponivel: null, provedor: null } },
-      NOW,
-    );
-    expect(check!.status).toBe('pendente');
-    expect(check!.hint).toMatch(/sem provedor\/portais/);
-    expect(check!.hint).not.toMatch(/apenas em homologação/);
-  });
-  it('(d) ok quando producao_disponivel="Sim" (case-insensitive)', () => {
+  it('(d) producao_disponivel="Sim" → ok "atendida em produção"', () => {
     const [check] = buildSaudeChecks(
       { ...BASE, municipioInfo: { producao_disponivel: 'Sim', homologacao_disponivel: 'Sim', provedor: 'Elotech' } },
       NOW,
     );
     expect(check!.status).toBe('ok');
+    expect(check!.hint).toMatch(/produção/);
     expect(check!.hint).toMatch(/Elotech/);
   });
-  it('(e) pendente "apenas em hom" quando só homologação está disponível', () => {
+  it('(e) só homologação disponível → pendente "apenas em hom"', () => {
     const [check] = buildSaudeChecks(
       { ...BASE, municipioInfo: { producao_disponivel: null, homologacao_disponivel: 'Sim', provedor: 'X' } },
       NOW,
@@ -99,99 +108,28 @@ describe('cidade_nfse', () => {
     expect(check!.status).toBe('pendente');
     expect(check!.hint).toMatch(/apenas em homologação/);
   });
-  it('(f) pendente "sem disponibilidade declarada" quando há provedor mas sem flags', () => {
+  it('(f) linha existe mas tudo null → pendente "aguardando atualização" (não engana com "só hom")', () => {
     const [check] = buildSaudeChecks(
-      { ...BASE, municipioInfo: { producao_disponivel: null, homologacao_disponivel: null, provedor: 'Tecnos' } },
+      { ...BASE, municipioInfo: { producao_disponivel: null, homologacao_disponivel: null, provedor: null } },
       NOW,
     );
     expect(check!.status).toBe('pendente');
     expect(check!.hint).toMatch(/sem disponibilidade declarada/);
+    expect(check!.hint).not.toMatch(/apenas em homologação/);
   });
-
-  describe('Focus snapshot (Focus 2.0) — suplanta municipios_nfse', () => {
-    it('habilitaNfsenProducao=true → ok "NFSe Nacional" (caso Londrina pós-2026)', () => {
-      const [check] = buildSaudeChecks(
-        {
-          ...BASE,
-          // municipios_nfse aqui é o caso real do Londrina (tudo null), MAS
-          // o snapshot da Focus diz que está nacional → ok prevalece
-          municipioInfo: { producao_disponivel: null, homologacao_disponivel: null, provedor: null },
-          focusSnapshot: {
-            habilitaNfse: false,
-            habilitaNfsenProducao: true,
-            habilitaNfsenHomologacao: null,
-            syncEm: '2026-05-28T10:00:00Z',
-          },
-        },
-        NOW,
-      );
-      expect(check!.status).toBe('ok');
-      expect(check!.hint).toMatch(/NFSe Nacional/);
-    });
-
-    it('habilitaNfse=true → ok "NFS-e municipal"', () => {
-      const [check] = buildSaudeChecks(
-        {
-          ...BASE,
-          focusSnapshot: {
-            habilitaNfse: true,
-            habilitaNfsenProducao: null,
-            habilitaNfsenHomologacao: null,
-            syncEm: '2026-05-28T10:00:00Z',
-          },
-        },
-        NOW,
-      );
-      expect(check!.status).toBe('ok');
-      expect(check!.hint).toMatch(/NFS-e municipal/);
-    });
-
-    it('só hom nacional → pendente', () => {
-      const [check] = buildSaudeChecks(
-        {
-          ...BASE,
-          focusSnapshot: {
-            habilitaNfse: false,
-            habilitaNfsenProducao: false,
-            habilitaNfsenHomologacao: true,
-            syncEm: '2026-05-28T10:00:00Z',
-          },
-        },
-        NOW,
-      );
-      expect(check!.status).toBe('pendente');
-      expect(check!.hint).toMatch(/só em homologação/);
-    });
-
-    it('snapshot existe mas todas flags false/null → pendente "aguardando habilitação"', () => {
-      const [check] = buildSaudeChecks(
-        {
-          ...BASE,
-          focusSnapshot: {
-            habilitaNfse: false,
-            habilitaNfsenProducao: null,
-            habilitaNfsenHomologacao: null,
-            syncEm: '2026-05-28T10:00:00Z',
-          },
-        },
-        NOW,
-      );
-      expect(check!.status).toBe('pendente');
-      expect(check!.hint).toMatch(/aguardando habilitação/);
-    });
-
-    it('snapshot=null cai no fallback municipios_nfse (caso atual da Londrina)', () => {
-      const [check] = buildSaudeChecks(
-        {
-          ...BASE,
-          municipioInfo: { producao_disponivel: null, homologacao_disponivel: null, provedor: null },
-          focusSnapshot: null,
-        },
-        NOW,
-      );
-      expect(check!.status).toBe('pendente');
-      expect(check!.hint).toMatch(/sem provedor\/portais/);
-    });
+  it('snapshot da Focus NÃO interfere no check de cidade (capacidade ≠ habilitação da empresa)', () => {
+    // Mesmo com a empresa habilitada na Focus, se a cidade não consta E não é
+    // aderente Nacional, o check 1 reporta erro de capacidade.
+    const [check] = buildSaudeChecks(
+      {
+        ...BASE,
+        codigoMunicipio: '9999999',
+        municipioInfo: null,
+        focusSnapshot: { habilitaNfse: true, habilitaNfsenProducao: true, habilitaNfsenHomologacao: null, syncEm: 'x' },
+      },
+      NOW,
+    );
+    expect(check!.status).toBe('erro');
   });
 });
 
@@ -227,20 +165,50 @@ describe('serpro', () => {
   });
 });
 
-describe('focus_cadastro', () => {
+describe('focus_cadastro — agregado (token + habilita_* + cert)', () => {
   it('erro quando focusStatus=erro', () => {
     const checks = buildSaudeChecks({ ...BASE, focusStatus: 'erro', focusLastError: 'CNPJ inválido' }, NOW);
     expect(checks[4]!.status).toBe('erro');
     expect(checks[4]!.action).toBe('sync_focus');
     expect(checks[4]!.hint).toMatch(/CNPJ inválido/);
   });
-  it('pendente quando nunca tentou', () => {
+  it('pendente "nunca cadastrada" quando focus_token ausente', () => {
     const checks = buildSaudeChecks({ ...BASE, focusStatus: null, focusToken: null }, NOW);
     expect(checks[4]!.status).toBe('pendente');
-    expect(checks[4]!.action).toBe('sync_focus');
+    expect(checks[4]!.hint).toMatch(/ainda não foi cadastrada/);
   });
-  it('ok exige tanto status=ok quanto token presente', () => {
-    const checks = buildSaudeChecks({ ...BASE, focusStatus: 'ok', focusToken: null }, NOW);
-    expect(checks[4]!.status).toBe('pendente'); // status=ok mas sem token
+  it('ok quando: token + alguma habilita_*=true + certPresente', () => {
+    const checks = buildSaudeChecks(BASE, NOW); // BASE já tem todos os 3 ok
+    expect(checks[4]!.status).toBe('ok');
+    expect(checks[4]!.hint).toMatch(/habilitado para emissão/);
+  });
+  it('pendente "falta habilitação" quando token presente mas habilita_* todos false/null', () => {
+    const checks = buildSaudeChecks(
+      {
+        ...BASE,
+        focusSnapshot: { habilitaNfse: false, habilitaNfsenProducao: null, habilitaNfsenHomologacao: null, syncEm: 'x' },
+      },
+      NOW,
+    );
+    expect(checks[4]!.status).toBe('pendente');
+    expect(checks[4]!.hint).toMatch(/habilitação na Focus/);
+  });
+  it('pendente "falta cert" quando habilitado mas sem cert', () => {
+    const checks = buildSaudeChecks({ ...BASE, certPresente: false }, NOW);
+    expect(checks[4]!.status).toBe('pendente');
+    expect(checks[4]!.hint).toMatch(/certificado A1/);
+  });
+  it('pendente lista AMBOS quando faltam habilitação e cert', () => {
+    const checks = buildSaudeChecks(
+      {
+        ...BASE,
+        focusSnapshot: { habilitaNfse: false, habilitaNfsenProducao: null, habilitaNfsenHomologacao: null, syncEm: 'x' },
+        certPresente: false,
+      },
+      NOW,
+    );
+    expect(checks[4]!.status).toBe('pendente');
+    expect(checks[4]!.hint).toMatch(/habilitação na Focus/);
+    expect(checks[4]!.hint).toMatch(/certificado A1/);
   });
 });

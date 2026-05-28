@@ -2,6 +2,14 @@
 // Recebe o estado já resolvido (companies + arquivos_auxiliares + empresas_fiscais
 // + municipios_nfse) e devolve a lista de 5 checks com status + ação contextual.
 // Sem deps de React/Supabase — testável isoladamente (saude-empresa.test.ts).
+//
+// Semântica dos checks:
+//   1. cidade_nfse:    "A Focus ATENDE essa cidade?"  (capacidade do produto)
+//   2. cert_presente:  "Subimos o cert no Balu?"
+//   3. cert_valido:    "O cert subido está dentro da validade?"
+//   4. serpro:         "Token SERPRO ativo?"
+//   5. focus_cadastro: "Empresa PRONTA pra emitir na Focus?" (agregado)
+import { isAderenteNfsenNacional } from './municipios-nfsen-nacional';
 
 export type CheckStatus = 'ok' | 'pendente' | 'erro';
 export type CheckActionKey = 'sync_focus' | 'upload_cert' | 'reauth_serpro' | 'editar_endereco' | null;
@@ -20,6 +28,8 @@ export type SaudeState = {
   // Endereço atual (pra check 1)
   municipio: string | null;
   uf: string | null;
+  /** Código IBGE do município (companies.codigo_municipio ou snapshot.focus_codigo_municipio). */
+  codigoMunicipio: string | null;
   // Resolvido por resolveMunicipioNfse: presença = município conhecido; null = desconhecido
   municipioInfo: {
     producao_disponivel: string | null;
@@ -68,7 +78,7 @@ export function daysUntilISO(iso: string | null, now: Date = new Date()): number
 
 export function buildSaudeChecks(state: SaudeState, now: Date = new Date()): CheckResult[] {
   return [
-    cidadeNfseCheck(state),
+    cidadeNfseCheck(state, now),
     certPresenteCheck(state),
     certValidoCheck(state, now),
     serproCheck(state, now),
@@ -76,11 +86,16 @@ export function buildSaudeChecks(state: SaudeState, now: Date = new Date()): Che
   ];
 }
 
-function cidadeNfseCheck(state: SaudeState): CheckResult {
+/**
+ * "A Focus ATENDE essa cidade?" — pura capacidade do produto, independente da
+ * empresa do usuário. Não consome o snapshot da empresa: o snapshot informa
+ * o cadastro DELA, não a oferta da Focus.
+ */
+function cidadeNfseCheck(state: SaudeState, now: Date): CheckResult {
   const label = 'Cidade credenciada para NFS-e';
   const lugar = state.municipio && state.uf ? `${state.municipio}/${state.uf}` : '—';
 
-  // (a) Endereço da empresa não preenchido.
+  // (a) Endereço da empresa não preenchido — sem como verificar.
   if (!state.municipio || !state.uf) {
     return {
       key: 'cidade_nfse', label,
@@ -90,55 +105,24 @@ function cidadeNfseCheck(state: SaudeState): CheckResult {
     };
   }
 
-  // (a.5) Snapshot Focus disponível → fonte de verdade (Focus 2.0).
-  // Cobre o caso das cidades migradas pra NFSe Nacional (Londrina em 01/01/2026)
-  // que a `municipios_nfse` legacy do Bubble não reflete.
-  if (state.focusSnapshot) {
-    if (state.focusSnapshot.habilitaNfsenProducao === true) {
-      return {
-        key: 'cidade_nfse', label,
-        status: 'ok',
-        hint: `${lugar} · habilitada via NFSe Nacional (produção).`,
-        action: null,
-        lastCheck: state.focusSnapshot.syncEm,
-      };
-    }
-    if (state.focusSnapshot.habilitaNfse === true) {
-      return {
-        key: 'cidade_nfse', label,
-        status: 'ok',
-        hint: `${lugar} · habilitada via NFS-e municipal.`,
-        action: null,
-        lastCheck: state.focusSnapshot.syncEm,
-      };
-    }
-    if (state.focusSnapshot.habilitaNfsenHomologacao === true) {
-      return {
-        key: 'cidade_nfse', label,
-        status: 'pendente',
-        hint: `${lugar} · NFSe Nacional só em homologação (produção precisa ser habilitada).`,
-        action: null,
-        lastCheck: state.focusSnapshot.syncEm,
-      };
-    }
-    // Snapshot existe mas todas as flags = false/null → Focus conhece a empresa
-    // mas ela não foi habilitada pra emitir. Não é erro de cidade — é cadastro
-    // incompleto na Focus (vai ser resolvido pelo PUT do Focus 2.1).
+  // (b) Município é aderente ao NFSe Nacional → Focus atende automaticamente
+  // (via endpoint /v2/nfsen). Cobre cidades migradas em 2026 (Londrina/PR etc)
+  // sem depender da tabela legacy `municipios_nfse`.
+  if (isAderenteNfsenNacional(state.codigoMunicipio, now)) {
     return {
       key: 'cidade_nfse', label,
-      status: 'pendente',
-      hint: `${lugar} · cadastro na Focus aguardando habilitação (será feito pelo PUT enriquecendo).`,
+      status: 'ok',
+      hint: `${lugar} · atendida via NFSe Nacional.`,
       action: null,
-      lastCheck: state.focusSnapshot.syncEm,
     };
   }
 
-  // (b) Município nem existe na base municipios_nfse.
+  // (c) Município nem existe na base de cidades suportadas pelo padrão antigo.
   if (!state.municipioInfo) {
     return {
       key: 'cidade_nfse', label,
       status: 'erro',
-      hint: `${lugar} ainda não consta na base de municípios com NFS-e suportada.`,
+      hint: `${lugar} não consta na lista de cidades atendidas pela Focus.`,
       action: null,
     };
   }
@@ -147,46 +131,32 @@ function cidadeNfseCheck(state: SaudeState): CheckResult {
   const prodOk = isSim(state.municipioInfo.producao_disponivel);
   const homOk = isSim(state.municipioInfo.homologacao_disponivel);
   const provedor = state.municipioInfo.provedor;
-  // Cadastro da linha incompleto: existe na base mas faltam dados-chave (provedor
-  // OU ambas as flags de ambiente). Sem isso a Focus não emite — e a UI antiga
-  // dizia "apenas em homologação" mesmo quando homologacao_disponivel também era null.
-  const cadastroIncompleto = !provedor && !prodOk && !homOk;
 
-  // (c) Cadastro da cidade vazio na base.
-  if (cadastroIncompleto) {
-    return {
-      key: 'cidade_nfse', label,
-      status: 'pendente',
-      hint: `${lugar} está na base mas sem provedor/portais cadastrados. Verifique com a prefeitura ou aguarde atualização da base.`,
-      action: null,
-    };
-  }
-
-  // (d) Produção liberada.
+  // (d) Produção disponível → Focus atende em prod.
   if (prodOk) {
     return {
       key: 'cidade_nfse', label,
       status: 'ok',
-      hint: `${lugar} · provedor ${provedor ?? '—'}`,
+      hint: `${lugar} · atendida em produção${provedor ? ` · provedor ${provedor}` : ''}.`,
       action: null,
     };
   }
 
-  // (e) Só homologação liberada.
+  // (e) Só homologação.
   if (homOk) {
     return {
       key: 'cidade_nfse', label,
       status: 'pendente',
-      hint: `${lugar} suportada apenas em homologação (produção ainda não disponível).`,
+      hint: `${lugar} atendida apenas em homologação (produção ainda não disponível).`,
       action: null,
     };
   }
 
-  // (f) Fallback raro: há provedor mas sem flags. Trata como cadastro incompleto.
+  // (f) Linha existe mas sem dados — base desatualizada pra essa cidade.
   return {
     key: 'cidade_nfse', label,
     status: 'pendente',
-    hint: `${lugar} · provedor ${provedor ?? '—'} sem disponibilidade declarada.`,
+    hint: `${lugar} está na base mas sem disponibilidade declarada. Aguardando atualização do cadastro do município.`,
     action: null,
   };
 }
@@ -290,21 +260,25 @@ function serproCheck(state: SaudeState, now: Date): CheckResult {
   };
 }
 
+/**
+ * "Empresa PRONTA pra emitir na Focus?" — agregado das 3 condições mínimas:
+ *  (i)   cadastro inicial feito (focus_token presente, focus_status='ok')
+ *  (ii)  alguma habilitação ligada no painel Focus (habilita_nfse OU
+ *        habilita_nfsen_producao OU habilita_nfe…) — feito pelo PUT do Focus 2.1
+ *  (iii) certificado A1 presente no Balu (que será enviado pra Focus no PUT)
+ *
+ * Estados:
+ *   ✓ ok      → todas as 3 ok
+ *   ⚠ pendente → (i) ok mas (ii) ou (iii) falta
+ *   ✗ erro    → focus_status='erro' OU sem cadastro nenhum
+ */
 function focusCadastroCheck(state: SaudeState): CheckResult {
-  if (state.focusStatus === 'ok' && state.focusToken) {
-    return {
-      key: 'focus_cadastro',
-      label: 'Cadastro na Focus funcional',
-      status: 'ok',
-      hint: `Empresa cadastrada na Focus${state.focusLastCheck ? ` em ${formatBR(state.focusLastCheck)}` : ''}.`,
-      action: null,
-      lastCheck: state.focusLastCheck,
-    };
-  }
+  const label = 'Cadastro na Focus funcional';
+
+  // (a) falha técnica registrada — erro duro.
   if (state.focusStatus === 'erro') {
     return {
-      key: 'focus_cadastro',
-      label: 'Cadastro na Focus funcional',
+      key: 'focus_cadastro', label,
       status: 'erro',
       hint: state.focusLastError
         ? `Última tentativa falhou: ${truncate(state.focusLastError, 140)}`
@@ -313,12 +287,46 @@ function focusCadastroCheck(state: SaudeState): CheckResult {
       lastCheck: state.focusLastCheck,
     };
   }
+
+  // (b) Nunca cadastrada.
+  if (!state.focusToken || state.focusStatus !== 'ok') {
+    return {
+      key: 'focus_cadastro', label,
+      status: 'pendente',
+      hint: 'Empresa ainda não foi cadastrada na Focus.',
+      action: 'sync_focus',
+    };
+  }
+
+  // (c) Cadastrada — verifica os pré-requisitos pra emissão.
+  const habilitada =
+    state.focusSnapshot?.habilitaNfse === true ||
+    state.focusSnapshot?.habilitaNfsenProducao === true ||
+    state.focusSnapshot?.habilitaNfsenHomologacao === true;
+
+  const certOnFile = state.certPresente;
+
+  if (habilitada && certOnFile) {
+    return {
+      key: 'focus_cadastro', label,
+      status: 'ok',
+      hint: `Cadastro completo e habilitado para emissão${state.focusLastCheck ? ` (${formatBR(state.focusLastCheck)})` : ''}.`,
+      action: null,
+      lastCheck: state.focusLastCheck,
+    };
+  }
+
+  // (d) Cadastrada mas faltam pré-requisitos — pendente, lista o que falta.
+  const faltas: string[] = [];
+  if (!habilitada) faltas.push('habilitação na Focus (NFS-e / NFSe Nacional)');
+  if (!certOnFile) faltas.push('certificado A1');
+
   return {
-    key: 'focus_cadastro',
-    label: 'Cadastro na Focus funcional',
+    key: 'focus_cadastro', label,
     status: 'pendente',
-    hint: 'Empresa ainda não foi cadastrada na Focus.',
+    hint: `Cadastrada na Focus, mas faltam: ${faltas.join(', ')}. Será feito pelo PUT enriquecendo (Focus 2.1).`,
     action: 'sync_focus',
+    lastCheck: state.focusLastCheck,
   };
 }
 

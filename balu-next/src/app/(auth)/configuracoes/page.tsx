@@ -86,6 +86,11 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     saudeState = {
       municipio: (company.municipio as string | null) ?? null,
       uf: (company.uf as string | null) ?? null,
+      // codigo IBGE: preferir o snapshot da Focus (foi confirmado pelo POST);
+      // cair pra companies.codigo_municipio (preenchido por consulta CNPJ).
+      codigoMunicipio:
+        ((empresaFiscal?.focus_codigo_municipio as string | null) ?? null) ||
+        ((company.codigo_municipio as string | null) ?? null),
       municipioInfo: municipioNfse
         ? {
             producao_disponivel: (municipioNfse as { producao_disponivel?: string | null }).producao_disponivel ?? null,
