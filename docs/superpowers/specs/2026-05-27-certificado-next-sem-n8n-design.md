@@ -52,7 +52,7 @@ Aposentar o workflow n8n de certificado, trazendo **upload + autenticação mTLS
 ### Fora de escopo
 - *Wire* do `certificado_jwt` cacheado nas chamadas `Declarar/Emitir/Consultar` do `serpro.ts` (gap pré-existente — o n8n também só produzia o token; não consumia). Tratar downstream.
 - Demais workflows n8n (`consolidar_receitas_fiscais`, `calcular_rbt12`, `consulta_das_mei`) — permanecem.
-- Credenciais Focus / registro de empresa na Focus — não fazem parte deste fluxo.
+- ~~Credenciais Focus / registro de empresa na Focus — não fazem parte deste fluxo.~~ **Resolvido em 2026-05-28** pelo PR Focus 1+2.0 (`syncEmpresaNaFocus`): no `createCompanyAction` agora dispara `POST /v2/empresas` (revenda) best-effort com token global, depois `GET /v2/empresas/:id` pra snapshot em `empresas_fiscais.focus_*`. O **PUT enriquecendo cert + senha prefeitura** (Focus 2.1) está em backlog — vai reaproveitar a senha do PFX que o user digita no upload (descarta após PUT).
 - Rotação automática de `CERT_ENC_KEY` (documentar processo manual; não automatizar agora).
 
 ## Arquitetura
