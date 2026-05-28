@@ -3,6 +3,7 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { mapStatusFocus } from '@/lib/fiscal/focus-status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,25 +20,23 @@ function admin(): SupabaseClient {
   return _admin;
 }
 
-// Mapeia status textual do Focus → status canônico interno.
-function mapStatus(focusStatus: string | undefined | null): string {
-  const s = (focusStatus ?? '').toLowerCase();
-  if (s.includes('autorizado'))                                return 'autorizada';
-  if (s.includes('cancelado'))                                 return 'cancelada';
-  if (s.includes('denegado'))                                  return 'denegada';
-  if (s.includes('erro') || s.includes('rejeitado'))           return 'rejeitada';
-  if (s.includes('processando') || s.includes('em_processamento')) return 'processando';
-  if (s.includes('inutilizado'))                               return 'inutilizada';
-  return s || 'desconhecido';
-}
-
 type FocusCallback = {
   ref?: string;
   status?: string;
   mensagem?: string;
+  // NFe/NFCe
   chave_nfe?: string;
+  protocolo?: string;
+  numero?: string | number;
+  serie?: string | number;
   caminho_xml_nota_fiscal?: string;
   caminho_danfe?: string;
+  // NFSe Nacional / DPS
+  caminho_xml_nfse?: string;
+  caminho_danfse?: string;
+  numero_nfse?: string | number;
+  codigo_verificacao?: string;
+  // genéricos
   pdf_url?: string;
   xml_url?: string;
   [k: string]: unknown;
@@ -62,18 +61,41 @@ export async function POST(req: Request) {
 
   try {
     const sb = admin();
-    const update = {
-      status: mapStatus(body.status),
-      chave_acesso: body.chave_nfe ?? null,
-      pdf_url: body.pdf_url ?? body.caminho_danfe ?? null,
-      xml_url: body.xml_url ?? body.caminho_xml_nota_fiscal ?? null,
-      focus_response: body as unknown as Record<string, unknown>,
+
+    const chave = body.chave_nfe ?? null;
+    const numero = body.numero != null ? String(body.numero) : (body.numero_nfse != null ? String(body.numero_nfse) : null);
+    const serie = body.serie != null ? String(body.serie) : null;
+    const pdf = body.pdf_url ?? body.caminho_danfe ?? body.caminho_danfse ?? null;
+    const xml = body.xml_url ?? body.caminho_xml_nota_fiscal ?? body.caminho_xml_nfse ?? null;
+    const protocolo = body.protocolo ?? null;
+
+    // Lê a nota antes pra preservar o `request` no payload_focusnfe.
+    const { data: notaAtual } = await sb
+      .from('notas_fiscais')
+      .select('id, payload_focusnfe')
+      .eq('referencia', ref)
+      .maybeSingle();
+
+    const requestAnterior = (notaAtual?.payload_focusnfe as { request?: unknown } | null)?.request ?? null;
+
+    const update: Record<string, unknown> = {
+      status: mapStatusFocus(body.status),
+      chave_acesso: chave,
+      pdf_url: pdf,
+      xml_url: xml,
+      protocolo_autorizacao: protocolo,
+      numero_nf: numero,
+      serie: serie,
+      payload_focusnfe: requestAnterior
+        ? { request: requestAnterior, callback: body }
+        : { callback: body },
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await sb.from('notas_fiscais').update(update).eq('ref', ref);
+    // Bug pré-existente fixado: a coluna é `referencia`, não `ref`.
+    const { error } = await sb.from('notas_fiscais').update(update).eq('referencia', ref);
     if (error) {
-      console.error('[webhook focus] erro update notas_fiscais', { ref, error });
+      console.error('[webhook focus] erro update notas_fiscais', { ref, error: error.message });
     }
   } catch (err) {
     console.error('[webhook focus] erro inesperado', err);
