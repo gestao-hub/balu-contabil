@@ -1,14 +1,21 @@
-// @custom — PR 1.3: detalhe da nota fiscal (lê do banco + fallback no payload_focusnfe).
+// @custom — PR 1.3 + ajustes pós PR 2.1: detalhe da nota fiscal.
+// NFSe Nacional emite assíncrono: POST → status='pendente' até webhook chegar
+// com autorizado/erro. Em erro, a mensagem da prefeitura vem em
+// `payload_focusnfe.callback.erros[].mensagem` (DPS Nacional) ou
+// `payload_focusnfe.callback.mensagem` (NFe/NFCe).
 import { notFound } from 'next/navigation';
-import { Download } from 'lucide-react';
+import { AlertTriangle, Clock, Download } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
+import { extrairMensagemErro } from '@/lib/fiscal/focus-erro';
 import CancelarButton from './CancelarButton';
 
 const STATUS_LABEL: Record<string, { txt: string; cls: string }> = {
   ativa: { txt: 'Ativa', cls: 'bg-success/10 text-success' },
   pendente: { txt: 'Pendente', cls: 'bg-amber-100 text-amber-700' },
-  cancelada: { txt: 'Cancelada', cls: 'bg-destructive/10 text-destructive' },
+  cancelada: { txt: 'Cancelada', cls: 'bg-zinc-100 text-zinc-600' },
+  erro: { txt: 'Erro', cls: 'bg-destructive/10 text-destructive' },
 };
+
 
 function brl(v: number | null) {
   return (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -65,10 +72,53 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
       </dl>
 
       {status === 'cancelada' && (
-        <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
-          <p className="font-medium text-destructive">Nota cancelada</p>
+        <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm">
+          <p className="font-medium text-zinc-700">Nota cancelada</p>
           {nota.cancelled_at && <p className="text-zinc-600">Em {new Date(nota.cancelled_at as string).toLocaleString('pt-BR')}</p>}
           {nota.cancellation_reason && <p className="mt-1 text-zinc-600">Motivo: {nota.cancellation_reason as string}</p>}
+        </div>
+      )}
+
+      {status === 'erro' && (() => {
+        const err = extrairMensagemErro(payload);
+        return (
+          <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="size-5 text-destructive shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="font-medium text-destructive">Não foi possível autorizar a nota</p>
+                {err ? (
+                  <>
+                    <p className="mt-2 text-zinc-700">{err.msg}</p>
+                    {err.codigo && (
+                      <p className="mt-1 text-xs text-zinc-500 font-mono">Código: {err.codigo}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-2 text-zinc-600">
+                    A Focus não retornou detalhes do erro. Consulte o painel da Focus pra mais informações.
+                  </p>
+                )}
+                <p className="mt-3 text-xs text-zinc-500">
+                  Corrija o dado errado (ex: cliente, valor, código) e emita uma nova nota.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {status === 'pendente' && (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
+          <div className="flex items-start gap-3">
+            <Clock className="size-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-amber-700">Processando autorização</p>
+              <p className="mt-1 text-zinc-700">
+                A Focus enviou pra fila de validação da prefeitura. Recarregue em alguns segundos pra ver o resultado.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
