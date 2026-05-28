@@ -118,7 +118,17 @@ function rollupStatus(items: CheckResult[]): CheckStatus {
  * True quando o último save local (companies.updated_at ou empresa_fiscal.updated_at)
  * é mais novo que focusSnapshot.syncEm. Sem syncEm ainda → false (cobre pelo
  * estado "não cadastrada"; não queremos mostrar drift antes do primeiro POST).
+ *
+ * **Margem de 60s** pra evitar falso positivo logo após o sync:
+ * `focus_sync_em` é calculado no Node antes dos UPDATEs em `companies` e
+ * `empresas_fiscais`, e os triggers `tg_set_updated_at` no banco gravam
+ * `updated_at = now()` na hora do UPDATE — o que naturalmente é 1-3s depois
+ * (PUT na Focus + GET snapshot + roundtrips). Sem essa margem, todo sync
+ * dispararia drift fantasma. 60s é folgado o suficiente pra não pegar edits
+ * humanos (que levam muito mais que 1 minuto entre clicks).
  */
+const DRIFT_MARGIN_MS = 60_000;
+
 export function detectFocusDrift(state: SaudeState): { drift: boolean; lastEditAt: string | null } {
   const syncAt = state.focusSnapshot?.syncEm ?? null;
   if (!syncAt) return { drift: false, lastEditAt: null };
@@ -133,8 +143,7 @@ export function detectFocusDrift(state: SaudeState): { drift: boolean; lastEditA
   const syncMs = Date.parse(syncAt);
   if (!Number.isFinite(syncMs)) return { drift: false, lastEditAt: null };
 
-  // Margem de 2s pra evitar falso positivo quando updated_at ≈ syncEm.
-  const drift = lastEdit - syncMs > 2_000;
+  const drift = lastEdit - syncMs > DRIFT_MARGIN_MS;
   return {
     drift,
     lastEditAt: drift ? new Date(lastEdit).toISOString() : null,

@@ -1,17 +1,13 @@
-// @custom — Focus 3: aba "Diagnóstico". Server Component que renderiza 4 grupos
-// (cidade NFS-e, Certificado A1, SERPRO, Cadastro na Focus) com roll-up de status.
-// Grupos com 2+ itens (Cert, Focus) mostram parent + sub-itens; grupos com 1
-// item renderizam flat. Botão de retry da Focus é client island.
-import Link from 'next/link';
-import { CheckCircle2, AlertTriangle, XCircle, Upload, RefreshCw, MapPin } from 'lucide-react';
+// @custom — Focus 3 — aba "Diagnóstico". Server Component que monta os grupos
+// (cidade, certificado, SERPRO, cadastro Focus) e delega cada card pro
+// `<GroupCard>` (client island; grupos com 2+ itens ficam colapsáveis).
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import {
   buildSaudeGroups,
   type CheckGroup,
-  type CheckResult,
-  type CheckStatus,
   type SaudeState,
 } from '@/lib/fiscal/saude-empresa';
-import SyncFocusButton from './SyncFocusButton';
+import GroupCard from './GroupCard';
 
 type Props = { state: SaudeState };
 
@@ -66,107 +62,4 @@ function SummaryBanner({ summary }: { summary: ReturnType<typeof summarize> }) {
       </div>
     </div>
   );
-}
-
-function statusIcon(status: CheckStatus) {
-  if (status === 'ok') return { Icon: CheckCircle2, cls: 'text-success' };
-  if (status === 'erro') return { Icon: XCircle, cls: 'text-destructive' };
-  return { Icon: AlertTriangle, cls: 'text-alert' };
-}
-
-function GroupCard({ group }: { group: CheckGroup }) {
-  const { Icon, cls } = statusIcon(group.status);
-
-  // Grupo de 1 item: renderiza flat com o hint do item (UX original).
-  if (group.items.length === 1) {
-    const item = group.items[0]!;
-    return (
-      <div className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 p-4">
-        <div className="flex items-start gap-3">
-          <Icon className={`size-5 mt-0.5 ${cls}`} />
-          <div>
-            <p className="text-sm font-medium text-zinc-800">{group.label}</p>
-            <p className="text-xs text-zinc-500 mt-0.5">{item.hint}</p>
-          </div>
-        </div>
-        <CheckAction action={group.action} status={group.status} />
-      </div>
-    );
-  }
-
-  // Grupo com 2+ itens: parent card + sub-itens.
-  return (
-    <div className="rounded-lg border border-zinc-200">
-      <div className="flex items-start justify-between gap-4 p-4 border-b border-zinc-100">
-        <div className="flex items-start gap-3">
-          <Icon className={`size-5 mt-0.5 ${cls}`} />
-          <p className="text-sm font-medium text-zinc-800">{group.label}</p>
-        </div>
-        <CheckAction action={group.action} status={group.status} />
-      </div>
-      <ul className="divide-y divide-zinc-100">
-        {group.items.map((item, idx) => (
-          <li key={idx}>
-            <SubItem item={item} />
-          </li>
-        ))}
-      </ul>
-      {group.meta && (
-        <p className="px-4 py-2 text-xs text-zinc-500 border-t border-zinc-100 bg-zinc-50/50">
-          {group.meta}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function SubItem({ item }: { item: CheckResult }) {
-  const { Icon, cls } = statusIcon(item.status);
-  return (
-    <div className="flex items-start gap-3 px-4 py-3 pl-12">
-      <Icon className={`size-4 mt-0.5 ${cls}`} />
-      <div className="min-w-0">
-        <p className="text-sm text-zinc-700">{item.label}</p>
-        <p className="text-xs text-zinc-500 mt-0.5">{item.hint}</p>
-      </div>
-    </div>
-  );
-}
-
-function CheckAction({
-  action, status,
-}: { action: CheckGroup['action']; status: CheckStatus }) {
-  if (!action || status === 'ok') return null;
-
-  const baseCls =
-    'inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 shrink-0 whitespace-nowrap';
-
-  if (action === 'upload_cert') {
-    return (
-      <Link href="/configuracoes?tab=fiscal" className={baseCls}>
-        <Upload className="size-3.5" />
-        Enviar certificado
-      </Link>
-    );
-  }
-  if (action === 'editar_endereco') {
-    return (
-      <Link href="/configuracoes?tab=dados" className={baseCls}>
-        <MapPin className="size-3.5" />
-        Editar endereço
-      </Link>
-    );
-  }
-  if (action === 'sync_focus') {
-    return <SyncFocusButton />;
-  }
-  if (action === 'reauth_serpro') {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs text-zinc-500 shrink-0 whitespace-nowrap">
-        <RefreshCw className="size-3.5" />
-        Renovação automática
-      </span>
-    );
-  }
-  return null;
 }
