@@ -137,13 +137,16 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         <ul className="flex gap-1">
           {TABS.map((t) => {
             const is = t.key === active;
-            // Aba ativa = cor primária forte + border. Aba inativa normal = zinc.
-            // Aba destacada (`highlight`) inativa = primária num tom mais suave
-            // (chama atenção sem competir com a ativa).
+            // Aba destacada (`highlight`) ganha background `bg-primary/10`
+            // (tonalidade da cor padrão) — chama atenção sem competir
+            // visualmente com o estado ativo de qualquer aba.
+            // Cantos ligeiramente arredondados pra parecer "pill" sutil.
             const cls = is
-              ? 'border-primary text-primary'
+              ? t.highlight
+                ? 'border-primary text-primary bg-primary/10 rounded-t-md'
+                : 'border-primary text-primary'
               : t.highlight
-              ? 'border-transparent text-primary/70 hover:text-primary'
+              ? 'border-transparent text-primary bg-primary/10 hover:bg-primary/15 rounded-t-md'
               : 'border-transparent text-zinc-600 hover:text-zinc-900';
             return (
               <li key={t.key}>
@@ -213,9 +216,6 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           municipio={municipioNfse}
           cidade={(company.municipio as string) ?? ''}
           uf={(company.uf as string) ?? ''}
-          focusStatus={(company.focus_status as 'ok' | 'erro' | null) ?? null}
-          focusLastCheck={(company.focus_last_check as string | null) ?? null}
-          focusToken={(company.focus_token as string | null) ?? null}
         />
       ) : saudeState ? (
         <SaudeEmpresaTab key={company.id as string} state={saudeState} />

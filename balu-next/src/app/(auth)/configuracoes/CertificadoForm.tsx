@@ -53,7 +53,7 @@ export default function CertificadoForm({ enviadoEm, validoAte }: { enviadoEm: s
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="max-w-xl space-y-5">
+      <form onSubmit={handleSubmit} className="max-w-2xl space-y-5">
       <div className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm">
         <ShieldCheck className={`size-5 ${enviadoEm ? 'text-success' : 'text-zinc-400'}`} />
         <span className="text-zinc-700">
