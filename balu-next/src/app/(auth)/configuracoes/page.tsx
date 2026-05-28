@@ -12,12 +12,10 @@ import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import type { SaudeState } from '@/lib/fiscal/saude-empresa';
 
 const TABS = [
-  { key: 'dados', label: 'Dados da empresa', highlight: false },
-  { key: 'regime', label: 'Regime tributário', highlight: false },
-  { key: 'fiscal', label: 'Emissão fiscal', highlight: false },
-  // `highlight: true` deixa a aba destacada com tom da cor primária (chama
-  // atenção pra ver pendências sem ser obnóxio).
-  { key: 'diagnostico', label: 'Diagnóstico', highlight: true },
+  { key: 'dados', label: 'Dados da empresa' },
+  { key: 'regime', label: 'Regime tributário' },
+  { key: 'fiscal', label: 'Emissão fiscal' },
+  { key: 'diagnostico', label: 'Diagnóstico' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 // Compat: aliases das URLs antigas pra não quebrar bookmarks/links.
@@ -137,22 +135,13 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         <ul className="flex gap-1">
           {TABS.map((t) => {
             const is = t.key === active;
-            // Aba destacada (`highlight`) ganha background `bg-primary/10`
-            // (tonalidade da cor padrão) — chama atenção sem competir
-            // visualmente com o estado ativo de qualquer aba.
-            // Cantos ligeiramente arredondados pra parecer "pill" sutil.
-            const cls = is
-              ? t.highlight
-                ? 'border-primary text-primary bg-primary/10 rounded-t-md'
-                : 'border-primary text-primary'
-              : t.highlight
-              ? 'border-transparent text-primary bg-primary/10 hover:bg-primary/15 rounded-t-md'
-              : 'border-transparent text-zinc-600 hover:text-zinc-900';
             return (
               <li key={t.key}>
                 <Link
                   href={`/configuracoes?tab=${t.key}`}
-                  className={`inline-block px-4 py-2 text-sm font-medium border-b-2 -mb-px ${cls}`}
+                  className={`inline-block px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+                    is ? 'border-primary text-primary' : 'border-transparent text-zinc-600 hover:text-zinc-900'
+                  }`}
                 >
                   {t.label}
                 </Link>
