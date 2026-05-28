@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   buildFocusEmpresaUpdatePayload,
   decidirFlagsNfse,
+  withCertificado,
+  withCredenciaisPrefeitura,
   type FocusEmpresaFiscalForUpdate,
+  type FocusEmpresaUpdatePayload,
 } from './focus-empresa-update-payload';
 import type { FocusEmpresaCompany } from './focus-empresa-payload';
 
@@ -26,8 +29,6 @@ const COMPANY: FocusEmpresaCompany = {
 
 const FISCAL: FocusEmpresaFiscalForUpdate = {
   Code_regime_tributario: '1',
-  nfse_usuario_login: null,
-  nfse_senha_login: null,
   empresa_fiscal_ativada: true,
 };
 
@@ -81,45 +82,20 @@ describe('buildFocusEmpresaUpdatePayload', () => {
     expect(p.codigo_municipio).toBe(LONDRINA);
   });
 
-  it('cidade legada + credenciais preenchidas → manda login+senha', () => {
-    const fiscalComCred: FocusEmpresaFiscalForUpdate = {
-      ...FISCAL,
-      nfse_usuario_login: 'meu.login',
-      nfse_senha_login: 'minha-senha',
-    };
-    const p = buildFocusEmpresaUpdatePayload(COMPANY, fiscalComCred, CURITIBA, 'hom', NOW_HOJE);
-    expect(p.habilita_nfse).toBe(true);
-    expect(p.login_responsavel).toBe('meu.login');
-    expect(p.senha_responsavel).toBe('minha-senha');
-  });
-
-  it('cidade legada SEM credenciais → não manda login/senha vazios', () => {
+  it('payload BASE nunca inclui credenciais prefeitura', () => {
+    // Por design (Focus 2.2): credenciais saem no upsertEmpresaFiscalAction via
+    // withCredenciaisPrefeitura, não no payload base. O tipo
+    // FocusEmpresaFiscalForUpdate inclusive não aceita mais esses campos.
     const p = buildFocusEmpresaUpdatePayload(COMPANY, FISCAL, CURITIBA, 'hom', NOW_HOJE);
     expect(p.habilita_nfse).toBe(true);
     expect(p.login_responsavel).toBeUndefined();
     expect(p.senha_responsavel).toBeUndefined();
   });
 
-  it('cidade legada com só LOGIN preenchido → NÃO envia (precisa ambos)', () => {
-    const meio: FocusEmpresaFiscalForUpdate = {
-      ...FISCAL,
-      nfse_usuario_login: 'meu.login',
-      nfse_senha_login: null,
-    };
-    const p = buildFocusEmpresaUpdatePayload(COMPANY, meio, CURITIBA, 'hom', NOW_HOJE);
-    expect(p.login_responsavel).toBeUndefined();
-    expect(p.senha_responsavel).toBeUndefined();
-  });
-
-  it('aderente + credenciais preenchidas → NÃO envia (não faz sentido em NFSe Nacional)', () => {
-    const fiscalComCred: FocusEmpresaFiscalForUpdate = {
-      ...FISCAL,
-      nfse_usuario_login: 'meu.login',
-      nfse_senha_login: 'minha-senha',
-    };
-    const p = buildFocusEmpresaUpdatePayload(COMPANY, fiscalComCred, LONDRINA, 'hom', NOW_HOJE);
-    expect(p.login_responsavel).toBeUndefined();
-    expect(p.senha_responsavel).toBeUndefined();
+  it('payload BASE nunca inclui cert/senha_certificado', () => {
+    const p = buildFocusEmpresaUpdatePayload(COMPANY, FISCAL, CURITIBA, 'hom', NOW_HOJE);
+    expect(p.arquivo_certificado_base64).toBeUndefined();
+    expect(p.senha_certificado).toBeUndefined();
   });
 
   it('endereço, IE, IM, telefone, email, regime — preenchidos vão no payload', () => {
@@ -180,5 +156,67 @@ describe('buildFocusEmpresaUpdatePayload', () => {
     const desativada: FocusEmpresaFiscalForUpdate = { ...FISCAL, empresa_fiscal_ativada: false };
     const p = buildFocusEmpresaUpdatePayload(COMPANY, desativada, LONDRINA, 'hom', NOW_HOJE);
     expect(p.habilita_nfsen_homologacao).toBe(false);
+  });
+});
+
+describe('withCertificado', () => {
+  const BASE: FocusEmpresaUpdatePayload = buildFocusEmpresaUpdatePayload(
+    COMPANY, FISCAL, CURITIBA, 'hom', NOW_HOJE,
+  );
+
+  it('compõe arquivo_certificado_base64 + senha_certificado', () => {
+    const p = withCertificado(BASE, 'ZmFrZS1wZng=', 'minha-senha');
+    expect(p.arquivo_certificado_base64).toBe('ZmFrZS1wZng=');
+    expect(p.senha_certificado).toBe('minha-senha');
+  });
+
+  it('não muta o payload original (retorna novo objeto)', () => {
+    const p = withCertificado(BASE, 'X', 'Y');
+    expect(BASE.arquivo_certificado_base64).toBeUndefined();
+    expect(BASE.senha_certificado).toBeUndefined();
+    expect(p).not.toBe(BASE);
+  });
+
+  it('lança se faltar pfxBase64 ou senha', () => {
+    expect(() => withCertificado(BASE, '', 'X')).toThrow(/obrigatórios/);
+    expect(() => withCertificado(BASE, 'X', '')).toThrow(/obrigatórios/);
+  });
+
+  it('preserva os demais campos do payload base', () => {
+    const p = withCertificado(BASE, 'A', 'B');
+    expect(p.cnpj).toBe(BASE.cnpj);
+    expect(p.regime_tributario).toBe(BASE.regime_tributario);
+    expect(p.habilita_nfse).toBe(BASE.habilita_nfse);
+  });
+});
+
+describe('withCredenciaisPrefeitura', () => {
+  const BASE: FocusEmpresaUpdatePayload = buildFocusEmpresaUpdatePayload(
+    COMPANY, FISCAL, CURITIBA, 'hom', NOW_HOJE,
+  );
+
+  it('compõe login_responsavel + senha_responsavel quando ambos presentes', () => {
+    const p = withCredenciaisPrefeitura(BASE, 'meu.login', 'minha-senha');
+    expect(p.login_responsavel).toBe('meu.login');
+    expect(p.senha_responsavel).toBe('minha-senha');
+  });
+
+  it('SEM login ou SEM senha → retorna payload inalterado (idempotente)', () => {
+    expect(withCredenciaisPrefeitura(BASE, 'login', null).login_responsavel).toBeUndefined();
+    expect(withCredenciaisPrefeitura(BASE, null, 'senha').login_responsavel).toBeUndefined();
+    expect(withCredenciaisPrefeitura(BASE, '', 'X').login_responsavel).toBeUndefined();
+    expect(withCredenciaisPrefeitura(BASE, 'X', '   ').login_responsavel).toBeUndefined();
+  });
+
+  it('faz trim antes de avaliar', () => {
+    const p = withCredenciaisPrefeitura(BASE, '  user  ', '  pwd  ');
+    expect(p.login_responsavel).toBe('user');
+    expect(p.senha_responsavel).toBe('pwd');
+  });
+
+  it('não muta o payload original', () => {
+    const p = withCredenciaisPrefeitura(BASE, 'u', 'p');
+    expect(BASE.login_responsavel).toBeUndefined();
+    expect(p).not.toBe(BASE);
   });
 });

@@ -15,11 +15,15 @@ import type { RegimeCode } from './regime';
 import { isAderenteNfsenNacional } from './municipios-nfsen-nacional';
 import { regimeCodeToFocus, type FocusEmpresaCompany } from './focus-empresa-payload';
 
-/** Subset de `empresas_fiscais` necessário pro PUT. */
+/**
+ * Subset de `empresas_fiscais` necessário pro payload base.
+ *
+ * Credenciais prefeitura (`nfse_usuario_login`/`nfse_senha_login`) e cert
+ * não entram aqui — são acoplados via `withCredenciaisPrefeitura` e
+ * `withCertificado` nos pontos onde os secrets estão em memória.
+ */
 export type FocusEmpresaFiscalForUpdate = {
   Code_regime_tributario: RegimeCode | string | null;
-  nfse_usuario_login: string | null;
-  nfse_senha_login: string | null;
   empresa_fiscal_ativada?: boolean | null;
 };
 
@@ -53,9 +57,13 @@ export type FocusEmpresaUpdatePayload = {
   habilita_nfsen_producao?: boolean;
   habilita_nfsen_homologacao?: boolean;
 
-  // Credenciais prefeitura (só legado)
+  // Credenciais prefeitura (só legado — acoplado via withCredenciaisPrefeitura)
   login_responsavel?: string;
   senha_responsavel?: string;
+
+  // Certificado A1 (acoplado via withCertificado no upload do cert)
+  arquivo_certificado_base64?: string;
+  senha_certificado?: string;
 };
 
 function digits(s: string | null | undefined): string {
@@ -175,17 +183,57 @@ export function buildFocusEmpresaUpdatePayload(
   const im = optString(company.inscricao_municipal);
   if (im) payload.inscricao_municipal = im;
 
-  // Credenciais prefeitura: só para município legado (não-aderente NFSe Nacional)
-  // e só quando ambas (login + senha) estão preenchidas — mandar uma sem a outra
-  // seria inválido pra prefeitura.
-  if (payload.habilita_nfse !== undefined) {
-    const login = optString(empresaFiscal.nfse_usuario_login);
-    const senha = optString(empresaFiscal.nfse_senha_login);
-    if (login && senha) {
-      payload.login_responsavel = login;
-      payload.senha_responsavel = senha;
-    }
-  }
+  // Por design (Focus 2.2): credenciais prefeitura, cert + senha cert NÃO entram
+  // no payload base. São acoplados via `withCredenciaisPrefeitura` /
+  // `withCertificado` nos pontos onde esses secrets estão em memória natural
+  // (upload de cert, save da aba NFS-e). Isso evita re-empacotar PFX e mantém o
+  // botão Sincronizar com Focus restrito a "dados base que podem ter mudado".
 
   return payload;
+}
+
+/**
+ * Compõe o payload base com o certificado A1 (PFX em base64 + senha).
+ * Usado pelo `uploadCertificadoAction` — momento em que o PFX e a senha
+ * estão em memória (antes de cifrarmos o conteúdo e descartar a senha).
+ *
+ * Doc Focus: PUT /v2/empresas/:id aceita os campos
+ *   - `arquivo_certificado_base64`: PFX/P12 em base64
+ *   - `senha_certificado`: senha do PFX (obrigatória junto com o arquivo)
+ */
+export function withCertificado(
+  payload: FocusEmpresaUpdatePayload,
+  pfxBase64: string,
+  senha: string,
+): FocusEmpresaUpdatePayload {
+  if (!pfxBase64 || !senha) {
+    throw new Error('withCertificado: pfxBase64 e senha são obrigatórios juntos.');
+  }
+  return {
+    ...payload,
+    arquivo_certificado_base64: pfxBase64,
+    senha_certificado: senha,
+  };
+}
+
+/**
+ * Compõe o payload base com as credenciais da prefeitura (NFS-e legada).
+ * Usado pelo `upsertEmpresaFiscalAction` — quando o user salva login/senha
+ * NFS-e em município não-aderente NFSe Nacional.
+ *
+ * Mandar uma sem a outra seria inválido pra prefeitura → exige ambas.
+ */
+export function withCredenciaisPrefeitura(
+  payload: FocusEmpresaUpdatePayload,
+  login: string | null | undefined,
+  senha: string | null | undefined,
+): FocusEmpresaUpdatePayload {
+  const l = (login ?? '').trim();
+  const s = (senha ?? '').trim();
+  if (!l || !s) return payload; // sem ruido — só compõe quando ambos preenchidos
+  return {
+    ...payload,
+    login_responsavel: l,
+    senha_responsavel: s,
+  };
 }
