@@ -57,21 +57,28 @@ export default function MenuLateral({
   async function changeCompany(companyId: string) {
     if (companyId === currentCompanyId) return;
     setSwitching(true);
-    const supabase = createBrowserClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
-    const { error } = await supabase
-      .from('profiles')
-      .update({ current_company: companyId })
-      .eq('user_id', user.id);
-    if (error) {
-      toast('error', `Não foi possível trocar de empresa: ${error.message}`);
+    try {
+      const supabase = createBrowserClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.replace('/login'); return; }
+      const { error } = await supabase
+        .from('profiles')
+        .update({ current_company: companyId })
+        .eq('user_id', user.id);
+      if (error) {
+        toast('error', `Não foi possível trocar de empresa: ${error.message}`);
+        return;
+      }
+      toast('success', 'Empresa alterada');
+      setCompanyMenuOpen(false);
+      router.refresh();
+    } finally {
+      // Reabilita o seletor em TODOS os caminhos. Antes, o caminho de sucesso não
+      // resetava `switching` — e como o MenuLateral vive no layout persistente (auth),
+      // o router.refresh() preserva o estado client, deixando o botão `disabled` após
+      // a 1ª troca (impedindo selecionar outra empresa até um reload completo).
       setSwitching(false);
-      return;
     }
-    toast('success', 'Empresa alterada');
-    setCompanyMenuOpen(false);
-    router.refresh();
   }
 
   async function signOut() {
