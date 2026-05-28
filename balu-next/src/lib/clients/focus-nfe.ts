@@ -121,12 +121,18 @@ export const focus = {
     call<Record<string, unknown>>(env, 'GET', `/v2/cnpjs/${cnpj}`),
 
   /**
-   * POST /v2/empresas — cadastra empresa na Focus (API de revenda). Retorna token
-   * próprio da empresa (consumido nos PUTs subsequentes).
-   * Default `hom` por segurança — Focus 1 só exercita homologação.
+   * POST /v2/empresas — cadastra empresa na API de **revenda** da Focus. Retorna
+   * `token_homologacao` + `token_producao` próprios da empresa (consumidos nos PUTs
+   * subsequentes para emissão em cada ambiente).
+   *
+   * **Importante:** o endpoint de revenda **só existe em `api.focusnfe.com.br`** —
+   * não há versão em `homologacao.focusnfe.com.br` (a "homologação" é por-EMPRESA,
+   * aplica-se às emissões, não ao cadastro). O parâmetro `env` aqui é ignorado
+   * para o caminho da requisição; mantemos a assinatura simétrica com os demais
+   * métodos pra não vazar o detalhe pro caller. Default ignorado por design.
    */
-  criarEmpresa: (payload: Record<string, unknown>, env: FocusEnv = 'hom') =>
-    call<FocusEmpresaCriada>(env, 'POST', `/v2/empresas`, payload),
+  criarEmpresa: (payload: Record<string, unknown>, _env: FocusEnv = 'hom') =>
+    call<FocusEmpresaCriada>('prod', 'POST', `/v2/empresas`, payload),
 
   // ---------- Emissão ----------
   /** POST /v2/nfe?ref=:ref — emissão NFe (idempotente por ref) */

@@ -53,7 +53,8 @@ describe('focus.criarEmpresa', () => {
     expect(resp.token_homologacao).toBe('TOKEN_HOM_XYZ');
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0]!;
-    expect(url).toBe('https://homologacao.focusnfe.com.br/v2/empresas');
+    // Revenda só existe em prod base — env=hom é ignorado pra esse endpoint.
+    expect(url).toBe('https://api.focusnfe.com.br/v2/empresas');
     expect(init?.method).toBe('POST');
     const headers = init?.headers as Record<string, string>;
     // Basic = base64('test-token-123:') = 'dGVzdC10b2tlbi0xMjM6'
@@ -98,19 +99,20 @@ describe('focus.criarEmpresa', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   }, 10_000);
 
-  it('env=hom usa homologacao; env=prod usa api', async () => {
-    // Implementation gera um Response novo a cada chamada — não pode reusar instância
-    // (Response.json() consome o body).
+  it('sempre usa api.focusnfe.com.br (revenda) — ignora env=hom', async () => {
+    // O endpoint /v2/empresas é da API de revenda; só existe em prod.
+    // O env passado é ignorado por design (a "homologação" da Focus é por-EMPRESA,
+    // aplica-se às EMISSÕES, não ao cadastro). Ver focus-nfe.ts:criarEmpresa.
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockImplementation(async () => mockJsonResponse(200, { token_producao: 'P' }));
+      .mockImplementation(async () => mockJsonResponse(200, { token_homologacao: 'H' }));
 
-    await focus.criarEmpresa(PAYLOAD, 'prod');
+    await focus.criarEmpresa(PAYLOAD, 'hom');
     expect(fetchSpy.mock.calls[0]![0]).toBe('https://api.focusnfe.com.br/v2/empresas');
 
     fetchSpy.mockClear();
-    await focus.criarEmpresa(PAYLOAD, 'hom');
-    expect(fetchSpy.mock.calls[0]![0]).toBe('https://homologacao.focusnfe.com.br/v2/empresas');
+    await focus.criarEmpresa(PAYLOAD, 'prod');
+    expect(fetchSpy.mock.calls[0]![0]).toBe('https://api.focusnfe.com.br/v2/empresas');
   });
 
   it('FOCUS_NFE_TOKEN ausente → lança antes do fetch', async () => {
