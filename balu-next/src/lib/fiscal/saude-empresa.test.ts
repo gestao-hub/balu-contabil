@@ -63,21 +63,48 @@ describe('buildSaudeChecks — happy path (tudo ok)', () => {
 });
 
 describe('cidade_nfse', () => {
-  it('pendente quando endereço incompleto', () => {
+  it('(a) pendente quando endereço incompleto', () => {
     const [check] = buildSaudeChecks({ ...BASE, municipio: null }, NOW);
     expect(check!.status).toBe('pendente');
     expect(check!.action).toBe('editar_endereco');
   });
-  it('erro quando município não está na base', () => {
+  it('(b) erro quando município não está na base', () => {
     const [check] = buildSaudeChecks({ ...BASE, municipioInfo: null }, NOW);
     expect(check!.status).toBe('erro');
+    expect(check!.hint).toMatch(/não consta/);
   });
-  it('pendente quando producao_disponivel != "sim"', () => {
+  it('(c) pendente "cadastro incompleto" quando existe na base mas tudo null (caso Londrina)', () => {
     const [check] = buildSaudeChecks(
-      { ...BASE, municipioInfo: { ...BASE.municipioInfo!, producao_disponivel: 'nao' } },
+      { ...BASE, municipioInfo: { producao_disponivel: null, homologacao_disponivel: null, provedor: null } },
       NOW,
     );
     expect(check!.status).toBe('pendente');
+    expect(check!.hint).toMatch(/sem provedor\/portais/);
+    expect(check!.hint).not.toMatch(/apenas em homologação/);
+  });
+  it('(d) ok quando producao_disponivel="Sim" (case-insensitive)', () => {
+    const [check] = buildSaudeChecks(
+      { ...BASE, municipioInfo: { producao_disponivel: 'Sim', homologacao_disponivel: 'Sim', provedor: 'Elotech' } },
+      NOW,
+    );
+    expect(check!.status).toBe('ok');
+    expect(check!.hint).toMatch(/Elotech/);
+  });
+  it('(e) pendente "apenas em hom" quando só homologação está disponível', () => {
+    const [check] = buildSaudeChecks(
+      { ...BASE, municipioInfo: { producao_disponivel: null, homologacao_disponivel: 'Sim', provedor: 'X' } },
+      NOW,
+    );
+    expect(check!.status).toBe('pendente');
+    expect(check!.hint).toMatch(/apenas em homologação/);
+  });
+  it('(f) pendente "sem disponibilidade declarada" quando há provedor mas sem flags', () => {
+    const [check] = buildSaudeChecks(
+      { ...BASE, municipioInfo: { producao_disponivel: null, homologacao_disponivel: null, provedor: 'Tecnos' } },
+      NOW,
+    );
+    expect(check!.status).toBe('pendente');
+    expect(check!.hint).toMatch(/sem disponibilidade declarada/);
   });
 });
 

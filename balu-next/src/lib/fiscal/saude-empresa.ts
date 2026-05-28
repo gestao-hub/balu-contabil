@@ -67,40 +67,73 @@ export function buildSaudeChecks(state: SaudeState, now: Date = new Date()): Che
 }
 
 function cidadeNfseCheck(state: SaudeState): CheckResult {
+  const label = 'Cidade credenciada para NFS-e';
   const lugar = state.municipio && state.uf ? `${state.municipio}/${state.uf}` : '—';
+
+  // (a) Endereço da empresa não preenchido.
   if (!state.municipio || !state.uf) {
     return {
-      key: 'cidade_nfse',
-      label: 'Cidade credenciada para NFS-e',
+      key: 'cidade_nfse', label,
       status: 'pendente',
       hint: 'Endereço da empresa incompleto. Preencha em "Dados da empresa".',
       action: 'editar_endereco',
     };
   }
+
+  // (b) Município nem existe na base municipios_nfse.
   if (!state.municipioInfo) {
     return {
-      key: 'cidade_nfse',
-      label: 'Cidade credenciada para NFS-e',
+      key: 'cidade_nfse', label,
       status: 'erro',
       hint: `${lugar} ainda não consta na base de municípios com NFS-e suportada.`,
       action: null,
     };
   }
-  const prod = state.municipioInfo.producao_disponivel;
-  if (prod && prod.toLowerCase() === 'sim') {
+
+  const isSim = (v: string | null) => !!v && v.trim().toLowerCase() === 'sim';
+  const prodOk = isSim(state.municipioInfo.producao_disponivel);
+  const homOk = isSim(state.municipioInfo.homologacao_disponivel);
+  const provedor = state.municipioInfo.provedor;
+  // Cadastro da linha incompleto: existe na base mas faltam dados-chave (provedor
+  // OU ambas as flags de ambiente). Sem isso a Focus não emite — e a UI antiga
+  // dizia "apenas em homologação" mesmo quando homologacao_disponivel também era null.
+  const cadastroIncompleto = !provedor && !prodOk && !homOk;
+
+  // (c) Cadastro da cidade vazio na base.
+  if (cadastroIncompleto) {
     return {
-      key: 'cidade_nfse',
-      label: 'Cidade credenciada para NFS-e',
-      status: 'ok',
-      hint: `${lugar} · provedor ${state.municipioInfo.provedor ?? '—'}`,
+      key: 'cidade_nfse', label,
+      status: 'pendente',
+      hint: `${lugar} está na base mas sem provedor/portais cadastrados. Verifique com a prefeitura ou aguarde atualização da base.`,
       action: null,
     };
   }
+
+  // (d) Produção liberada.
+  if (prodOk) {
+    return {
+      key: 'cidade_nfse', label,
+      status: 'ok',
+      hint: `${lugar} · provedor ${provedor ?? '—'}`,
+      action: null,
+    };
+  }
+
+  // (e) Só homologação liberada.
+  if (homOk) {
+    return {
+      key: 'cidade_nfse', label,
+      status: 'pendente',
+      hint: `${lugar} suportada apenas em homologação (produção ainda não disponível).`,
+      action: null,
+    };
+  }
+
+  // (f) Fallback raro: há provedor mas sem flags. Trata como cadastro incompleto.
   return {
-    key: 'cidade_nfse',
-    label: 'Cidade credenciada para NFS-e',
+    key: 'cidade_nfse', label,
     status: 'pendente',
-    hint: `${lugar} suportada apenas em homologação (produção ainda não disponível).`,
+    hint: `${lugar} · provedor ${provedor ?? '—'} sem disponibilidade declarada.`,
     action: null,
   };
 }
