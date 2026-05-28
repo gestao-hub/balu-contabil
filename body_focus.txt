@@ -1,0 +1,30 @@
+Campos obrigatórios:
+  "nome": "Razao Social",
+  "nome_fantasia": "Nome fantasia da empresa",
+  "cnpj": "12345678000123",
+  "regime_tributario": 1,
+  "municipio": "Curitiba",
+  "uf": "PR",
+  "logradouro": "Rua João da Silva",
+  "numero": 153,
+  "bairro": "Bairro",
+  "cep": "12345-678",
+
+Campos opcionais:
+  "complemento": "Loja 1",
+  "email": "test@example.com",
+  "inscricao_estadual": 1234,
+  "inscricao_municipal": 46532,
+  "telefone": "4130333333"
+
+
+ATENÇÃO!!!
+
+Regime tributário. Esta mapeado exatamente como deixamos na aba Regime Tribuario. Vamos precisar trazer essas informações para 
+o form de criação de empresa, mas podemos manter a aba conforme está hoje também.
+
+Valores possíveis: 
+1 - Simples Nacional 
+2 - Simples Nacional - Excesso de sublimite de receita bruta 
+3 - Regime Normal 
+4 - Simples Nacional - MEI
