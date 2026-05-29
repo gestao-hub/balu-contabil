@@ -75,6 +75,7 @@ export default async function ImpostosPage() {
     .map(toGuiaRow);
 
   const empresaNome = (company?.nome as string) ?? (company?.razao_social as string) ?? '—';
+  const isMei = (fiscal?.Code_regime_tributario ?? null) === '4';
 
   return (
     <Page>
@@ -95,6 +96,7 @@ export default async function ImpostosPage() {
               apuracao={apuracaoAtual ? toApuracaoRow(apuracaoAtual) : null}
               guia={guiaAtual ? toGuiaRow(guiaAtual) : null}
               competencia={competenciaAtual}
+              isMei={isMei}
             />
           </section>
 
