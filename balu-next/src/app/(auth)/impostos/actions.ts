@@ -177,7 +177,8 @@ export async function gerarDasMeiAction(competencia: string): Promise<GerarDasRe
     const at = fiscal.certificado_access_token as string | null;
     const jwt = fiscal.certificado_jwt as string | null;
     const exp = fiscal.certificado_token_expiration as string | null;
-    if (!at || !jwt || !exp || new Date(exp).getTime() <= Date.now()) {
+    const expMs = exp ? new Date(exp).getTime() : NaN;
+    if (!at || !jwt || Number.isNaN(expMs) || expMs <= Date.now()) {
       return { ok: false, error: 'Produção exige certificado autenticado + procuração (token Serpro ausente/expirado).' };
     }
     prodAuth = { accessToken: at, jwt };

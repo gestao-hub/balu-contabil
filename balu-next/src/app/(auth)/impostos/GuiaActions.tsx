@@ -40,6 +40,10 @@ export default function GuiaActions({ guia, variant = 'inline' }: { guia: GuiaRo
     }
   }
 
+  const isPdfDataUri = (guia.pdfUrl ?? '').startsWith('data:application/pdf;base64,');
+  const safePdfUrl =
+    isPdfDataUri || /^https?:\/\//i.test(guia.pdfUrl ?? '') ? guia.pdfUrl : null;
+
   const baseCls = variant === 'primary'
     ? 'w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition'
     : 'inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium transition';
@@ -76,11 +80,10 @@ export default function GuiaActions({ guia, variant = 'inline' }: { guia: GuiaRo
         {copied ? 'Copiado!' : 'Copiar linha'}
       </button>
 
-      {guia.pdfUrl && (
+      {safePdfUrl && (
         <a
-          href={guia.pdfUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+          href={safePdfUrl}
+          {...(isPdfDataUri ? { download: 'das.pdf' } : { target: '_blank', rel: 'noopener noreferrer' })}
           className={`${baseCls} ${
             variant === 'primary'
               ? 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50'

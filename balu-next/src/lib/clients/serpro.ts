@@ -139,6 +139,7 @@ export const serpro = {
     call(env, 'Declarar', envelope, prodAuth),
   emitirDas: (env: SerproEnv, envelope: Envelope, prodAuth?: ProdAuth) =>
     call(env, 'Emitir', envelope, prodAuth),
+  // PGMEI usa o mesmo endpoint /v1/Emitir; nome distinto só para clareza no call site MEI.
   emitirDasMei: (env: SerproEnv, envelope: Envelope, prodAuth?: ProdAuth) =>
     call(env, 'Emitir', envelope, prodAuth),
   consultarDeclaracao: (env: SerproEnv, envelope: Envelope, prodAuth?: ProdAuth) =>
