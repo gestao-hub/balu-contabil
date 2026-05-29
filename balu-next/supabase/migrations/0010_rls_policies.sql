@@ -176,8 +176,9 @@ alter table public.municipios_nfse enable row level security;
 drop policy if exists municipios_nfse_select on public.municipios_nfse;
 create policy municipios_nfse_select on public.municipios_nfse for select to authenticated using (true);
 
--- 9) abertura_empresas: tem company_id e user_id, mas NENHUM fluxo do app a consulta
---    via client (só aparece em _endpoints.ts/types). Deny-all (RLS on, sem policy):
---    nega anon/authenticated; service_role bypassa. Se um dia algum fluxo do dono
---    precisar lê-la, adicionar policy user_owns_company(company_id) numa 0011.
+-- 9) abertura_empresas: NENHUM fluxo do app a consulta via client ainda (só aparece em
+--    _endpoints.ts/types). Deny-all (RLS on, sem policy): nega anon/authenticated;
+--    service_role bypassa. Decisão do time: o relacionamento dela é por USER, não por
+--    company. Quando a feature de abertura de empresa entrar, adicionar policy
+--    user_id = auth.uid() (NÃO user_owns_company). Ver follow-up de saneamento.
 alter table public.abertura_empresas enable row level security;
