@@ -6,6 +6,7 @@ import {
   brl,
   dataBR,
   isGuiaVencida,
+  competenciaAddMonths,
 } from './guia';
 
 describe('statusGuiaBadge', () => {
@@ -92,5 +93,20 @@ describe('isGuiaVencida', () => {
   it('null/inválido → false', () => {
     expect(isGuiaVencida(null, 'pendente', NOW)).toBe(false);
     expect(isGuiaVencida('foo', 'pendente', NOW)).toBe(false);
+  });
+});
+
+describe('competenciaAddMonths', () => {
+  it('subtrai meses sem virar ano', () => {
+    expect(competenciaAddMonths('202605', -1)).toBe('202604');
+  });
+  it('subtrai virando o ano', () => {
+    expect(competenciaAddMonths('202601', -1)).toBe('202512');
+  });
+  it('subtrai 12 meses', () => {
+    expect(competenciaAddMonths('202605', -12)).toBe('202505');
+  });
+  it('soma virando o ano', () => {
+    expect(competenciaAddMonths('202512', 1)).toBe('202601');
   });
 });
