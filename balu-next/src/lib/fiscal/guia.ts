@@ -75,3 +75,14 @@ export function isGuiaVencida(
   if (Number.isNaN(venc.getTime())) return false;
   return venc.getTime() < now.getTime();
 }
+
+/** Soma `delta` meses a uma competência YYYYMM, tratando virada de ano. */
+export function competenciaAddMonths(referencia: string, delta: number): string {
+  const r = (referencia ?? '').padStart(6, '0');
+  const y = Number(r.slice(0, 4));
+  const m = Number(r.slice(4, 6));
+  const idx = y * 12 + (m - 1) + delta;
+  const ny = Math.floor(idx / 12);
+  const nm = (idx % 12) + 1;
+  return `${ny}${String(nm).padStart(2, '0')}`;
+}

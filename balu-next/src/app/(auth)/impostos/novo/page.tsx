@@ -1,8 +1,12 @@
-export default function ImpostosNovoPage() {
+import { competenciaReferenciaBrt, competenciaAddMonths } from '@/lib/fiscal/guia';
+import ApuracaoWizard from './ApuracaoWizard';
+
+export default function NovaApuracaoPage() {
+  const competenciaDefault = competenciaAddMonths(competenciaReferenciaBrt(new Date()), -1);
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-semibold">Impostos New</h1>
-      <p className="text-sm text-zinc-500 mt-2">Stub gerado por gen_routes.py — implementar behavior aqui.</p>
-    </main>
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      <h1 className="mb-6 text-xl font-semibold text-zinc-900">Nova apuração</h1>
+      <ApuracaoWizard competenciaDefault={competenciaDefault} />
+    </div>
   );
 }
