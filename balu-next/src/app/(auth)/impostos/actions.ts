@@ -125,6 +125,7 @@ export async function iniciarApuracaoAction(
       aliquota_efetiva: resultado.aliquotaEfetiva,
       valor_imposto: resultado.valorImposto,
       status: 'calculada',
+      deleted_at: null,
       payload_calculo: resultado.breakdown,
       updated_at: new Date().toISOString(),
     },

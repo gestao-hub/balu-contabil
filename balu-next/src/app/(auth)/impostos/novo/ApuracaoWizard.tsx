@@ -35,7 +35,10 @@ export default function ApuracaoWizard({ competenciaDefault }: { competenciaDefa
         <label className="block text-sm font-medium text-zinc-700">Competência (YYYYMM)</label>
         <input
           value={competencia}
-          onChange={(e) => setCompetencia(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          onChange={(e) => {
+            setCompetencia(e.target.value.replace(/\D/g, '').slice(0, 6));
+            setPreview(null);
+          }}
           className="mt-1 w-40 rounded border border-zinc-300 px-3 py-2 font-mono"
           inputMode="numeric"
         />
