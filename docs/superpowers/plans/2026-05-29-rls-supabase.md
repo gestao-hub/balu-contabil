@@ -4,11 +4,13 @@
 
 **Goal:** Ligar RLS em produção com policies corretas em todas as tabelas e provar, por teste automatizado + fluxos de UI, que cada tenant só acessa os próprios dados sem quebrar nenhum fluxo do app.
 
-**Architecture:** Migration SQL `0009_rls_policies.sql` cria um helper `user_owns_company` (SECURITY DEFINER) e policies por tabela seguindo o modelo `companies.user_id = auth.uid()`. Um teste de isolamento (Playwright runner, sem browser, usando `@supabase/supabase-js`) provisiona um 2º tenant via service_role e prova isolamento por tabela (red antes da migration, green depois). Fluxos de UI do dono são validados via Playwright logado.
+**Architecture:** Migration SQL `0010_rls_policies.sql` cria um helper `user_owns_company` (SECURITY DEFINER) e policies por tabela seguindo o modelo `companies.user_id = auth.uid()`. Um teste de isolamento (Playwright runner, sem browser, usando `@supabase/supabase-js`) provisiona um 2º tenant via service_role e prova isolamento por tabela (red antes da migration, green depois). Fluxos de UI do dono são validados via Playwright logado.
 
 **Tech Stack:** Supabase (Postgres RLS), `@supabase/supabase-js`, Playwright test runner, Next.js 15.
 
 **Spec:** `docs/superpowers/specs/2026-05-29-rls-supabase-design.md`
+
+**Nota de numeração:** a `0009_disable_rls.sql` (já criada) desliga o RLS que tinha sido ligado manualmente pelo toggle do painel sem policies. Esta migration de policies é a **`0010`** e re-liga o RLS já com as policies corretas.
 
 **Pré-requisitos de ambiente:**
 - A migration é aplicada **manualmente no SQL Editor do Supabase** (não há CLI nem string de conexão local).
@@ -23,14 +25,14 @@ Todos os comandos rodam a partir de `balu-next/`.
 ### Task 1: Migration 0009 — helper + enable RLS + policies
 
 **Files:**
-- Create: `balu-next/supabase/migrations/0009_rls_policies.sql`
+- Create: `balu-next/supabase/migrations/0010_rls_policies.sql`
 
 - [ ] **Step 1: Criar a migration com o conteúdo completo**
 
-Criar `supabase/migrations/0009_rls_policies.sql`:
+Criar `supabase/migrations/0010_rls_policies.sql`:
 
 ```sql
--- 0009_rls_policies.sql
+-- 0010_rls_policies.sql
 -- RLS para produção. Modelo: companies.user_id = auth.uid(); tabelas de dados
 -- acessíveis quando a company referenciada pertence ao usuário.
 -- Spec: docs/superpowers/specs/2026-05-29-rls-supabase-design.md
@@ -203,8 +205,8 @@ Expected: todas as linhas começam com `OK`. Se aparecer `FALTA`, corrigir a col
 - [ ] **Step 3: Commit**
 
 ```bash
-git add supabase/migrations/0009_rls_policies.sql
-git commit -m "feat(rls): migration 0009 — helper user_owns_company + policies de todas as tabelas"
+git add supabase/migrations/0010_rls_policies.sql
+git commit -m "feat(rls): migration 0010 — helper user_owns_company + policies de todas as tabelas"
 ```
 
 ---
@@ -339,7 +341,7 @@ Se por acaso PASSAR aqui, parar: ou o RLS já está parcialmente ligado, ou o te
 
 - [ ] **Step 1: Aplicar a migration**
 
-Abrir o **SQL Editor** do projeto Supabase de dev e colar/executar o conteúdo completo de `supabase/migrations/0009_rls_policies.sql`. O script já faz `enable row level security` em cada tabela e cria/dropa as policies — não é preciso ligar o RLS manualmente no toggle do painel (a migration liga).
+Abrir o **SQL Editor** do projeto Supabase de dev e colar/executar o conteúdo completo de `supabase/migrations/0010_rls_policies.sql`. O script já faz `enable row level security` em cada tabela e cria/dropa as policies — não é preciso ligar o RLS manualmente no toggle do painel (a migration liga).
 
 Expected: execução sem erro. Se algum `column ... does not exist`, é divergência de schema: corrigir a coluna na migration (Task 1) e reaplicar.
 
@@ -444,7 +446,7 @@ git commit -m "docs(rls): resultados do teste de fluxos com RLS ligado"
 ## Notas de execução
 
 - **Ordem dos portões:** Task 3 (red) **antes** da Task 4 (aplicar). Se não der red, não aplique — investigue.
-- **Se um fluxo do dono quebrar** na Task 6 (leitura volta vazia), a causa provável é uma coluna de tenant diferente da assumida; cruze com `db_atual.sql` e ajuste a policy daquela tabela (nova migration `0010_...` ou correção no SQL Editor + atualizar `0009`).
+- **Se um fluxo do dono quebrar** na Task 6 (leitura volta vazia), a causa provável é uma coluna de tenant diferente da assumida; cruze com `db_atual.sql` e ajuste a policy daquela tabela (nova migration `0011_...` ou correção no SQL Editor + atualizar `0010`).
 - **abertura_empresas:** se algum fluxo autenticado precisar lê-la/gravá-la (a confirmar na Task 6), vira follow-up para adicionar coluna de owner — hoje fica travada (só service_role).
 - **Não** migrar storage/webhook para anon (continuam service_role por design).
 
@@ -452,7 +454,7 @@ git commit -m "docs(rls): resultados do teste de fluxos com RLS ligado"
 
 | Arquivo | Task | Mudança |
 |---|---|---|
-| `supabase/migrations/0009_rls_policies.sql` | 1 | novo — helper + enable RLS + policies |
+| `supabase/migrations/0010_rls_policies.sql` | 1 | novo — helper + enable RLS + policies |
 | `tests/rls-isolation.spec.ts` | 2 | novo — teste de isolamento |
 | (Supabase SQL Editor) | 4 | aplicar migration + ligar RLS |
 | `docs/rls-test-results-<data>.md` | 8 | novo — evidências |
