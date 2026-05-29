@@ -17,6 +17,7 @@ import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
 import CreateCompanyDialog from '@/components/CreateCompanyDialog';
 import Logo from '@/components/Logo';
+import ThemeToggle from '@/components/ThemeToggle';
 
 // Os values batem com o option set Bubble (lowercase). Para exibição, label é capitalizada.
 type Role = 'empresa' | 'contador';
@@ -186,6 +187,7 @@ export default function MenuLateral({
 
       {/* Sair */}
       <div className="border-t border-border p-2">
+        <ThemeToggle open={open} />
         <button
           type="button"
           onClick={signOut}
