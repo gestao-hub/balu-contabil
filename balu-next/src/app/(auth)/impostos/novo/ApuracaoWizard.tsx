@@ -31,43 +31,43 @@ export default function ApuracaoWizard({ competenciaDefault }: { competenciaDefa
   return (
     <div className="space-y-6">
       {/* Passo 1: competência */}
-      <div className="rounded-lg border border-zinc-200 p-4">
-        <label className="block text-sm font-medium text-zinc-700">Competência (YYYYMM)</label>
+      <div className="rounded-lg border border-border p-4">
+        <label className="block text-sm font-medium text-muted-foreground-2">Competência (YYYYMM)</label>
         <input
           value={competencia}
           onChange={(e) => {
             setCompetencia(e.target.value.replace(/\D/g, '').slice(0, 6));
             setPreview(null);
           }}
-          className="mt-1 w-40 rounded border border-zinc-300 px-3 py-2 font-mono"
+          className="mt-1 w-40 rounded border border-border bg-surface-2 text-foreground px-3 py-2 font-mono"
           inputMode="numeric"
         />
-        <p className="mt-1 text-xs text-zinc-500">{competenciaLabel(competencia)}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{competenciaLabel(competencia)}</p>
         <button
           onClick={calcular}
           disabled={pending || competencia.length !== 6}
-          className="mt-3 rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="mt-3 rounded bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {pending ? 'Calculando…' : 'Calcular'}
         </button>
       </div>
 
-      {erro && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erro}</div>}
+      {erro && <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{erro}</div>}
 
       {/* Passo 2: preview + confirmar */}
       {preview && (
-        <div className="rounded-lg border border-zinc-200 p-4">
-          <h2 className="mb-3 text-base font-semibold text-zinc-800">{preview.tipoApuracao}</h2>
+        <div className="rounded-lg border border-border p-4">
+          <h2 className="mb-3 text-base font-semibold text-foreground">{preview.tipoApuracao}</h2>
           <dl className="grid grid-cols-2 gap-y-2 text-sm">
-            <dt className="text-zinc-500">Receita do mês</dt><dd className="text-right">{brl(preview.receitaMes)}</dd>
-            {preview.rbt12 != null && (<><dt className="text-zinc-500">RBT12</dt><dd className="text-right">{brl(preview.rbt12)}</dd></>)}
-            {preview.aliquotaEfetiva != null && (<><dt className="text-zinc-500">Alíquota efetiva</dt><dd className="text-right">{(preview.aliquotaEfetiva * 100).toFixed(2)}%</dd></>)}
-            <dt className="font-medium text-zinc-700">Imposto</dt><dd className="text-right font-semibold">{brl(preview.valorImposto)}</dd>
+            <dt className="text-muted-foreground">Receita do mês</dt><dd className="text-right">{brl(preview.receitaMes)}</dd>
+            {preview.rbt12 != null && (<><dt className="text-muted-foreground">RBT12</dt><dd className="text-right">{brl(preview.rbt12)}</dd></>)}
+            {preview.aliquotaEfetiva != null && (<><dt className="text-muted-foreground">Alíquota efetiva</dt><dd className="text-right">{(preview.aliquotaEfetiva * 100).toFixed(2)}%</dd></>)}
+            <dt className="font-medium text-muted-foreground-2">Imposto</dt><dd className="text-right font-semibold">{brl(preview.valorImposto)}</dd>
           </dl>
           <button
             onClick={confirmar}
             disabled={pending}
-            className="mt-4 rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="mt-4 rounded bg-success px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {pending ? 'Salvando…' : 'Confirmar apuração'}
           </button>

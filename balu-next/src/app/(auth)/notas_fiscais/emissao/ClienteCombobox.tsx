@@ -43,15 +43,15 @@ export default function ClienteCombobox({ clientes, value, onChange }: Props) {
 
   if (selected && !open) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-zinc-800 truncate">{selected.razao_social}</p>
-          <p className="text-xs text-zinc-500 font-mono">{maskDoc(selected.document)} · {selected.person_type}</p>
+          <p className="text-sm font-medium text-foreground truncate">{selected.razao_social}</p>
+          <p className="text-xs text-muted-foreground font-mono">{maskDoc(selected.document)} · {selected.person_type}</p>
         </div>
         <button
           type="button"
           onClick={() => { onChange(''); setOpen(true); setQ(''); }}
-          className="text-xs text-zinc-500 hover:text-zinc-700"
+          className="text-xs text-muted-foreground hover:text-muted-foreground-2"
           aria-label="Trocar cliente"
         >
           <X className="size-4" />
@@ -62,7 +62,7 @@ export default function ClienteCombobox({ clientes, value, onChange }: Props) {
 
   if (clientes.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-zinc-300 px-3 py-3 text-sm text-zinc-500">
+      <div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
         Você ainda não cadastrou clientes. Vá em <span className="font-medium">Clientes</span> para adicionar.
       </div>
     );
@@ -71,30 +71,30 @@ export default function ClienteCombobox({ clientes, value, onChange }: Props) {
   return (
     <div className="space-y-1">
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <input
           type="text"
           value={q}
           onChange={(e) => { setQ(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           placeholder="Buscar por nome ou CPF/CNPJ…"
-          className="w-full pl-9 pr-3 py-2 rounded-lg border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface-2 text-foreground placeholder:text-muted-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
       {open && (
-        <ul className="max-h-64 overflow-y-auto rounded-lg border border-zinc-200 bg-white divide-y divide-zinc-100">
+        <ul className="max-h-64 overflow-y-auto rounded-lg border border-border bg-surface divide-y divide-border">
           {filtered.length === 0 && (
-            <li className="px-3 py-2 text-sm text-zinc-500">Nenhum cliente encontrado.</li>
+            <li className="px-3 py-2 text-sm text-muted-foreground">Nenhum cliente encontrado.</li>
           )}
           {filtered.map((c) => (
             <li key={c.id}>
               <button
                 type="button"
                 onClick={() => { onChange(c.id); setOpen(false); setQ(''); }}
-                className="w-full text-left px-3 py-2 hover:bg-zinc-50"
+                className="w-full text-left px-3 py-2 hover:bg-surface-2"
               >
-                <p className="text-sm font-medium text-zinc-800">{c.razao_social}</p>
-                <p className="text-xs text-zinc-500 font-mono">{maskDoc(c.document)} · {c.person_type}</p>
+                <p className="text-sm font-medium text-foreground">{c.razao_social}</p>
+                <p className="text-xs text-muted-foreground font-mono">{maskDoc(c.document)} · {c.person_type}</p>
               </button>
             </li>
           ))}

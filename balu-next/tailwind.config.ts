@@ -1,28 +1,44 @@
 import type { Config } from 'tailwindcss';
 
-// Tokens derivados de:
-//  - PRD §5 (paleta primária da marca Balu)
-//  - slices/06_design_tokens.json (tokens secundários do export Bubble)
+// Tokens da marca Balu — derivados de branding/balu-manual-de-marca.html (tema escuro).
+// Cores semânticas apontam para CSS vars em globals.css (re-tematização num lugar só).
+const rgb = (v: string) => `rgb(var(${v}) / <alpha-value>)`;
+
 export default {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // Paleta de marca (PRD §5)
+        // Semânticos (tema escuro)
+        background:           rgb('--background'),
+        foreground:           rgb('--foreground'),
+        surface:              rgb('--surface'),
+        'surface-2':          rgb('--surface-2'),
+        'surface-3':          rgb('--surface-3'),
+        card:                 rgb('--surface'),
+        'muted-foreground':   rgb('--muted-foreground'),
+        'muted-foreground-2': rgb('--muted-foreground-2'),
+        primary:              rgb('--primary'),
+        'primary-light':      rgb('--primary-light'),
+        navy:                 rgb('--navy'),
+        success:              rgb('--success'),
+        destructive:          rgb('--destructive'),
+        alert:                rgb('--alert'),
+        border:               'rgb(255 255 255 / 0.08)',
+
+        // Paleta de marca explícita (use quando precisar do hex fixo)
         brand: {
-          teal:    '#03B4C6',
-          navy:    '#091747',
-          danger:  '#D62755',
+          blue:      '#1882C8',
+          'blue-lt': '#4AAEE0',
+          navy:      '#0D3558',
+          success:   '#2ECF8A',
+          danger:    '#E05252',
         },
-        // Tokens funcionais do export
-        primary:     'rgb(3 180 198)',     // teal
-        destructive: 'rgb(214 39 85)',
-        success:     'rgb(30 108 48)',
-        alert:       'rgb(220 161 20)',
-        surface:     'rgb(255 255 255)',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans:  ['var(--font-body)', 'Outfit', 'system-ui', 'sans-serif'],
+        head:  ['var(--font-head)', 'Syne', 'sans-serif'],
+        brand: ['var(--font-brand)', 'Nunito', 'sans-serif'],
       },
     },
   },

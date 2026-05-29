@@ -43,7 +43,7 @@ export default function AtualizarStatusIcon({ notaId }: { notaId: string }) {
       disabled={pending}
       title="Atualizar status"
       aria-label="Atualizar status da nota"
-      className="inline-flex items-center justify-center rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 disabled:opacity-50"
+      className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
     >
       {pending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
     </button>

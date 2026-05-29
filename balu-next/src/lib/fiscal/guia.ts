@@ -20,7 +20,7 @@ export function statusGuiaBadge(status: string | null | undefined): StatusBadge 
     case 'pendente':   return { label: 'Pendente',  cls: 'bg-alert/10 text-alert' };
     case 'vencida':    return { label: 'Vencida',   cls: 'bg-destructive/10 text-destructive' };
     case 'erro':       return { label: 'Erro',      cls: 'bg-destructive/10 text-destructive' };
-    default:           return { label: status || '—', cls: 'bg-zinc-100 text-zinc-600' };
+    default:           return { label: status || '—', cls: 'bg-surface-3 text-muted-foreground' };
   }
 }
 

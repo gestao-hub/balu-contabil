@@ -64,8 +64,8 @@ function Section({
       <header className="mb-4 flex items-start gap-3">
         <span className="grid size-9 place-items-center rounded-md bg-primary/10">{icon}</span>
         <div>
-          <h2 className="text-sm font-semibold text-brand-navy">{title}</h2>
-          <p className="text-xs text-zinc-500">{subtitle}</p>
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+          <p className="text-xs text-muted-foreground">{subtitle}</p>
         </div>
       </header>
       {children}

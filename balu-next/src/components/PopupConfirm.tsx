@@ -54,7 +54,7 @@ export default function PopupConfirm({
       ref={dialogRef}
       aria-labelledby="popup-confirm-title"
       onCancel={(e) => { e.preventDefault(); if (!busy) onCancel(); }}
-      className="rounded-xl border border-zinc-200 p-0 shadow-xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
+      className="rounded-xl border border-border bg-surface p-0 shadow-xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
     >
       <div className="w-[min(420px,90vw)] p-6">
         <div className="flex items-start gap-3">
@@ -64,11 +64,11 @@ export default function PopupConfirm({
             </span>
           )}
           <div className="flex-1">
-            <h2 id="popup-confirm-title" className="text-base font-semibold text-brand-navy">
+            <h2 id="popup-confirm-title" className="text-base font-semibold text-foreground">
               {title}
             </h2>
             {description && (
-              <p className="mt-1 text-sm text-zinc-600">{description}</p>
+              <p className="mt-1 text-sm text-muted-foreground-2">{description}</p>
             )}
           </div>
         </div>
@@ -80,7 +80,7 @@ export default function PopupConfirm({
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50"
           >
             {cancelLabel}
           </button>

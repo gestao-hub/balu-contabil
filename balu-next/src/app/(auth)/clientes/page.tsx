@@ -31,8 +31,8 @@ export default async function ClientesPage() {
   return (
     <main className="p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-brand-navy">Clientes</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <h1 className="text-2xl font-semibold text-foreground">Clientes</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Gerencie os clientes da empresa selecionada.
         </p>
       </header>

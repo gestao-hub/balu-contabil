@@ -46,7 +46,7 @@ export default function GuiaActions({ guia, variant = 'inline' }: { guia: GuiaRo
 
   const baseCls = variant === 'primary'
     ? 'w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition'
-    : 'inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium transition';
+    : 'inline-flex items-center justify-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium transition';
 
   return (
     <>
@@ -58,7 +58,7 @@ export default function GuiaActions({ guia, variant = 'inline' }: { guia: GuiaRo
           className={`${baseCls} ${
             variant === 'primary'
               ? 'bg-primary text-white hover:opacity-90 disabled:opacity-50'
-              : 'text-zinc-700 hover:bg-zinc-50 disabled:opacity-50'
+              : 'text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50'
           }`}
         >
           {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
@@ -72,8 +72,8 @@ export default function GuiaActions({ guia, variant = 'inline' }: { guia: GuiaRo
         disabled={!guia.linhaDigitavel}
         className={`${baseCls} ${
           variant === 'primary'
-            ? 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50 disabled:opacity-40'
-            : 'text-zinc-700 hover:bg-zinc-50 disabled:opacity-40'
+            ? 'border border-border text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-40'
+            : 'text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-40'
         }`}
       >
         {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
@@ -86,8 +86,8 @@ export default function GuiaActions({ guia, variant = 'inline' }: { guia: GuiaRo
           {...(isPdfDataUri ? { download: 'das.pdf' } : { target: '_blank', rel: 'noopener noreferrer' })}
           className={`${baseCls} ${
             variant === 'primary'
-              ? 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50'
-              : 'text-zinc-700 hover:bg-zinc-50'
+              ? 'border border-border text-muted-foreground-2 hover:bg-surface-2'
+              : 'text-muted-foreground-2 hover:bg-surface-2'
           }`}
         >
           <Download className="size-4" />

@@ -89,7 +89,7 @@ export default function MenuLateral({
 
   return (
     <aside
-      className={`relative flex flex-col border-r border-zinc-200 bg-white transition-[width] duration-200 ${
+      className={`relative flex flex-col border-r border-border bg-surface transition-[width] duration-200 ${
         open ? 'w-60' : 'w-16'
       }`}
     >
@@ -97,23 +97,23 @@ export default function MenuLateral({
         type="button"
         aria-label={open ? 'Recolher menu' : 'Expandir menu'}
         onClick={() => setOpen((v) => !v)}
-        className="absolute -right-3 top-4 grid size-6 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm hover:text-primary"
+        className="absolute -right-3 top-4 grid size-6 place-items-center rounded-full border border-border bg-surface-2 text-muted-foreground shadow-sm hover:text-primary"
       >
         {open ? <X className="size-3" /> : <MenuIcon className="size-3" />}
       </button>
 
       {/* Cabeçalho com usuário + empresa */}
-      <div className="border-b border-zinc-200 p-3">
+      <div className="border-b border-border p-3">
         {open ? (
           <>
-            <p className="truncate text-sm font-semibold text-brand-navy">{userName}</p>
-            <p className="text-xs text-zinc-500">{ROLE_LABEL[userRole] ?? userRole}</p>
+            <p className="truncate text-sm font-semibold text-foreground">{userName}</p>
+            <p className="text-xs text-muted-foreground">{ROLE_LABEL[userRole] ?? userRole}</p>
             <div className="mt-3">
               <button
                 type="button"
                 onClick={() => setCompanyMenuOpen((v) => !v)}
                 disabled={switching}
-                className="flex w-full items-center justify-between gap-2 rounded-md border border-zinc-200 px-2 py-1.5 text-left text-xs hover:border-primary disabled:opacity-50"
+                className="flex w-full items-center justify-between gap-2 rounded-md border border-border px-2 py-1.5 text-left text-xs text-foreground hover:border-primary disabled:opacity-50"
               >
                 <span className="flex items-center gap-1.5 truncate">
                   <Building2 className="size-3.5 shrink-0 text-primary" />
@@ -122,14 +122,14 @@ export default function MenuLateral({
                 <ChevronDown className={`size-3.5 transition-transform ${companyMenuOpen ? 'rotate-180' : ''}`} />
               </button>
               {companyMenuOpen && (
-                <ul className="mt-1 max-h-60 overflow-auto rounded-md border border-zinc-200 bg-white shadow-sm">
+                <ul className="mt-1 max-h-60 overflow-auto rounded-md border border-border bg-surface-2 shadow-sm">
                   {companies.map((c) => (
                     <li key={c.id}>
                       <button
                         type="button"
                         onClick={() => changeCompany(c.id)}
-                        className={`w-full truncate px-2 py-1.5 text-left text-xs hover:bg-zinc-50 ${
-                          c.id === currentCompanyId ? 'font-semibold text-primary' : ''
+                        className={`w-full truncate px-2 py-1.5 text-left text-xs hover:bg-surface-3 ${
+                          c.id === currentCompanyId ? 'font-semibold text-primary' : 'text-muted-foreground-2'
                         }`}
                       >
                         {c.nome}
@@ -143,7 +143,7 @@ export default function MenuLateral({
               <button
                 type="button"
                 onClick={() => { setCompanyMenuOpen(false); setAddOpen(true); }}
-                className="mt-2 flex w-full items-center gap-1.5 rounded-md border border-dashed border-zinc-300 px-2 py-1.5 text-xs text-zinc-600 hover:border-primary hover:text-primary"
+                className="mt-2 flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-primary"
               >
                 <Plus className="size-3.5 shrink-0" />
                 Nova empresa
@@ -168,8 +168,8 @@ export default function MenuLateral({
                   href={href}
                   className={`flex items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors ${
                     active
-                      ? 'bg-primary/10 text-primary font-semibold'
-                      : 'text-zinc-700 hover:bg-zinc-50'
+                      ? 'bg-primary/15 text-primary font-semibold'
+                      : 'text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground'
                   }`}
                 >
                   <Icon className="size-4 shrink-0" />
@@ -182,11 +182,11 @@ export default function MenuLateral({
       </nav>
 
       {/* Sair */}
-      <div className="border-t border-zinc-200 p-2">
+      <div className="border-t border-border p-2">
         <button
           type="button"
           onClick={signOut}
-          className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+          className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground"
         >
           <LogOut className="size-4 shrink-0" />
           {open && <span>Sair</span>}

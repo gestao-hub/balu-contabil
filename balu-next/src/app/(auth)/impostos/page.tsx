@@ -80,8 +80,8 @@ export default async function ImpostosPage() {
   return (
     <Page>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-brand-navy">Impostos</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h1 className="text-2xl font-semibold text-foreground">Impostos</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           {empresaNome} · <span className="font-mono">{competenciaLabel(competenciaAtual)}</span>
         </p>
       </header>
@@ -91,7 +91,7 @@ export default async function ImpostosPage() {
       {fiscal && (
         <>
           <section className="mb-8">
-            <h2 className="text-xs uppercase tracking-wide text-zinc-500 mb-3">Competência atual</h2>
+            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Competência atual</h2>
             <CompetenciaAtualCard
               apuracao={apuracaoAtual ? toApuracaoRow(apuracaoAtual) : null}
               guia={guiaAtual ? toGuiaRow(guiaAtual) : null}
@@ -101,7 +101,7 @@ export default async function ImpostosPage() {
           </section>
 
           <section>
-            <h2 className="text-xs uppercase tracking-wide text-zinc-500 mb-3">Histórico de guias</h2>
+            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Histórico de guias</h2>
             <HistoricoGuias initial={historico} />
           </section>
         </>
@@ -121,7 +121,7 @@ function BloqueioEmpresa() {
         <Receipt className="size-5 text-alert mt-0.5" />
         <div>
           <h1 className="text-lg font-semibold text-alert">Nenhuma empresa selecionada</h1>
-          <p className="text-sm text-zinc-700 mt-1">Cadastre ou selecione uma empresa pra ver impostos.</p>
+          <p className="text-sm text-muted-foreground-2 mt-1">Cadastre ou selecione uma empresa pra ver impostos.</p>
         </div>
       </div>
     </div>
@@ -135,7 +135,7 @@ function BloqueioFiscal() {
         <Receipt className="size-5 text-alert mt-0.5" />
         <div>
           <h1 className="text-lg font-semibold text-alert">Configure o regime fiscal</h1>
-          <p className="text-sm text-zinc-700 mt-1">
+          <p className="text-sm text-muted-foreground-2 mt-1">
             Antes de calcular impostos, você precisa definir o regime tributário da empresa.
           </p>
           <Link

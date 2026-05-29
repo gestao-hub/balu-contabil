@@ -41,15 +41,15 @@ export default function CadastroPage() {
 
   return (
     <main className="w-full max-w-sm px-6">
-      <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-8">
+      <div className="bg-surface rounded-2xl shadow-sm border border-border p-8">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-primary">Balu</h1>
-          <p className="text-sm text-zinc-500 mt-1">Crie sua conta</p>
+          <p className="text-sm text-muted-foreground mt-1">Crie sua conta</p>
         </div>
 
         <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="full_name" className="block text-sm font-medium text-zinc-700 mb-1">
+            <label htmlFor="full_name" className="block text-sm font-medium text-muted-foreground-2 mb-1">
               Nome completo
             </label>
             <input
@@ -58,19 +58,19 @@ export default function CadastroPage() {
               type="text"
               required
               autoComplete="name"
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
 
           <div>
-            <label htmlFor="role_type" className="block text-sm font-medium text-zinc-700 mb-1">
+            <label htmlFor="role_type" className="block text-sm font-medium text-muted-foreground-2 mb-1">
               Tipo de conta
             </label>
             <select
               id="role_type"
               name="role_type"
               defaultValue=""
-              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value=""></option>
               <option value="Empresa">Empresa</option>
@@ -79,7 +79,7 @@ export default function CadastroPage() {
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-zinc-700 mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-muted-foreground-2 mb-1">
               E-mail
             </label>
             <input
@@ -88,12 +88,12 @@ export default function CadastroPage() {
               type="email"
               required
               autoComplete="email"
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-zinc-700 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-muted-foreground-2 mb-1">
               Senha
             </label>
             <input
@@ -103,13 +103,13 @@ export default function CadastroPage() {
               required
               minLength={6}
               autoComplete="new-password"
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
-            <p className="text-xs text-zinc-500 mt-1">Mínimo 6 caracteres.</p>
+            <p className="text-xs text-muted-foreground mt-1">Mínimo 6 caracteres.</p>
           </div>
 
           <div>
-            <label htmlFor="password_confirm" className="block text-sm font-medium text-zinc-700 mb-1">
+            <label htmlFor="password_confirm" className="block text-sm font-medium text-muted-foreground-2 mb-1">
               Confirmar senha
             </label>
             <input
@@ -119,12 +119,12 @@ export default function CadastroPage() {
               required
               minLength={6}
               autoComplete="new-password"
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
 
           {errorMsg && (
-            <p className="text-sm text-destructive bg-red-50 border border-red-100 rounded-md px-3 py-2">
+            <p className="text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">
               {errorMsg}
             </p>
           )}
@@ -133,7 +133,7 @@ export default function CadastroPage() {
         </form>
 
         <div className="mt-6 text-center text-sm">
-          <span className="text-zinc-500">Já tem conta? </span>
+          <span className="text-muted-foreground">Já tem conta? </span>
           <Link href="/login" className="text-primary hover:underline">
             Entrar
           </Link>

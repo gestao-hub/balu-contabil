@@ -41,8 +41,8 @@ export default async function DashboardPage() {
     return (
       <main className="p-6">
         <header className="mb-6">
-          <h1 className="text-2xl font-semibold text-brand-navy">Início</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <h1 className="text-2xl font-head font-semibold text-foreground">Início</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Crie ou selecione uma empresa para ver seu painel.
           </p>
         </header>
@@ -72,8 +72,8 @@ export default async function DashboardPage() {
   return (
     <main className="p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-brand-navy">Início</h1>
-        <p className="mt-1 text-sm text-zinc-500">Visão geral da sua empresa.</p>
+        <h1 className="text-2xl font-head font-semibold text-foreground">Início</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Visão geral da sua empresa.</p>
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
