@@ -134,7 +134,7 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
       ref={dialogRef}
       aria-labelledby="cliente-form-title"
       onCancel={(e) => { e.preventDefault(); if (!busy) onClose(); }}
-      className="rounded-xl border border-border p-0 shadow-xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
+      className="rounded-xl border border-border bg-surface text-foreground p-0 shadow-xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
     >
       <form onSubmit={onSubmit} className="w-[min(720px,95vw)] max-h-[90vh] overflow-y-auto">
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-surface px-6 py-4">
