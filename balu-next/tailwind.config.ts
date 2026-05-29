@@ -6,6 +6,7 @@ const rgb = (v: string) => `rgb(var(${v}) / <alpha-value>)`;
 
 export default {
   content: ['./src/**/*.{ts,tsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -24,7 +25,7 @@ export default {
         success:              rgb('--success'),
         destructive:          rgb('--destructive'),
         alert:                rgb('--alert'),
-        border:               'rgb(255 255 255 / 0.08)',
+        border:               'rgb(var(--border) / 0.1)',
 
         // Paleta de marca explícita (use quando precisar do hex fixo)
         brand: {
