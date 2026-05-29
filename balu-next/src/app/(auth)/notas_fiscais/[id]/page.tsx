@@ -66,7 +66,10 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
   const chave = (nota.chave_acesso as string) ?? campos.chaveAcesso ?? '—';
   const protocolo = (nota.protocolo_autorizacao as string) ?? campos.protocolo;
   const numero = (nota.numero_nf as string) ?? campos.numero;
-  const urlConsulta = campos.urlConsulta;
+  // urlConsulta vem do callback externo da Focus → valida o scheme antes de virar
+  // href (evita XSS via javascript:/data:). Só aceita http(s).
+  const urlConsulta =
+    campos.urlConsulta && /^https?:\/\//i.test(campos.urlConsulta) ? campos.urlConsulta : null;
   const status = nota.status as string;
   const badge = STATUS_LABEL[status] ?? { txt: status, cls: 'bg-zinc-100 text-zinc-600' };
 
