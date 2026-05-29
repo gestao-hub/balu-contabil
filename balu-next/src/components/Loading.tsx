@@ -12,7 +12,7 @@ export default function Loading({ label, fullscreen = false }: LoadingProps) {
   const inner = (
     <div className="flex flex-col items-center gap-3" role="status" aria-live="polite">
       <Loader2 className="size-8 animate-spin text-primary" />
-      {label ? <p className="text-base font-bold text-zinc-700">{label}</p> : null}
+      {label ? <p className="text-base font-bold text-muted-foreground-2">{label}</p> : null}
       <span className="sr-only">Carregando{label ? `: ${label}` : ''}</span>
     </div>
   );
@@ -20,7 +20,7 @@ export default function Loading({ label, fullscreen = false }: LoadingProps) {
   if (!fullscreen) return inner;
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-white/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 backdrop-blur-sm">
       {inner}
     </div>
   );

@@ -55,12 +55,12 @@ export default function CancelarButton({ id, ativa }: { id: string; ativa: boole
         onCancel={() => setOpen(false)}
       >
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-xs font-medium text-zinc-600">Justificativa (mín. 15 caracteres)</span>
+          <span className="text-xs font-medium text-muted-foreground-2">Justificativa (mín. 15 caracteres)</span>
           <textarea
             value={justificativa}
             onChange={(e) => setJustificativa(e.target.value)}
             rows={3}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm"
           />
         </label>
       </PopupConfirm>

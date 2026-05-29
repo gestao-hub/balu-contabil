@@ -32,7 +32,7 @@ export default function ResendButton({ email }: { email: string }) {
       type="button"
       onClick={handleClick}
       disabled={loading}
-      className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+      className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
     >
       {pending ? (
         <Loader2 className="size-4 animate-spin" />

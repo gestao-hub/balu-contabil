@@ -92,7 +92,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
       <Field label="Inscrição municipal" value={form.inscricao_municipal ?? ''} onChange={(v) => set('inscricao_municipal', v)} disabled={locked} />
       <Field label="Código município (IBGE)" value={form.codigo_municipio ?? ''} onChange={(v) => set('codigo_municipio', v)} disabled={locked} />
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-xs font-medium text-zinc-600">CEP</span>
+        <span className="text-xs font-medium text-muted-foreground-2">CEP</span>
         <div className="flex gap-2">
           <input
             type="text"
@@ -102,13 +102,13 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
             onChange={(e) => set('cep', formatCep(e.target.value))}
             disabled={locked}
             maxLength={9}
-            className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
+            className="flex-1 rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
           />
           <button
             type="button"
             onClick={handleLookupCep}
             disabled={locked || busyCep}
-            className="inline-flex items-center gap-1 rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-2 text-sm font-medium text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50"
           >
             {busyCep ? <Loader2 className="size-4 animate-spin" /> : <MapPin className="size-4" />}
             Buscar
@@ -117,7 +117,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
       </label>
       <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} disabled={locked} required className="col-span-2" />
       <div className="flex flex-col gap-1 text-sm">
-        <span className="text-xs font-medium text-zinc-600">
+        <span className="text-xs font-medium text-muted-foreground-2">
           Número{!form.sem_numero && <span className="text-destructive"> *</span>}
         </span>
         <input
@@ -126,15 +126,15 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
           onChange={(e) => set('numero', e.target.value)}
           disabled={locked || !!form.sem_numero}
           required={!form.sem_numero}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
+          className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
         />
-        <label className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
+        <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground-2">
           <input
             type="checkbox"
             checked={!!form.sem_numero}
             disabled={locked}
             onChange={(e) => setForm((prev) => ({ ...prev, sem_numero: e.target.checked, numero: e.target.checked ? '' : prev.numero }))}
-            className="size-4 rounded border-zinc-300 disabled:opacity-50"
+            className="size-4 rounded border-border disabled:opacity-50"
           />
           Sem número
         </label>
@@ -152,7 +152,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
               type="button"
               onClick={handleCancel}
               disabled={busy}
-              className="rounded-md border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50"
             >
               Cancelar
             </button>
@@ -193,7 +193,7 @@ function Field({
 }) {
   return (
     <label className={`flex flex-col gap-1 text-sm ${className}`}>
-      <span className="text-xs font-medium text-zinc-600">
+      <span className="text-xs font-medium text-muted-foreground-2">
         {label}{required && <span className="text-destructive"> *</span>}
       </span>
       <input
@@ -202,7 +202,7 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         required={required}
-        className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
+        className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
       />
     </label>
   );

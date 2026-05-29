@@ -1,3 +1,57 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Tokens de marca Balu — tema escuro (branding/balu-manual-de-marca.html §cores)
+ * Canais RGB separados p/ permitir modificadores de opacidade do Tailwind
+ * (ex: bg-border/50). Trocar estes valores re-tematiza o app inteiro.
+ */
+:root {
+  --background: 9 9 9;          /* #090909 preto base */
+  --surface: 16 16 16;         /* #101010 superfície (cards) */
+  --surface-2: 24 24 24;       /* #181818 */
+  --surface-3: 34 34 34;       /* #222222 */
+  --foreground: 255 255 255;   /* #FFFFFF texto principal */
+  --muted-foreground: 126 152 172;   /* #7E98AC cinza-azulado */
+  --muted-foreground-2: 184 202 214; /* #B8CAD6 */
+  --primary: 24 130 200;       /* #1882C8 azul Balu */
+  --primary-light: 74 174 224; /* #4AAEE0 */
+  --navy: 13 53 88;            /* #0D3558 */
+  --success: 46 207 138;       /* #2ECF8A */
+  --destructive: 224 82 82;    /* #E05252 */
+  --alert: 220 161 20;         /* #DCA114 */
+}
+
+@layer base {
+  body {
+    background-color: rgb(var(--background));
+    color: rgb(var(--foreground));
+  }
+
+  /* Scrollbar no tom do tema escuro (substitui o cinza padrão do SO).
+   * Firefox usa scrollbar-color; WebKit/Chromium usa ::-webkit-scrollbar-*. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--surface-3)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--surface-3));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--muted-foreground) / 0.6);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}

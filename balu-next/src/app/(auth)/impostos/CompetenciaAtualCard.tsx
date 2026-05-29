@@ -25,12 +25,12 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMe
   const badge = guia ? statusGuiaBadge(guia.status) : null;
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-6">
+    <div className="rounded-xl border border-border bg-surface p-6">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-3">
             <Receipt className="size-4 text-primary" />
-            <span className="text-sm font-medium text-zinc-700">{competenciaLabel(competencia)}</span>
+            <span className="text-sm font-medium text-muted-foreground-2">{competenciaLabel(competencia)}</span>
             {badge && (
               <span className={`ml-auto sm:ml-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
                 {badge.label}
@@ -38,7 +38,7 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMe
             )}
           </div>
 
-          <p className="text-3xl font-semibold text-brand-navy tabular-nums">
+          <p className="text-3xl font-semibold text-foreground tabular-nums">
             {brl(guia?.valor ?? apuracao?.valor_imposto ?? null)}
           </p>
 
@@ -84,20 +84,20 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMe
 function Linha({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-zinc-500">{label}</dt>
-      <dd className="text-sm font-medium text-zinc-800 tabular-nums">{children}</dd>
+      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="text-sm font-medium text-foreground tabular-nums">{children}</dd>
     </div>
   );
 }
 
 function EmptyCompetencia({ competencia, isMei }: { competencia: string; isMei: boolean }) {
   return (
-    <div className="rounded-xl border-2 border-dashed border-zinc-200 bg-white p-8 text-center">
+    <div className="rounded-xl border-2 border-dashed border-border bg-surface p-8 text-center">
       <div className="inline-flex items-center justify-center size-12 rounded-full bg-primary/10 mb-3">
         <Calculator className="size-6 text-primary" />
       </div>
-      <h3 className="text-base font-semibold text-zinc-800">Sem cálculo para {competenciaLabel(competencia)}</h3>
-      <p className="text-sm text-zinc-500 mt-2 max-w-md mx-auto">
+      <h3 className="text-base font-semibold text-foreground">Sem cálculo para {competenciaLabel(competencia)}</h3>
+      <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
         Quando você consolidar receitas e calcular o DAS, a apuração e a guia desta competência aparecem aqui.
       </p>
       <Link

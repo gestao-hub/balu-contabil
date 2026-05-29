@@ -44,7 +44,7 @@ function SummaryBanner({ summary }: { summary: ReturnType<typeof summarize> }) {
         <CheckCircle2 className="size-5 text-success" />
         <div>
           <p className="text-sm font-semibold text-success">Empresa 100% funcional</p>
-          <p className="text-xs text-zinc-600">Todos os {summary.total} itens estão verdes.</p>
+          <p className="text-xs text-muted-foreground-2">Todos os {summary.total} itens estão verdes.</p>
         </div>
       </div>
     );
@@ -54,7 +54,7 @@ function SummaryBanner({ summary }: { summary: ReturnType<typeof summarize> }) {
       <AlertTriangle className="size-5 text-alert" />
       <div>
         <p className="text-sm font-semibold text-alert">Há pendências para emitir notas</p>
-        <p className="text-xs text-zinc-600">
+        <p className="text-xs text-muted-foreground-2">
           {summary.ok}/{summary.total} ok ·{' '}
           {summary.pendente > 0 && `${summary.pendente} pendente(s)`}{' '}
           {summary.erro > 0 && `· ${summary.erro} com erro`}

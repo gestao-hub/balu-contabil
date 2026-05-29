@@ -62,39 +62,39 @@ export default function FilterPeriodo({
         className={`grid size-10 place-items-center rounded-lg border transition-colors ${
           hasValue
             ? 'border-primary bg-primary/10 text-primary'
-            : 'border-zinc-200 bg-white text-zinc-600 hover:border-primary hover:text-primary'
+            : 'border-border bg-surface text-muted-foreground-2 hover:border-primary hover:text-primary'
         }`}
       >
         <Filter className="size-4" />
       </button>
 
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-zinc-200 bg-white p-5 shadow-md">
+        <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-border bg-surface p-5 shadow-md">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-brand-navy">Filtrar por período</h3>
+            <h3 className="text-sm font-semibold text-foreground">Filtrar por período</h3>
             <button type="button" aria-label="Fechar" onClick={() => setOpen(false)}>
-              <X className="size-4 text-zinc-400 hover:text-zinc-700" />
+              <X className="size-4 text-muted-foreground hover:text-muted-foreground-2" />
             </button>
           </div>
 
-          <label className="block text-xs text-zinc-600">
+          <label className="block text-xs text-muted-foreground-2">
             Data inicial
             <input
               type="date"
               value={start}
               onChange={(e) => setStart(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              className="mt-1 block w-full rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:border-primary focus:outline-none"
             />
           </label>
 
-          <label className="mt-3 block text-xs text-zinc-600">
+          <label className="mt-3 block text-xs text-muted-foreground-2">
             Data final
             <input
               type="date"
               value={end}
               onChange={(e) => setEnd(e.target.value)}
               min={start || undefined}
-              className="mt-1 block w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              className="mt-1 block w-full rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:border-primary focus:outline-none"
             />
           </label>
 
@@ -110,7 +110,7 @@ export default function FilterPeriodo({
             <button
               type="button"
               onClick={clear}
-              className="rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2"
             >
               Limpar
             </button>

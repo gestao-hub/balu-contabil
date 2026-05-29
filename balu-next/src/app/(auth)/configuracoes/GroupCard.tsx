@@ -24,12 +24,12 @@ export default function GroupCard({ group }: { group: CheckGroup }) {
   if (group.items.length === 1) {
     const item = group.items[0]!;
     return (
-      <div className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 p-4">
+      <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-4">
         <div className="flex items-start gap-3">
           <Icon className={`size-5 mt-0.5 ${cls}`} />
           <div>
-            <p className="text-sm font-medium text-zinc-800">{group.label}</p>
-            <p className="text-xs text-zinc-500 mt-0.5">{item.hint}</p>
+            <p className="text-sm font-medium text-foreground">{group.label}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{item.hint}</p>
           </div>
         </div>
         <CheckAction action={group.action} status={group.status} />
@@ -47,7 +47,7 @@ function GroupCollapsible({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="rounded-lg border border-zinc-200 overflow-hidden">
+    <div className="rounded-lg border border-border overflow-hidden">
       {/* Header clicável (flex split: botão expande, action fica fora pra não disparar toggle) */}
       <div className="flex items-stretch">
         <button
@@ -55,12 +55,12 @@ function GroupCollapsible({
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls={`group-${group.key}-content`}
-          className="flex-1 flex items-center gap-3 p-4 text-left hover:bg-zinc-50/50 transition"
+          className="flex-1 flex items-center gap-3 p-4 text-left hover:bg-surface-2 transition"
         >
           <Icon className={`size-5 ${cls} shrink-0`} />
-          <p className="text-sm font-medium text-zinc-800 flex-1">{group.label}</p>
+          <p className="text-sm font-medium text-foreground flex-1">{group.label}</p>
           <ChevronDown
-            className={`size-4 text-zinc-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+            className={`size-4 text-muted-foreground shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
           />
         </button>
         {group.action && group.status !== 'ok' && (
@@ -71,8 +71,8 @@ function GroupCollapsible({
       </div>
 
       {open && (
-        <div id={`group-${group.key}-content`} className="border-t border-zinc-100">
-          <ul className="divide-y divide-zinc-100">
+        <div id={`group-${group.key}-content`} className="border-t border-border">
+          <ul className="divide-y divide-border">
             {group.items.map((item, idx) => (
               <li key={idx}>
                 <SubItem item={item} />
@@ -80,7 +80,7 @@ function GroupCollapsible({
             ))}
           </ul>
           {group.meta && (
-            <p className="px-4 py-2 text-xs text-zinc-500 border-t border-zinc-100 bg-zinc-50/50">
+            <p className="px-4 py-2 text-xs text-muted-foreground border-t border-border bg-surface-2">
               {group.meta}
             </p>
           )}
@@ -96,8 +96,8 @@ function SubItem({ item }: { item: CheckResult }) {
     <div className="flex items-start gap-3 px-4 py-3 pl-12">
       <Icon className={`size-4 mt-0.5 ${cls}`} />
       <div className="min-w-0">
-        <p className="text-sm text-zinc-700">{item.label}</p>
-        <p className="text-xs text-zinc-500 mt-0.5">{item.hint}</p>
+        <p className="text-sm text-muted-foreground-2">{item.label}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{item.hint}</p>
       </div>
     </div>
   );
@@ -109,7 +109,7 @@ function CheckAction({
   if (!action || status === 'ok') return null;
 
   const baseCls =
-    'inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 shrink-0 whitespace-nowrap';
+    'inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground-2 hover:bg-surface-2 shrink-0 whitespace-nowrap';
 
   if (action === 'upload_cert') {
     return (
@@ -132,7 +132,7 @@ function CheckAction({
   }
   if (action === 'reauth_serpro') {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs text-zinc-500 shrink-0 whitespace-nowrap">
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-muted-foreground shrink-0 whitespace-nowrap">
         <RefreshCw className="size-3.5" />
         Renovação automática
       </span>

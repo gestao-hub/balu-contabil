@@ -65,18 +65,18 @@ export default function EmissaoForm({ clientes }: { clientes: ClienteOption[] })
     <form action={emitirNotaFormAction} onSubmit={handleSubmit} className="space-y-5">
       {/* Cliente */}
       <div>
-        <label className="block text-sm font-medium text-zinc-700 mb-1">Cliente (tomador)</label>
+        <label className="block text-sm font-medium text-muted-foreground-2 mb-1">Cliente (tomador)</label>
         <ClienteCombobox clientes={clientes} value={clienteId} onChange={setClienteId} />
         <input type="hidden" name="clienteId" value={clienteId} />
       </div>
 
       {/* Código de tributação */}
       <div>
-        <label className="block text-sm font-medium text-zinc-700 mb-1">Código de tributação (Lista Nacional)</label>
+        <label className="block text-sm font-medium text-muted-foreground-2 mb-1">Código de tributação (Lista Nacional)</label>
         <select
           value={codigoBase}
           onChange={(e) => setCodigoBase(e.target.value)}
-          className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         >
           {CODIGOS_TRIBUTACAO_FREQUENTES.map((c) => (
             <option key={c.codigo} value={c.codigo}>{c.codigo} · {c.label}</option>
@@ -89,7 +89,7 @@ export default function EmissaoForm({ clientes }: { clientes: ClienteOption[] })
             placeholder="6 dígitos (ex: 010701)"
             value={codigoOutro}
             onChange={(e) => setCodigoOutro(e.target.value.replace(/\D+/g, '').slice(0, 6))}
-            className="mt-2 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-mono"
+            className="mt-2 w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm font-mono"
           />
         )}
         <input type="hidden" name="codigoTributacao" value={codigoBase === CODIGO_OUTRO_SENTINEL ? codigoOutro : codigoBase} />
@@ -97,7 +97,7 @@ export default function EmissaoForm({ clientes }: { clientes: ClienteOption[] })
 
       {/* Descrição */}
       <div>
-        <label htmlFor="descricao" className="block text-sm font-medium text-zinc-700 mb-1">Descrição do serviço</label>
+        <label htmlFor="descricao" className="block text-sm font-medium text-muted-foreground-2 mb-1">Descrição do serviço</label>
         <textarea
           id="descricao"
           name="descricao"
@@ -108,15 +108,15 @@ export default function EmissaoForm({ clientes }: { clientes: ClienteOption[] })
           maxLength={1000}
           rows={3}
           placeholder="Ex: Desenvolvimento de software customizado conforme contrato 2026-001."
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         />
-        <p className="mt-1 text-xs text-zinc-500">{descricao.length}/1000 caracteres</p>
+        <p className="mt-1 text-xs text-muted-foreground">{descricao.length}/1000 caracteres</p>
       </div>
 
       {/* Valor + Alíquota */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-zinc-700 mb-1">Valor do serviço (R$)</label>
+          <label className="block text-sm font-medium text-muted-foreground-2 mb-1">Valor do serviço (R$)</label>
           <input
             type="text"
             inputMode="decimal"
@@ -125,11 +125,11 @@ export default function EmissaoForm({ clientes }: { clientes: ClienteOption[] })
             onChange={(e) => setValorTexto(maskMoney(e.target.value))}
             placeholder="0,00"
             required
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-zinc-700 mb-1">Alíquota ISS (%)</label>
+          <label className="block text-sm font-medium text-muted-foreground-2 mb-1">Alíquota ISS (%)</label>
           <input
             type="text"
             inputMode="decimal"
@@ -138,13 +138,13 @@ export default function EmissaoForm({ clientes }: { clientes: ClienteOption[] })
             onChange={(e) => setAliquotaTexto(e.target.value.replace(/[^\d.,]/g, ''))}
             placeholder="5,00"
             required
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
       </div>
 
       {clientErr && (
-        <p className="text-sm text-destructive bg-red-50 border border-red-100 rounded-md px-3 py-2">{clientErr}</p>
+        <p className="text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">{clientErr}</p>
       )}
 
       <SubmitButton disabled={!clienteId} />

@@ -54,9 +54,9 @@ export default function CertificadoForm({ enviadoEm, validoAte }: { enviadoEm: s
   return (
     <>
       <form onSubmit={handleSubmit} className="max-w-2xl space-y-5">
-      <div className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm">
-        <ShieldCheck className={`size-5 ${enviadoEm ? 'text-success' : 'text-zinc-400'}`} />
-        <span className="text-zinc-700">
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 p-4 text-sm">
+        <ShieldCheck className={`size-5 ${enviadoEm ? 'text-success' : 'text-muted-foreground'}`} />
+        <span className="text-muted-foreground-2">
           {enviadoEm
             ? `Certificado enviado em ${new Date(enviadoEm).toLocaleString('pt-BR')}.${
                 validoAte ? ` Válido até ${new Date(validoAte).toLocaleDateString('pt-BR')}.` : ''
@@ -66,25 +66,25 @@ export default function CertificadoForm({ enviadoEm, validoAte }: { enviadoEm: s
       </div>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-xs font-medium text-zinc-600">Arquivo do certificado (.pfx / .p12)</span>
+        <span className="text-xs font-medium text-muted-foreground-2">Arquivo do certificado (.pfx / .p12)</span>
         <input
           ref={fileRef}
           type="file"
           accept=".pfx,.p12"
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-zinc-100 file:px-3 file:py-1 file:text-sm"
+          className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-surface-2 file:px-3 file:py-1 file:text-sm"
         />
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-xs font-medium text-zinc-600">Senha do certificado</span>
+        <span className="text-xs font-medium text-muted-foreground-2">Senha do certificado</span>
         <input
           type="password"
           value={senha}
           onChange={(e) => setSenha(e.target.value)}
           autoComplete="off"
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm"
         />
-        <span className="text-[11px] text-zinc-400">A senha não é exibida novamente após o envio.</span>
+        <span className="text-[11px] text-muted-foreground">A senha não é exibida novamente após o envio.</span>
       </label>
 
       <div className="flex justify-end">

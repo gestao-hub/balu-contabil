@@ -47,9 +47,9 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
 
   if (!municipio) {
     return (
-      <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-6">
-        <h2 className="text-sm font-semibold text-zinc-700">NFS-e indisponível</h2>
-        <p className="mt-1 text-sm text-zinc-500">
+      <div className="rounded-lg border border-dashed border-border bg-surface-2 p-6">
+        <h2 className="text-sm font-semibold text-muted-foreground-2">NFS-e indisponível</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           O município <strong>{cidade || '—'}/{uf || '—'}</strong> não está na base de municípios com NFS-e suportada.
           Confira o endereço na aba "Dados da empresa".
         </p>
@@ -101,10 +101,10 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl space-y-5">
-      <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Município (do endereço)</p>
-        <p className="mt-1 text-zinc-800">{municipio.municipio}/{municipio.estado}</p>
-        <div className="mt-3 grid grid-cols-2 gap-2 text-zinc-600">
+      <div className="rounded-lg border border-border bg-surface-2 p-4 text-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Município (do endereço)</p>
+        <p className="mt-1 text-foreground">{municipio.municipio}/{municipio.estado}</p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-muted-foreground-2">
           <span>Provedor: <strong>{municipio.provedor ?? '—'}</strong></span>
           <span>Autenticação: <strong>{municipio.autenticacao ?? '—'}</strong></span>
           <span>Cancelamento: <strong>{municipio.cancelamento ?? '—'}{municipio.cancelamento_so_portal ? ' (só portal)' : ''}</strong></span>
@@ -126,7 +126,7 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
 
       {(cred.login || cred.token) && (
         <fieldset className="grid grid-cols-2 gap-4">
-          <legend className="text-sm font-semibold text-brand-navy">Credenciais do município</legend>
+          <legend className="text-sm font-semibold text-foreground">Credenciais do município</legend>
           {cred.login && <Field label="Usuário (login)" value={usuario} onChange={setUsuario} disabled={locked} />}
           {cred.login && <Field label="Senha" type="password" value={senha} onChange={setSenha} disabled={locked} />}
           {cred.token && <Field label="Token" value={token} onChange={setToken} disabled={locked} className="col-span-2" />}
@@ -134,14 +134,14 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
       )}
 
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={ativada} onChange={(e) => setAtivada(e.target.checked)} disabled={locked} className="size-4 rounded border-zinc-300 disabled:opacity-50" />
-        <span className="text-zinc-700">Empresa fiscal ativada (habilita emissão de NFS-e)</span>
+        <input type="checkbox" checked={ativada} onChange={(e) => setAtivada(e.target.checked)} disabled={locked} className="size-4 rounded border-border disabled:opacity-50" />
+        <span className="text-muted-foreground-2">Empresa fiscal ativada (habilita emissão de NFS-e)</span>
       </label>
 
       <div className="flex justify-end gap-2">
         {editing ? (
           <>
-            <button type="button" onClick={handleCancel} disabled={busy} className="rounded-md border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50">Cancelar</button>
+            <button type="button" onClick={handleCancel} disabled={busy} className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50">Cancelar</button>
             <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">{busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}Salvar</button>
           </>
         ) : (
@@ -157,13 +157,13 @@ function Field({ label, value, onChange, type = 'text', disabled = false, classN
 }) {
   return (
     <label className={`flex flex-col gap-1 text-sm ${className}`}>
-      <span className="text-xs font-medium text-zinc-600">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground-2">{label}</span>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
+        className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
       />
     </label>
   );

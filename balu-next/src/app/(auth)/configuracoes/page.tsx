@@ -128,13 +128,13 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   return (
     <main className="p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-brand-navy">Configurações</h1>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h1 className="text-2xl font-semibold text-foreground">Configurações</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           {company ? `Empresa atual: ${(company.nome as string) ?? (company.razao_social as string) ?? '—'}` : 'Nenhuma empresa selecionada.'}
         </p>
       </header>
 
-      <nav className="border-b border-zinc-200 mb-6">
+      <nav className="border-b border-border mb-6">
         <ul className="flex gap-1">
           {TABS.map((t) => {
             const is = t.key === active;
@@ -143,7 +143,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
                 <Link
                   href={`/configuracoes?tab=${t.key}`}
                   className={`inline-block px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-                    is ? 'border-primary text-primary' : 'border-transparent text-zinc-600 hover:text-zinc-900'
+                    is ? 'border-primary text-primary' : 'border-transparent text-muted-foreground-2 hover:text-foreground'
                   }`}
                 >
                   {t.label}
@@ -155,7 +155,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       </nav>
 
       {!company ? (
-        <p className="text-sm text-zinc-500">Cadastre uma empresa para acessar as configurações.</p>
+        <p className="text-sm text-muted-foreground">Cadastre uma empresa para acessar as configurações.</p>
       ) : active === 'dados' ? (
         <DadosEmpresaForm
           key={company.id as string}

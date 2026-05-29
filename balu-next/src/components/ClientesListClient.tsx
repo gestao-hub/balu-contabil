@@ -90,13 +90,13 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar por nome, documento ou e-mail"
-            className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-2 py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -112,9 +112,9 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+          <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">Nome</th>
               <th className="px-4 py-3 font-medium">Documento</th>
@@ -124,21 +124,21 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
               <th className="px-4 py-3 font-medium text-right">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100">
+          <tbody className="divide-y divide-border">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-zinc-500">
+                <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                   {initial.length === 0 ? 'Nenhum cliente cadastrado' : 'Nenhum cliente encontrado para a busca.'}
                 </td>
               </tr>
             ) : (
               filtered.map((c) => (
-                <tr key={c.id} className="hover:bg-zinc-50/60">
-                  <td className="px-4 py-3 font-medium text-brand-navy">{c.razao_social ?? '—'}</td>
-                  <td className="px-4 py-3 text-zinc-700">{formatDoc(c.document)}</td>
-                  <td className="px-4 py-3 text-zinc-700">{c.email ?? '—'}</td>
-                  <td className="px-4 py-3 text-zinc-700">{c.telefone ?? '—'}</td>
-                  <td className="px-4 py-3 text-zinc-700">
+                <tr key={c.id} className="hover:bg-surface-2">
+                  <td className="px-4 py-3 font-medium text-foreground">{c.razao_social ?? '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground-2">{formatDoc(c.document)}</td>
+                  <td className="px-4 py-3 text-muted-foreground-2">{c.email ?? '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground-2">{c.telefone ?? '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground-2">
                     {c.municipio || c.uf ? `${c.municipio ?? ''}${c.municipio && c.uf ? '/' : ''}${c.uf ?? ''}` : '—'}
                   </td>
                   <td className="px-4 py-3">
@@ -147,7 +147,7 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
                         type="button"
                         aria-label={`Editar ${c.razao_social ?? ''}`}
                         onClick={() => setEditing(c)}
-                        className="grid size-8 place-items-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-primary"
+                        className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-surface-2 hover:text-primary"
                       >
                         <Pencil className="size-4" />
                       </button>
@@ -155,7 +155,7 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
                         type="button"
                         aria-label={`Excluir ${c.razao_social ?? ''}`}
                         onClick={() => setDeleting(c)}
-                        className="grid size-8 place-items-center rounded-md text-zinc-500 hover:bg-destructive/10 hover:text-destructive"
+                        className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       >
                         <Trash2 className="size-4" />
                       </button>

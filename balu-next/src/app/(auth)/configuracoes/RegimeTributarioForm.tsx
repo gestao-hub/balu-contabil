@@ -66,12 +66,12 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
   return (
     <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4 max-w-2xl">
       <label className="col-span-2 flex flex-col gap-1 text-sm">
-        <span className="text-xs font-medium text-zinc-600">Regime tributário</span>
+        <span className="text-xs font-medium text-muted-foreground-2">Regime tributário</span>
         <select
           value={code}
           onChange={(e) => setCode(e.target.value)}
           disabled={locked}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
+          className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
         >
           <option value="">Selecione…</option>
           {REGIME_OPTIONS.map((o) => (
@@ -82,12 +82,12 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
 
       {!mei && (
         <label className="col-span-2 flex flex-col gap-1 text-sm">
-          <span className="text-xs font-medium text-zinc-600">Faixa de atividade econômica</span>
+          <span className="text-xs font-medium text-muted-foreground-2">Faixa de atividade econômica</span>
           <select
             value={faixa}
             onChange={(e) => setFaixa(e.target.value)}
             disabled={locked}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
+            className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
           >
             <option value="">Selecione…</option>
             {FAIXA_OPTIONS.map((o) => (
@@ -104,21 +104,21 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
             checked={fatorR}
             onChange={(e) => setFatorR(e.target.checked)}
             disabled={locked}
-            className="size-4 rounded border-zinc-300 disabled:opacity-50"
+            className="size-4 rounded border-border disabled:opacity-50"
           />
-          <span className="text-zinc-700">Usa Fator R (serviços — Anexo III/V)</span>
+          <span className="text-muted-foreground-2">Usa Fator R (serviços — Anexo III/V)</span>
         </label>
       )}
 
       <label className="col-span-2 flex flex-col gap-1 text-sm">
-        <span className="text-xs font-medium text-zinc-600">CNAE principal</span>
+        <span className="text-xs font-medium text-muted-foreground-2">CNAE principal</span>
         <input
           type="text"
           value={cnae}
           onChange={(e) => setCnae(e.target.value)}
           placeholder="0000-0/00"
           disabled={locked}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50 disabled:text-zinc-500"
+          className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
         />
       </label>
 
@@ -129,7 +129,7 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
               type="button"
               onClick={handleCancel}
               disabled={busy}
-              className="rounded-md border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50"
             >
               Cancelar
             </button>

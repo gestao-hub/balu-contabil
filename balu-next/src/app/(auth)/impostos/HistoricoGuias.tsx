@@ -33,19 +33,19 @@ export default function HistoricoGuias({ initial }: { initial: GuiaRow[] }) {
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-zinc-200 bg-white p-8 text-center">
-        <div className="inline-flex items-center justify-center size-10 rounded-full bg-zinc-100 mb-2">
-          <Archive className="size-5 text-zinc-400" />
+      <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+        <div className="inline-flex items-center justify-center size-10 rounded-full bg-surface-2 mb-2">
+          <Archive className="size-5 text-muted-foreground" />
         </div>
-        <p className="text-sm text-zinc-500">Sem guias anteriores.</p>
+        <p className="text-sm text-muted-foreground">Sem guias anteriores.</p>
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
       <table className="w-full text-sm">
-        <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+        <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-4 py-3 font-medium">Competência</th>
             <th className="px-4 py-3 font-medium">Vencimento</th>
@@ -54,14 +54,14 @@ export default function HistoricoGuias({ initial }: { initial: GuiaRow[] }) {
             <th className="px-4 py-3 font-medium text-right">Ações</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-100">
+        <tbody className="divide-y divide-border">
           {rows.map((g) => {
             const badge = statusGuiaBadge(g.statusVisual);
             return (
-              <tr key={g.id} className="hover:bg-zinc-50/50">
-                <td className="px-4 py-3 font-medium text-zinc-800">{competenciaLabel(g.competencia)}</td>
-                <td className="px-4 py-3 text-zinc-700 tabular-nums">{dataBR(g.vencimento)}</td>
-                <td className="px-4 py-3 text-right text-zinc-800 tabular-nums">{brl(g.valor)}</td>
+              <tr key={g.id} className="hover:bg-surface-2">
+                <td className="px-4 py-3 font-medium text-foreground">{competenciaLabel(g.competencia)}</td>
+                <td className="px-4 py-3 text-muted-foreground-2 tabular-nums">{dataBR(g.vencimento)}</td>
+                <td className="px-4 py-3 text-right text-foreground tabular-nums">{brl(g.valor)}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
                     {badge.label}

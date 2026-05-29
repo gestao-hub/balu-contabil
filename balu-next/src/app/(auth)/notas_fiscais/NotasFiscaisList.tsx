@@ -34,7 +34,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   ativa: { label: 'Ativa', cls: 'bg-success/10 text-success' },
   pendente: { label: 'Pendente', cls: 'bg-alert/10 text-alert' },
   erro: { label: 'Erro', cls: 'bg-destructive/10 text-destructive' },
-  cancelada: { label: 'Cancelada', cls: 'bg-zinc-100 text-zinc-600' },
+  cancelada: { label: 'Cancelada', cls: 'bg-surface-2 text-muted-foreground-2' },
 };
 
 function fmtData(iso: string | null): string {
@@ -104,13 +104,13 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar por referência ou cliente"
-            className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
+            className="w-full rounded-lg border border-border bg-surface-2 text-foreground py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
           />
         </div>
 
@@ -119,7 +119,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             value={tipo}
             onChange={(e) => setTipo(e.target.value)}
             aria-label="Filtrar por tipo"
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none"
+            className="rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:border-primary focus:outline-none"
           >
             <option value="todos">Todos os tipos</option>
             <option value="NFe">NF-e</option>
@@ -131,7 +131,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             value={status}
             onChange={(e) => setStatus(e.target.value)}
             aria-label="Filtrar por status"
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none"
+            className="rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:border-primary focus:outline-none"
           >
             <option value="todos">Todos os status</option>
             <option value="ativa">Ativa</option>
@@ -146,7 +146,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             type="button"
             onClick={exportCsv}
             disabled={exporting || filtered.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:border-primary hover:text-primary disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-muted-foreground-2 hover:border-primary hover:text-primary disabled:opacity-50"
           >
             <Download className="size-4" />
             {exporting ? 'Exportando…' : 'Exportar CSV'}
@@ -162,9 +162,9 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+          <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">Data</th>
               <th className="px-4 py-3 font-medium">Tipo</th>
@@ -174,10 +174,10 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
               <th className="px-4 py-3 font-medium">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100">
+          <tbody className="divide-y divide-border">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-zinc-500">
+                <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                   {initial.length === 0
                     ? 'Nenhuma nota emitida ainda.'
                     : 'Nenhuma nota encontrada para os filtros.'}
@@ -190,22 +190,22 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
                   <tr
                     key={n.id}
                     onClick={() => router.push(`/notas_fiscais/${n.id}`)}
-                    className="cursor-pointer hover:bg-zinc-50/60"
+                    className="cursor-pointer hover:bg-surface-2"
                   >
-                    <td className="px-4 py-3 text-zinc-700">{fmtData(n.data_emissao)}</td>
-                    <td className="px-4 py-3 text-zinc-700">{TIPO_LABEL[n.tipo_documento] ?? n.tipo_documento}</td>
-                    <td className="px-4 py-3 text-zinc-700">{n.referencia ?? '—'}</td>
-                    <td className="px-4 py-3 font-medium text-brand-navy">
+                    <td className="px-4 py-3 text-muted-foreground-2">{fmtData(n.data_emissao)}</td>
+                    <td className="px-4 py-3 text-muted-foreground-2">{TIPO_LABEL[n.tipo_documento] ?? n.tipo_documento}</td>
+                    <td className="px-4 py-3 text-muted-foreground-2">{n.referencia ?? '—'}</td>
+                    <td className="px-4 py-3 font-medium text-foreground">
                       {n.cliente_nome ?? '—'}
                     </td>
-                    <td className="px-4 py-3 text-right text-zinc-700">
+                    <td className="px-4 py-3 text-right text-muted-foreground-2">
                       {n.valor_total != null ? brl.format(n.valor_total) : '—'}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            st?.cls ?? 'bg-zinc-100 text-zinc-600'
+                            st?.cls ?? 'bg-surface-2 text-muted-foreground-2'
                           }`}
                         >
                           {st?.label ?? n.status ?? '—'}

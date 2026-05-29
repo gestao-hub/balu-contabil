@@ -12,8 +12,8 @@ import CancelarButton from './CancelarButton';
 
 const STATUS_LABEL: Record<string, { txt: string; cls: string }> = {
   ativa: { txt: 'Ativa', cls: 'bg-success/10 text-success' },
-  pendente: { txt: 'Pendente', cls: 'bg-amber-100 text-amber-700' },
-  cancelada: { txt: 'Cancelada', cls: 'bg-zinc-100 text-zinc-600' },
+  pendente: { txt: 'Pendente', cls: 'bg-alert/10 text-alert' },
+  cancelada: { txt: 'Cancelada', cls: 'bg-surface-2 text-muted-foreground-2' },
   erro: { txt: 'Erro', cls: 'bg-destructive/10 text-destructive' },
 };
 
@@ -71,7 +71,7 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
   const urlConsulta =
     campos.urlConsulta && /^https?:\/\//i.test(campos.urlConsulta) ? campos.urlConsulta : null;
   const status = nota.status as string;
-  const badge = STATUS_LABEL[status] ?? { txt: status, cls: 'bg-zinc-100 text-zinc-600' };
+  const badge = STATUS_LABEL[status] ?? { txt: status, cls: 'bg-surface-2 text-muted-foreground-2' };
 
   return (
     <main className="p-6 max-w-3xl">
@@ -79,26 +79,26 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
 
       <header className="mt-3 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-brand-navy">
+          <h1 className="text-2xl font-semibold text-foreground">
             {nota.tipo_documento} · {nota.referencia}
           </h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted-foreground">
             Emitida em {nota.data_emissao ? new Date(nota.data_emissao as string).toLocaleString('pt-BR') : '—'}
           </p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.cls}`}>{badge.txt}</span>
       </header>
 
-      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-lg border border-zinc-200 p-4 text-sm">
-        <div><dt className="text-xs text-zinc-500">Cliente</dt><dd className="text-zinc-800">{clienteNome} {clienteDoc && `(${clienteDoc})`}</dd></div>
-        <div><dt className="text-xs text-zinc-500">Valor total</dt><dd className="text-zinc-800">{brl(nota.valor_total as number)}</dd></div>
-        <div className="col-span-2"><dt className="text-xs text-zinc-500">Chave de acesso</dt><dd className="break-all font-mono text-xs text-zinc-800">{chave}</dd></div>
+      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-lg border border-border p-4 text-sm">
+        <div><dt className="text-xs text-muted-foreground">Cliente</dt><dd className="text-foreground">{clienteNome} {clienteDoc && `(${clienteDoc})`}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Valor total</dt><dd className="text-foreground">{brl(nota.valor_total as number)}</dd></div>
+        <div className="col-span-2"><dt className="text-xs text-muted-foreground">Chave de acesso</dt><dd className="break-all font-mono text-xs text-foreground">{chave}</dd></div>
         {protocolo ? (
-          <div className="col-span-2"><dt className="text-xs text-zinc-500">Protocolo de autorização</dt><dd className="text-zinc-800">{protocolo}</dd></div>
+          <div className="col-span-2"><dt className="text-xs text-muted-foreground">Protocolo de autorização</dt><dd className="text-foreground">{protocolo}</dd></div>
         ) : (
           <div className="col-span-2">
-            <dt className="text-xs text-zinc-500">Número da NFS-e</dt>
-            <dd className="text-zinc-800">
+            <dt className="text-xs text-muted-foreground">Número da NFS-e</dt>
+            <dd className="text-foreground">
               {numero ?? '—'}
               {urlConsulta && (
                 <a href={urlConsulta} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-primary hover:underline">
@@ -111,10 +111,10 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
       </dl>
 
       {status === 'cancelada' && (
-        <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm">
-          <p className="font-medium text-zinc-700">Nota cancelada</p>
-          {nota.cancelled_at && <p className="text-zinc-600">Em {new Date(nota.cancelled_at as string).toLocaleString('pt-BR')}</p>}
-          {nota.cancellation_reason && <p className="mt-1 text-zinc-600">Motivo: {nota.cancellation_reason as string}</p>}
+        <div className="mt-4 rounded-lg border border-border bg-surface-2 p-4 text-sm">
+          <p className="font-medium text-muted-foreground-2">Nota cancelada</p>
+          {nota.cancelled_at && <p className="text-muted-foreground-2">Em {new Date(nota.cancelled_at as string).toLocaleString('pt-BR')}</p>}
+          {nota.cancellation_reason && <p className="mt-1 text-muted-foreground-2">Motivo: {nota.cancellation_reason as string}</p>}
         </div>
       )}
 
@@ -128,17 +128,17 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
                 <p className="font-medium text-destructive">Não foi possível autorizar a nota</p>
                 {err ? (
                   <>
-                    <p className="mt-2 text-zinc-700">{err.msg}</p>
+                    <p className="mt-2 text-muted-foreground-2">{err.msg}</p>
                     {err.codigo && (
-                      <p className="mt-1 text-xs text-zinc-500 font-mono">Código: {err.codigo}</p>
+                      <p className="mt-1 text-xs text-muted-foreground font-mono">Código: {err.codigo}</p>
                     )}
                   </>
                 ) : (
-                  <p className="mt-2 text-zinc-600">
+                  <p className="mt-2 text-muted-foreground-2">
                     A Focus não retornou detalhes do erro. Consulte o painel da Focus pra mais informações.
                   </p>
                 )}
-                <p className="mt-3 text-xs text-zinc-500">
+                <p className="mt-3 text-xs text-muted-foreground">
                   Corrija o dado errado (ex: cliente, valor, código) e emita uma nova nota.
                 </p>
               </div>
@@ -148,12 +148,12 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
       })()}
 
       {status === 'pendente' && (
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
+        <div className="mt-4 rounded-lg border border-alert/30 bg-alert/10 p-4 text-sm">
           <div className="flex items-start gap-3">
-            <Clock className="size-5 text-amber-600 shrink-0 mt-0.5" />
+            <Clock className="size-5 text-alert shrink-0 mt-0.5" />
             <div>
-              <p className="font-medium text-amber-700">Processando autorização</p>
-              <p className="mt-1 text-zinc-700">
+              <p className="font-medium text-alert">Processando autorização</p>
+              <p className="mt-1 text-muted-foreground-2">
                 A Focus enviou pra fila de validação da prefeitura. Volte pra listagem e clique no ícone de atualizar ao lado do status.
               </p>
             </div>
@@ -164,13 +164,13 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <a
           href={`/notas_fiscais/${id}/download?formato=xml`}
-          className="inline-flex items-center gap-2 rounded-md border border-zinc-200 px-4 py-2 text-sm hover:bg-zinc-50"
+          className="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm hover:bg-surface-2"
         >
           <Download className="size-4" /> Baixar XML
         </a>
         <a
           href={`/notas_fiscais/${id}/download?formato=pdf`}
-          className="inline-flex items-center gap-2 rounded-md border border-zinc-200 px-4 py-2 text-sm hover:bg-zinc-50"
+          className="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm hover:bg-surface-2"
         >
           <Download className="size-4" /> Baixar PDF
         </a>

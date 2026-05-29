@@ -78,16 +78,16 @@ export default async function NotasFiscaisEmissaoPage({ searchParams }: { search
     <main className="p-6 max-w-3xl">
       <header className="mb-6">
         <div className="flex items-center gap-2">
-          <Link href="/notas_fiscais" className="text-sm text-zinc-500 hover:text-zinc-800">← Notas fiscais</Link>
+          <Link href="/notas_fiscais" className="text-sm text-muted-foreground hover:text-foreground">← Notas fiscais</Link>
         </div>
-        <h1 className="text-2xl font-semibold text-brand-navy mt-2">Emitir NFS-e</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Prestador: <strong className="text-zinc-700">{(company.razao_social as string) ?? '—'}</strong> · Ambiente: <span className="font-mono text-xs">{env}</span>
+        <h1 className="text-2xl font-semibold text-foreground mt-2">Emitir NFS-e</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Prestador: <strong className="text-muted-foreground-2">{(company.razao_social as string) ?? '—'}</strong> · Ambiente: <span className="font-mono text-xs">{env}</span>
         </p>
       </header>
 
       {sp.error && (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {sp.error}
         </div>
       )}
@@ -109,7 +109,7 @@ function Bloqueio({
     <main className="p-6 max-w-2xl">
       <div className="rounded-lg border border-alert/30 bg-alert/5 p-6">
         <h1 className="text-lg font-semibold text-alert">{titulo}</h1>
-        <p className="text-sm text-zinc-700 mt-2">{mensagem}</p>
+        <p className="text-sm text-muted-foreground-2 mt-2">{mensagem}</p>
         {href && labelLink && (
           <Link href={href} className="inline-block mt-4 text-sm font-medium text-primary hover:underline">
             {labelLink} →

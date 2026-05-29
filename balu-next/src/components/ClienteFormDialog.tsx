@@ -134,28 +134,28 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
       ref={dialogRef}
       aria-labelledby="cliente-form-title"
       onCancel={(e) => { e.preventDefault(); if (!busy) onClose(); }}
-      className="rounded-xl border border-zinc-200 p-0 shadow-xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
+      className="rounded-xl border border-border bg-surface text-foreground p-0 shadow-xl backdrop:bg-black/40 backdrop:backdrop-blur-sm"
     >
       <form onSubmit={onSubmit} className="w-[min(720px,95vw)] max-h-[90vh] overflow-y-auto">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-4">
-          <h2 id="cliente-form-title" className="text-base font-semibold text-brand-navy">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-surface px-6 py-4">
+          <h2 id="cliente-form-title" className="text-base font-semibold text-foreground">
             {mode === 'create' ? 'Novo cliente' : 'Editar cliente'}
           </h2>
           <button type="button" onClick={onClose} disabled={busy} aria-label="Fechar">
-            <X className="size-5 text-zinc-400 hover:text-zinc-700" />
+            <X className="size-5 text-muted-foreground hover:text-muted-foreground-2" />
           </button>
         </header>
 
         <div className="space-y-5 px-6 py-5">
           {/* Toggle PF/PJ */}
-          <div className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-1">
+          <div className="inline-flex rounded-lg border border-border bg-surface-2 p-1">
             {(['PF', 'PJ'] as const).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => update('person_type', t)}
                 className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                  form.person_type === t ? 'bg-white text-primary shadow-sm' : 'text-zinc-600'
+                  form.person_type === t ? 'bg-surface text-primary shadow-sm' : 'text-muted-foreground-2'
                 }`}
               >
                 {t === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
@@ -242,7 +242,7 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
           </div>
 
           <fieldset className="space-y-4">
-            <legend className="text-sm font-semibold text-brand-navy">Endereço</legend>
+            <legend className="text-sm font-semibold text-foreground">Endereço</legend>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
               <div className="md:col-span-2">
                 <Field label="CEP" error={errors.cep}>
@@ -298,12 +298,12 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
           </fieldset>
         </div>
 
-        <footer className="sticky bottom-0 flex justify-end gap-2 border-t border-zinc-200 bg-white px-6 py-4">
+        <footer className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-surface px-6 py-4">
           <button
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="rounded-md border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50"
           >
             Cancelar
           </button>
@@ -321,7 +321,7 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
 }
 
 const inputCls =
-  'mt-1 block w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-primary focus:outline-none';
+  'mt-1 block w-full rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:border-primary focus:outline-none';
 
 function Field({
   label,
@@ -335,7 +335,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="block text-xs text-zinc-600">
+    <label className="block text-xs text-muted-foreground-2">
       <span>
         {label}
         {required && <span className="ml-0.5 text-destructive">*</span>}
