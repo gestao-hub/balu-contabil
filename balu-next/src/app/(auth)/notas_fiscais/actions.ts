@@ -12,6 +12,7 @@ import { assertTipoDoc, validarJustificativa, type TipoDoc } from '@/lib/fiscal/
 import { buildNfsePayload } from '@/lib/fiscal/nfse-payload';
 import { traduzirErroFocus } from '@/lib/fiscal/focus-erro';
 import { mapStatusFocus } from '@/lib/fiscal/focus-status';
+import { extrairCamposNota } from '@/lib/fiscal/nfse-callback';
 import type { RegimeCode } from '@/lib/fiscal/regime';
 
 export type NotasFiltros = {
@@ -330,24 +331,10 @@ export async function atualizarStatusNotaAction(
   }
 
   // Mesmo padrão do webhook: só atualiza colunas que vieram na resposta.
-  // NFSe Nacional manda `url_danfse` (S3 pré-assinada) e `caminho_xml_nota_fiscal`.
-  const chave = (resp.chave_nfe as string) ?? null;
-  const numero =
-    resp.numero != null ? String(resp.numero) :
-    resp.numero_nfse != null ? String(resp.numero_nfse) : null;
-  const serie = resp.serie != null ? String(resp.serie) : null;
-  const pdf =
-    (resp.pdf_url as string) ??
-    (resp.url_danfse as string) ??
-    (resp.caminho_danfe as string) ??
-    (resp.caminho_danfse as string) ??
-    null;
-  const xml =
-    (resp.xml_url as string) ??
-    (resp.caminho_xml_nota_fiscal as string) ??
-    (resp.caminho_xml_nfse as string) ??
-    null;
-  const protocolo = (resp.protocolo as string) ?? null;
+  // Mapeamento centralizado em `extrairCamposNota` (NFS-e: chave em
+  // `codigo_verificacao`, número em `numero`, PDF em `url_danfse`, sem protocolo).
+  const { chaveAcesso: chave, protocolo, numero, serie, pdf, xml } =
+    extrairCamposNota(resp);
 
   const requestAnterior = (nota.payload_focusnfe as { request?: unknown } | null)?.request ?? null;
   const newStatus = mapStatusFocus(resp.status as string | undefined);

@@ -7,6 +7,7 @@ import { notFound } from 'next/navigation';
 import { AlertTriangle, Clock, Download } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 import { extrairMensagemErro } from '@/lib/fiscal/focus-erro';
+import { extrairCamposNota } from '@/lib/fiscal/nfse-callback';
 import CancelarButton from './CancelarButton';
 
 const STATUS_LABEL: Record<string, { txt: string; cls: string }> = {
@@ -56,8 +57,16 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
     }
   }
 
-  const chave = (nota.chave_acesso as string) ?? (payload.chave_nfe as string) ?? '—';
-  const protocolo = (nota.protocolo_autorizacao as string) ?? (payload.protocolo as string) ?? '—';
+  // Fallback de leitura: o callback Focus fica em `payload.callback` (estrutura
+  // { request, callback }). Notas já autorizadas têm `codigo_verificacao` lá, então
+  // a chave aparece mesmo sem reprocessar pelo webhook. NFS-e não tem protocolo —
+  // nesse caso exibimos número da nota + link de consulta pública.
+  const cb = ((payload.callback ?? payload) as Record<string, unknown>) ?? {};
+  const campos = extrairCamposNota(cb);
+  const chave = (nota.chave_acesso as string) ?? campos.chaveAcesso ?? '—';
+  const protocolo = (nota.protocolo_autorizacao as string) ?? campos.protocolo;
+  const numero = (nota.numero_nf as string) ?? campos.numero;
+  const urlConsulta = campos.urlConsulta;
   const status = nota.status as string;
   const badge = STATUS_LABEL[status] ?? { txt: status, cls: 'bg-zinc-100 text-zinc-600' };
 
@@ -81,7 +90,21 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
         <div><dt className="text-xs text-zinc-500">Cliente</dt><dd className="text-zinc-800">{clienteNome} {clienteDoc && `(${clienteDoc})`}</dd></div>
         <div><dt className="text-xs text-zinc-500">Valor total</dt><dd className="text-zinc-800">{brl(nota.valor_total as number)}</dd></div>
         <div className="col-span-2"><dt className="text-xs text-zinc-500">Chave de acesso</dt><dd className="break-all font-mono text-xs text-zinc-800">{chave}</dd></div>
-        <div className="col-span-2"><dt className="text-xs text-zinc-500">Protocolo de autorização</dt><dd className="text-zinc-800">{protocolo}</dd></div>
+        {protocolo ? (
+          <div className="col-span-2"><dt className="text-xs text-zinc-500">Protocolo de autorização</dt><dd className="text-zinc-800">{protocolo}</dd></div>
+        ) : (
+          <div className="col-span-2">
+            <dt className="text-xs text-zinc-500">Número da NFS-e</dt>
+            <dd className="text-zinc-800">
+              {numero ?? '—'}
+              {urlConsulta && (
+                <a href={urlConsulta} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-primary hover:underline">
+                  Consultar na prefeitura ↗
+                </a>
+              )}
+            </dd>
+          </div>
+        )}
       </dl>
 
       {status === 'cancelada' && (

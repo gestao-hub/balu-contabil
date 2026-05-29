@@ -4,6 +4,7 @@ import 'server-only';
 import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { mapStatusFocus } from '@/lib/fiscal/focus-status';
+import { extrairCamposNota } from '@/lib/fiscal/nfse-callback';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -72,18 +73,10 @@ export async function POST(req: Request) {
     // trazem `status` — qualquer campo ausente NÃO deve sobrescrever o valor
     // gravado anteriormente (autorização). Por isso o `update` abaixo só inclui
     // colunas quando o callback de fato as trouxe.
-    const chave = body.chave_nfe ?? null;
-    const numero = body.numero != null
-      ? String(body.numero)
-      : body.numero_nfse != null ? String(body.numero_nfse) : null;
-    const serie = body.serie != null ? String(body.serie) : null;
-    // PDF: NFSe Nacional manda `url_danfse` (S3 pré-assinada, sem auth);
-    // NFe/NFCe legacy mandam `caminho_danfe` (path relativo da Focus).
-    const pdf =
-      body.pdf_url ?? body.url_danfse ?? body.caminho_danfe ?? body.caminho_danfse ?? null;
-    // XML: NFSe Nacional manda `caminho_xml_nota_fiscal` (relativo).
-    const xml = body.xml_url ?? body.caminho_xml_nota_fiscal ?? body.caminho_xml_nfse ?? null;
-    const protocolo = body.protocolo ?? null;
+    // Mapeamento de campos centralizado em `extrairCamposNota` (lida com a
+    // diferença NFS-e ↔ NF-e: chave vem em `codigo_verificacao`, sem protocolo).
+    const { chaveAcesso: chave, protocolo, numero, serie, pdf, xml } =
+      extrairCamposNota(body);
 
     // Lê a nota antes pra preservar o `request` no payload_focusnfe.
     const { data: notaAtual } = await sb
