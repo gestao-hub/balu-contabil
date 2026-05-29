@@ -56,7 +56,9 @@ const STYLES: Record<ToastKind, { wrap: string; Icon: React.ComponentType<{ clas
   success: { wrap: 'bg-success text-white', Icon: CheckCircle2 },
   error:   { wrap: 'bg-destructive text-white', Icon: AlertCircle },
   info:    { wrap: 'bg-primary text-white', Icon: Info },
-  warning: { wrap: 'bg-alert text-white', Icon: AlertTriangle },
+  // text-foreground (não text-white): no modo claro o navy sobre o âmbar #B07C08
+  // passa AA; no escuro segue branco. text-white falhava AA no claro (~3.4:1).
+  warning: { wrap: 'bg-alert text-foreground', Icon: AlertTriangle },
 };
 
 export default function Toaster({ toasts, onDismiss }: ToasterProps) {
