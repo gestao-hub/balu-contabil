@@ -8,16 +8,18 @@ import { fatorRAplicavel } from '@/lib/fiscal/regime';
 import type { ApuracaoRow } from './page';
 import type { GuiaRow } from './HistoricoGuias';
 import GuiaActions from './GuiaActions';
+import GerarDasButton from './GerarDasButton';
 
 type Props = {
   apuracao: ApuracaoRow | null;
   guia: GuiaRow | null;
   competencia: string;
+  isMei: boolean;
 };
 
-export default function CompetenciaAtualCard({ apuracao, guia, competencia }: Props) {
+export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMei }: Props) {
   if (!apuracao && !guia) {
-    return <EmptyCompetencia competencia={competencia} />;
+    return <EmptyCompetencia competencia={competencia} isMei={isMei} />;
   }
 
   const badge = guia ? statusGuiaBadge(guia.status) : null;
@@ -67,11 +69,13 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia }: Pr
           </dl>
         </div>
 
-        {guia && (
-          <div className="sm:w-56 flex flex-col gap-2 shrink-0">
+        <div className="sm:w-56 flex flex-col gap-2 shrink-0">
+          {guia ? (
             <GuiaActions guia={guia} variant="primary" />
-          </div>
-        )}
+          ) : isMei ? (
+            <GerarDasButton competencia={competencia} />
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -86,7 +90,7 @@ function Linha({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function EmptyCompetencia({ competencia }: { competencia: string }) {
+function EmptyCompetencia({ competencia, isMei }: { competencia: string; isMei: boolean }) {
   return (
     <div className="rounded-xl border-2 border-dashed border-zinc-200 bg-white p-8 text-center">
       <div className="inline-flex items-center justify-center size-12 rounded-full bg-primary/10 mb-3">
@@ -103,6 +107,11 @@ function EmptyCompetencia({ competencia }: { competencia: string }) {
         <FileDown className="size-4" />
         Calcular agora
       </Link>
+      {isMei && (
+        <div className="mt-3">
+          <GerarDasButton competencia={competencia} />
+        </div>
+      )}
     </div>
   );
 }

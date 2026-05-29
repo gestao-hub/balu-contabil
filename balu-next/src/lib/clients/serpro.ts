@@ -111,15 +111,22 @@ async function call<T>(
   env: SerproEnv,
   action: 'Declarar' | 'Emitir' | 'Consultar',
   envelope: Envelope,
+  prodAuth?: ProdAuth,
 ): Promise<T> {
   const baseUrl = env === 'prod' ? PROD : TRIAL;
-  const token = await bearer();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+  if (env === 'prod') {
+    if (!prodAuth) throw new Error('Serpro produção exige token mTLS (accessToken + jwt).');
+    headers.Authorization = `Bearer ${prodAuth.accessToken}`;
+    headers.jwt_token = prodAuth.jwt;
+  } else {
+    headers.Authorization = `Bearer ${await bearer()}`;
+  }
+
   const res = await fetch(`${baseUrl}/v1/${action}`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(envelope),
     cache: 'no-store',
   });
@@ -128,10 +135,24 @@ async function call<T>(
 }
 
 export const serpro = {
-  transmitirDeclaracao: (env: SerproEnv, envelope: Envelope) => call(env, 'Declarar', envelope),
-  emitirDas:            (env: SerproEnv, envelope: Envelope) => call(env, 'Emitir',   envelope),
-  consultarDeclaracao:  (env: SerproEnv, envelope: Envelope) => call(env, 'Consultar', envelope),
+  transmitirDeclaracao: (env: SerproEnv, envelope: Envelope, prodAuth?: ProdAuth) =>
+    call(env, 'Declarar', envelope, prodAuth),
+  emitirDas: (env: SerproEnv, envelope: Envelope, prodAuth?: ProdAuth) =>
+    call(env, 'Emitir', envelope, prodAuth),
+  // PGMEI usa o mesmo endpoint /v1/Emitir; nome distinto só para clareza no call site MEI.
+  emitirDasMei: (env: SerproEnv, envelope: Envelope, prodAuth?: ProdAuth) =>
+    call(env, 'Emitir', envelope, prodAuth),
+  consultarDeclaracao: (env: SerproEnv, envelope: Envelope, prodAuth?: ProdAuth) =>
+    call(env, 'Consultar', envelope, prodAuth),
 };
+
+/** Serviços PGMEI (MEI). */
+export const PGMEI_SERVICES = {
+  GERAR_DAS_PDF: 'GERARDASPDF21',
+} as const;
+
+/** Token mTLS do procurador (produção). */
+export type ProdAuth = { accessToken: string; jwt: string };
 
 /** Serviços conhecidos (idServico). */
 export const SERPRO_SERVICES = {

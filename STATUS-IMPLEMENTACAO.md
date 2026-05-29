@@ -56,8 +56,8 @@
 ### §4. Apuração Automática de Impostos
 | Feature | Status | Reusa | Falta |
 |---|---|---|---|
-| 4.1 Cálculo DAS mensal + DAS-MEI | 🚧 | `src/lib/clients/n8n.ts` (`consolidarReceitas`, `calcularRbt12`, `consultaDasMei`), tabelas `apuracoes_fiscais` + `guias_fiscais` | cron mensal (Vercel Cron ou Supabase Edge), rota `app/(auth)/impostos/page.tsx` (stub), `<ApuracaoWizard>` em `impostos/novo/page.tsx` |
-| 4.2 Geração da guia | 🚧 | `src/lib/clients/serpro.ts` (`emitirDas` + `SERPRO_SERVICES.GERAR_DAS` + `buildEnvelope`) | server action `emitirGuiaAction`, componente `<GuiaCard>` |
+| 4.1 Cálculo apuração (MEI+Simples) | ✅ (2026-05-29) | Motor puro reimplementado do n8n em TS testável: `lib/fiscal/{simples,rbt12,das-mei,apuracao}.ts` (+ testes), costura `receitas-source.ts` (lê `notas_fiscais`, opção b provisória), migration `0007` UNIQUE, `iniciarApuracaoAction`, wizard `/impostos/novo`. Corrige os 6 bugs do n8n. Smoke runtime OK (Simples). Spec `docs/superpowers/specs/2026-05-29-motor-apuracao-mei-simples-design.md` | **Atenção**: `receitas_fiscais` é tabela órfã → decisão a/b pendente (outro dev); anualização RBT12 não acionada (falta campo data início); DAS-MEI valores a confirmar p/ 2026. Cron mensal (PR 3.3) pendente |
+| 4.2 Geração da guia (DAS-MEI via Serpro) | ✅ código (2026-05-29) · ❌ habilitação | `lib/clients/serpro.ts` (PGMEI/`GERARDASPDF21`, `emitirDasMei`, prod gated), `das-mei-parse.ts`, `serpro-env.ts`, `gerarDasMeiAction`, migration `0008`, botão "Gerar DAS". Spec `docs/superpowers/specs/2026-05-29-serpro-das-mei-design.md` | **Bloqueio externo**: app Serpro **não inscrito no Integra Contador Trial** → 403 900908 (não é bug). Produção exige cert mTLS + procuração (§8). Simples (PGDAS-D) em spec próprio |
 | 4.3 Explicação em pt-BR simples | 🆕 | nada | `src/lib/fiscal/explicacoes.ts` (templates por regime), componente `<ResumoApuracao>` |
 
 ### §5. Painel Leigo do Empresário
