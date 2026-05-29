@@ -6,6 +6,7 @@ import { Suspense, useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { loginAction, type AuthState } from './actions';
+import Logo from '@/components/Logo';
 
 const initialState: AuthState = undefined;
 
@@ -15,8 +16,8 @@ export default function LoginPage() {
   return (
     <main className="w-full max-w-sm px-6">
       <div className="bg-surface rounded-2xl shadow-lg shadow-black/40 border border-border p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-brand font-extrabold text-primary">Balu</h1>
+        <div className="flex flex-col items-center mb-8">
+          <Logo size={44} className="mb-3" />
           <p className="text-sm text-muted-foreground mt-1">Gestão fiscal simplificada</p>
         </div>
 

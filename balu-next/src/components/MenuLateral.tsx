@@ -16,6 +16,7 @@ import {
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
 import CreateCompanyDialog from '@/components/CreateCompanyDialog';
+import Logo from '@/components/Logo';
 
 // Os values batem com o option set Bubble (lowercase). Para exibição, label é capitalizada.
 type Role = 'empresa' | 'contador';
@@ -101,6 +102,11 @@ export default function MenuLateral({
       >
         {open ? <X className="size-3" /> : <MenuIcon className="size-3" />}
       </button>
+
+      {/* Marca */}
+      <div className="flex items-center border-b border-border px-3 py-4">
+        {open ? <Logo size={26} /> : <Logo variant="symbol" size={24} />}
+      </div>
 
       {/* Cabeçalho com usuário + empresa */}
       <div className="border-b border-border p-3">

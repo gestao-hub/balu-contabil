@@ -11,6 +11,7 @@ import {
   updatePasswordAction,
   type ResetState,
 } from './actions';
+import Logo from '@/components/Logo';
 
 const initialState: ResetState = undefined;
 
@@ -32,8 +33,8 @@ function ResetPwInner() {
   return (
     <main className="w-full max-w-sm px-6">
       <div className="bg-surface rounded-2xl shadow-sm border border-border p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-primary">Balu</h1>
+        <div className="flex flex-col items-center mb-8">
+          <Logo size={44} className="mb-3" />
           <p className="text-sm text-muted-foreground mt-1">
             {showUpdate ? 'Defina uma nova senha' : 'Recuperar acesso'}
           </p>
