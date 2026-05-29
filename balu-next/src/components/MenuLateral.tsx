@@ -108,9 +108,10 @@ export default function MenuLateral({
         {open ? <Logo size={26} /> : <Logo variant="symbol" size={24} />}
       </div>
 
-      {/* Cabeçalho com usuário + empresa */}
-      <div className="border-b border-border p-3">
-        {open ? (
+      {/* Cabeçalho com usuário + empresa — só quando expandido.
+          Recolhido: omitido (sem ícone centralizado); trocar empresa = abrir o menu. */}
+      {open && (
+        <div className="border-b border-border p-3">
           <>
             <p className="truncate text-sm font-semibold text-foreground">{userName}</p>
             <p className="text-xs text-muted-foreground">{ROLE_LABEL[userRole] ?? userRole}</p>
@@ -156,12 +157,8 @@ export default function MenuLateral({
               </button>
             )}
           </>
-        ) : (
-          <div className="grid place-items-center">
-            <Building2 className="size-5 text-primary" />
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Navegação */}
       <nav className="flex-1 overflow-y-auto p-2">
