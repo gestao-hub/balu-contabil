@@ -21,6 +21,26 @@
   --success: 46 207 138;       /* #2ECF8A */
   --destructive: 224 82 82;    /* #E05252 */
   --alert: 220 161 20;         /* #DCA114 */
+  --border: 255 255 255;       /* canais; aplicado a 10% no Tailwind */
+}
+
+/* Tema claro — derivado da marca (off-white frio, texto navy, primary azul mantido).
+ * next-themes aplica .light no <html>; estas vars sobrescrevem o :root escuro. */
+.light {
+  --background: 246 248 250;      /* #F6F8FA */
+  --surface: 255 255 255;          /* #FFFFFF */
+  --surface-2: 237 241 245;        /* #EDF1F5 */
+  --surface-3: 224 230 236;        /* #E0E6EC */
+  --foreground: 14 34 51;          /* #0E2233 navy profundo */
+  --muted-foreground: 90 107 120;  /* #5A6B78 slate */
+  --muted-foreground-2: 56 80 95;  /* #38505F */
+  --primary: 24 130 200;           /* #1882C8 */
+  --primary-light: 74 174 224;     /* #4AAEE0 */
+  --navy: 13 53 88;                /* #0D3558 */
+  --success: 31 168 115;           /* #1FA873 */
+  --destructive: 208 64 64;        /* #D04040 */
+  --alert: 176 124 8;              /* #B07C08 */
+  --border: 13 53 88;              /* #0D3558 → aplicado a 10% */
 }
 
 @layer base {
