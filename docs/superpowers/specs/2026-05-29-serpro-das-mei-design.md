@@ -159,3 +159,27 @@ Mesma natureza do gap do Focus (cert nunca registrado — ver memória). **Não 
 5. `gerarDasMeiAction` em `impostos/actions.ts`
 6. UI: botão "Gerar DAS" + exibição da guia no `CompetenciaAtualCard`
 7. Smoke Trial
+
+## §9 — Status de implementação e smoke (2026-05-29)
+
+**Implementado e mergeado em `main`.** 7 tasks (TDD onde aplicável), code review final (0 Critical; corrigidos: `download`+scheme guard no link do PDF, `exp` inválida tratada como expirada, comentário no alias `emitirDasMei`). Migration `0008` aplicada no Supabase. Suíte: 272 testes verdes; `tsc` limpo.
+
+**Smoke runtime (Trial, 2026-05-29):** a mecânica funciona até a fronteira de autorização do Serpro:
+- ✅ Botão "Gerar DAS" com gating MEI; token Serpro obtido (`POST /token` → 200); envelope PGMEI + endpoint corretos; tratamento de erro (403 vira `{ok:false}` → toast, sem crash).
+- ❌ **DAS não gerado** — Serpro responde **403 `{"code":"900908"}` "API Subscription validation failed"**: o app (consumer key) **não está inscrito no produto Integra Contador Trial**. **Gap de conta/assinatura Serpro, não de código.**
+
+### Pontos de atenção (consolidado)
+
+| # | Ponto | Natureza | Ação |
+|---|---|---|---|
+| 1 | **Assinatura Serpro Trial** ausente → 403 900908 | Conta Serpro | Inscrever o app (consumer key) no produto Integra Contador Trial em loja.serpro.gov.br, depois re-rodar o smoke |
+| 2 | **Produção real**: mTLS com cert A1 válido (token atual expira) **+ procuração eletrônica** (e-CAC) | Habilitação externa | Ver §8. Não disparar DAS real antes |
+| 3 | **Trial usa CNPJ/período de demonstração fixos** (`00000000000100`/`201901`) | Limitação Serpro | Valores são canned; não refletem a empresa real |
+| 4 | **Valor da guia vem do Serpro** (`valores.total`), não da estimativa `valorDasMei` | Decisão de design | — |
+| 5 | **Refresh mTLS on-demand não implementado** — prod lê token de `empresas_fiscais` e exige válido, senão erro gated | Escopo diferido | Implementar `serpro-auth.ts → call()` quando produção for habilitada |
+| 6 | **Só MEI** — Simples (PGDAS-D, 2 passos) fica em spec próprio | Escopo | Próximo PR de impostos |
+
+### Pendências fora deste spec (do épico de impostos)
+- **`receitas_fiscais` a/b** segue pendente do outro dev (apuração v1 lê de `notas_fiscais`, opção b provisória).
+- **DAS-MEI 2026** (`das-mei.ts`): valores a confirmar com o salário mínimo oficial de 2026.
+- **Anualização do RBT12** não acionada (falta campo de data de início de atividade no schema).
