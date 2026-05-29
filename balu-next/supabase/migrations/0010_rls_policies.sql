@@ -2,7 +2,9 @@
 -- RLS para produção. Modelo: companies.user_id = auth.uid(); tabelas de dados
 -- acessíveis quando a company referenciada pertence ao usuário.
 -- Spec: docs/superpowers/specs/2026-05-29-rls-supabase-design.md
--- DB é fonte de verdade: validado contra db_atual.sql (migrations 0001/0002 defasadas).
+-- DB é fonte de verdade: colunas validadas por introspecção do BANCO VIVO (service_role).
+-- Atenção: db_atual.sql está DEFASADO (afirmava arquivos_auxiliares.company_id, que
+-- NÃO existe — a tabela é escopada por unique_id_empresa::text = companies.id).
 
 -- 1) Helper de ownership (bypassa RLS de companies via SECURITY DEFINER → sem recursão)
 create or replace function public.user_owns_company(cid uuid)
@@ -20,6 +22,26 @@ $$;
 
 revoke all on function public.user_owns_company(uuid) from public;
 grant execute on function public.user_owns_company(uuid) to authenticated;
+
+-- 1b) Variante p/ coluna de tenant em TEXTO (arquivos_auxiliares.unique_id_empresa
+--     guarda o companies.id como string — legado Bubble, não é FK uuid).
+--     Comparamos companies.id::text = cid_text (cast uuid→text nunca falha; linha
+--     órfã com id não-uuid simplesmente não casa).
+create or replace function public.user_owns_company_text(cid_text text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.companies
+    where id::text = cid_text and user_id = auth.uid()
+  );
+$$;
+
+revoke all on function public.user_owns_company_text(text) from public;
+grant execute on function public.user_owns_company_text(text) to authenticated;
 
 -- 2) companies (chave: user_id)
 alter table public.companies enable row level security;
@@ -43,7 +65,11 @@ create policy profiles_insert on public.profiles for insert with check (user_id 
 create policy profiles_update on public.profiles for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy profiles_delete on public.profiles for delete using (user_id = auth.uid());
 
--- 4) role_types (chave: user_id)
+-- 4) role_types (chave: user_id). O app NÃO lê esta tabela via client; quem grava é
+--    o trigger de signup (SECURITY DEFINER, bypassa RLS). Policies own-row aqui são
+--    defesa em profundidade. Obs: o role authenticated pode não ter GRANT nesta
+--    tabela (service_role deu "permission denied" na introspecção) — isso é grant,
+--    não RLS, e não afeta o app enquanto o client não a consultar. Verificar signup.
 alter table public.role_types enable row level security;
 drop policy if exists role_types_select on public.role_types;
 drop policy if exists role_types_insert on public.role_types;
@@ -120,15 +146,19 @@ create policy honorarios_insert on public.honorarios for insert with check (publ
 create policy honorarios_update on public.honorarios for update using (public.user_owns_company(company_id)) with check (public.user_owns_company(company_id));
 create policy honorarios_delete on public.honorarios for delete using (public.user_owns_company(company_id));
 
+-- arquivos_auxiliares: NÃO tem company_id (divergência do dump). Guarda dados de
+-- certificado escopados por unique_id_empresa (text) = companies.id. Lida/gravada
+-- pelo client authenticated em Configurações (configuracoes/actions.ts + page.tsx),
+-- então PRECISA de policy real (deny-all quebraria o upload/leitura do certificado).
 alter table public.arquivos_auxiliares enable row level security;
 drop policy if exists arquivos_auxiliares_select on public.arquivos_auxiliares;
 drop policy if exists arquivos_auxiliares_insert on public.arquivos_auxiliares;
 drop policy if exists arquivos_auxiliares_update on public.arquivos_auxiliares;
 drop policy if exists arquivos_auxiliares_delete on public.arquivos_auxiliares;
-create policy arquivos_auxiliares_select on public.arquivos_auxiliares for select using (public.user_owns_company(company_id));
-create policy arquivos_auxiliares_insert on public.arquivos_auxiliares for insert with check (public.user_owns_company(company_id));
-create policy arquivos_auxiliares_update on public.arquivos_auxiliares for update using (public.user_owns_company(company_id)) with check (public.user_owns_company(company_id));
-create policy arquivos_auxiliares_delete on public.arquivos_auxiliares for delete using (public.user_owns_company(company_id));
+create policy arquivos_auxiliares_select on public.arquivos_auxiliares for select using (public.user_owns_company_text(unique_id_empresa));
+create policy arquivos_auxiliares_insert on public.arquivos_auxiliares for insert with check (public.user_owns_company_text(unique_id_empresa));
+create policy arquivos_auxiliares_update on public.arquivos_auxiliares for update using (public.user_owns_company_text(unique_id_empresa)) with check (public.user_owns_company_text(unique_id_empresa));
+create policy arquivos_auxiliares_delete on public.arquivos_auxiliares for delete using (public.user_owns_company_text(unique_id_empresa));
 
 -- 7) empresas_fiscais (chave: empresa_id → companies.id)
 alter table public.empresas_fiscais enable row level security;
@@ -146,5 +176,8 @@ alter table public.municipios_nfse enable row level security;
 drop policy if exists municipios_nfse_select on public.municipios_nfse;
 create policy municipios_nfse_select on public.municipios_nfse for select to authenticated using (true);
 
--- 9) abertura_empresas (sem chave de tenant → nega anon/auth; service_role bypassa)
+-- 9) abertura_empresas: tem company_id e user_id, mas NENHUM fluxo do app a consulta
+--    via client (só aparece em _endpoints.ts/types). Deny-all (RLS on, sem policy):
+--    nega anon/authenticated; service_role bypassa. Se um dia algum fluxo do dono
+--    precisar lê-la, adicionar policy user_owns_company(company_id) numa 0011.
 alter table public.abertura_empresas enable row level security;
