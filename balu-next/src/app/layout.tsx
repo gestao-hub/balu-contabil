@@ -3,6 +3,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { Outfit, Syne, Nunito } from 'next/font/google';
 import { ToastProvider } from '@/components/Toaster';
+import ThemeProvider from '@/components/ThemeProvider';
 
 // Tipografia da marca (branding/balu-manual-de-marca.html):
 // Outfit = corpo, Syne = títulos, Nunito = wordmark "Balu".
@@ -17,9 +18,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${outfit.variable} ${syne.variable} ${nunito.variable}`}>
+    <html lang="pt-BR" suppressHydrationWarning className={`${outfit.variable} ${syne.variable} ${nunito.variable}`}>
       <body className="bg-background text-foreground font-sans antialiased">
-        <ToastProvider>{children}</ToastProvider>
+        <ThemeProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
