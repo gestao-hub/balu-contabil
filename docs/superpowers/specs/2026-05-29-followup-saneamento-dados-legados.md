@@ -12,9 +12,9 @@ mas a modelagem continua frágil.
 
 ## 1. `arquivos_auxiliares` — virar FK de verdade
 
-**Hoje:** não tem `company_id`. É escopada por `unique_id_empresa` (coluna **text**) que
-guarda o `companies.id` como string. O RLS 0010 usa `user_owns_company_text(unique_id_empresa)`
-(`companies.id::text = unique_id_empresa`).
+**Hoje:** não tem `company_id`. É escopada por `unique_id_empresa` — coluna **tipo UUID**
+(confirmado por introspecção) que referencia `companies.id`, só **sem FK formal**. O RLS 0010
+usa `user_owns_company(unique_id_empresa)`. `unique_id_bubble` é **text** (id do Bubble).
 
 **Estado dos dados (29/05/2026):** 1 company no banco, **3 linhas** em `arquivos_auxiliares`,
 sendo **2 órfãs**:
@@ -29,12 +29,14 @@ O RLS já põe as órfãs em quarentena (não casam com nenhuma company → invi
 usuário autenticado). Isso resolve a **segurança**, não a **modelagem**.
 
 **A fazer (migration própria + spec/teste, pois encosta no upload de certificado):**
-- [ ] Adicionar `company_id uuid references public.companies(id)`.
-- [ ] Backfill: `company_id = unique_id_empresa::uuid` onde casa com uma company existente.
-- [ ] Tratar órfãs: arquivar/apagar `5f1de1b4…` (cert antigo) e `8b86b68e…` (stub null).
+Como `unique_id_empresa` já é UUID, o trabalho é mais formalização que conversão:
+- [ ] Opção A (renomear): `alter ... rename column unique_id_empresa to company_id` + add
+      `foreign key (company_id) references public.companies(id)`. Opção B (nova coluna +
+      backfill `company_id = unique_id_empresa`) se quiser manter a antiga por segurança.
+- [ ] Tratar órfãs ANTES da FK (senão a constraint falha): arquivar/apagar `5f1de1b4…`
+      (cert antigo de empresa recriada) e `8b86b68e…` (stub null do Bubble).
 - [ ] Trocar `configuracoes/actions.ts` e `configuracoes/page.tsx` pra filtrar por `company_id`.
-- [ ] Atualizar a policy de RLS pra `user_owns_company(company_id)` (numa 0011) e, no fim,
-      remover `user_owns_company_text` + a coluna `unique_id_empresa`.
+- [ ] Atualizar a policy da 0010 pra `user_owns_company(company_id)` (numa 0011).
 
 ### 1b. Investigar `unique_id_bubble` (origem e necessidade)
 - **De onde vem:** linhas novas usam `crypto.randomUUID()`; linhas legadas trazem o id do
