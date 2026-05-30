@@ -20,14 +20,17 @@ export default function NfeForm({ clientes, produtos }: { clientes: ClienteOptio
     if (!clienteId) { setErro('Selecione um cliente.'); return; }
     if (itens.length === 0) { setErro('Adicione ao menos um item.'); return; }
     setEnviando(true);
-    const r = await emitirNfeAction({
-      clienteId,
-      naturezaOperacao: natureza,
-      itens: itens.map(({ _key, ...rest }) => rest),
-    });
-    setEnviando(false);
-    if (!r.ok) { setErro(r.error); return; }
-    router.push('/notas_fiscais');
+    try {
+      const r = await emitirNfeAction({
+        clienteId,
+        naturezaOperacao: natureza,
+        itens: itens.map(({ _key, ...rest }) => rest),
+      });
+      if (!r.ok) { setErro(r.error); return; }
+      router.push('/notas_fiscais');
+    } finally {
+      setEnviando(false);
+    }
   }
 
   return (
