@@ -470,3 +470,97 @@ export async function cancelarNotaAction(
   revalidatePath(`/notas_fiscais/${id}`);
   return { ok: true };
 }
+
+// ---------- Produtos (aux_produtos) — catálogo p/ itens de NF-e/NFC-e ----------
+export type ProdutoOption = {
+  id: string;
+  descricao: string;
+  ncm: string | null;
+  cfop: string | null;
+  unidade: string | null;
+  valorUnitario: number | null;
+};
+
+/** Lista produtos da empresa ativa (tipo_nf nfe+nfce compartilhados). */
+export async function listarProdutosAction(): Promise<ProdutoOption[]> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return [];
+  const { data } = await supabase
+    .from('aux_produtos')
+    .select('id, descricao, ncm, cfop, unidade_comercial, valor_unitario_comercial, tipo_nf')
+    .eq('company_id', companyId)
+    .or('tipo_nf.eq.nfe,tipo_nf.eq.nfce,tipo_nf.is.null')
+    .order('descricao', { ascending: true })
+    .limit(500);
+  return (data ?? []).map((p) => ({
+    id: p.id as string,
+    descricao: p.descricao as string,
+    ncm: (p.ncm as string | null) ?? null,
+    cfop: (p.cfop as string | null) ?? null,
+    unidade: (p.unidade_comercial as string | null) ?? null,
+    valorUnitario: (p.valor_unitario_comercial as number | null) ?? null,
+  }));
+}
+
+export type CriarProdutoInput = {
+  descricao: string;
+  ncm: string;
+  cfop: string;
+  unidade: string;
+  valorUnitario: number;
+  tipoNf: 'nfe' | 'nfce';
+};
+export type CriarProdutoResult = { ok: true; produto: ProdutoOption } | { ok: false; error: string };
+
+/** Cria um produto inline durante a emissão. Sem exclusão nesta entrega. */
+export async function criarProdutoAction(input: CriarProdutoInput): Promise<CriarProdutoResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  const descricao = input.descricao.trim();
+  const ncm = input.ncm.replace(/\D+/g, '');
+  const cfop = input.cfop.replace(/\D+/g, '');
+  if (!descricao) return { ok: false, error: 'Descrição obrigatória.' };
+  if (ncm.length !== 8) return { ok: false, error: 'NCM deve ter 8 dígitos.' };
+  if (cfop.length !== 4) return { ok: false, error: 'CFOP deve ter 4 dígitos.' };
+  if (!Number.isFinite(input.valorUnitario) || input.valorUnitario <= 0) {
+    return { ok: false, error: 'Valor unitário deve ser positivo.' };
+  }
+
+  const { data, error } = await supabase
+    .from('aux_produtos')
+    .insert({
+      company_id: companyId,
+      descricao,
+      ncm,
+      cfop,
+      unidade_comercial: input.unidade || 'UN',
+      valor_unitario_comercial: input.valorUnitario,
+      tipo_nf: input.tipoNf,
+      finalizado: true,
+    })
+    .select('id, descricao, ncm, cfop, unidade_comercial, valor_unitario_comercial')
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? 'Falha ao criar produto.' };
+  return {
+    ok: true,
+    produto: {
+      id: data.id as string,
+      descricao: data.descricao as string,
+      ncm: (data.ncm as string | null) ?? null,
+      cfop: (data.cfop as string | null) ?? null,
+      unidade: (data.unidade_comercial as string | null) ?? null,
+      valorUnitario: (data.valor_unitario_comercial as number | null) ?? null,
+    },
+  };
+}
