@@ -233,8 +233,7 @@ export type Tables = {
   };
   arquivos_auxiliares: {
     id: string;
-    unique_id_bubble: string | null;
-    unique_id_empresa: string | null;
+    company_id: string;
     supabase_file_path: string | null;
     storage_key: string | null;
     cert_password: string | null;

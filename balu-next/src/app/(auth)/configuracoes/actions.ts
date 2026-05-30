@@ -173,18 +173,19 @@ export async function uploadCertificadoAction(
     return { ok: false, error: e instanceof Error ? e.message : 'Erro interno ao cifrar o certificado.' };
   }
 
-  // Reaproveita unique_id_bubble se já existe registro pra empresa.
+  // Nome fixo: 1 cert por empresa; upsert:true sobrescreve no re-upload.
+  const CERT_FILENAME = 'certificado.enc';
+  // Decide insert vs update (registro existente da empresa).
   const { data: existing } = await supabase
     .from('arquivos_auxiliares')
-    .select('id, unique_id_bubble')
-    .eq('unique_id_empresa', companyId)
+    .select('id')
+    .eq('company_id', companyId)
     .is('deleted_at', null)
     .maybeSingle();
-  const uniqueIdBubble = (existing?.unique_id_bubble as string | null) ?? crypto.randomUUID();
 
   let path: string;
   try {
-    ({ path } = await storageUploadCertificado(blob, `${uniqueIdBubble}.enc`, companyId));
+    ({ path } = await storageUploadCertificado(blob, CERT_FILENAME, companyId));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Falha ao enviar o arquivo.' };
   }
@@ -205,7 +206,7 @@ export async function uploadCertificadoAction(
   } else {
     const { error } = await supabase
       .from('arquivos_auxiliares')
-      .insert({ unique_id_empresa: companyId, unique_id_bubble: uniqueIdBubble, ...row });
+      .insert({ company_id: companyId, ...row });
     if (error) return { ok: false, error: error.message };
   }
 

@@ -76,7 +76,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     const { data: cert } = await supabase
       .from('arquivos_auxiliares')
       .select('created_at, updated_at, cert_not_after, storage_key')
-      .eq('unique_id_empresa', company.id as string)
+      .eq('company_id', company.id as string)
       .is('deleted_at', null)
       .maybeSingle();
     certEnviadoEm = (cert?.updated_at as string | null) ?? (cert?.created_at as string | null) ?? null;

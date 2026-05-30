@@ -46,14 +46,3 @@ export async function uploadCertificado(
   if (error) throw new Error(`Supabase Storage upload falhou: ${error.message}`);
   return { path };
 }
-
-/**
- * Remove um objeto do bucket `company-certificates` pelo path completo
- * (ex.: `${companyId}/${fileName}`). Usado para limpar o certificado antigo
- * quando um novo é enviado com nome diferente. Lança em caso de erro.
- */
-export async function removeCertificado(path: string): Promise<void> {
-  if (!path) return;
-  const { error } = await admin().storage.from(BUCKET).remove([path]);
-  if (error) throw new Error(`Supabase Storage remove falhou: ${error.message}`);
-}
