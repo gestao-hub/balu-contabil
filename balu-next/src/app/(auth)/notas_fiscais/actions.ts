@@ -590,7 +590,7 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
   const { data: company } = await supabase
-    .from('companies').select('cnpj, razao_social, focus_token').eq('id', companyId).single();
+    .from('companies').select('cnpj, focus_token').eq('id', companyId).single();
   if (!company) return { ok: false, error: 'Empresa não encontrada.' };
   if (!company.focus_token) return { ok: false, error: 'Empresa não está cadastrada na Focus. Sincronize no Diagnóstico.' };
 
@@ -643,13 +643,14 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
     const resp = await focus.emitirNfe(ref, payload, company.focus_token as string, 'hom');
     await supabase.from('notas_fiscais')
       .update({ payload_focusnfe: { request: payload, response: resp } })
-      .eq('id', notaId);
+      .eq('id', notaId).eq('company_id', companyId);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
+    const errMsg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
+    const friendly = traduzirErroFocus(errMsg);
     await supabase.from('notas_fiscais')
-      .update({ status: 'erro', payload_focusnfe: { request: payload, error: msg } })
-      .eq('id', notaId);
-    return { ok: false, error: msg };
+      .update({ status: 'erro', payload_focusnfe: { request: payload, error: errMsg } })
+      .eq('id', notaId).eq('company_id', companyId);
+    return { ok: false, error: friendly };
   }
   revalidatePath('/notas_fiscais');
   return { ok: true, notaId };
@@ -718,13 +719,14 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
     const resp = await focus.emitirNfce(ref, payload, company.focus_token as string, 'hom');
     await supabase.from('notas_fiscais')
       .update({ payload_focusnfe: { request: payload, response: resp } })
-      .eq('id', notaId);
+      .eq('id', notaId).eq('company_id', companyId);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
+    const errMsg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
+    const friendly = traduzirErroFocus(errMsg);
     await supabase.from('notas_fiscais')
-      .update({ status: 'erro', payload_focusnfe: { request: payload, error: msg } })
-      .eq('id', notaId);
-    return { ok: false, error: msg };
+      .update({ status: 'erro', payload_focusnfe: { request: payload, error: errMsg } })
+      .eq('id', notaId).eq('company_id', companyId);
+    return { ok: false, error: friendly };
   }
   revalidatePath('/notas_fiscais');
   return { ok: true, notaId };
