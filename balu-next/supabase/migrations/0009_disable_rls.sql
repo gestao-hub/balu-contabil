@@ -4,6 +4,15 @@
 -- então toda query autenticada (anon key + sessão) voltava vazia / falhava.
 -- As policies corretas + re-enable virão na migration 0010_rls_policies.sql.
 -- Spec: docs/superpowers/specs/2026-05-29-rls-supabase-design.md
+--
+-- ┌───────────────────────────────────────────────────────────────────────────┐
+-- │ ⚠️  CRÍTICO — NÃO APLICAR / NÃO DEIXAR ESTE ESTADO EM PRODUÇÃO.            │
+-- │ Com RLS desligado, qualquer usuário autenticado (anon key) lê e grava os   │
+-- │ dados de TODOS os tenants via PostgREST. Isto é só o baseline de DEV pré-   │
+-- │ produção (reverte ao estado anterior ao toggle manual). GATE de deploy:     │
+-- │ a 0010_rls_policies.sql DEVE estar aplicada (relrowsecurity = true em todas  │
+-- │ as tabelas tenant) ANTES de qualquer deploy de produção.                    │
+-- └───────────────────────────────────────────────────────────────────────────┘
 
 -- Desliga RLS em TODAS as tabelas public (robusto a tabelas não enumeradas).
 do $$
