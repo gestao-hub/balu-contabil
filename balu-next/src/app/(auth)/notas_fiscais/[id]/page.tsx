@@ -8,6 +8,8 @@ import { AlertTriangle, Clock, Download } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 import { extrairMensagemErro } from '@/lib/fiscal/focus-erro';
 import { extrairCamposNota } from '@/lib/fiscal/nfse-callback';
+import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
+import { cancelamentoSoPortal } from '@/lib/fiscal/notas-tipo';
 import CancelarButton from './CancelarButton';
 
 const STATUS_LABEL: Record<string, { txt: string; cls: string }> = {
@@ -39,6 +41,14 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
     .eq('company_id', companyId)
     .maybeSingle();
   if (!nota) notFound();
+
+  // Município "só portal" → NFS-e não pode ser cancelada pela API (desabilita o botão).
+  const { data: companyRow } = await supabase
+    .from('companies').select('municipio, uf').eq('id', companyId).maybeSingle();
+  const muni = companyRow
+    ? await resolveMunicipioNfse(supabase, companyRow.municipio as string | null, companyRow.uf as string | null)
+    : null;
+  const cancelSoPortal = cancelamentoSoPortal(nota.tipo_documento as string, muni?.cancelamento_so_portal);
 
   const payload = (nota.payload_focusnfe ?? {}) as unknown as Record<string, unknown>;
   const dest = (payload.destinatario ?? {}) as Record<string, unknown>;
@@ -174,7 +184,7 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
         >
           <Download className="size-4" /> Baixar PDF
         </a>
-        <CancelarButton id={id} ativa={status === 'ativa'} />
+        <CancelarButton id={id} ativa={status === 'ativa'} soPortal={cancelSoPortal} />
       </div>
     </main>
   );

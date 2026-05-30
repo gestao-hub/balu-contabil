@@ -18,3 +18,16 @@ export function validarJustificativa(j: string): Validacao {
   }
   return { ok: true };
 }
+
+/**
+ * NFS-e é municipal: alguns provedores não expõem API de cancelamento — só dá pra
+ * cancelar no portal da prefeitura (`municipios_nfse.cancelamento_so_portal = true`).
+ * Nesses casos o cancelamento pela Focus não funciona. Não se aplica a NF-e/NFC-e
+ * (cancelam via SEFAZ, independentes do portal municipal).
+ */
+export function cancelamentoSoPortal(
+  tipo: string,
+  municipioSoPortal: boolean | null | undefined,
+): boolean {
+  return tipo === 'NFSe' && municipioSoPortal === true;
+}

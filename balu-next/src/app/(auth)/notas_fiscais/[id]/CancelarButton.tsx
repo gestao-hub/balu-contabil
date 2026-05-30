@@ -7,7 +7,16 @@ import PopupConfirm from '@/components/PopupConfirm';
 import { validarJustificativa } from '@/lib/fiscal/notas-tipo';
 import { cancelarNotaAction } from '../actions';
 
-export default function CancelarButton({ id, ativa }: { id: string; ativa: boolean }) {
+export default function CancelarButton({
+  id,
+  ativa,
+  soPortal = false,
+}: {
+  id: string;
+  ativa: boolean;
+  /** NFS-e de município "só portal": cancelamento não disponível pela API → botão desabilitado. */
+  soPortal?: boolean;
+}) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [justificativa, setJustificativa] = useState('');
@@ -31,6 +40,26 @@ export default function CancelarButton({ id, ativa }: { id: string; ativa: boole
   }
 
   if (!ativa) return null;
+
+  // Município "só portal": mostra o botão desabilitado com tooltip explicando o porquê.
+  if (soPortal) {
+    return (
+      <span
+        title="O município desta NFS-e só permite cancelamento pelo portal da prefeitura — não pela Focus."
+        className="inline-block cursor-not-allowed"
+      >
+        <button
+          type="button"
+          disabled
+          aria-disabled="true"
+          className="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-semibold text-muted-foreground-2 opacity-60"
+        >
+          <Ban className="size-4" />
+          Cancelar nota
+        </button>
+      </span>
+    );
+  }
 
   return (
     <>

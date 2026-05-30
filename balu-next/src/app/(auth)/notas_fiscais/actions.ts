@@ -8,7 +8,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
-import { assertTipoDoc, validarJustificativa, type TipoDoc } from '@/lib/fiscal/notas-tipo';
+import { assertTipoDoc, validarJustificativa, cancelamentoSoPortal, type TipoDoc } from '@/lib/fiscal/notas-tipo';
+import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import { buildNfsePayload } from '@/lib/fiscal/nfse-payload';
 import { traduzirErroFocus } from '@/lib/fiscal/focus-erro';
 import { mapStatusFocus } from '@/lib/fiscal/focus-status';
@@ -412,7 +413,7 @@ export async function cancelarNotaAction(
   // Cancelamento exige o token da EMPRESA (igual emissão).
   const { data: companyForCancel } = await supabase
     .from('companies')
-    .select('focus_token')
+    .select('focus_token, municipio, uf')
     .eq('id', companyId)
     .single();
   if (!companyForCancel?.focus_token) {
@@ -430,6 +431,16 @@ export async function cancelarNotaAction(
     return { ok: false, error: 'Tipo de documento não suportado para cancelamento.' };
   }
   const ref = nota.referencia as string;
+
+  // Guard: NFS-e de município "só portal" não cancela pela API — só no portal da prefeitura.
+  const muni = await resolveMunicipioNfse(
+    supabase,
+    companyForCancel.municipio as string | null,
+    companyForCancel.uf as string | null,
+  );
+  if (cancelamentoSoPortal(tipo, muni?.cancelamento_so_portal)) {
+    return { ok: false, error: 'Esta NFS-e só pode ser cancelada pelo portal da prefeitura do município.' };
+  }
 
   try {
     if (tipo === 'NFe') await focus.cancelarNfe(ref, justif, focusToken, env);
