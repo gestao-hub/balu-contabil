@@ -490,13 +490,17 @@ export async function listarProdutosAction(): Promise<ProdutoOption[]> {
     .from('profiles').select('current_company').eq('user_id', user.id).single();
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('aux_produtos')
     .select('id, descricao, ncm, cfop, unidade_comercial, valor_unitario_comercial, tipo_nf')
     .eq('company_id', companyId)
     .or('tipo_nf.eq.nfe,tipo_nf.eq.nfce,tipo_nf.is.null')
     .order('descricao', { ascending: true })
     .limit(500);
+  if (error) {
+    console.error('[listarProdutosAction]', error.message);
+    return [];
+  }
   return (data ?? []).map((p) => ({
     id: p.id as string,
     descricao: p.descricao as string,
