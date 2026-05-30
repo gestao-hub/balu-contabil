@@ -11,6 +11,8 @@ import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { assertTipoDoc, validarJustificativa, cancelamentoSoPortal, type TipoDoc } from '@/lib/fiscal/notas-tipo';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import { buildNfsePayload } from '@/lib/fiscal/nfse-payload';
+import { buildNfePayload, type NfeItem } from '@/lib/fiscal/nfe-payload';
+import { buildNfcePayload, type NfceFormaPagamento } from '@/lib/fiscal/nfce-payload';
 import { traduzirErroFocus } from '@/lib/fiscal/focus-erro';
 import { mapStatusFocus } from '@/lib/fiscal/focus-status';
 import { extrairCamposNota } from '@/lib/fiscal/nfse-callback';
@@ -320,12 +322,17 @@ export async function atualizarStatusNotaAction(
     return { ok: false, error: 'Empresa sem token Focus — sincronize no Diagnóstico.' };
   }
 
-  // Hoje só temos NFSe Nacional implementada. Quando der suporte a NFe/NFCe
-  // aqui, branch por nota.tipo_documento ('NFe'|'NFCe'|'NFSe').
   const ref = nota.referencia as string;
+  const tipoDoc = nota.tipo_documento as string;
   let resp: Record<string, unknown>;
   try {
-    resp = await focus.consultarStatusNfse(ref, company.focus_token as string, 'hom');
+    if (tipoDoc === 'NFe') {
+      resp = await focus.consultarStatusNfe(ref, company.focus_token as string, 'hom');
+    } else if (tipoDoc === 'NFCe') {
+      resp = await focus.consultarStatusNfce(ref, company.focus_token as string, 'hom');
+    } else {
+      resp = await focus.consultarStatusNfse(ref, company.focus_token as string, 'hom');
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: traduzirErroFocus(msg) };
@@ -378,7 +385,7 @@ export async function emitirNotaFormAction(formData: FormData): Promise<void> {
   };
   const r = await emitirNotaAction(input);
   if (!r.ok) {
-    redirect(`/notas_fiscais/emissao?error=${encodeURIComponent(r.error)}`);
+    redirect(`/notas_fiscais/emissao/nfse?error=${encodeURIComponent(r.error)}`);
   }
   redirect(`/notas_fiscais/${r.notaId}`);
 }
@@ -469,4 +476,263 @@ export async function cancelarNotaAction(
   revalidatePath('/notas_fiscais');
   revalidatePath(`/notas_fiscais/${id}`);
   return { ok: true };
+}
+
+// ---------- Produtos (aux_produtos) — catálogo p/ itens de NF-e/NFC-e ----------
+export type ProdutoOption = {
+  id: string;
+  descricao: string;
+  ncm: string | null;
+  cfop: string | null;
+  unidade: string | null;
+  valorUnitario: number | null;
+};
+
+/** Lista produtos da empresa ativa (tipo_nf nfe+nfce compartilhados). */
+export async function listarProdutosAction(): Promise<ProdutoOption[]> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return [];
+  const { data, error } = await supabase
+    .from('aux_produtos')
+    .select('id, descricao, ncm, cfop, unidade_comercial, valor_unitario_comercial, tipo_nf')
+    .eq('company_id', companyId)
+    .or('tipo_nf.eq.nfe,tipo_nf.eq.nfce,tipo_nf.is.null')
+    .order('descricao', { ascending: true })
+    .limit(500);
+  if (error) {
+    console.error('[listarProdutosAction]', error.message);
+    return [];
+  }
+  return (data ?? []).map((p) => ({
+    id: p.id as string,
+    descricao: p.descricao as string,
+    ncm: (p.ncm as string | null) ?? null,
+    cfop: (p.cfop as string | null) ?? null,
+    unidade: (p.unidade_comercial as string | null) ?? null,
+    valorUnitario: (p.valor_unitario_comercial as number | null) ?? null,
+  }));
+}
+
+export type CriarProdutoInput = {
+  descricao: string;
+  ncm: string;
+  cfop: string;
+  unidade: string;
+  valorUnitario: number;
+  tipoNf: 'nfe' | 'nfce';
+};
+export type CriarProdutoResult = { ok: true; produto: ProdutoOption } | { ok: false; error: string };
+
+/** Cria um produto inline durante a emissão. Sem exclusão nesta entrega. */
+export async function criarProdutoAction(input: CriarProdutoInput): Promise<CriarProdutoResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  const descricao = input.descricao.trim();
+  const ncm = input.ncm.replace(/\D+/g, '');
+  const cfop = input.cfop.replace(/\D+/g, '');
+  if (!descricao) return { ok: false, error: 'Descrição obrigatória.' };
+  if (ncm.length !== 8) return { ok: false, error: 'NCM deve ter 8 dígitos.' };
+  if (cfop.length !== 4) return { ok: false, error: 'CFOP deve ter 4 dígitos.' };
+  if (!Number.isFinite(input.valorUnitario) || input.valorUnitario <= 0) {
+    return { ok: false, error: 'Valor unitário deve ser positivo.' };
+  }
+
+  const { data, error } = await supabase
+    .from('aux_produtos')
+    .insert({
+      company_id: companyId,
+      descricao,
+      ncm,
+      cfop,
+      unidade_comercial: input.unidade || 'UN',
+      valor_unitario_comercial: input.valorUnitario,
+      tipo_nf: input.tipoNf,
+      finalizado: true,
+    })
+    .select('id, descricao, ncm, cfop, unidade_comercial, valor_unitario_comercial')
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? 'Falha ao criar produto.' };
+  return {
+    ok: true,
+    produto: {
+      id: data.id as string,
+      descricao: data.descricao as string,
+      ncm: (data.ncm as string | null) ?? null,
+      cfop: (data.cfop as string | null) ?? null,
+      unidade: (data.unidade_comercial as string | null) ?? null,
+      valorUnitario: (data.valor_unitario_comercial as number | null) ?? null,
+    },
+  };
+}
+
+// ---------- Emissão NF-e (modelo 55) ----------
+export type EmitirNfeInput = {
+  clienteId: string;
+  naturezaOperacao: string;
+  itens: NfeItem[];
+};
+export type EmitirNotaTipadoResult = { ok: true; notaId: string } | { ok: false; error: string };
+
+export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNotaTipadoResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  const { data: company } = await supabase
+    .from('companies').select('cnpj, focus_token').eq('id', companyId).single();
+  if (!company) return { ok: false, error: 'Empresa não encontrada.' };
+  if (!company.focus_token) return { ok: false, error: 'Empresa não está cadastrada na Focus. Sincronize no Diagnóstico.' };
+
+  const { data: fiscal } = await supabase
+    .from('empresas_fiscais')
+    .select('Code_regime_tributario, empresa_fiscal_ativada, focus_habilita_nfe')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+  if (!fiscal) return { ok: false, error: 'Configure o regime tributário antes de emitir.' };
+  if (fiscal.empresa_fiscal_ativada !== true) return { ok: false, error: 'Ative a empresa fiscal antes de emitir.' };
+  if (fiscal.focus_habilita_nfe !== true) return { ok: false, error: 'Empresa não habilitada para emitir NF-e.' };
+
+  const { data: cliente } = await supabase
+    .from('clientes').select('id, razao_social, document, person_type')
+    .eq('id', input.clienteId).eq('company_id', companyId).is('deleted_at', null).maybeSingle();
+  if (!cliente) return { ok: false, error: 'Cliente não encontrado.' };
+  const personType = String(cliente.person_type ?? '').toUpperCase();
+  const doc = String(cliente.document ?? '').replace(/\D+/g, '');
+
+  let payload;
+  try {
+    payload = buildNfePayload(
+      { cnpj: company.cnpj as string, regime: (fiscal.Code_regime_tributario as string | null) ?? null },
+      { cnpj: personType === 'PJ' ? doc : null, cpf: personType === 'PF' ? doc : null, nome: (cliente.razao_social as string | null) ?? '—' },
+      input.itens,
+      input.naturezaOperacao,
+    );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro ao montar a nota.' };
+  }
+
+  const ref = generateRef(companyId);
+  const total = payload.items.reduce((s, it) => s + it.valor_bruto, 0);
+  const { data: nota, error: insertErr } = await supabase
+    .from('notas_fiscais')
+    .insert({
+      company_id: companyId,
+      tipo_documento: 'NFe',
+      referencia: ref,
+      data_emissao: new Date().toISOString(),
+      status: 'pendente',
+      valor_total: Math.round(total * 100) / 100,
+      payload_focusnfe: payload as unknown as Record<string, unknown>,
+      cliente_id: cliente.id,
+    })
+    .select('id').single();
+  if (insertErr || !nota) return { ok: false, error: insertErr?.message ?? 'Falha ao registrar a nota.' };
+  const notaId = nota.id as string;
+
+  try {
+    const resp = await focus.emitirNfe(ref, payload, company.focus_token as string, 'hom');
+    await supabase.from('notas_fiscais')
+      .update({ payload_focusnfe: { request: payload, response: resp } })
+      .eq('id', notaId).eq('company_id', companyId);
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
+    const friendly = traduzirErroFocus(errMsg);
+    await supabase.from('notas_fiscais')
+      .update({ status: 'erro', payload_focusnfe: { request: payload, error: errMsg } })
+      .eq('id', notaId).eq('company_id', companyId);
+    return { ok: false, error: friendly };
+  }
+  revalidatePath('/notas_fiscais');
+  return { ok: true, notaId };
+}
+
+// ---------- Emissão NFC-e (modelo 65) ----------
+export type EmitirNfceInput = {
+  itens: NfeItem[];
+  pagamentos: NfceFormaPagamento[];
+  consumidorCpf?: string | null;
+};
+
+export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNotaTipadoResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  const { data: company } = await supabase
+    .from('companies').select('cnpj, focus_token').eq('id', companyId).single();
+  if (!company) return { ok: false, error: 'Empresa não encontrada.' };
+  if (!company.focus_token) return { ok: false, error: 'Empresa não está cadastrada na Focus. Sincronize no Diagnóstico.' };
+
+  const { data: fiscal } = await supabase
+    .from('empresas_fiscais')
+    .select('Code_regime_tributario, empresa_fiscal_ativada, focus_habilita_nfce')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+  if (!fiscal) return { ok: false, error: 'Configure o regime tributário antes de emitir.' };
+  if (fiscal.empresa_fiscal_ativada !== true) return { ok: false, error: 'Ative a empresa fiscal antes de emitir.' };
+  if (fiscal.focus_habilita_nfce !== true) return { ok: false, error: 'Empresa não habilitada para emitir NFC-e.' };
+
+  let payload;
+  try {
+    payload = buildNfcePayload(
+      { cnpj: company.cnpj as string, regime: (fiscal.Code_regime_tributario as string | null) ?? null },
+      input.itens,
+      input.pagamentos,
+      input.consumidorCpf ? { cpf: input.consumidorCpf, nome: null } : null,
+    );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro ao montar a nota.' };
+  }
+
+  const ref = generateRef(companyId);
+  const total = payload.items.reduce((s, it) => s + it.valor_bruto, 0);
+  const { data: nota, error: insertErr } = await supabase
+    .from('notas_fiscais')
+    .insert({
+      company_id: companyId,
+      tipo_documento: 'NFCe',
+      referencia: ref,
+      data_emissao: new Date().toISOString(),
+      status: 'pendente',
+      valor_total: Math.round(total * 100) / 100,
+      payload_focusnfe: payload as unknown as Record<string, unknown>,
+    })
+    .select('id').single();
+  if (insertErr || !nota) return { ok: false, error: insertErr?.message ?? 'Falha ao registrar a nota.' };
+  const notaId = nota.id as string;
+
+  try {
+    const resp = await focus.emitirNfce(ref, payload, company.focus_token as string, 'hom');
+    await supabase.from('notas_fiscais')
+      .update({ payload_focusnfe: { request: payload, response: resp } })
+      .eq('id', notaId).eq('company_id', companyId);
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
+    const friendly = traduzirErroFocus(errMsg);
+    await supabase.from('notas_fiscais')
+      .update({ status: 'erro', payload_focusnfe: { request: payload, error: errMsg } })
+      .eq('id', notaId).eq('company_id', companyId);
+    return { ok: false, error: friendly };
+  }
+  revalidatePath('/notas_fiscais');
+  return { ok: true, notaId };
 }
