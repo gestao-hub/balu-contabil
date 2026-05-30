@@ -322,12 +322,17 @@ export async function atualizarStatusNotaAction(
     return { ok: false, error: 'Empresa sem token Focus — sincronize no Diagnóstico.' };
   }
 
-  // Hoje só temos NFSe Nacional implementada. Quando der suporte a NFe/NFCe
-  // aqui, branch por nota.tipo_documento ('NFe'|'NFCe'|'NFSe').
   const ref = nota.referencia as string;
+  const tipoDoc = nota.tipo_documento as string;
   let resp: Record<string, unknown>;
   try {
-    resp = await focus.consultarStatusNfse(ref, company.focus_token as string, 'hom');
+    if (tipoDoc === 'NFe') {
+      resp = await focus.consultarStatusNfe(ref, company.focus_token as string, 'hom');
+    } else if (tipoDoc === 'NFCe') {
+      resp = await focus.consultarStatusNfce(ref, company.focus_token as string, 'hom');
+    } else {
+      resp = await focus.consultarStatusNfse(ref, company.focus_token as string, 'hom');
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: traduzirErroFocus(msg) };

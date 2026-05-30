@@ -46,7 +46,7 @@ export type NfePayload = {
   natureza_operacao: string;
   data_emissao: string;
   tipo_documento: number;          // 1 = saída
-  finalidade_emissao: string;      // '1' = normal
+  finalidade_emissao: number;      // 1 = normal
   consumidor_final: number;        // 0 = não
   cnpj_emitente: string;
   nome_destinatario: string;
@@ -129,7 +129,7 @@ export function buildNfePayload(
     natureza_operacao: natureza,
     data_emissao: toBrasiliaISO(new Date(now.getTime() - 2_000)),
     tipo_documento: 1,
-    finalidade_emissao: '1',
+    finalidade_emissao: 1,
     consumidor_final: 0,
     cnpj_emitente: cnpjEmit,
     nome_destinatario: nome.slice(0, 60),

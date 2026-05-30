@@ -13,7 +13,7 @@ describe('buildNfePayload', () => {
   it('monta payload modelo 55 com defaults', () => {
     const p = buildNfePayload(EMITENTE, DEST, [ITEM], 'Venda de mercadoria', NOW);
     expect(p.natureza_operacao).toBe('Venda de mercadoria');
-    expect(p.finalidade_emissao).toBe('1');
+    expect(p.finalidade_emissao).toBe(1);
     expect(p.cnpj_emitente).toBe('10358425000120');
     expect(p.cnpj_destinatario).toBe('12345678000100');
     expect(p.nome_destinatario).toBe('Cliente PJ Ltda');
