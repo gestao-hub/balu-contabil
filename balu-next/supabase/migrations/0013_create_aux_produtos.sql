@@ -9,6 +9,20 @@
 -- updated_at + RLS + policy company-scope), tudo idempotente. Se a tabela já
 -- existir em algum ambiente, os IF NOT EXISTS / DROP POLICY IF EXISTS tornam a
 -- aplicação segura.
+--
+-- AUTOCONTIDA: o banco hospedado também não tem a função tg_set_updated_at()
+-- (erro 42883 ao aplicar dependendo só da 0001). Por isso recriamos aqui, junto
+-- com user_company_ids() (usada pela policy), via CREATE OR REPLACE — idempotente
+-- e inofensivo se já existirem.
+
+-- ── Funções de suporte (idempotentes) ────────────────
+create or replace function public.tg_set_updated_at() returns trigger
+language plpgsql as $$ begin new.updated_at := now(); return new; end; $$;
+
+create or replace function public.user_company_ids() returns setof uuid
+language sql stable as $$
+  select id from public.companies where user_id = auth.uid();
+$$;
 
 -- ── Tabela ───────────────────────────────────────────
 create table if not exists public.aux_produtos (
