@@ -1,5 +1,8 @@
-// Auto-gerado — catálogo completo de endpoints lidos do .bubble (81 chamadas).
+// Auto-gerado — catálogo de endpoints lidos do .bubble (80 chamadas).
 // Use só pra referência; cada cliente real está em ./focus-nfe, ./serpro, ./n8n.
+// Nota: editado à mão (2026-05-29) p/ remover a ref defasada a
+// arquivos_auxiliares.unique_id_bubble (coluna dropada na migration 0011). Um
+// regen via `npm run gen:clients` reintroduziria a linha — não rodar contra o .bubble legado.
 export const ENDPOINTS = [
   { name: "Supabase signin", method: "post", url: "https://llykzqnugdpojwnlontj.supabase.co/auth/v1/signup" },
   { name: "Login Supabase", method: "post", url: "https://llykzqnugdpojwnlontj.supabase.co/auth/v1/token?grant_type=password" },
@@ -36,7 +39,6 @@ export const ENDPOINTS = [
   { name: "Editar empresa fiscal", method: "patch", url: "https://llykzqnugdpojwnlontj.supabase.co/rest/v1/empresas_fiscais?id=eq.[id]" },
   { name: "Adicionar tabela_auxiliar", method: "post", url: "https://llykzqnugdpojwnlontj.supabase.co/rest/v1/arquivos_auxiliares" },
   { name: "Adicionar_bucket", method: "post", url: "https://llykzqnugdpojwnlontj.supabase.co/storage/v1/object/company-certificates/[filename]" },
-  { name: "Adicionar key e id_tabela_auxiliar_N\u00c3O USAR ", method: "patch", url: "https://envsirumquqpmkcayncr.supabase.co/rest/v1/arquivos_auxiliares?unique_id_bubble=eq.[unique_id_bubble]" },
   { name: "N8N - Mandar credenciais e certificado", method: "post", url: "https://webhooks.envia.click/webhook/post-autenticacao" },
   { name: "Upload_certificado_para N8N", method: "post", url: "https://webhooks.envia.click/webhook/upload-certificado" },
   { name: "Entrada", method: "post", url: "https://gateway.apiserpro.serpro.gov.br/integra-contador/v1/Declarar" },
