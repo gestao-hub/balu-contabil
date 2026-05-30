@@ -380,7 +380,7 @@ export async function emitirNotaFormAction(formData: FormData): Promise<void> {
   };
   const r = await emitirNotaAction(input);
   if (!r.ok) {
-    redirect(`/notas_fiscais/emissao?error=${encodeURIComponent(r.error)}`);
+    redirect(`/notas_fiscais/emissao/nfse?error=${encodeURIComponent(r.error)}`);
   }
   redirect(`/notas_fiscais/${r.notaId}`);
 }

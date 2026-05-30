@@ -78,7 +78,7 @@ export default async function NotasFiscaisEmissaoPage({ searchParams }: { search
     <main className="p-6 max-w-3xl">
       <header className="mb-6">
         <div className="flex items-center gap-2">
-          <Link href="/notas_fiscais" className="text-sm text-muted-foreground hover:text-foreground">← Notas fiscais</Link>
+          <Link href="/notas_fiscais/emissao" className="text-sm text-muted-foreground hover:text-foreground">← Voltar</Link>
         </div>
         <h1 className="text-2xl font-semibold text-foreground mt-2">Emitir NFS-e</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -115,6 +115,7 @@ function Bloqueio({
             {labelLink} →
           </Link>
         )}
+        <Link href="/notas_fiscais/emissao" className="mt-3 ml-4 inline-block text-sm text-muted-foreground">← Voltar</Link>
       </div>
     </main>
   );
