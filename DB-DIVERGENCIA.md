@@ -88,7 +88,8 @@ Banco real: `id, company_id, owner_user_id, competencia_referencia (varchar7), a
 - Migration usava `titular_endereco`/`endereco_sede`/`anexos` (jsonb) + `created_at`/`updated_at` — **não** existem no banco.
 
 ### `arquivos_auxiliares`
-- **Banco adiciona**: `updated_at`, `deleted_at`, `storage_key`. Sem FK em `unique_id_empresa`.
+- **Banco adiciona**: `updated_at`, `deleted_at`, `storage_key`.
+- **Atualizado (migration `0011`, 2026-05-29)**: a coluna de tenant `unique_id_empresa` (uuid, sem FK) foi **renomeada para `company_id`** com FK → `companies(id)` `on delete cascade`; `unique_id_bubble` foi **dropada**; cert no Storage padronizado em `${company_id}/certificado.enc`. Ver `docs/superpowers/specs/2026-05-29-saneamento-arquivos-auxiliares-design.md`.
 
 ---
 
@@ -107,12 +108,13 @@ Banco real: `id, company_id, owner_user_id, competencia_referencia (varchar7), a
 
 ---
 
-## D) RLS (registrado; tratamento adiado por decisão do time)
+## D) RLS — ✅ RESOLVIDO (2026-05-29)
 
-- O `0001` habilita RLS + ~16 policies em 13 tabelas. **No banco real, RLS não está habilitada em nenhuma tabela.**
-- A única tabela com policies é `notas_fiscais` (4), porém **inertes** (RLS desabilitada) e com condição **errada** (`auth.uid() = company_id`).
-- Efeito medido: a chave anônima lê dados de `clientes` (23 linhas), `notas_fiscais`, `guias_fiscais`, etc.
-- **Não bloqueia funcionalidade**, mas é dívida de segurança a resolver depois.
+- **RLS agora está LIGADA** nas 13 tabelas, via `0010_rls_policies.sql`. Modelo: `companies.user_id = auth.uid()`; tabelas escopadas por company usam o helper `user_owns_company(uuid)` (SECURITY DEFINER, sem recursão).
+- As 4 policies antigas e erradas de `notas_fiscais` (`auth.uid() = company_id`) foram **dropadas**; agora usa `user_owns_company(company_id)`.
+- **Sequência:** `0009_disable_rls.sql` foi um rollback temporário (o RLS tinha sido ligado manualmente pelo painel **sem** policies, travando toda query autenticada) → `0010` re-liga já com as policies corretas → `0011` formaliza a FK de `arquivos_auxiliares`, concede grant em `role_types` e cria policies por `user_id` em `abertura_empresas`.
+- Isolamento entre tenants **provado** por teste automatizado (`balu-next/tests/rls-isolation.spec.ts`, RED→GREEN) + fluxos do dono validados via Playwright sem regressão. Evidências: `balu-next/docs/rls-test-results-2026-05-29.md` e `balu-next/docs/saneamento-results-2026-05-29.md`.
+- **Estado anterior (histórico, pré-2026-05-29):** RLS não habilitada em nenhuma tabela; só `notas_fiscais` tinha 4 policies inertes e erradas; a anon key lia dados de todos os tenants.
 
 ---
 

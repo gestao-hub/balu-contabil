@@ -148,6 +148,8 @@ Todos têm `import 'server-only'` — só chamar de server actions ou route hand
 - Dedup índice `companies_owner_cnpj_uniq`
 - Revoke `select(cert_password)` para roles `authenticated` e `anon`
 
+> **RLS — estado real (2026-05-29): ✅ LIGADA.** O `0001` definia RLS mas o banco real estava sem. Sequência aplicada: `0009_disable_rls` (rollback do toggle manual sem policies) → `0010_rls_policies` (re-liga as 13 tabelas com policies corretas; helper `user_owns_company`) → `0011_arquivos_auxiliares_fk` (FK `company_id` em `arquivos_auxiliares` + grant `role_types` + policies `abertura_empresas` por `user_id`). Isolamento provado por `tests/rls-isolation.spec.ts` (RED→GREEN). Detalhes em `DB-DIVERGENCIA.md §D` e `balu-next/docs/{rls-test,saneamento}-results-2026-05-29.md`.
+
 ### 2.5 Tipos TypeScript (`src/types/`)
 
 - `database.ts` — `Tables` nominais + `Row<T>` helper. `Database = any` por design (sem CLI Supabase).
