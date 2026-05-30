@@ -54,7 +54,7 @@ async function main() {
 
   console.log('[4/8] Buscando arquivos_auxiliares (storage_keys)…');
   const { data: arqs } = companyIds.length
-    ? await supabase.from('arquivos_auxiliares').select('id, storage_key').in('unique_id_empresa', companyIds)
+    ? await supabase.from('arquivos_auxiliares').select('id, storage_key').in('company_id', companyIds)
     : { data: [] };
   console.log(`     ✓ ${(arqs ?? []).length} arquivo(s) auxiliar(es)`);
 
@@ -88,7 +88,7 @@ async function main() {
       const { error: sErr } = await supabase.storage.from('certificados').remove([key]);
       if (sErr) console.warn(`     ⚠ storage.remove(${key}): ${sErr.message}`);
     }
-    await del('arquivos_auxiliares', 'unique_id_empresa');
+    await del('arquivos_auxiliares', 'company_id');
     await del('empresas_fiscais', 'empresa_id');
     const { error: cErr, count: cCount } = await supabase.from('companies').delete({ count: 'exact' }).in('id', companyIds);
     if (cErr) throw new Error(`companies: ${cErr.message}`);

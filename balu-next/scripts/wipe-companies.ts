@@ -31,7 +31,7 @@ async function main() {
   if (!ids.length) { console.log('     ✗ nenhuma empresa; nada a fazer'); process.exit(0); }
 
   console.log('[3/6] arquivos_auxiliares (Storage incluso)…');
-  const { data: arqs } = await sb.from('arquivos_auxiliares').select('id, storage_key').in('unique_id_empresa', ids);
+  const { data: arqs } = await sb.from('arquivos_auxiliares').select('id, storage_key').in('company_id', ids);
   console.log(`     ${(arqs ?? []).length} arquivo(s)`);
 
   console.log('[4/6] empresas_fiscais…');
@@ -48,7 +48,7 @@ async function main() {
     const { error } = await sb.storage.from('certificados').remove([key]);
     if (error) console.warn(`     ⚠ storage ${key}: ${error.message}`);
   }
-  await sb.from('arquivos_auxiliares').delete().in('unique_id_empresa', ids);
+  await sb.from('arquivos_auxiliares').delete().in('company_id', ids);
   await sb.from('empresas_fiscais').delete().in('empresa_id', ids);
   await sb.from('companies').delete().in('id', ids);
   console.log('     ✓ empresas + dependentes apagados');
