@@ -1,121 +1,59 @@
-// @custom — PR 2.1 — Emissão de NFS-e (NFSe Nacional).
-// Server Component: carrega empresa atual + empresa_fiscal + clientes ativos.
-// Bloqueia o form se empresa não estiver pronta (não ativada, sem cert, etc).
+// @custom — Emissão multi-tipo: tela de escolha do tipo de nota.
+// Os 3 cards sempre visíveis; desabilitados conforme as flags focus_habilita_*.
 import Link from 'next/link';
+import { FileText, Package, ShoppingCart } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
-import EmissaoForm from './EmissaoForm';
 
-type SP = Promise<{ error?: string }>;
+type Tipo = { key: 'nfse' | 'nfe' | 'nfce'; titulo: string; sub: string; href: string; icon: React.ReactNode; habilitado: boolean };
 
-export default async function NotasFiscaisEmissaoPage({ searchParams }: { searchParams: SP }) {
-  const sp = await searchParams;
+export default async function EmissaoEscolhaPage() {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-
   const { data: profile } = await supabase
-    .from('profiles')
-    .select('current_company')
-    .eq('user_id', user.id)
-    .single();
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
   const companyId = (profile?.current_company ?? null) as string | null;
 
-  if (!companyId) {
-    return <Bloqueio titulo="Nenhuma empresa selecionada" mensagem="Cadastre ou escolha uma empresa antes de emitir notas." />;
+  let nfse = false, nfe = false, nfce = false;
+  if (companyId) {
+    const { data: fiscal } = await supabase
+      .from('empresas_fiscais')
+      .select('focus_habilita_nfse, focus_habilita_nfsen_homologacao, focus_habilita_nfe, focus_habilita_nfce, empresa_fiscal_ativada')
+      .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+    const ativa = fiscal?.empresa_fiscal_ativada === true;
+    nfse = ativa && (fiscal?.focus_habilita_nfse === true || fiscal?.focus_habilita_nfsen_homologacao === true);
+    nfe = ativa && fiscal?.focus_habilita_nfe === true;
+    nfce = ativa && fiscal?.focus_habilita_nfce === true;
   }
 
-  const [{ data: company }, { data: fiscal }, { data: clientes }] = await Promise.all([
-    supabase.from('companies').select('id, razao_social, nome, codigo_municipio').eq('id', companyId).single(),
-    supabase.from('empresas_fiscais')
-      .select('empresa_fiscal_ativada, emitir_nota_homol_antes_producao, Code_regime_tributario')
-      .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle(),
-    supabase.from('clientes')
-      .select('id, razao_social, document, person_type, email')
-      .eq('company_id', companyId).eq('status', 'active').is('deleted_at', null)
-      .order('razao_social', { ascending: true })
-      .limit(500),
-  ]);
-
-  if (!company) {
-    return <Bloqueio titulo="Empresa não encontrada" mensagem="A empresa selecionada não existe." />;
-  }
-  if (!fiscal) {
-    return (
-      <Bloqueio
-        titulo="Cadastro fiscal incompleto"
-        mensagem="Configure o regime tributário e ative a empresa fiscal antes de emitir."
-        href="/configuracoes?tab=regime"
-        labelLink="Ir para Regime tributário"
-      />
-    );
-  }
-  if (fiscal.empresa_fiscal_ativada !== true) {
-    return (
-      <Bloqueio
-        titulo="Empresa fiscal não ativada"
-        mensagem='Ative a empresa fiscal na aba "Emissão fiscal" antes de emitir notas.'
-        href="/configuracoes?tab=fiscal"
-        labelLink="Ir para Emissão fiscal"
-      />
-    );
-  }
-  if (!company.codigo_municipio) {
-    return (
-      <Bloqueio
-        titulo="Município sem código IBGE"
-        mensagem="A NFS-e Nacional exige o código IBGE do município do prestador. Edite os dados da empresa."
-        href="/configuracoes?tab=dados"
-        labelLink="Ir para Dados da empresa"
-      />
-    );
-  }
-
-  // MVP: emitirNotaAction sempre usa hom (ver comentário lá). Exibimos
-  // "homologação" pra refletir a realidade até suportarmos produção.
-  const env = 'homologação';
+  const tipos: Tipo[] = [
+    { key: 'nfse', titulo: 'NFS-e', sub: 'Serviço', href: '/notas_fiscais/emissao/nfse', icon: <FileText className="size-6" />, habilitado: nfse },
+    { key: 'nfe', titulo: 'NF-e', sub: 'Produto (modelo 55)', href: '/notas_fiscais/emissao/nfe', icon: <Package className="size-6" />, habilitado: nfe },
+    { key: 'nfce', titulo: 'NFC-e', sub: 'Consumidor (modelo 65)', href: '/notas_fiscais/emissao/nfce', icon: <ShoppingCart className="size-6" />, habilitado: nfce },
+  ];
 
   return (
-    <main className="p-6 max-w-3xl">
-      <header className="mb-6">
-        <div className="flex items-center gap-2">
-          <Link href="/notas_fiscais" className="text-sm text-muted-foreground hover:text-foreground">← Notas fiscais</Link>
-        </div>
-        <h1 className="text-2xl font-semibold text-foreground mt-2">Emitir NFS-e</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Prestador: <strong className="text-muted-foreground-2">{(company.razao_social as string) ?? '—'}</strong> · Ambiente: <span className="font-mono text-xs">{env}</span>
-        </p>
-      </header>
-
-      {sp.error && (
-        <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {sp.error}
-        </div>
-      )}
-
-      <EmissaoForm clientes={(clientes ?? []).map((c) => ({
-        id: c.id as string,
-        razao_social: (c.razao_social as string | null) ?? '—',
-        document: (c.document as string | null) ?? '',
-        person_type: (c.person_type as string | null) ?? 'PJ',
-      }))} />
-    </main>
-  );
-}
-
-function Bloqueio({
-  titulo, mensagem, href, labelLink,
-}: { titulo: string; mensagem: string; href?: string; labelLink?: string }) {
-  return (
-    <main className="p-6 max-w-2xl">
-      <div className="rounded-lg border border-alert/30 bg-alert/5 p-6">
-        <h1 className="text-lg font-semibold text-alert">{titulo}</h1>
-        <p className="text-sm text-muted-foreground-2 mt-2">{mensagem}</p>
-        {href && labelLink && (
-          <Link href={href} className="inline-block mt-4 text-sm font-medium text-primary hover:underline">
-            {labelLink} →
+    <div className="max-w-3xl mx-auto p-6">
+      <h1 className="text-xl font-semibold mb-1">Emitir nota fiscal</h1>
+      <p className="text-sm text-muted-foreground mb-6">Escolha o tipo de documento.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {tipos.map((t) => t.habilitado ? (
+          <Link key={t.key} href={t.href}
+            className="rounded-xl border border-border bg-surface-2 p-5 hover:border-primary hover:shadow-sm transition flex flex-col gap-2">
+            <span className="text-primary">{t.icon}</span>
+            <span className="font-medium text-foreground">{t.titulo}</span>
+            <span className="text-xs text-muted-foreground">{t.sub}</span>
           </Link>
-        )}
+        ) : (
+          <div key={t.key} aria-disabled
+            className="rounded-xl border border-border bg-surface p-5 opacity-50 cursor-not-allowed flex flex-col gap-2"
+            title="Empresa não habilitada para este tipo">
+            <span className="text-muted-foreground">{t.icon}</span>
+            <span className="font-medium text-muted-foreground">{t.titulo}</span>
+            <span className="text-xs text-muted-foreground">{t.sub} · não habilitado</span>
+          </div>
+        ))}
       </div>
-    </main>
+    </div>
   );
 }
