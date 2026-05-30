@@ -134,6 +134,8 @@ export type Tables = {
     focus_habilita_nfse: boolean | null;
     focus_habilita_nfsen_producao: boolean | null;
     focus_habilita_nfsen_homologacao: boolean | null;
+    focus_habilita_nfe: boolean | null;
+    focus_habilita_nfce: boolean | null;
     focus_sync_em: string | null;
     created_at: string | null;
     updated_at: string | null;
@@ -357,6 +359,21 @@ export type Tables = {
     processo_atualizado_por: string | null;
     criado_em: string | null;
     atualizado_em: string | null;
+  };
+  aux_produtos: {
+    id: string;
+    company_id: string;
+    codigo: string | null;
+    descricao: string;
+    ncm: string | null;
+    cfop: string | null;
+    tipo_nf: string | null;
+    unidade_comercial: string | null;
+    quantidade_comercial: number | null;
+    valor_unitario_comercial: number | null;
+    finalizado: boolean | null;
+    created_at: string | null;
+    updated_at: string | null;
   };
 };
 
