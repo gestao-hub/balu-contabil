@@ -13,8 +13,8 @@ const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const A_EMAIL = 'allanvalle@outlook.com';
 const A_PASS = 'teste123';
 
-// Tabelas escopadas por company_id. empresas_fiscais (empresa_id) e
-// arquivos_auxiliares (unique_id_empresa, text) usam outra coluna → testadas à parte.
+// Tabelas escopadas por company_id (testadas no loop). empresas_fiscais (empresa_id)
+// e arquivos_auxiliares (company_id, FK) são testadas à parte logo abaixo.
 const COMPANY_TABLES = [
   'clientes', 'notas_fiscais', 'guias_fiscais', 'apuracoes_fiscais',
   'receitas_fiscais', 'honorarios',
@@ -66,9 +66,9 @@ test('RLS isola tenants: B não acessa dados de A', async () => {
       const { data } = await bClient.from('empresas_fiscais').select('id').eq('empresa_id', aCompanyId);
       expect(data ?? [], 'B vazou empresas_fiscais de A').toHaveLength(0);
     }
-    // arquivos_auxiliares (unique_id_empresa = companies.id como texto)
+    // arquivos_auxiliares (agora company_id, FK -> companies.id)
     {
-      const { data } = await bClient.from('arquivos_auxiliares').select('id').eq('unique_id_empresa', aCompanyId);
+      const { data } = await bClient.from('arquivos_auxiliares').select('id').eq('company_id', aCompanyId);
       expect(data ?? [], 'B vazou arquivos_auxiliares de A').toHaveLength(0);
     }
 
