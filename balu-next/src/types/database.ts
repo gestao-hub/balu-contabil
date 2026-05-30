@@ -134,8 +134,8 @@ export type Tables = {
     focus_habilita_nfse: boolean | null;
     focus_habilita_nfsen_producao: boolean | null;
     focus_habilita_nfsen_homologacao: boolean | null;
-    focus_habilita_nfe: boolean | null;
-    focus_habilita_nfce: boolean | null;
+    focus_habilita_nfe: boolean;
+    focus_habilita_nfce: boolean;
     focus_sync_em: string | null;
     created_at: string | null;
     updated_at: string | null;
