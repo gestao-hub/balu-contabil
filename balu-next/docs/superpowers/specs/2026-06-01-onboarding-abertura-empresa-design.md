@@ -1,7 +1,7 @@
 # Fluxo de seleção + abertura de empresa (com solicitação de alteração)
 
 **Data:** 2026-06-01
-**Status:** aprovado para implementação
+**Status:** implementado ✅ (sessão 2026-06-01)
 
 ## Context
 
@@ -202,40 +202,60 @@ houver CHECK, incluir o valor na migration.
 
 **Novos:**
 - `src/app/(onboarding)/layout.tsx`
-- `src/app/(onboarding)/onboarding/page.tsx` (seleção)
-- `src/app/(onboarding)/onboarding/abertura/page.tsx` (carrega dados em modo alteração)
-- `src/app/(onboarding)/onboarding/abertura/actions.ts` (`submitAberturaAction`,
-  `solicitarAlteracaoAction`, loader da alteração)
-- `src/components/abertura/AberturaWizard.tsx` (+ subcomponentes de etapa, se necessário)
+- `src/app/(onboarding)/onboarding/page.tsx` (seleção — primeiro login)
+- `src/app/(onboarding)/onboarding/abertura/page.tsx` (wizard standalone + modo alteração)
+- `src/app/(onboarding)/onboarding/abertura/actions.ts` (`submitAberturaAction`, `solicitarAlteracaoAction`, `loadAberturaAtual`)
+- `src/components/abertura/AberturaWizard.tsx` (wizard data-driven, prop `onBack` opcional)
 - `src/components/abertura/ConfirmacaoEnvioDialog.tsx`
-- `src/app/(auth)/configuracoes/AberturaInfoView.tsx` (visão read-only + status + botão)
-- `src/lib/abertura/hash.ts`
+- `src/components/AddEmpresaDialog.tsx` (popup contador: seleção → existente ou wizard embutido)
+- `src/app/(auth)/configuracoes/AberturaInfoView.tsx` (visão read-only + status + botão alterar)
+- `src/lib/abertura/hash.ts` (canonical + dadosHash + sha256File)
+- `src/lib/abertura/queries.ts` (getAberturaByCompany)
+- `src/types/abertura.ts` (AberturaData, DOC_KEYS, ABERTURA_TEXT_FIELDS, EMPTY_ABERTURA)
 - `supabase/migrations/0015_abertura_alteracoes.sql`
 
 **Modificados:**
-- `src/app/(auth)/layout.tsx` (redirect em vez de modal)
-- `src/app/(auth)/configuracoes/page.tsx` (ramo `status==='em_abertura'`)
-- `src/lib/clients/supabase-storage.ts` (generalizar upload)
-- `src/types/zod.ts` (`AberturaCreateSchema`)
+- `src/app/(auth)/layout.tsx` (redirect → /onboarding quando sem empresa)
+- `src/app/(auth)/configuracoes/page.tsx` (ramo `status==='em_abertura'` + banner alteração)
+- `src/components/MenuLateral.tsx` (botão "Adicionar empresa" para contador abre AddEmpresaDialog)
+- `src/lib/clients/supabase-storage.ts` (uploadToBucket/downloadFromBucket/uploadAberturaDoc)
+- `src/lib/format/masks.ts` (formatCpf + formatTel adicionados)
+- `src/types/zod.ts` (AberturaCreateSchema, isValidCpf)
+- `src/components/CreateCompanyDialog.tsx` (UF dropdown, telefone mask)
+- `src/app/(auth)/configuracoes/DadosEmpresaForm.tsx` (UF dropdown, telefone mask, IBGE digits)
+- `src/components/ClienteFormDialog.tsx` (CPF mask PF, CEP visual, telefone mask, UF dropdown, busca CEP)
+- `next.config.ts` (serverActions.bodySizeLimit 20mb)
+
+## Ajustes pós-implementação (correções de UX/segurança nessa sessão)
+
+- **Wizard:** máscaras CPF/CEP/Tel/Data BR, lookup CEP via import estático, botão Voltar etapa 0,
+  validações por tipo (alpha/digits/decimal/uf/select), estado civil + órgão emissor como selects,
+  27 UFs como dropdown em todos os forms, `accept="image/*,.pdf"` nos uploads.
+- **Segurança:** `.passthrough()` removido do Zod (mass assignment), path traversal em Storage,
+  IDOR na RLS `abertura_alteracoes`, `user_id` assert explícito em `solicitarAlteracaoAction`.
+- **Contador:** `AddEmpresaDialog` no menu lateral — wizard de abertura embutido no popup
+  (sem navegar para /onboarding); prop `onBack` no wizard para voltar à seleção.
 
 ## Fora de escopo
 
-Painel administrativo, realtime, catálogo de CNAE pesquisável, integração RedeSim/Receita, e o
-pós-conclusão automático (admin preenche CNPJ + flipa status manualmente).
+Painel administrativo, realtime, catálogo CNAE pesquisável, integração RedeSim/Receita,
+pós-conclusão automático (admin aplica manualmente).
+
+## Passos manuais (pós-merge)
+
+1. Criar bucket privado `abertura-documentos` no Supabase.
+2. Aplicar `0015_abertura_alteracoes.sql` no banco real.
+3. Confirmar que `companies.status` não tem CHECK restritivo (a migration já cuida disso com `ADD COLUMN IF NOT EXISTS`).
 
 ## Verificação
 
-1. App rodando (`next dev`, http://localhost:3000).
-2. **Setup:** criar bucket `abertura-documentos`; aplicar migration 0015 no DB.
-3. Login com user novo (sem empresa) → redireciona para `/onboarding` (seleção).
-4. **"Já tenho empresa"** → `CreateCompanyDialog` atual funciona e leva pra `/`.
-5. **"Quero abrir"** → preenche wizard, popup de confirmação aparece, confirma → cria stub em
-   `companies` (`status=em_abertura`), `abertura_empresas` (`processo_etapa=recebido`, `dados_hash`
-   preenchido), docs no bucket, `current_company` setado, redireciona.
-6. `/configuracoes` mostra só "Informações da empresa" + timeline de status; sem abas
-   fiscais; sem Editar; com botão "Solicitar alteração de dados".
-7. **Alteração sem mudança real** → submit bloqueia com "Nenhuma alteração detectada" (hash igual).
-8. **Alteração com mudança** (texto e/ou documento) → cria linha em `abertura_alteracoes`
-   (status pendente, `dados` jsonb com as chaves corretas).
-9. Empresa normal (`status` ativo) → 4 abas intactas.
-10. `npm run typecheck` limpo (não rodar `build` com o dev ativo).
+1. App em dev (`next dev`, http://localhost:3000).
+2. Login novo (sem empresa) → `/onboarding` → seleção funcional.
+3. "Já tenho empresa" → `CreateCompanyDialog` → home.
+4. "Quero abrir" (onboarding) → wizard 5 etapas + uploads → stub `em_abertura` + `abertura_empresas`.
+5. `/configuracoes` empresa `em_abertura`: só aba Informações + timeline + botão alterar.
+6. Alteração sem mudança → "Nenhuma alteração detectada".
+7. Alteração com mudança → `abertura_alteracoes` (pendente).
+8. Contador logado → menu lateral → "Adicionar empresa" → popup → wizard embutido ou existente.
+9. Empresa ativa → 4 abas intactas.
+10. `npm run typecheck` limpo.
