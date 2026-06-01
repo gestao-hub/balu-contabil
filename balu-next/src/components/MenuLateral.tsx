@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
-import CreateCompanyDialog from '@/components/CreateCompanyDialog';
+import AddEmpresaDialog from '@/components/AddEmpresaDialog';
 import Logo from '@/components/Logo';
 import ThemeToggle from '@/components/ThemeToggle';
 
@@ -150,7 +150,7 @@ export default function MenuLateral({
             {(isDev || userRole === 'contador') && (
               <button
                 type="button"
-                onClick={() => { setCompanyMenuOpen(false); router.push('/onboarding'); }}
+                onClick={() => { setCompanyMenuOpen(false); setAddOpen(true); }}
                 className="mt-2 flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-primary"
               >
                 <Plus className="size-3.5 shrink-0" />
@@ -198,8 +198,8 @@ export default function MenuLateral({
         </button>
       </div>
 
-      {isDev && (
-        <CreateCompanyDialog
+      {(isDev || userRole === 'contador') && (
+        <AddEmpresaDialog
           open={addOpen}
           onClose={() => setAddOpen(false)}
           onCreated={() => { setAddOpen(false); router.refresh(); }}
