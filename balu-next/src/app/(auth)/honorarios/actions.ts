@@ -38,11 +38,13 @@ export async function createHonorarioAction(fd: FormData): Promise<Result> {
   const parsed = HonorarioSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
 
-  const { supabase, user } = await getUserAndCompany();
+  const { supabase, user, companyId } = await getUserAndCompany();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
   const { error } = await supabase.from('honorarios').insert({
     ...parsed.data,
+    company_id: companyId,
     mes_referencia: mesReferenciaToDate(parsed.data.mes_referencia),
   });
   if (error) return { ok: false, error: error.message };
@@ -57,18 +59,20 @@ export async function updateHonorarioAction(id: string, fd: FormData): Promise<R
   const parsed = HonorarioSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
 
-  const { supabase, user } = await getUserAndCompany();
+  const { supabase, user, companyId } = await getUserAndCompany();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
   const { error } = await supabase
     .from('honorarios')
     .update({
       ...parsed.data,
+      company_id: companyId,
       mes_referencia: mesReferenciaToDate(parsed.data.mes_referencia),
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
-    .eq('company_id', parsed.data.company_id);
+    .eq('company_id', companyId);
 
   if (error) return { ok: false, error: error.message };
 
