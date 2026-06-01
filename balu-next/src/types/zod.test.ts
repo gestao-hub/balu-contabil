@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { EmpresaFiscalSchema, CompanySchema, CompanyCreateSchema } from './zod';
+import { EmpresaFiscalSchema, CompanySchema, CompanyCreateSchema, AberturaCreateSchema } from './zod';
+import { EMPTY_ABERTURA } from '@/types/abertura';
 
 describe('EmpresaFiscalSchema', () => {
   it('aceita Simples + Anexo III + Fator R', () => {
@@ -85,5 +86,34 @@ describe('EmpresaFiscalSchema — campos NFS-e (PR 1.5)', () => {
   });
   it('rejeita municipio_id não-uuid', () => {
     expect(EmpresaFiscalSchema.partial().safeParse({ municipio_id: 'abc' }).success).toBe(false);
+  });
+});
+
+describe('AberturaCreateSchema', () => {
+  const valid = {
+    ...EMPTY_ABERTURA,
+    titular_nome_completo: 'Ana Souza',
+    titular_cpf: '52998224725', // CPF válido
+    empresa_razao_social_1: 'Ana Souza ME',
+    empresa_tipo: 'MEI',
+    empresa_regime_tributario: 'MEI',
+    sede_tipo_endereco: 'Residencial',
+  };
+
+  it('aceita um payload mínimo válido', () => {
+    expect(AberturaCreateSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('rejeita CPF inválido', () => {
+    expect(AberturaCreateSchema.safeParse({ ...valid, titular_cpf: '11111111111' }).success).toBe(false);
+  });
+
+  it('rejeita empresa_tipo fora do enum', () => {
+    expect(AberturaCreateSchema.safeParse({ ...valid, empresa_tipo: 'SA' }).success).toBe(false);
+  });
+
+  it('exige razão social 1 e nome do titular', () => {
+    expect(AberturaCreateSchema.safeParse({ ...valid, empresa_razao_social_1: '' }).success).toBe(false);
+    expect(AberturaCreateSchema.safeParse({ ...valid, titular_nome_completo: '' }).success).toBe(false);
   });
 });

@@ -2,6 +2,7 @@
 // Estender conforme as pages forem implementadas.
 import { z } from 'zod';
 import { isValidCnpj } from '@/lib/validators/cnpj';
+import { EMPRESA_TIPOS, REGIMES, SEDE_TIPOS } from '@/types/abertura';
 
 export const ClienteSchema = z.object({
   person_type: z.enum(['PF','PJ']),
@@ -96,3 +97,25 @@ export const EmpresaFiscalSchema = z.object({
   empresa_fiscal_ativada: z.boolean().nullable().optional(),
 });
 export type EmpresaFiscalInput = z.infer<typeof EmpresaFiscalSchema>;
+
+// Validador de CPF (isValidCnpj já existe via @/lib/validators/cnpj; não havia isValidCpf).
+export function isValidCpf(cpf: string): boolean {
+  const c = cpf.replace(/\D/g, '');
+  if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+  const calc = (len: number) => {
+    let sum = 0;
+    for (let i = 0; i < len; i++) sum += Number(c[i]) * (len + 1 - i);
+    const d = (sum * 10) % 11;
+    return d === 10 ? 0 : d;
+  };
+  return calc(9) === Number(c[9]) && calc(10) === Number(c[10]);
+}
+
+export const AberturaCreateSchema = z.object({
+  titular_nome_completo: z.string().trim().min(1, 'Informe o nome completo do titular.'),
+  titular_cpf: z.string().refine((v) => isValidCpf(v), 'CPF inválido.'),
+  empresa_razao_social_1: z.string().trim().min(1, 'Informe ao menos a 1ª opção de razão social.'),
+  empresa_tipo: z.enum([...EMPRESA_TIPOS] as [string, ...string[]], { errorMap: () => ({ message: 'Selecione o tipo de empresa.' }) }),
+  empresa_regime_tributario: z.enum([...REGIMES] as [string, ...string[]], { errorMap: () => ({ message: 'Selecione o regime.' }) }),
+  sede_tipo_endereco: z.enum([...SEDE_TIPOS] as [string, ...string[]], { errorMap: () => ({ message: 'Selecione o tipo de endereço da sede.' }) }),
+}).passthrough(); // demais campos são opcionais e passam direto pro insert
