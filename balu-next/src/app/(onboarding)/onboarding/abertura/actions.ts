@@ -1,0 +1,134 @@
+// src/app/(onboarding)/onboarding/abertura/actions.ts
+'use server';
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+import { createServerClient } from '@/lib/supabase/server';
+import { AberturaCreateSchema } from '@/types/zod';
+import { ABERTURA_TEXT_FIELDS, DOC_KEYS, EMPTY_ABERTURA, type AberturaData, type DocKey } from '@/types/abertura';
+import { uploadAberturaDoc } from '@/lib/clients/supabase-storage';
+import { canonical, dadosHash, sha256File } from '@/lib/abertura/hash';
+
+type Result = { ok: true } | { ok: false; error: string };
+
+function parseForm(fd: FormData): AberturaData {
+  const d: AberturaData = { ...EMPTY_ABERTURA };
+  for (const k of ABERTURA_TEXT_FIELDS) {
+    const raw = fd.get(k);
+    if (k === 'empresa_cnaes_secundarios') {
+      (d as unknown as Record<string, unknown>)[k] = String(raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (k === 'sede_mesmo_que_titular') {
+      (d as unknown as Record<string, unknown>)[k] = String(raw ?? '') === 'true';
+    } else {
+      (d as unknown as Record<string, unknown>)[k] = String(raw ?? '');
+    }
+  }
+  return d;
+}
+
+async function fileEntry(fd: FormData, k: DocKey): Promise<{ bytes: Buffer; ext: string; type: string } | null> {
+  const f = fd.get(k);
+  if (!(f instanceof File) || f.size === 0) return null;
+  const bytes = Buffer.from(await f.arrayBuffer());
+  const ext = (f.name.split('.').pop() || 'bin').toLowerCase();
+  return { bytes, ext, type: f.type || 'application/octet-stream' };
+}
+
+export async function submitAberturaAction(fd: FormData): Promise<Result> {
+  const data = parseForm(fd);
+  const parsed = AberturaCreateSchema.safeParse(data);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  // Pré-checa CPF (coluna UNIQUE)
+  const { data: existing } = await supabase
+    .from('abertura_empresas').select('id').eq('titular_cpf', data.titular_cpf).maybeSingle();
+  if (existing) return { ok: false, error: 'Já existe uma solicitação de abertura para este CPF.' };
+
+  // 1) stub em companies
+  const { data: stub, error: stubErr } = await supabase.from('companies').insert({
+    user_id: user.id, status: 'em_abertura', cnpj: null,
+    razao_social: parsed.data.empresa_razao_social_1,
+    nome: parsed.data.empresa_nome_fantasia || parsed.data.empresa_razao_social_1,
+  }).select('id').single();
+  if (stubErr || !stub) return { ok: false, error: 'Falha ao iniciar a empresa.' };
+
+  // 2) profiles.current_company
+  const { data: prof } = await supabase.from('profiles').select('id').eq('user_id', user.id).maybeSingle();
+  if (prof) await supabase.from('profiles').update({ current_company: stub.id }).eq('user_id', user.id);
+  else await supabase.from('profiles').insert({ user_id: user.id, current_company: stub.id });
+
+  // 3) uploads + content-hash
+  const docPaths: Partial<Record<DocKey, string>> = {};
+  const docHashes: Partial<Record<DocKey, string>> = {};
+  for (const k of DOC_KEYS) {
+    const entry = await fileEntry(fd, k);
+    if (!entry) continue;
+    const { path } = await uploadAberturaDoc(stub.id, `${k}.${entry.ext}`, entry.bytes, entry.type);
+    docPaths[k] = path; docHashes[k] = sha256File(entry.bytes);
+  }
+
+  // 4) insert abertura_empresas using parsed.data (trimmed values from Zod)
+  const hash = dadosHash(canonical(data, docHashes));
+  const row: Record<string, unknown> = {
+    user_id: user.id,
+    company_id: stub.id,
+    processo_etapa: 'recebido',
+    dados_hash: hash,
+    // required fields from parsed.data
+    titular_nome_completo: parsed.data.titular_nome_completo,
+    titular_cpf: parsed.data.titular_cpf,
+    empresa_razao_social_1: parsed.data.empresa_razao_social_1,
+    empresa_tipo: parsed.data.empresa_tipo,
+    empresa_regime_tributario: parsed.data.empresa_regime_tributario,
+    sede_tipo_endereco: parsed.data.sede_tipo_endereco,
+    // optional fields from parsed.data
+    titular_rg_numero: parsed.data.titular_rg_numero,
+    titular_rg_orgao_emissor: parsed.data.titular_rg_orgao_emissor,
+    titular_rg_uf: parsed.data.titular_rg_uf,
+    titular_data_nascimento: parsed.data.titular_data_nascimento,
+    titular_estado_civil: parsed.data.titular_estado_civil,
+    titular_nome_mae: parsed.data.titular_nome_mae,
+    titular_nacionalidade: parsed.data.titular_nacionalidade,
+    titular_telefone: parsed.data.titular_telefone,
+    titular_email: parsed.data.titular_email,
+    titular_naturalidade_cidade: parsed.data.titular_naturalidade_cidade,
+    titular_naturalidade_uf: parsed.data.titular_naturalidade_uf,
+    titular_cep: parsed.data.titular_cep,
+    titular_logradouro: parsed.data.titular_logradouro,
+    titular_numero: parsed.data.titular_numero,
+    titular_complemento: parsed.data.titular_complemento,
+    titular_bairro: parsed.data.titular_bairro,
+    titular_cidade: parsed.data.titular_cidade,
+    titular_uf: parsed.data.titular_uf,
+    empresa_razao_social_2: parsed.data.empresa_razao_social_2,
+    empresa_razao_social_3: parsed.data.empresa_razao_social_3,
+    empresa_nome_fantasia: parsed.data.empresa_nome_fantasia,
+    empresa_capital_social: parsed.data.empresa_capital_social,
+    empresa_objeto_social: parsed.data.empresa_objeto_social,
+    empresa_cnae_principal: parsed.data.empresa_cnae_principal,
+    empresa_cnaes_secundarios: parsed.data.empresa_cnaes_secundarios,
+    sede_mesmo_que_titular: parsed.data.sede_mesmo_que_titular,
+    sede_cep: parsed.data.sede_cep,
+    sede_logradouro: parsed.data.sede_logradouro,
+    sede_numero: parsed.data.sede_numero,
+    sede_complemento: parsed.data.sede_complemento,
+    sede_bairro: parsed.data.sede_bairro,
+    sede_cidade: parsed.data.sede_cidade,
+    sede_uf: parsed.data.sede_uf,
+  };
+  for (const k of DOC_KEYS) if (docPaths[k]) row[k] = docPaths[k];
+
+  const { error: insErr } = await supabase.from('abertura_empresas').insert(row);
+  if (insErr) {
+    // rollback best-effort
+    await supabase.from('profiles').update({ current_company: null }).eq('user_id', user.id);
+    await supabase.from('companies').delete().eq('id', stub.id);
+    return { ok: false, error: 'Falha ao registrar a solicitação. Tente novamente.' };
+  }
+
+  revalidatePath('/');
+  redirect('/configuracoes');
+}
