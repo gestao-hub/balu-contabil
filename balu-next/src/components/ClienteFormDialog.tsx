@@ -9,6 +9,7 @@ import { X, Search, Loader2 } from 'lucide-react';
 import { ClienteSchema, type ClienteInput } from '@/types/zod';
 import { useToast } from '@/components/Toaster';
 import { createClienteAction, updateClienteAction, lookupCnpjAction } from '@/app/(auth)/clientes/actions';
+import { formatCnpj } from '@/lib/format/masks';
 
 export type ClienteFormDialogProps = {
   open: boolean;
@@ -80,6 +81,8 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
       setForm((prev) => ({
         ...prev,
         razao_social: d.razao_social ?? prev.razao_social,
+        inscricao_estadual: d.inscricao_estadual ?? prev.inscricao_estadual,
+        inscricao_municipal: d.inscricao_municipal ?? prev.inscricao_municipal,
         logradouro: d.logradouro ?? prev.logradouro,
         numero: d.numero ?? prev.numero,
         complemento: d.complemento ?? prev.complemento,
@@ -174,9 +177,9 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
             <Field label={docLabel} error={errors.document} required>
               <div className="flex items-start gap-2">
                 <input
-                  value={form.document}
+                  value={form.person_type === 'PJ' ? formatCnpj(form.document) : form.document}
                   onChange={(e) => update('document', e.target.value.replace(/\D/g, ''))}
-                  maxLength={form.person_type === 'PF' ? 11 : 14}
+                  maxLength={form.person_type === 'PF' ? 11 : 18}
                   className={`${inputCls} flex-1`}
                 />
                 {form.person_type === 'PJ' && (
