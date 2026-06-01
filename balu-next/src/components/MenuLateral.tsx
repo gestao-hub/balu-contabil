@@ -10,7 +10,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Home, Users, FileText, Calculator, Settings, Building2,
+  Home, Users, FileText, Calculator, HandCoins, Settings, Building2,
   ChevronDown, Menu as MenuIcon, X, LogOut, Plus,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
@@ -37,8 +37,8 @@ const NAV: NavItem[] = [
   { href: '/clientes',              label: 'Clientes',       Icon: Users },
   { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText },
   { href: '/impostos',              label: 'Impostos',       Icon: Calculator },
+  { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, roles: ['contador'] },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings },
-  // TODO(honorarios): rota /honorarios ainda não gerada — adicionar a NAV quando criada
 ];
 
 export default function MenuLateral({
