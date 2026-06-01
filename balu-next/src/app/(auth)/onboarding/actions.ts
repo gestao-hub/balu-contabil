@@ -2,8 +2,8 @@
 // Server actions usadas pelo <CreateCompanyDialog>:
 //  - lookupCepAction:   consulta ViaCEP e retorna endereço
 //  - createCompanyAction: insere em `companies` + chama RPC add_company_to_profile
-// A consulta de CNPJ na Focus saiu daqui: agora só o cadastro de CLIENTE a usa
-// (ver lookupCnpjAction em app/(auth)/clientes/actions.ts).
+// A consulta de CNPJ na Focus vive em lib/fiscal/cnpj-lookup.ts e é reexportada
+// aqui (empresa) e em clientes/actions.ts (cliente) como server action.
 'use server';
 
 import { revalidatePath } from 'next/cache';
@@ -11,6 +11,11 @@ import { createServerClient } from '@/lib/supabase/server';
 import { CompanyCreateSchema, type CompanyInput } from '@/types/zod';
 import { syncEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
+import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
+
+export async function lookupCnpjAction(cnpj: string) {
+  return lookupCnpj(cnpj);
+}
 
 export type CepLookup = {
   logradouro?: string;
