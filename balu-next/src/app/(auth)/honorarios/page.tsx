@@ -16,7 +16,7 @@ export default async function HonorariosPage() {
     .eq('user_id', user.id)
     .maybeSingle();
   const role = (roleRow?.role as string | null) ?? (user.user_metadata?.type as string | null) ?? '';
-  if (role !== 'Contador') redirect('/');
+  if (role.toLowerCase() !== 'contador') redirect('/');
 
   // Empresa do contador
   const { data: profile } = await supabase
