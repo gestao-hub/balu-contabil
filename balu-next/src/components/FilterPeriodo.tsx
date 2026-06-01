@@ -7,28 +7,108 @@
 // (Aplicar e Limpar). States: `data_inicial_`, `data_final_`. Custom event `Filtered(start,end)`.
 
 import { useEffect, useRef, useState } from 'react';
-import { Filter, X } from 'lucide-react';
+import { Filter, X, Calendar } from 'lucide-react';
 
 export type PeriodoRange = { start: string | null; end: string | null };
 
 export type FilterPeriodoProps = {
   /** Disparado quando o usuário aplica ou limpa o filtro. */
   onChange: (range: PeriodoRange) => void;
-  /** Valor inicial — útil para reidratar de URL state. */
+  /** Valor inicial — start/end em ISO (YYYY-MM-DD). */
   initial?: PeriodoRange;
   /** Rótulo do botão acessível. */
   ariaLabel?: string;
 };
 
+// ─── helpers de conversão de data ────────────────────────────────────────────
+function isoToBR(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function brToISO(br: string): string {
+  if (!br || !br.includes('/')) return '';
+  const [d, m, y] = br.split('/');
+  return y && m && d ? `${y}-${m}-${d}` : '';
+}
+function maskDate(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+// ─── campo de data com máscara + calendário nativo ───────────────────────────
+function DateFieldBR({
+  label,
+  value,
+  onChange,
+  min,
+}: {
+  label: string;
+  value: string; // dd/mm/aaaa
+  onChange: (v: string) => void;
+  min?: string;  // ISO mínimo para o picker
+}) {
+  const pickerRef = useRef<HTMLInputElement>(null);
+
+  function openPicker() {
+    const el = pickerRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') { el.showPicker(); } else { el.focus(); }
+  }
+
+  const isoValue = brToISO(value);
+
+  return (
+    <label className="block text-xs text-muted-foreground-2">
+      {label}
+      <div className="mt-1 flex items-center gap-1 rounded-md border border-border bg-surface-2 px-3 py-2">
+        <input
+          type="text"
+          inputMode="numeric"
+          value={value}
+          onChange={e => onChange(maskDate(e.target.value))}
+          placeholder="dd/mm/aaaa"
+          maxLength={10}
+          className="flex-1 bg-transparent text-foreground text-sm focus:outline-none font-mono min-w-0"
+        />
+        <button type="button" onClick={openPicker} title="Abrir calendário"
+          className="text-muted-foreground hover:text-foreground shrink-0">
+          <Calendar className="size-3.5" />
+        </button>
+        <input
+          ref={pickerRef}
+          type="date"
+          value={isoValue}
+          min={min}
+          onChange={e => onChange(isoToBR(e.target.value))}
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+      </div>
+    </label>
+  );
+}
+
+// ─── componente principal ─────────────────────────────────────────────────────
 export default function FilterPeriodo({
   onChange,
   initial,
   ariaLabel = 'Filtrar por período',
 }: FilterPeriodoProps) {
-  const [open, setOpen] = useState(false);
-  const [start, setStart] = useState<string>(initial?.start ?? '');
-  const [end, setEnd] = useState<string>(initial?.end ?? '');
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen]   = useState(false);
+  const [start, setStart] = useState<string>(isoToBR(initial?.start ?? ''));
+  const [end, setEnd]     = useState<string>(isoToBR(initial?.end ?? ''));
+  const rootRef           = useRef<HTMLDivElement>(null);
+
+  // Sincroniza com prop initial quando muda (ex: estado inicial do mês)
+  useEffect(() => {
+    setStart(isoToBR(initial?.start ?? ''));
+    setEnd(isoToBR(initial?.end ?? ''));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial?.start, initial?.end]);
 
   useEffect(() => {
     if (!open) return;
@@ -40,12 +120,11 @@ export default function FilterPeriodo({
   }, [open]);
 
   function apply() {
-    onChange({ start: start || null, end: end || null });
+    onChange({ start: brToISO(start) || null, end: brToISO(end) || null });
     setOpen(false);
   }
   function clear() {
-    setStart('');
-    setEnd('');
+    setStart(''); setEnd('');
     onChange({ start: null, end: null });
     setOpen(false);
   }
@@ -77,26 +156,20 @@ export default function FilterPeriodo({
             </button>
           </div>
 
-          <label className="block text-xs text-muted-foreground-2">
-            Data inicial
-            <input
-              type="date"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:border-primary focus:outline-none"
-            />
-          </label>
+          <DateFieldBR
+            label="Data inicial"
+            value={start}
+            onChange={setStart}
+          />
 
-          <label className="mt-3 block text-xs text-muted-foreground-2">
-            Data final
-            <input
-              type="date"
+          <div className="mt-3">
+            <DateFieldBR
+              label="Data final"
               value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              min={start || undefined}
-              className="mt-1 block w-full rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              onChange={setEnd}
+              min={brToISO(start) || undefined}
             />
-          </label>
+          </div>
 
           <div className="mt-4 flex flex-col gap-2">
             <button

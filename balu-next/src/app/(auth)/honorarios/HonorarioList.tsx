@@ -1,10 +1,11 @@
 'use client';
-import { useState, useEffect, useTransition, useRef } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { useToast } from '@/components/Toaster';
-import { Plus, CheckCircle, Pencil, Trash2, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, Download, Calendar } from 'lucide-react';
+import { Plus, CheckCircle, Pencil, Trash2, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { marcarPagoAction, deleteHonorarioAction } from './actions';
 import HonorarioFormDialog, { type ClienteOption, type HonorarioRow } from './HonorarioFormDialog';
 import PopupConfirm from '@/components/PopupConfirm';
+import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 
 export type { HonorarioRow };
 
@@ -43,25 +44,6 @@ function ultimoDiaMesISO(): string {
   return `${brt.getFullYear()}-${String(brt.getMonth() + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
 }
 
-function isoToBR(iso: string): string {
-  if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  return `${d}/${m}/${y}`;
-}
-
-function brToISO(br: string): string {
-  if (!br || !br.includes('/')) return '';
-  const [d, m, y] = br.split('/');
-  return y && m && d ? `${y}-${m}-${d}` : '';
-}
-
-function maskDate(value: string): string {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-}
-
 function esc(v: unknown): string {
   const s = v == null ? '' : String(v);
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -93,44 +75,6 @@ function downloadCSV(rows: HonorarioRow[]) {
   URL.revokeObjectURL(url);
 }
 
-/** Input de data exibindo dd/mm/aaaa + ícone que abre o picker nativo do browser. */
-function DateInputBR({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const pickerRef = useRef<HTMLInputElement>(null);
-  const isoValue = brToISO(value);
-
-  function openPicker() {
-    const el = pickerRef.current;
-    if (!el) return;
-    if (typeof el.showPicker === 'function') { el.showPicker(); } else { el.focus(); }
-  }
-
-  return (
-    <div className="flex items-center gap-1">
-      <input
-        type="text"
-        inputMode="numeric"
-        value={value}
-        onChange={e => onChange(maskDate(e.target.value))}
-        placeholder="dd/mm/aaaa"
-        maxLength={10}
-        className="bg-transparent text-foreground text-sm focus:outline-none w-24 font-mono"
-      />
-      <button type="button" onClick={openPicker} className="text-muted-foreground hover:text-foreground" title="Abrir calendário">
-        <Calendar className="size-3.5" />
-      </button>
-      <input
-        ref={pickerRef}
-        type="date"
-        value={isoValue}
-        onChange={e => onChange(isoToBR(e.target.value))}
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden="true"
-      />
-    </div>
-  );
-}
-
 type Props = {
   initial: HonorarioRow[];
   companyId: string;
@@ -143,10 +87,10 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
   const [filtroCliente, setFiltroCliente]       = useState('');
   const [statusChecked, setStatusChecked]       = useState<string[]>([]);
   const [filtroStatuses, setFiltroStatuses]     = useState<string[]>([]);
-  const [filtroInicio, setFiltroInicio]           = useState(() => isoToBR(primeiroDiaMesISO()));
-  const [filtroFim, setFiltroFim]                 = useState(() => isoToBR(ultimoDiaMesISO()));
-  const [filtroInicioAtivo, setFiltroInicioAtivo] = useState(primeiroDiaMesISO);
-  const [filtroFimAtivo, setFiltroFimAtivo]       = useState(ultimoDiaMesISO);
+  const [periodo, setPeriodo] = useState<PeriodoRange>({
+    start: primeiroDiaMesISO(),
+    end:   ultimoDiaMesISO(),
+  });
   const [pagina, setPagina]                     = useState(1);
   const [showForm, setShowForm]                 = useState(false);
   const [editing, setEditing]                   = useState<HonorarioRow | undefined>();
@@ -156,12 +100,12 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
 
   useEffect(() => { setRows(initial); }, [initial]);
 
-  // Filtragem (por data_vencimento para precisão de dia)
+  // Filtragem por data_vencimento (precisão de dia)
   const filtrados = rows.filter(r => {
     if (filtroCliente && r.cliente_id !== filtroCliente) return false;
     if (filtroStatuses.length > 0 && !filtroStatuses.includes(r.status ?? 'pendente')) return false;
-    if (filtroInicioAtivo && r.data_vencimento < filtroInicioAtivo) return false;
-    if (filtroFimAtivo   && r.data_vencimento > filtroFimAtivo)   return false;
+    if (periodo.start && r.data_vencimento < periodo.start) return false;
+    if (periodo.end   && r.data_vencimento > periodo.end)   return false;
     return true;
   });
 
@@ -177,7 +121,6 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
   const qtdPago       = filtrados.filter(r => r.status === 'pago').length;
   const qtdAtrasado   = filtrados.filter(r => r.status === 'atrasado').length;
 
-  function aplicarFiltros() { setFiltroInicioAtivo(brToISO(filtroInicio)); setFiltroFimAtivo(brToISO(filtroFim)); setPagina(1); }
   function toggleStatus(s: string) { setStatusChecked(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]); }
   function aplicarStatus() { setFiltroStatuses(statusChecked); setPagina(1); }
   function fecharConfirm() { setConfirmRow(null); setConfirmAcao(null); }
@@ -302,17 +245,11 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
           )}
         </div>
 
-        {/* Período — range por dia (dd/mm/aaaa) */}
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
-          <span className="text-muted-foreground text-xs">De</span>
-          <DateInputBR value={filtroInicio} onChange={setFiltroInicio} />
-          <span className="text-muted-foreground text-xs">até</span>
-          <DateInputBR value={filtroFim} onChange={setFiltroFim} />
-          <button type="button" onClick={aplicarFiltros}
-            className="rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-white hover:opacity-90">
-            Filtrar
-          </button>
-        </div>
+        {/* Período */}
+        <FilterPeriodo
+          initial={periodo}
+          onChange={p => { setPeriodo(p); setPagina(1); }}
+        />
       </div>
 
       {/* ── Tabela ── */}
