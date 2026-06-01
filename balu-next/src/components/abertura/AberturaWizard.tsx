@@ -291,10 +291,13 @@ export default function AberturaWizard({
       {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
 
       <div className="mt-6 flex justify-between">
-        <button type="button" onClick={back}
-          className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-surface-2">
-          {step === 0 ? '← Seleção' : 'Voltar'}
-        </button>
+        {/* Oculta o botão no step 0 quando não há onBack (ex: popup sem navegação de volta) */}
+        {(step > 0 || onBack) ? (
+          <button type="button" onClick={back}
+            className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-surface-2">
+            {step === 0 ? '← Seleção' : 'Voltar'}
+          </button>
+        ) : <span />}
         {!isLast
           ? <button type="button" onClick={next}
               className="px-4 py-2 text-sm rounded-lg bg-primary text-white">Avançar</button>
