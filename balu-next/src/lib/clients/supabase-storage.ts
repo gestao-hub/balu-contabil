@@ -47,7 +47,7 @@ export async function uploadCertificado(
   return { path };
 }
 
-const BUCKET_ABERTURA = 'abertura-documentos';
+export const ABERTURA_BUCKET = 'abertura-documentos';
 
 /** Upload genérico para qualquer bucket privado, com o admin client (ignora RLS). */
 export async function uploadToBucket(
@@ -77,7 +77,5 @@ export async function uploadAberturaDoc(
   contentType: string,
 ): Promise<{ path: string }> {
   if (!scopeId) throw new Error('scopeId obrigatório');
-  return uploadToBucket(BUCKET_ABERTURA, `${scopeId}/${fileName}`, file, contentType);
+  return uploadToBucket(ABERTURA_BUCKET, `${scopeId}/${fileName}`, file, contentType);
 }
-
-export const ABERTURA_BUCKET = BUCKET_ABERTURA;

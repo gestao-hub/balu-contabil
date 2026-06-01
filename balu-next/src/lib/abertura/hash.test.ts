@@ -23,6 +23,15 @@ describe('canonical / dadosHash', () => {
     expect(base).not.toBe(alt);
   });
 
+  it('muda o hash ao alternar um campo booleano (sede_mesmo_que_titular)', () => {
+    const off = dadosHash(canonical({ ...EMPTY_ABERTURA, sede_mesmo_que_titular: false }, {}));
+    const on = dadosHash(canonical({ ...EMPTY_ABERTURA, sede_mesmo_que_titular: true }, {}));
+    expect(off).not.toBe(on);
+    // mesmo valor booleano produz o mesmo hash
+    const onAgain = dadosHash(canonical({ ...EMPTY_ABERTURA, sede_mesmo_que_titular: true }, {}));
+    expect(on).toBe(onAgain);
+  });
+
   it('normaliza arrays (ordem estável) e trim de strings', () => {
     const a = dadosHash(canonical({ ...EMPTY_ABERTURA, empresa_cnaes_secundarios: ['b', 'a'] }, {}));
     const b = dadosHash(canonical({ ...EMPTY_ABERTURA, empresa_cnaes_secundarios: ['a', 'b'] }, {}));

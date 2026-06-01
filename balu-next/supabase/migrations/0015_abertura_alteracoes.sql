@@ -23,3 +23,15 @@ CREATE TRIGGER abertura_alteracoes_set_updated_at BEFORE UPDATE
 ALTER TABLE public.abertura_alteracoes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY abertura_alteracoes_owner ON public.abertura_alteracoes FOR ALL
   TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+-- Stub de empresa em abertura não tem CNPJ ainda
+ALTER TABLE public.companies ALTER COLUMN cnpj DROP NOT NULL;
+
+-- status 'em_abertura' para empresas em processo de abertura
+ALTER TABLE public.companies DROP CONSTRAINT IF EXISTS companies_status_check;
+ALTER TABLE public.companies ADD CONSTRAINT companies_status_check
+  CHECK (status IN ('active', 'inactive', 'em_abertura'));
+
+-- índice no FK (Postgres não cria automaticamente)
+CREATE INDEX IF NOT EXISTS abertura_alteracoes_abertura_id_idx
+  ON public.abertura_alteracoes (abertura_id);

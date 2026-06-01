@@ -6,6 +6,7 @@ export type CanonicalObject = { fields: Record<string, unknown>; docs: Record<st
 
 function normalizeValue(v: unknown): unknown {
   if (Array.isArray(v)) return [...v].map(String).map((s) => s.trim()).sort();
+  if (typeof v === 'boolean') return v; // boolean serializa de forma determinística
   if (typeof v === 'string') return v.trim();
   return v;
 }
