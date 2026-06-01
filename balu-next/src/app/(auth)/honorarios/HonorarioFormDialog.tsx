@@ -1,5 +1,5 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/Toaster';
 import { createHonorarioAction, updateHonorarioAction } from './actions';
@@ -31,11 +31,39 @@ function dateToMesRef(d: string): string {
   return d.replace(/-/g, '').slice(0, 6);
 }
 
+/** YYYY-MM-DD → DD/MM/YYYY */
+function isoToBR(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+/** DD/MM/YYYY → YYYY-MM-DD (para enviar ao servidor) */
+function brToISO(br: string): string {
+  if (!br || !br.includes('/')) return br;
+  const [d, m, y] = br.split('/');
+  return `${y}-${m}-${d}`;
+}
+
+/** Aplica máscara dd/mm/aaaa enquanto o usuário digita. */
+function maskDate(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
 export default function HonorarioFormDialog({ open, onClose, companyId, clientes, editing }: Props) {
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
+  const [dataVenc, setDataVenc] = useState(() => isoToBR(editing?.data_vencimento ?? ''));
+
+  // Sincroniza a data quando o dialog abre com um honorário diferente
+  useEffect(() => {
+    setDataVenc(isoToBR(editing?.data_vencimento ?? ''));
+  }, [open, editing?.id]);
 
   if (!open) return null;
 
@@ -44,6 +72,8 @@ export default function HonorarioFormDialog({ open, onClose, companyId, clientes
     setErro(null);
     const fd = new FormData(e.currentTarget);
     fd.set('company_id', companyId);
+    // Converte dd/mm/aaaa → yyyy-mm-dd para o servidor
+    fd.set('data_vencimento', brToISO(dataVenc));
 
     start(async () => {
       const res = editing
@@ -107,11 +137,16 @@ export default function HonorarioFormDialog({ open, onClose, companyId, clientes
           <label className="block text-sm text-muted-foreground-2">
             Vencimento *
             <input
-              name="data_vencimento"
-              type="date"
+              name="data_vencimento_display"
+              type="text"
+              inputMode="numeric"
               required
-              defaultValue={editing?.data_vencimento ?? ''}
-              className={cls + ' mt-1'}
+              value={dataVenc}
+              onChange={e => setDataVenc(maskDate(e.target.value))}
+              placeholder="dd/mm/aaaa"
+              maxLength={10}
+              pattern="\d{2}/\d{2}/\d{4}"
+              className={cls + ' mt-1 font-mono'}
             />
           </label>
 
