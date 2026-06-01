@@ -1,5 +1,5 @@
 // @custom — bubble-behavior: editado à mão, não regenerar.
-// Onboarding: se profile.current_company estiver vazio, força o <CreateCompanyDialog>.
+// Auth gate: sem sessão → /login; sem empresa (current_company vazio) → /onboarding.
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import MenuLateral from '@/components/MenuLateral';
