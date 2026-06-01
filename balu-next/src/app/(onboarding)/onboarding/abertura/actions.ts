@@ -19,6 +19,9 @@ function parseForm(fd: FormData): AberturaData {
       (d as unknown as Record<string, unknown>)[k] = String(raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     } else if (k === 'sede_mesmo_que_titular') {
       (d as unknown as Record<string, unknown>)[k] = String(raw ?? '') === 'true';
+    } else if (k === 'titular_cpf') {
+      // Normaliza CPF para dígitos-only antes de armazenar e comparar (previne bypass da UNIQUE)
+      (d as unknown as Record<string, unknown>)[k] = String(raw ?? '').replace(/\D/g, '');
     } else {
       (d as unknown as Record<string, unknown>)[k] = String(raw ?? '');
     }
@@ -42,6 +45,14 @@ export async function submitAberturaAction(fd: FormData): Promise<Result> {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  // Guard: usuário já tem empresa ativa → não pode abrir outra via este fluxo
+  const { data: profGuard } = await supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle();
+  if (profGuard?.current_company) {
+    const { data: compGuard } = await supabase.from('companies').select('status').eq('id', profGuard.current_company).maybeSingle();
+    const st = (compGuard as { status?: string } | null)?.status;
+    if (st && st !== 'em_abertura') return { ok: false, error: 'Você já possui uma empresa ativa.' };
+  }
 
   // Pré-checa CPF (coluna UNIQUE)
   const { data: existing } = await supabase

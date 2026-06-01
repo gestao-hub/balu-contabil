@@ -172,7 +172,7 @@ export default function AberturaWizard({
           className="px-4 py-2 text-sm rounded-lg border border-border disabled:opacity-50">Voltar</button>
         {!isLast
           ? <button type="button" onClick={next} className="px-4 py-2 text-sm rounded-lg bg-primary text-white">Avançar</button>
-          : <button type="button" onClick={() => setConfirm(true)} className="px-4 py-2 text-sm rounded-lg bg-primary text-white">Enviar</button>}
+          : <button type="button" disabled={pending} onClick={() => setConfirm(true)} className="px-4 py-2 text-sm rounded-lg bg-primary text-white disabled:opacity-60">Enviar</button>}
       </div>
 
       <ConfirmacaoEnvioDialog open={confirm} mode={mode} pending={pending}
