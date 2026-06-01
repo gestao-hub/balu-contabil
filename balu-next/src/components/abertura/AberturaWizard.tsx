@@ -45,7 +45,7 @@ const STEPS: { title: string; fields: StepField[] }[] = [
   { title: 'Titular', fields: [
     { kind: 'alpha',  name: 'titular_nome_completo',   label: 'Nome completo', required: true },
     { kind: 'cpf',    name: 'titular_cpf',             label: 'CPF', required: true },
-    { kind: 'text',   name: 'titular_rg_numero',       label: 'RG' },
+    { kind: 'digits', name: 'titular_rg_numero',       label: 'RG' },
     { kind: 'select', name: 'titular_rg_orgao_emissor',label: 'Órgão emissor do RG', options: ORGAO_EMISSOR_OPTIONS },
     { kind: 'uf',     name: 'titular_rg_uf',           label: 'UF do RG' },
     { kind: 'date',   name: 'titular_data_nascimento', label: 'Data de nascimento' },
