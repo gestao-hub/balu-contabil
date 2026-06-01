@@ -147,14 +147,14 @@ export default function MenuLateral({
                 </ul>
               )}
             </div>
-            {isDev && (
+            {(isDev || userRole === 'contador') && (
               <button
                 type="button"
-                onClick={() => { setCompanyMenuOpen(false); setAddOpen(true); }}
+                onClick={() => { setCompanyMenuOpen(false); router.push('/onboarding'); }}
                 className="mt-2 flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-primary"
               >
                 <Plus className="size-3.5 shrink-0" />
-                Nova empresa
+                Adicionar empresa
               </button>
             )}
           </>
