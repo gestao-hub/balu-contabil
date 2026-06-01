@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useRef } from 'react';
 import { useToast } from '@/components/Toaster';
-import { Plus, CheckCircle, Pencil, Trash2, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { Plus, CheckCircle, Pencil, Trash2, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, Download, Calendar } from 'lucide-react';
 import { marcarPagoAction, deleteHonorarioAction } from './actions';
 import HonorarioFormDialog, { type ClienteOption, type HonorarioRow } from './HonorarioFormDialog';
 import PopupConfirm from '@/components/PopupConfirm';
@@ -91,6 +91,44 @@ function downloadCSV(rows: HonorarioRow[]) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+/** Input de data exibindo dd/mm/aaaa + ícone que abre o picker nativo do browser. */
+function DateInputBR({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const pickerRef = useRef<HTMLInputElement>(null);
+  const isoValue = brToISO(value);
+
+  function openPicker() {
+    const el = pickerRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') { el.showPicker(); } else { el.focus(); }
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={value}
+        onChange={e => onChange(maskDate(e.target.value))}
+        placeholder="dd/mm/aaaa"
+        maxLength={10}
+        className="bg-transparent text-foreground text-sm focus:outline-none w-24 font-mono"
+      />
+      <button type="button" onClick={openPicker} className="text-muted-foreground hover:text-foreground" title="Abrir calendário">
+        <Calendar className="size-3.5" />
+      </button>
+      <input
+        ref={pickerRef}
+        type="date"
+        value={isoValue}
+        onChange={e => onChange(isoToBR(e.target.value))}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+    </div>
+  );
 }
 
 type Props = {
@@ -267,25 +305,9 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
         {/* Período — range por dia (dd/mm/aaaa) */}
         <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
           <span className="text-muted-foreground text-xs">De</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={filtroInicio}
-            onChange={e => setFiltroInicio(maskDate(e.target.value))}
-            placeholder="dd/mm/aaaa"
-            maxLength={10}
-            className="bg-transparent text-foreground text-sm focus:outline-none w-24 font-mono"
-          />
+          <DateInputBR value={filtroInicio} onChange={setFiltroInicio} />
           <span className="text-muted-foreground text-xs">até</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={filtroFim}
-            onChange={e => setFiltroFim(maskDate(e.target.value))}
-            placeholder="dd/mm/aaaa"
-            maxLength={10}
-            className="bg-transparent text-foreground text-sm focus:outline-none w-24 font-mono"
-          />
+          <DateInputBR value={filtroFim} onChange={setFiltroFim} />
           <button type="button" onClick={aplicarFiltros}
             className="rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-white hover:opacity-90">
             Filtrar
