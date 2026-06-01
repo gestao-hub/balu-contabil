@@ -259,6 +259,26 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
         </div>
       ) : (
         <>
+          {/* Paginação no topo */}
+          {totalPaginas > 1 && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>
+                {((paginaAtual - 1) * POR_PAGINA) + 1}–{Math.min(paginaAtual * POR_PAGINA, filtrados.length)} de {filtrados.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPagina(p => Math.max(1, p - 1))} disabled={paginaAtual === 1}
+                  className="rounded-lg border border-border p-1.5 hover:bg-surface-2 disabled:opacity-40">
+                  <ChevronLeft className="size-4" />
+                </button>
+                <span className="px-3 py-1 text-foreground font-medium">{paginaAtual} / {totalPaginas}</span>
+                <button onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))} disabled={paginaAtual === totalPaginas}
+                  className="rounded-lg border border-border p-1.5 hover:bg-surface-2 disabled:opacity-40">
+                  <ChevronRight className="size-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-sm">
               <thead className="bg-surface-2 text-xs uppercase tracking-wide text-muted-foreground">
