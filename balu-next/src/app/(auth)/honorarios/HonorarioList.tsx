@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useTransition } from 'react';
 import { useToast } from '@/components/Toaster';
-import { Plus, CheckCircle, Pencil, Trash2, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, CheckCircle, Pencil, Trash2, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { marcarPagoAction, deleteHonorarioAction } from './actions';
 import HonorarioFormDialog, { type ClienteOption, type HonorarioRow } from './HonorarioFormDialog';
 import PopupConfirm from '@/components/PopupConfirm';
@@ -32,9 +32,46 @@ function dataBR(d: string | null) {
   return `${day}/${m}/${y}`;
 }
 
-function mesAtual(): string {
+function primeiroDiaMesISO(): string {
   const brt = new Date(Date.now() - 3 * 60 * 60 * 1000);
-  return `${brt.getFullYear()}-${String(brt.getMonth() + 1).padStart(2, '0')}`;
+  return `${brt.getFullYear()}-${String(brt.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function ultimoDiaMesISO(): string {
+  const brt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const last = new Date(brt.getFullYear(), brt.getMonth() + 1, 0).getDate();
+  return `${brt.getFullYear()}-${String(brt.getMonth() + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+}
+
+function esc(v: unknown): string {
+  const s = v == null ? '' : String(v);
+  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadCSV(rows: HonorarioRow[]) {
+  const header = ['Cliente', 'Competência', 'Valor (R$)', 'Vencimento', 'Pagamento', 'Status', 'Observação'];
+  const lines = [
+    '﻿' + header.map(esc).join(';'),
+    ...rows.map(r => [
+      r.clientes?.razao_social ?? '',
+      mesLabel(r.mes_referencia),
+      String(r.valor).replace('.', ','),
+      dataBR(r.data_vencimento),
+      dataBR(r.data_pagamento),
+      r.status ?? 'pendente',
+      r.observacao ?? '',
+    ].map(esc).join(';')),
+  ];
+  const csv = lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `honorarios_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 type Props = {
@@ -45,36 +82,35 @@ type Props = {
 
 export default function HonorarioList({ initial, companyId, clientes }: Props) {
   const toast = useToast();
-  const [rows, setRows]                       = useState(initial);
-  const [filtroCliente, setFiltroCliente]     = useState('');
-  const [statusChecked, setStatusChecked]     = useState<string[]>([]);
-  const [filtroStatuses, setFiltroStatuses]   = useState<string[]>([]);
-  const [filtroInicio, setFiltroInicio]       = useState(mesAtual);
-  const [filtroFim, setFiltroFim]             = useState(mesAtual);
-  const [filtroInicioAtivo, setFiltroInicioAtivo] = useState(mesAtual);
-  const [filtroFimAtivo, setFiltroFimAtivo]       = useState(mesAtual);
-  const [pagina, setPagina]                   = useState(1);
-  const [showForm, setShowForm]               = useState(false);
-  const [editing, setEditing]                 = useState<HonorarioRow | undefined>();
-  const [confirmRow, setConfirmRow]           = useState<HonorarioRow | null>(null);
-  const [confirmAcao, setConfirmAcao]         = useState<'pagar' | 'excluir' | null>(null);
-  const [pending, start]                      = useTransition();
+  const [rows, setRows]                         = useState(initial);
+  const [filtroCliente, setFiltroCliente]       = useState('');
+  const [statusChecked, setStatusChecked]       = useState<string[]>([]);
+  const [filtroStatuses, setFiltroStatuses]     = useState<string[]>([]);
+  const [filtroInicio, setFiltroInicio]         = useState(primeiroDiaMesISO);
+  const [filtroFim, setFiltroFim]               = useState(ultimoDiaMesISO);
+  const [filtroInicioAtivo, setFiltroInicioAtivo] = useState(primeiroDiaMesISO);
+  const [filtroFimAtivo, setFiltroFimAtivo]       = useState(ultimoDiaMesISO);
+  const [pagina, setPagina]                     = useState(1);
+  const [showForm, setShowForm]                 = useState(false);
+  const [editing, setEditing]                   = useState<HonorarioRow | undefined>();
+  const [confirmRow, setConfirmRow]             = useState<HonorarioRow | null>(null);
+  const [confirmAcao, setConfirmAcao]           = useState<'pagar' | 'excluir' | null>(null);
+  const [pending, start]                        = useTransition();
 
   useEffect(() => { setRows(initial); }, [initial]);
 
-  // Filtragem completa
+  // Filtragem (por data_vencimento para precisão de dia)
   const filtrados = rows.filter(r => {
     if (filtroCliente && r.cliente_id !== filtroCliente) return false;
     if (filtroStatuses.length > 0 && !filtroStatuses.includes(r.status ?? 'pendente')) return false;
-    const mesRow = r.mes_referencia?.slice(0, 7) ?? '';
-    if (filtroInicioAtivo && mesRow < filtroInicioAtivo) return false;
-    if (filtroFimAtivo   && mesRow > filtroFimAtivo)   return false;
+    if (filtroInicioAtivo && r.data_vencimento < filtroInicioAtivo) return false;
+    if (filtroFimAtivo   && r.data_vencimento > filtroFimAtivo)   return false;
     return true;
   });
 
-  const totalPaginas     = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA));
-  const paginaAtual      = Math.min(pagina, totalPaginas);
-  const paginados        = filtrados.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA);
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA));
+  const paginaAtual  = Math.min(pagina, totalPaginas);
+  const paginados    = filtrados.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA);
 
   // Métricas dos cards (respondem ao filtro aplicado)
   const totalPendente = filtrados.filter(r => r.status === 'pendente' || r.status === null).reduce((s, r) => s + r.valor, 0);
@@ -84,21 +120,9 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
   const qtdPago       = filtrados.filter(r => r.status === 'pago').length;
   const qtdAtrasado   = filtrados.filter(r => r.status === 'atrasado').length;
 
-  function aplicarFiltros() {
-    setFiltroInicioAtivo(filtroInicio);
-    setFiltroFimAtivo(filtroFim);
-    setPagina(1);
-  }
-
-  function toggleStatus(s: string) {
-    setStatusChecked(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-  }
-
-  function aplicarStatus() {
-    setFiltroStatuses(statusChecked);
-    setPagina(1);
-  }
-
+  function aplicarFiltros() { setFiltroInicioAtivo(filtroInicio); setFiltroFimAtivo(filtroFim); setPagina(1); }
+  function toggleStatus(s: string) { setStatusChecked(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]); }
+  function aplicarStatus() { setFiltroStatuses(statusChecked); setPagina(1); }
   function fecharConfirm() { setConfirmRow(null); setConfirmAcao(null); }
 
   function confirmarAcao() {
@@ -128,6 +152,25 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
 
   return (
     <div className="space-y-6">
+
+      {/* ── Barra de ações ── */}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          onClick={() => downloadCSV(filtrados)}
+          disabled={filtrados.length === 0}
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-2 disabled:opacity-40"
+        >
+          <Download className="size-4" />
+          Exportar CSV
+        </button>
+        <button
+          onClick={() => { setEditing(undefined); setShowForm(true); }}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+        >
+          <Plus className="size-4" />
+          Novo honorário
+        </button>
+      </div>
 
       {/* ── Cards de resumo ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -190,56 +233,39 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
               {s}
             </label>
           ))}
-          <button
-            type="button"
-            onClick={aplicarStatus}
-            className="ml-1 rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-white hover:opacity-90"
-          >
+          <button type="button" onClick={aplicarStatus}
+            className="ml-1 rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-white hover:opacity-90">
             Filtrar
           </button>
           {filtroStatuses.length > 0 && (
-            <button
-              type="button"
-              onClick={() => { setStatusChecked([]); setFiltroStatuses([]); setPagina(1); }}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
+            <button type="button" onClick={() => { setStatusChecked([]); setFiltroStatuses([]); setPagina(1); }}
+              className="text-xs text-muted-foreground hover:text-foreground">
               ✕
             </button>
           )}
         </div>
 
-        {/* Período — range de meses */}
+        {/* Período — range por dia */}
         <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
           <span className="text-muted-foreground text-xs">De</span>
           <input
-            type="month"
+            type="date"
             value={filtroInicio}
             onChange={e => setFiltroInicio(e.target.value)}
             className="bg-transparent text-foreground text-sm focus:outline-none"
           />
           <span className="text-muted-foreground text-xs">até</span>
           <input
-            type="month"
+            type="date"
             value={filtroFim}
             onChange={e => setFiltroFim(e.target.value)}
             className="bg-transparent text-foreground text-sm focus:outline-none"
           />
-          <button
-            type="button"
-            onClick={aplicarFiltros}
-            className="rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-white hover:opacity-90"
-          >
+          <button type="button" onClick={aplicarFiltros}
+            className="rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-white hover:opacity-90">
             Filtrar
           </button>
         </div>
-
-        <button
-          onClick={() => { setEditing(undefined); setShowForm(true); }}
-          className="ml-auto inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          <Plus className="size-4" />
-          Novo honorário
-        </button>
       </div>
 
       {/* ── Tabela ── */}
@@ -278,30 +304,19 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 justify-end">
                         {r.status !== 'pago' && (
-                          <button
-                            onClick={() => { setConfirmRow(r); setConfirmAcao('pagar'); }}
-                            disabled={pending}
-                            title="Marcar como pago"
-                            className="text-success hover:opacity-70 disabled:opacity-40"
-                          >
+                          <button onClick={() => { setConfirmRow(r); setConfirmAcao('pagar'); }} disabled={pending}
+                            title="Marcar como pago" className="text-success hover:opacity-70 disabled:opacity-40">
                             <CheckCircle className="size-4" />
                           </button>
                         )}
                         {r.status !== 'pago' && (
-                          <button
-                            onClick={() => { setEditing(r); setShowForm(true); }}
-                            title="Editar"
-                            className="text-muted-foreground hover:text-foreground"
-                          >
+                          <button onClick={() => { setEditing(r); setShowForm(true); }}
+                            title="Editar" className="text-muted-foreground hover:text-foreground">
                             <Pencil className="size-4" />
                           </button>
                         )}
-                        <button
-                          onClick={() => { setConfirmRow(r); setConfirmAcao('excluir'); }}
-                          disabled={pending}
-                          title="Excluir"
-                          className="text-destructive hover:opacity-70 disabled:opacity-40"
-                        >
+                        <button onClick={() => { setConfirmRow(r); setConfirmAcao('excluir'); }} disabled={pending}
+                          title="Excluir" className="text-destructive hover:opacity-70 disabled:opacity-40">
                           <Trash2 className="size-4" />
                         </button>
                       </div>
@@ -319,19 +334,13 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
                 {((paginaAtual - 1) * POR_PAGINA) + 1}–{Math.min(paginaAtual * POR_PAGINA, filtrados.length)} de {filtrados.length}
               </span>
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPagina(p => Math.max(1, p - 1))}
-                  disabled={paginaAtual === 1}
-                  className="rounded-lg border border-border p-1.5 hover:bg-surface-2 disabled:opacity-40"
-                >
+                <button onClick={() => setPagina(p => Math.max(1, p - 1))} disabled={paginaAtual === 1}
+                  className="rounded-lg border border-border p-1.5 hover:bg-surface-2 disabled:opacity-40">
                   <ChevronLeft className="size-4" />
                 </button>
                 <span className="px-3 py-1 text-foreground font-medium">{paginaAtual} / {totalPaginas}</span>
-                <button
-                  onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
-                  disabled={paginaAtual === totalPaginas}
-                  className="rounded-lg border border-border p-1.5 hover:bg-surface-2 disabled:opacity-40"
-                >
+                <button onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))} disabled={paginaAtual === totalPaginas}
+                  className="rounded-lg border border-border p-1.5 hover:bg-surface-2 disabled:opacity-40">
                   <ChevronRight className="size-4" />
                 </button>
               </div>
