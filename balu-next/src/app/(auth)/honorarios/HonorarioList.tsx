@@ -1,5 +1,5 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { useToast } from '@/components/Toaster';
 import { Plus, CheckCircle, Pencil, Trash2 } from 'lucide-react';
 import { marcarPagoAction, deleteHonorarioAction } from './actions';
@@ -44,6 +44,9 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
   const [showForm, setShowForm]           = useState(false);
   const [editing, setEditing]             = useState<HonorarioRow | undefined>();
   const [pending, start]                  = useTransition();
+
+  // Sincroniza estado local quando o Server Component re-envia novos dados (após router.refresh)
+  useEffect(() => { setRows(initial); }, [initial]);
 
   const filtrados = rows.filter(r => {
     if (filtroCliente && r.cliente_id !== filtroCliente) return false;
