@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useTransition } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/Toaster';
 import { createHonorarioAction, updateHonorarioAction } from './actions';
@@ -65,8 +66,6 @@ export default function HonorarioFormDialog({ open, onClose, companyId, clientes
     setDataVenc(isoToBR(editing?.data_vencimento ?? ''));
   }, [open, editing?.id]);
 
-  if (!open) return null;
-
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErro(null);
@@ -92,8 +91,10 @@ export default function HonorarioFormDialog({ open, onClose, companyId, clientes
 
   const cls = 'w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary';
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+  if (!open) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4">
       <div className="bg-surface rounded-2xl border border-border p-6 w-full max-w-md">
         <h2 className="font-semibold text-foreground mb-4">
           {editing ? 'Editar honorário' : 'Novo honorário'}
@@ -174,6 +175,7 @@ export default function HonorarioFormDialog({ open, onClose, companyId, clientes
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
