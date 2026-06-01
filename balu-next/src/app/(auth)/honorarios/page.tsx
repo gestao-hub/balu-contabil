@@ -34,7 +34,7 @@ export default async function HonorariosPage() {
     .select(`
       id, cliente_id, company_id, mes_referencia, valor,
       data_vencimento, data_pagamento, status, observacao,
-      clientes (nome, nome_fantasia)
+      clientes (razao_social)
     `)
     .eq('company_id', companyId)
     .order('mes_referencia', { ascending: false })
@@ -43,14 +43,14 @@ export default async function HonorariosPage() {
   // Lista de clientes para dropdowns
   const { data: clientesRaw } = await supabase
     .from('clientes')
-    .select('id, nome, nome_fantasia')
+    .select('id, razao_social')
     .eq('company_id', companyId)
     .is('deleted_at', null)
-    .order('nome');
+    .order('razao_social');
 
   const clienteOptions: ClienteOption[] = (clientesRaw ?? []).map(c => ({
     id: c.id as string,
-    nome: ((c.nome_fantasia || c.nome) as string) ?? '',
+    nome: (c.razao_social as string) ?? '',
   }));
 
   // Normaliza o join clientes (pode vir como array ou objeto)
@@ -68,7 +68,7 @@ export default async function HonorariosPage() {
       data_pagamento: (raw.data_pagamento as string | null) ?? null,
       status:         (raw.status as string | null) ?? null,
       observacao:     (raw.observacao as string | null) ?? null,
-      clientes:       clObj as { nome: string; nome_fantasia?: string | null } | null,
+      clientes:       clObj as { razao_social: string } | null,
     };
   });
 

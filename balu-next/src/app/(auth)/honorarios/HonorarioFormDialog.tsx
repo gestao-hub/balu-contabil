@@ -16,7 +16,7 @@ export type HonorarioRow = {
   data_pagamento: string | null;
   status: string | null;
   observacao: string | null;
-  clientes: { nome: string; nome_fantasia?: string | null } | null;
+  clientes: { razao_social: string } | null;
 };
 
 type Props = {

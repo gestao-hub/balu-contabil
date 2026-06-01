@@ -140,7 +140,7 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
               {filtrados.map(r => (
                 <tr key={r.id} className="bg-surface hover:bg-surface-2 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">
-                    {r.clientes?.nome_fantasia || r.clientes?.nome || '—'}
+                    {r.clientes?.razao_social || '—'}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{mesLabel(r.mes_referencia)}</td>
                   <td className="px-4 py-3 text-right tabular-nums font-medium">{brl(r.valor)}</td>
