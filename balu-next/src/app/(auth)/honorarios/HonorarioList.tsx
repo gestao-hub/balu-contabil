@@ -39,9 +39,10 @@ type Props = {
 export default function HonorarioList({ initial, companyId, clientes }: Props) {
   const toast = useToast();
   const [rows, setRows] = useState(initial);
-  const [filtroCliente, setFiltroCliente] = useState('');
-  const [filtroStatus, setFiltroStatus]   = useState('');
-  const [filtroMes, setFiltroMes]         = useState('');
+  const [filtroCliente, setFiltroCliente]     = useState('');
+  const [statusChecked, setStatusChecked]     = useState<string[]>([]);
+  const [filtroStatuses, setFiltroStatuses]   = useState<string[]>([]);
+  const [filtroMes, setFiltroMes]             = useState('');
   const [showForm, setShowForm]           = useState(false);
   const [editing, setEditing]             = useState<HonorarioRow | undefined>();
   const [confirmRow, setConfirmRow]       = useState<HonorarioRow | null>(null);
@@ -53,10 +54,14 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
 
   const filtrados = rows.filter(r => {
     if (filtroCliente && r.cliente_id !== filtroCliente) return false;
-    if (filtroStatus  && r.status     !== filtroStatus)  return false;
-    if (filtroMes     && !r.mes_referencia.startsWith(filtroMes)) return false;
+    if (filtroStatuses.length > 0 && !filtroStatuses.includes(r.status ?? 'pendente')) return false;
+    if (filtroMes && !r.mes_referencia.startsWith(filtroMes)) return false;
     return true;
   });
+
+  function toggleStatus(s: string) {
+    setStatusChecked(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+  }
 
   function fecharConfirm() { setConfirmRow(null); setConfirmAcao(null); }
 
@@ -97,16 +102,35 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
           {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
         </select>
 
-        <select
-          value={filtroStatus}
-          onChange={e => setFiltroStatus(e.target.value)}
-          className="rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm"
-        >
-          <option value="">Todos os status</option>
-          <option value="pendente">Pendente</option>
-          <option value="pago">Pago</option>
-          <option value="atrasado">Atrasado</option>
-        </select>
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
+          {(['pendente', 'pago', 'atrasado'] as const).map(s => (
+            <label key={s} className="flex items-center gap-1.5 cursor-pointer text-foreground capitalize">
+              <input
+                type="checkbox"
+                checked={statusChecked.includes(s)}
+                onChange={() => toggleStatus(s)}
+                className="accent-primary"
+              />
+              {s}
+            </label>
+          ))}
+          <button
+            type="button"
+            onClick={() => setFiltroStatuses(statusChecked)}
+            className="ml-1 rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-white hover:opacity-90"
+          >
+            Filtrar
+          </button>
+          {filtroStatuses.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { setStatusChecked([]); setFiltroStatuses([]); }}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              ✕
+            </button>
+          )}
+        </div>
 
         <input
           type="month"
