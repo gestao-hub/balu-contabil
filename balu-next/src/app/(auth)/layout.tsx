@@ -3,7 +3,6 @@
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import MenuLateral from '@/components/MenuLateral';
-import CreateCompanyDialog from '@/components/CreateCompanyDialog';
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createServerClient();
@@ -20,6 +19,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   const userRole =
     String(user.user_metadata?.type ?? '').toLowerCase() === 'contador' ? 'contador' : 'empresa';
   const needsOnboarding = !profile?.current_company;
+  if (needsOnboarding) redirect('/onboarding');
 
   // Layout SaaS: sidebar fixa no viewport, área principal com scroll próprio.
   // `h-screen overflow-hidden` no wrapper trava a página em 100vh; o `<main>`
@@ -34,9 +34,6 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         currentCompanyId={profile?.current_company ?? null}
       />
       <div className="flex-1 overflow-y-auto">{children}</div>
-      {needsOnboarding && (
-        <CreateCompanyDialog open={true} forceCreate={true} />
-      )}
     </div>
   );
 }
