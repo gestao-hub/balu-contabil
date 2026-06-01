@@ -43,6 +43,25 @@ function ultimoDiaMesISO(): string {
   return `${brt.getFullYear()}-${String(brt.getMonth() + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
 }
 
+function isoToBR(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function brToISO(br: string): string {
+  if (!br || !br.includes('/')) return '';
+  const [d, m, y] = br.split('/');
+  return y && m && d ? `${y}-${m}-${d}` : '';
+}
+
+function maskDate(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
 function esc(v: unknown): string {
   const s = v == null ? '' : String(v);
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -86,8 +105,8 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
   const [filtroCliente, setFiltroCliente]       = useState('');
   const [statusChecked, setStatusChecked]       = useState<string[]>([]);
   const [filtroStatuses, setFiltroStatuses]     = useState<string[]>([]);
-  const [filtroInicio, setFiltroInicio]         = useState(primeiroDiaMesISO);
-  const [filtroFim, setFiltroFim]               = useState(ultimoDiaMesISO);
+  const [filtroInicio, setFiltroInicio]           = useState(() => isoToBR(primeiroDiaMesISO()));
+  const [filtroFim, setFiltroFim]                 = useState(() => isoToBR(ultimoDiaMesISO()));
   const [filtroInicioAtivo, setFiltroInicioAtivo] = useState(primeiroDiaMesISO);
   const [filtroFimAtivo, setFiltroFimAtivo]       = useState(ultimoDiaMesISO);
   const [pagina, setPagina]                     = useState(1);
@@ -120,7 +139,7 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
   const qtdPago       = filtrados.filter(r => r.status === 'pago').length;
   const qtdAtrasado   = filtrados.filter(r => r.status === 'atrasado').length;
 
-  function aplicarFiltros() { setFiltroInicioAtivo(filtroInicio); setFiltroFimAtivo(filtroFim); setPagina(1); }
+  function aplicarFiltros() { setFiltroInicioAtivo(brToISO(filtroInicio)); setFiltroFimAtivo(brToISO(filtroFim)); setPagina(1); }
   function toggleStatus(s: string) { setStatusChecked(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]); }
   function aplicarStatus() { setFiltroStatuses(statusChecked); setPagina(1); }
   function fecharConfirm() { setConfirmRow(null); setConfirmAcao(null); }
@@ -245,21 +264,27 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
           )}
         </div>
 
-        {/* Período — range por dia */}
+        {/* Período — range por dia (dd/mm/aaaa) */}
         <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
           <span className="text-muted-foreground text-xs">De</span>
           <input
-            type="date"
+            type="text"
+            inputMode="numeric"
             value={filtroInicio}
-            onChange={e => setFiltroInicio(e.target.value)}
-            className="bg-transparent text-foreground text-sm focus:outline-none"
+            onChange={e => setFiltroInicio(maskDate(e.target.value))}
+            placeholder="dd/mm/aaaa"
+            maxLength={10}
+            className="bg-transparent text-foreground text-sm focus:outline-none w-24 font-mono"
           />
           <span className="text-muted-foreground text-xs">até</span>
           <input
-            type="date"
+            type="text"
+            inputMode="numeric"
             value={filtroFim}
-            onChange={e => setFiltroFim(e.target.value)}
-            className="bg-transparent text-foreground text-sm focus:outline-none"
+            onChange={e => setFiltroFim(maskDate(e.target.value))}
+            placeholder="dd/mm/aaaa"
+            maxLength={10}
+            className="bg-transparent text-foreground text-sm focus:outline-none w-24 font-mono"
           />
           <button type="button" onClick={aplicarFiltros}
             className="rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-white hover:opacity-90">
