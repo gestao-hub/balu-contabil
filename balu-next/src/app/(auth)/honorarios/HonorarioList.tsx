@@ -4,6 +4,7 @@ import { useToast } from '@/components/Toaster';
 import { Plus, CheckCircle, Pencil, Trash2 } from 'lucide-react';
 import { marcarPagoAction, deleteHonorarioAction } from './actions';
 import HonorarioFormDialog, { type ClienteOption, type HonorarioRow } from './HonorarioFormDialog';
+import PopupConfirm from '@/components/PopupConfirm';
 
 export type { HonorarioRow };
 
@@ -43,6 +44,8 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
   const [filtroMes, setFiltroMes]         = useState('');
   const [showForm, setShowForm]           = useState(false);
   const [editing, setEditing]             = useState<HonorarioRow | undefined>();
+  const [confirmRow, setConfirmRow]       = useState<HonorarioRow | null>(null);
+  const [confirmAcao, setConfirmAcao]     = useState<'pagar' | 'excluir' | null>(null);
   const [pending, start]                  = useTransition();
 
   // Sincroniza estado local quando o Server Component re-envia novos dados (após router.refresh)
@@ -55,31 +58,31 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
     return true;
   });
 
-  function handleMarcarPago(row: HonorarioRow) {
-    start(async () => {
-      const res = await marcarPagoAction(row.id);
-      if (res.ok) {
-        toast('success', 'Honorário marcado como pago.');
-        setRows(rs => rs.map(r => r.id === row.id
-          ? { ...r, status: 'pago', data_pagamento: new Date().toISOString().slice(0, 10) }
-          : r));
-      } else {
-        toast('error', res.error);
-      }
-    });
-  }
+  function fecharConfirm() { setConfirmRow(null); setConfirmAcao(null); }
 
-  function handleDelete(row: HonorarioRow) {
-    if (!confirm(`Excluir honorário de ${brl(row.valor)}?`)) return;
-    start(async () => {
-      const res = await deleteHonorarioAction(row.id);
-      if (res.ok) {
-        toast('success', 'Honorário excluído.');
-        setRows(rs => rs.filter(r => r.id !== row.id));
-      } else {
-        toast('error', res.error);
-      }
-    });
+  function confirmarAcao() {
+    if (!confirmRow || !confirmAcao) return;
+    if (confirmAcao === 'pagar') {
+      start(async () => {
+        const res = await marcarPagoAction(confirmRow.id);
+        fecharConfirm();
+        if (res.ok) {
+          toast('success', 'Honorário marcado como pago.');
+          setRows(rs => rs.map(r => r.id === confirmRow.id
+            ? { ...r, status: 'pago', data_pagamento: new Date().toISOString().slice(0, 10) }
+            : r));
+        } else { toast('error', res.error); }
+      });
+    } else {
+      start(async () => {
+        const res = await deleteHonorarioAction(confirmRow.id);
+        fecharConfirm();
+        if (res.ok) {
+          toast('success', 'Honorário excluído.');
+          setRows(rs => rs.filter(r => r.id !== confirmRow.id));
+        } else { toast('error', res.error); }
+      });
+    }
   }
 
   return (
@@ -158,7 +161,7 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
                     <div className="flex items-center gap-2 justify-end">
                       {r.status !== 'pago' && (
                         <button
-                          onClick={() => handleMarcarPago(r)}
+                          onClick={() => { setConfirmRow(r); setConfirmAcao('pagar'); }}
                           disabled={pending}
                           title="Marcar como pago"
                           className="text-success hover:opacity-70 disabled:opacity-40"
@@ -166,15 +169,17 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
                           <CheckCircle className="size-4" />
                         </button>
                       )}
+                      {r.status !== 'pago' && (
+                        <button
+                          onClick={() => { setEditing(r); setShowForm(true); }}
+                          title="Editar"
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <Pencil className="size-4" />
+                        </button>
+                      )}
                       <button
-                        onClick={() => { setEditing(r); setShowForm(true); }}
-                        title="Editar"
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <Pencil className="size-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(r)}
+                        onClick={() => { setConfirmRow(r); setConfirmAcao('excluir'); }}
                         disabled={pending}
                         title="Excluir"
                         className="text-destructive hover:opacity-70 disabled:opacity-40"
@@ -196,6 +201,30 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
         companyId={companyId}
         clientes={clientes}
         editing={editing}
+      />
+
+      <PopupConfirm
+        open={confirmAcao === 'pagar'}
+        title="Confirmar pagamento"
+        description={`Marcar honorário de ${confirmRow ? brl(confirmRow.valor) : ''} como pago?`}
+        confirmLabel="Marcar como pago"
+        cancelLabel="Cancelar"
+        variant="primary"
+        busy={pending}
+        onConfirm={confirmarAcao}
+        onCancel={fecharConfirm}
+      />
+
+      <PopupConfirm
+        open={confirmAcao === 'excluir'}
+        title="Excluir honorário"
+        description={`Tem certeza que deseja excluir o honorário de ${confirmRow ? brl(confirmRow.valor) : ''}? Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        busy={pending}
+        onConfirm={confirmarAcao}
+        onCancel={fecharConfirm}
       />
     </div>
   );
