@@ -198,7 +198,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
               type="text"
               inputMode="numeric"
               placeholder="00.000.000/0000-00"
-              value={form.cnpj}
+              value={formatCnpj(form.cnpj ?? '')}
               onChange={(e) => set('cnpj', formatCnpj(e.target.value))}
               maxLength={18}
               className="flex-1 rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm"
@@ -224,7 +224,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
               type="text"
               inputMode="numeric"
               placeholder="00000-000"
-              value={form.cep ?? ''}
+              value={formatCep(form.cep ?? '')}
               onChange={(e) => set('cep', formatCep(e.target.value))}
               maxLength={9}
               className="flex-1 rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm"

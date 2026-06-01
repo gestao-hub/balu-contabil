@@ -150,12 +150,20 @@ export default function AberturaWizard({
   onBack?: () => void;
 }) {
   const router = useRouter();
-  const [data, setData] = useState<AberturaData>(() => ({
-    ...(initial ?? EMPTY_ABERTURA),
-    titular_data_nascimento: initial?.titular_data_nascimento
-      ? dateIsoToDisplay(initial.titular_data_nascimento)
-      : '',
-  }));
+  const [data, setData] = useState<AberturaData>(() => {
+    const base = initial ?? EMPTY_ABERTURA;
+    return {
+      ...base,
+      // Aplica máscaras nos campos que vêm do banco como dígitos crus
+      titular_cpf:      maskCpf(base.titular_cpf),
+      titular_cep:      maskCep(base.titular_cep),
+      sede_cep:         maskCep(base.sede_cep),
+      titular_telefone: maskTel(base.titular_telefone),
+      titular_data_nascimento: base.titular_data_nascimento
+        ? dateIsoToDisplay(base.titular_data_nascimento)
+        : '',
+    };
+  });
   const [files, setFiles] = useState<Partial<Record<DocKey, File>>>({});
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -387,7 +395,7 @@ function Field({ f, data, set, onCep, onToggleSede, disabled }: {
 
   if (f.kind === 'cpf') return (
     <label className="text-sm text-muted-foreground-2">{label}
-      <input type="text" disabled={disabled} value={String(v ?? '')}
+      <input type="text" disabled={disabled} value={maskCpf(String(v ?? ''))}
         placeholder="000.000.000-00" maxLength={14}
         onChange={(e) => set('titular_cpf', maskCpf(e.target.value) as AberturaData['titular_cpf'])}
         className={cls + ' mt-1'} />
@@ -397,7 +405,7 @@ function Field({ f, data, set, onCep, onToggleSede, disabled }: {
   if (f.kind === 'cep') return (
     <label className="text-sm text-muted-foreground-2">{label}
       <div className="flex gap-2 mt-1">
-        <input disabled={disabled} value={String(v ?? '')} placeholder="00000-000" maxLength={9}
+        <input disabled={disabled} value={maskCep(String(v ?? ''))} placeholder="00000-000" maxLength={9}
           onChange={(e) => set(f.name as keyof AberturaData,
             maskCep(e.target.value) as AberturaData[keyof AberturaData])}
           className={cls} />
@@ -459,7 +467,7 @@ function Field({ f, data, set, onCep, onToggleSede, disabled }: {
 
   if (f.kind === 'tel') return (
     <label className="text-sm text-muted-foreground-2">{label}
-      <input type="tel" disabled={disabled} value={String(v ?? '')}
+      <input type="tel" disabled={disabled} value={maskTel(String(v ?? ''))}
         placeholder="(00)0 0000-0000"
         maxLength={16}
         onChange={(e) => set(f.name as keyof AberturaData,
