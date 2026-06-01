@@ -60,7 +60,7 @@ Para cada tabela: `alter table ... enable row level security;` e policies de CRU
 | `notas_fiscais` | `company_id` | `user_owns_company(company_id)` — **dropar** as 4 policies erradas (`auth.uid() = company_id`) antes |
 | `guias_fiscais` | `company_id` | `user_owns_company(company_id)` |
 | `apuracoes_fiscais` | `company_id` | `user_owns_company(company_id)` |
-| `receitas_fiscais` | `company_id` | `user_owns_company(company_id)` |
+| ~~`receitas_fiscais`~~ (descontinuada 2026-05-31, migration 0014) | `company_id` | `user_owns_company(company_id)` |
 | `honorarios` | `company_id` | `user_owns_company(company_id)` |
 | `arquivos_auxiliares` | `company_id` | `user_owns_company(company_id)` |
 | `empresas_fiscais` | `empresa_id` | `user_owns_company(empresa_id)` |

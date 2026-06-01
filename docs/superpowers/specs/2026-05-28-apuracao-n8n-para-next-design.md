@@ -52,14 +52,14 @@
 | `calcularRbt12(receitas, competenciaAtual)` | 1h + testes |
 | `valorDasMei(atividade)` (3 valores fixos) | 15min |
 | Fator R: cálculo da folha/receita | 1-2h — **precisa de `folha_pagamento` 12m no schema** (não temos hoje) |
-| **Como popular `receitas_fiscais`** — hoje as notas vivem em `notas_fiscais` mas a apuração lê `receitas_fiscais` (tabela separada do Bubble) | **Decisão de design pendente** — ver §3.7 |
+| **Como popular `receitas_fiscais`** — hoje as notas vivem em `notas_fiscais` mas a apuração lê `receitas_fiscais` (tabela separada do Bubble) | **RESOLVIDO (2026-05-31): opção (b)** — lê de `notas_fiscais`; `receitas_fiscais` descontinuada (drop migration 0014) |
 | Cliente Serpro Integra Contador (PR 3.2 etapas 4-5) | 4-6h |
 | Construtor de envelope Serpro (`contratante/autorPedidoDados/contribuinte`) | 1-2h |
 | Mapping `idServico` (GERARDAS12, TRANSDECLARACAO11, GERARDASAVULSO19, etc) | 1h |
 
 ### ⚠️ DECISÕES PENDENTES
 
-1. **`receitas_fiscais` vs `notas_fiscais`** — o n8n consulta `receitas_fiscais`, mas hoje só temos dados em `notas_fiscais` (PR 1.2/2.1). Esse é o card **"Passo 3"** no kanban ("Apuração/DAS no formato real do banco"). Solução: ou (a) cron que sincroniza notas→receitas, ou (b) helper que lê de `notas_fiscais` direto, ou (c) backfill manual.
+1. **`receitas_fiscais` vs `notas_fiscais`** — o n8n consulta `receitas_fiscais`, mas hoje só temos dados em `notas_fiscais` (PR 1.2/2.1). Esse é o card **"Passo 3"** no kanban ("Apuração/DAS no formato real do banco"). Solução: ou (a) cron que sincroniza notas→receitas, ou (b) helper que lê de `notas_fiscais` direto, ou (c) backfill manual. **→ Decisão (2026-05-31): opção (b)** — helper `receitas-source.ts` lê de `notas_fiscais`; `receitas_fiscais` foi dropada (migration 0014).
 2. **Folha de pagamento** pro Fator R — não temos schema. MVP pode omitir Fator R e assumir Anexo III/V fixo até implementar `folhas_pagamento`.
 3. **Anualização do RBT12** pra empresas < 12 meses — comportamento legal documentado no PRD/regulamentação, mas n8n ignora. Vamos implementar correto desde o Next.
 
@@ -209,7 +209,7 @@ PRs pequenos, em ordem de dependência:
 
 **Total estimado: ~22h** (vs 12-16h da estimativa original do PR 3.2, antes da análise descobrir os bugs e a falta de Lucro Real).
 
-**Pré-requisito**: decidir como popular `receitas_fiscais` (ver §2 "decisão pendente 1"). Recomendo entrar em **`PR Passo 3`** primeiro (refactor sync `notas_fiscais → receitas_fiscais`).
+**Pré-requisito** ~~obsoleto~~ (decisão tomada 2026-05-31: opção b) — a origem das receitas já foi resolvida: helper `receitas-source.ts` lê de `notas_fiscais` e `receitas_fiscais` foi dropada (migration 0014). Não há mais sync `notas_fiscais → receitas_fiscais` a fazer.
 
 ---
 

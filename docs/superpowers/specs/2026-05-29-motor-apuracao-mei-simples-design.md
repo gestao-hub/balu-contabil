@@ -21,7 +21,7 @@ Calcular a apuração mensal de imposto (MEI fixo / Simples Nacional via tabela)
 
 ## Decisões herdadas
 
-1. **Origem das receitas (`receitas_fiscais` vs `notas_fiscais`) — pendente.** Investigação (mensagens de 2026-05-29) concluiu que `receitas_fiscais` é uma **tabela órfã**: nenhum gravador existe (nem Bubble REST, nem RPC, nem trigger, nem n8n, nem app). O dado que existia foi apagado em 2026-05-28; sem backup (plano Free). Decisão final aguarda outro dev. **Default provisório: opção (b)** — ler de `notas_fiscais`.
+1. **Origem das receitas (`receitas_fiscais` vs `notas_fiscais`) — RESOLVIDO (2026-05-31): opção (b).** Investigação (mensagens de 2026-05-29) concluiu que `receitas_fiscais` é uma **tabela órfã**: nenhum gravador existe (nem Bubble REST, nem RPC, nem trigger, nem n8n, nem app). O dado que existia foi apagado em 2026-05-28; sem backup (plano Free). **DECISÃO FINAL (2026-05-31): opção (b)** — `receitas_fiscais` descontinuada (drop na migration 0014); fonte canônica é `notas_fiscais`.
 2. **Fator R não calculado** — ver Escopo.
 3. **Regime Normal bloqueado** — ver Escopo.
 
@@ -118,7 +118,7 @@ export function calcularApuracao(input: {
 
 ```ts
 // PROVISÓRIO (2026-05-29): lê de notas_fiscais (opção b). Decisão final pendente do outro dev.
-// Se virar opção (a), trocar só o corpo desta função para consultar receitas_fiscais.
+// Opção (a) descartada (2026-05-31): receitas_fiscais foi descontinuada. Fonte = notas_fiscais.
 export async function lerReceitasParaApuracao(
   supabase: SupabaseClient,
   companyId: string,
@@ -204,6 +204,6 @@ Action e wizard: smoke leve (a definir no plano).
 4. `das-mei.ts` + testes
 5. `apuracao.ts` (orquestrador) + testes
 6. migration `0007`
-7. `receitas-source.ts` (opção b provisória)
+7. `receitas-source.ts` (opção b — fonte canônica `notas_fiscais`)
 8. `impostos/actions.ts`
 9. `impostos/novo/*` (wizard)

@@ -180,6 +180,6 @@ Mesma natureza do gap do Focus (cert nunca registrado — ver memória). **Não 
 | 6 | **Só MEI** — Simples (PGDAS-D, 2 passos) fica em spec próprio | Escopo | Próximo PR de impostos |
 
 ### Pendências fora deste spec (do épico de impostos)
-- **`receitas_fiscais` a/b** segue pendente do outro dev (apuração v1 lê de `notas_fiscais`, opção b provisória).
+- **`receitas_fiscais` a/b** RESOLVIDO (2026-05-31): opção (b) — apuração lê de `notas_fiscais`; tabela `receitas_fiscais` descontinuada (drop migration 0014).
 - **DAS-MEI 2026** (`das-mei.ts`): valores a confirmar com o salário mínimo oficial de 2026.
 - **Anualização do RBT12** não acionada (falta campo de data de início de atividade no schema).

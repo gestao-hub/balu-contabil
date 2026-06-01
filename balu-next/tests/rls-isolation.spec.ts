@@ -17,7 +17,7 @@ const A_PASS = 'teste123';
 // e arquivos_auxiliares (company_id, FK) são testadas à parte logo abaixo.
 const COMPANY_TABLES = [
   'clientes', 'notas_fiscais', 'guias_fiscais', 'apuracoes_fiscais',
-  'receitas_fiscais', 'honorarios',
+  'honorarios',
 ];
 
 test('RLS isola tenants: B não acessa dados de A', async () => {

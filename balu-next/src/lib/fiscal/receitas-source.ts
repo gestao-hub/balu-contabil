@@ -5,9 +5,9 @@ import { competenciaAddMonths, competenciaReferenciaBrt } from './guia';
 /**
  * Lê as receitas necessárias para apurar `ateCompetencia` (a própria + 12 meses anteriores).
  *
- * PROVISÓRIO (2026-05-29): implementa a OPÇÃO (b) — lê de `notas_fiscais`.
- * A tabela `receitas_fiscais` é órfã (ninguém a popula) e foi esvaziada sem backup.
- * Decisão final pendente do outro dev. Se virar opção (a), trocar SÓ o corpo desta função.
+ * DECISÃO FINAL (2026-05-31): OPÇÃO (b) — fonte canônica de receita é `notas_fiscais`.
+ * A tabela `receitas_fiscais` é órfã (ninguém a popula, esvaziada sem backup) e está
+ * descontinuada. Toda leitura de receita para apuração passa por esta função.
  */
 export async function lerReceitasParaApuracao(
   supabase: SupabaseClient,

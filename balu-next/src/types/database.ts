@@ -182,30 +182,6 @@ export type Tables = {
     updated_at: string | null;
     deleted_at: string | null;
   };
-  receitas_fiscais: {
-    id: string;
-    company_id: string | null;
-    owner_user_id: string | null;
-    cliente_id: string | null;
-    tipo: string | null;
-    numero_documento: string | null;
-    descricao_servico: string | null;
-    competencia_mes: number;
-    competencia_ano: number;
-    competencia_referencia: string | null;
-    valor: number | null;
-    valor_bruto: number | null;
-    valor_deducoes: number | null;
-    valor_liquido: number | null;
-    valor_impostos: number | null;
-    status: string | null;
-    data_emissao: string | null;
-    data_vencimento: string | null;
-    data_pagamento: string | null;
-    created_at: string | null;
-    updated_at: string | null;
-    deleted_at: string | null;
-  };
   guias_fiscais: {
     id: string;
     company_id: string | null;
