@@ -13,6 +13,7 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
   const password = String(formData.get('password') ?? '');
   const password_confirm = String(formData.get('password_confirm') ?? '');
   const role_type = String(formData.get('role_type') ?? '').trim();
+  const terms = formData.get('terms');
 
   if (!full_name || !email || !password) {
     return { error: 'Preencha todos os campos.' };
@@ -23,6 +24,9 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
   if (password !== password_confirm) {
     return { error: 'As senhas não conferem.' };
   }
+  if (!terms) {
+    return { error: 'Você precisa aceitar os termos de uso.' };
+  }
   // "" = placeholder (não escolhido). Só validamos quando preenchido.
   if (role_type && role_type !== 'Empresa' && role_type !== 'Contador') {
     return { error: 'Tipo de conta inválido.' };
@@ -31,13 +35,16 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
   // O tipo escolhido vai no metadata sob a chave `type`; o trigger no banco lê
   // raw_user_meta_data->>'type' e cria o registro em role_types após o signup
   // (quando ausente, o trigger usa default 'Empresa').
+  const terms_accepted_at = new Date().toISOString();
   const origin = getSiteUrl();
   const supabase = await createServerClient();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: role_type ? { full_name, type: role_type } : { full_name },
+      data: role_type
+        ? { full_name, type: role_type, terms_accepted_at }
+        : { full_name, terms_accepted_at },
       // Quando "Confirm email" está ON no projeto Supabase, o link enviado pelo
       // template do email aponta pra esta URL (passa por /auth/confirm pra rodar
       // verifyOtp e gravar cookies no domínio do app). Quando OFF, o Supabase

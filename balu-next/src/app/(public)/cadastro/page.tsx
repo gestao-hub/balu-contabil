@@ -14,6 +14,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function CadastroPage() {
   const [state, formAction] = useActionState(signupAction, initialState);
   const [clientError, setClientError] = useState<string | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     const fd = new FormData(e.currentTarget);
@@ -33,6 +34,11 @@ export default function CadastroPage() {
     if (password !== passwordConfirm) {
       e.preventDefault();
       setClientError('As senhas não conferem.');
+      return;
+    }
+    if (!termsAccepted) {
+      e.preventDefault();
+      setClientError('Você precisa aceitar os termos de uso.');
       return;
     }
     setClientError(null);
@@ -122,6 +128,28 @@ export default function CadastroPage() {
               autoComplete="new-password"
               className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
+          </div>
+
+          <div className="flex items-start gap-2">
+            <input
+              id="terms"
+              name="terms"
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-primary"
+            />
+            <label htmlFor="terms" className="text-sm text-muted-foreground">
+              Li e concordo com os{' '}
+              <a
+                href="/termos"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                termos de uso
+              </a>
+            </label>
           </div>
 
           {errorMsg && (
