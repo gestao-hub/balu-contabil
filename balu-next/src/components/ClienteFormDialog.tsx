@@ -9,7 +9,12 @@ import { X, Search, Loader2 } from 'lucide-react';
 import { ClienteSchema, type ClienteInput } from '@/types/zod';
 import { useToast } from '@/components/Toaster';
 import { createClienteAction, updateClienteAction, lookupCnpjAction } from '@/app/(auth)/clientes/actions';
-import { formatCnpj } from '@/lib/format/masks';
+import { formatCnpj, formatCpf, formatCep, formatTel } from '@/lib/format/masks';
+
+const UF_OPTIONS = [
+  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
+  'MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
+] as const;
 
 export type ClienteFormDialogProps = {
   open: boolean;
@@ -177,9 +182,9 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
             <Field label={docLabel} error={errors.document} required>
               <div className="flex items-start gap-2">
                 <input
-                  value={form.person_type === 'PJ' ? formatCnpj(form.document) : form.document}
+                  value={form.person_type === 'PJ' ? formatCnpj(form.document) : formatCpf(form.document)}
                   onChange={(e) => update('document', e.target.value.replace(/\D/g, ''))}
-                  maxLength={form.person_type === 'PF' ? 11 : 18}
+                  maxLength={form.person_type === 'PF' ? 14 : 18}
                   className={`${inputCls} flex-1`}
                 />
                 {form.person_type === 'PJ' && (
@@ -237,8 +242,11 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
             </Field>
             <Field label="Telefone" error={errors.telefone}>
               <input
-                value={form.telefone ?? ''}
-                onChange={(e) => update('telefone', e.target.value)}
+                type="tel"
+                value={formatTel(form.telefone ?? '')}
+                onChange={(e) => update('telefone', formatTel(e.target.value))}
+                placeholder="(00)0 0000-0000"
+                maxLength={16}
                 className={inputCls}
               />
             </Field>
@@ -250,9 +258,10 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
               <div className="md:col-span-2">
                 <Field label="CEP" error={errors.cep}>
                   <input
-                    value={form.cep ?? ''}
+                    value={formatCep(form.cep ?? '')}
                     onChange={(e) => update('cep', e.target.value.replace(/\D/g, ''))}
-                    maxLength={8}
+                    placeholder="00000-000"
+                    maxLength={9}
                     className={inputCls}
                   />
                 </Field>
@@ -284,12 +293,14 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
               </div>
               <div className="md:col-span-1">
                 <Field label="UF" error={errors.uf}>
-                  <input
+                  <select
                     value={form.uf ?? ''}
-                    onChange={(e) => update('uf', e.target.value.toUpperCase())}
-                    maxLength={2}
+                    onChange={(e) => update('uf', e.target.value)}
                     className={inputCls}
-                  />
+                  >
+                    <option value=""></option>
+                    {UF_OPTIONS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+                  </select>
                 </Field>
               </div>
               <div className="md:col-span-1">

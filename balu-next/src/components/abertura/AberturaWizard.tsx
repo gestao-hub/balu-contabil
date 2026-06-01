@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { EMPTY_ABERTURA, DOC_KEYS, EMPRESA_TIPOS, REGIMES, SEDE_TIPOS,
   type AberturaData, type DocKey } from '@/types/abertura';
 import { lookupCepAction } from '@/app/(auth)/onboarding/actions';
+import { formatCpf, formatCep, formatTel } from '@/lib/format/masks';
 import ConfirmacaoEnvioDialog from './ConfirmacaoEnvioDialog';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -94,18 +95,9 @@ const STEPS: { title: string; fields: StepField[] }[] = [
 
 // ─── Funções de máscara / normalização ───────────────────────────────────────
 
-function maskCpf(raw: string): string {
-  const d = raw.replace(/\D/g, '').slice(0, 11);
-  return d
-    .replace(/^(\d{3})(\d)/, '$1.$2')
-    .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
-    .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4');
-}
-
-function maskCep(raw: string): string {
-  const d = raw.replace(/\D/g, '').slice(0, 8);
-  return d.replace(/^(\d{5})(\d)/, '$1-$2');
-}
+// formatCpf, formatCep e formatTel vêm de @/lib/format/masks
+const maskCpf = formatCpf;
+const maskCep = formatCep;
 
 function maskDate(raw: string): string {
   const d = raw.replace(/\D/g, '').slice(0, 8);
@@ -114,20 +106,7 @@ function maskDate(raw: string): string {
     .replace(/^(\d{2})\/(\d{2})(\d)/, '$1/$2/$3');
 }
 
-function maskTel(raw: string): string {
-  const d = raw.replace(/\D/g, '').slice(0, 11);
-  if (d.length <= 10) {
-    // Fixo: (35)4444-3333
-    return d
-      .replace(/^(\d{2})(\d)/, '($1)$2')
-      .replace(/^(\(\d{2}\))(\d{4})(\d)/, '$1$2-$3');
-  }
-  // Móvel: (35)9 9956-8570
-  return d
-    .replace(/^(\d{2})(\d)/, '($1)$2')
-    .replace(/^(\(\d{2}\))(\d)(\d)/, '$1$2 $3')
-    .replace(/^(\(\d{2}\)\d \d{4})(\d)/, '$1-$2');
-}
+const maskTel = formatTel;
 
 function maskDecimal(raw: string): string {
   // Permite dígitos, vírgula e ponto

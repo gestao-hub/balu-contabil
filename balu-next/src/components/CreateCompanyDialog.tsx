@@ -12,8 +12,13 @@ import {
   createCompanyAction,
   lookupCnpjAction,
 } from '@/app/(auth)/onboarding/actions';
-import { formatCnpj, formatCep } from '@/lib/format/masks';
+import { formatCnpj, formatCep, formatTel } from '@/lib/format/masks';
 import { REGIME_OPTIONS, type RegimeCode } from '@/lib/fiscal/regime';
+
+const UF_OPTIONS = [
+  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
+  'MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
+] as const;
 
 type Props = {
   open: boolean;
@@ -269,8 +274,29 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
             </div>
             <Field label="Bairro" value={form.bairro ?? ''} onChange={(v) => set('bairro', v)} />
             <Field label="Município" value={form.municipio ?? ''} onChange={(v) => set('municipio', v)} required />
-            <Field label="UF" value={form.uf ?? ''} onChange={(v) => set('uf', v.toUpperCase().slice(0, 2))} required />
-            <Field label="Telefone" value={form.telefone ?? ''} onChange={(v) => set('telefone', v)} />
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-xs font-medium text-muted-foreground-2">UF<span className="text-destructive"> *</span></span>
+              <select
+                value={form.uf ?? ''}
+                onChange={(e) => set('uf', e.target.value)}
+                required
+                className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm"
+              >
+                <option value=""></option>
+                {UF_OPTIONS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-xs font-medium text-muted-foreground-2">Telefone</span>
+              <input
+                type="tel"
+                value={formatTel(form.telefone ?? '')}
+                onChange={(e) => set('telefone', formatTel(e.target.value))}
+                placeholder="(00)0 0000-0000"
+                maxLength={16}
+                className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm"
+              />
+            </label>
             <Field label="E-mail" type="email" value={form.email ?? ''} onChange={(v) => set('email', v)} />
             <label className="col-span-2 flex flex-col gap-1 text-sm">
               <span className="text-xs font-medium text-muted-foreground-2">
