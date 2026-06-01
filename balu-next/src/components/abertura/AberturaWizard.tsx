@@ -140,12 +140,14 @@ function isValidEmail(v: string): boolean {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function AberturaWizard({
-  mode, initial, existingDocs, action,
+  mode, initial, existingDocs, action, onBack,
 }: {
   mode: 'criar' | 'alterar';
   initial?: AberturaData;
   existingDocs?: Partial<Record<DocKey, string>>;
   action: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Sobrescreve o comportamento do botão Voltar na etapa 0 (ex.: fechar um popup). */
+  onBack?: () => void;
 }) {
   const router = useRouter();
   const [data, setData] = useState<AberturaData>(() => ({
@@ -205,8 +207,12 @@ export default function AberturaWizard({
   }
 
   function back() {
-    if (step === 0) router.push('/onboarding');
-    else { setError(null); setStep((s) => s - 1); }
+    if (step === 0) {
+      if (onBack) onBack();
+      else router.push('/onboarding');
+    } else {
+      setError(null); setStep((s) => s - 1);
+    }
   }
 
   function next() {
