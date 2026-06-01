@@ -30,7 +30,7 @@ function onlyDigits(s: string): string {
 }
 
 function normCnpj(s: string): string {
-  return onlyDigits(s).padStart(14, '0').slice(-14);
+  return onlyDigits(s);
 }
 
 function stringOrUndef(v: unknown): string | undefined {
@@ -68,7 +68,15 @@ export async function lookupCnpj(cnpj: string): Promise<CnpjLookupResult> {
   }
 }
 
-function classifyError(_e: unknown): string {
-  // Substituído na Task 2 — placeholder mínimo só pra compilar o caminho de sucesso.
+// O call() da Focus (focus-nfe.ts) lança Error("Focus <method> <path> → <status>: <texto>")
+// para respostas com falha; erro de rede/timeout relança o Error original (ex.: "fetch failed").
+function classifyError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e ?? '');
+  if (/→ 404\b/.test(msg) || /nao_encontrado|não encontrado|not found/i.test(msg)) {
+    return 'CNPJ não encontrado na Receita.';
+  }
+  if (/→ 5\d\d\b/.test(msg) || /timeout|fetch failed|network|ECONN|ETIMEDOUT/i.test(msg)) {
+    return 'Serviço de consulta indisponível. Tente novamente.';
+  }
   return 'Falha ao consultar CNPJ.';
 }
