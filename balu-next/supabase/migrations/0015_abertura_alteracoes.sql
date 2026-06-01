@@ -27,10 +27,25 @@ CREATE POLICY abertura_alteracoes_owner ON public.abertura_alteracoes FOR ALL
 -- Stub de empresa em abertura não tem CNPJ ainda
 ALTER TABLE public.companies ALTER COLUMN cnpj DROP NOT NULL;
 
--- status 'em_abertura' para empresas em processo de abertura
-ALTER TABLE public.companies DROP CONSTRAINT IF EXISTS companies_status_check;
-ALTER TABLE public.companies ADD CONSTRAINT companies_status_check
+-- status para controlar o ciclo de vida da empresa
+-- (coluna pode não existir no banco real — migrations 0001/0002 estão defasadas)
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS status text DEFAULT 'active'
   CHECK (status IN ('active', 'inactive', 'em_abertura'));
+
+-- se a coluna já existia sem o CHECK, garante que o constraint está presente
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'companies' AND column_name = 'status'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'companies_status_check' AND conrelid = 'public.companies'::regclass
+  ) THEN
+    ALTER TABLE public.companies ADD CONSTRAINT companies_status_check
+      CHECK (status IN ('active', 'inactive', 'em_abertura'));
+  END IF;
+END$$;
 
 -- índice no FK (Postgres não cria automaticamente)
 CREATE INDEX IF NOT EXISTS abertura_alteracoes_abertura_id_idx
