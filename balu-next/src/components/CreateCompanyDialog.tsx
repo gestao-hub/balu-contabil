@@ -4,12 +4,13 @@
 // Não é wizard: tudo fica numa só tela, etapas são apenas seções colapsáveis lógicas.
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { Building2, MapPin, X, Loader2 } from 'lucide-react';
+import { Building2, MapPin, X, Loader2, Search } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { CompanyCreateSchema, type CompanyInput } from '@/types/zod';
 import {
   lookupCepAction,
   createCompanyAction,
+  lookupCnpjAction,
 } from '@/app/(auth)/onboarding/actions';
 import { formatCnpj, formatCep } from '@/lib/format/masks';
 import { REGIME_OPTIONS, type RegimeCode } from '@/lib/fiscal/regime';
@@ -49,6 +50,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
   const titleId = useId(); // id único por instância — evita aria-labelledby duplicado
   const [form, setForm] = useState<Form>(EMPTY);
   const [busyCep, setBusyCep] = useState(false);
+  const [busyCnpj, setBusyCnpj] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -63,6 +65,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
     if (!open) {
       setForm(EMPTY);
       setBusyCep(false);
+      setBusyCnpj(false);
       setSubmitting(false);
     }
   }, [open]);
@@ -90,6 +93,38 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
       toast('success', 'Endereço preenchido.');
     } finally {
       setBusyCep(false);
+    }
+  }
+
+  async function handleLookupCnpj() {
+    const digits = form.cnpj.replace(/\D+/g, '');
+    if (digits.length !== 14) {
+      toast('warning', 'Informe um CNPJ com 14 dígitos.');
+      return;
+    }
+    setBusyCnpj(true);
+    try {
+      const r = await lookupCnpjAction(digits);
+      if (!r.ok) { toast('error', r.error); return; }
+      const d = r.data;
+      setForm((prev) => ({
+        ...prev,
+        razao_social: d.razao_social ?? prev.razao_social,
+        nome: d.nome_fantasia ?? prev.nome,
+        inscricao_estadual: d.inscricao_estadual ?? prev.inscricao_estadual,
+        inscricao_municipal: d.inscricao_municipal ?? prev.inscricao_municipal,
+        logradouro: d.logradouro ?? prev.logradouro,
+        numero: d.numero ?? prev.numero,
+        bairro: d.bairro ?? prev.bairro,
+        municipio: d.municipio ?? prev.municipio,
+        uf: d.uf ?? prev.uf,
+        cep: d.cep ? formatCep(d.cep) : prev.cep,
+        telefone: d.telefone ?? prev.telefone,
+        email: d.email ?? prev.email,
+      }));
+      toast('success', 'Dados do CNPJ carregados.');
+    } finally {
+      setBusyCnpj(false);
     }
   }
 
@@ -150,19 +185,30 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
           )}
         </header>
 
-        {/* Etapa 1 — CNPJ (preenchimento manual; a busca na Focus fica só no cadastro de cliente) */}
+        {/* Etapa 1 — CNPJ (com busca na Focus para autopreencher os dados) */}
         <section className="mb-5">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">1. CNPJ</h3>
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="00.000.000/0000-00"
-            value={form.cnpj}
-            onChange={(e) => set('cnpj', formatCnpj(e.target.value))}
-            maxLength={18}
-            className="w-full rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm"
-            required
-          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="00.000.000/0000-00"
+              value={form.cnpj}
+              onChange={(e) => set('cnpj', formatCnpj(e.target.value))}
+              maxLength={18}
+              className="flex-1 rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm"
+              required
+            />
+            <button
+              type="button"
+              onClick={handleLookupCnpj}
+              disabled={busyCnpj}
+              className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50"
+            >
+              {busyCnpj ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+              Buscar
+            </button>
+          </div>
         </section>
 
         {/* Etapa 2 — CEP */}
