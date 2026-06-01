@@ -10,6 +10,8 @@ import EmissaoFiscalTab from './EmissaoFiscalTab';
 import SaudeEmpresaTab from './SaudeEmpresaTab';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import type { SaudeState } from '@/lib/fiscal/saude-empresa';
+import { getAberturaByCompany } from '@/lib/abertura/queries';
+import AberturaInfoView from './AberturaInfoView';
 
 const TABS = [
   { key: 'dados', label: 'Dados da empresa' },
@@ -25,13 +27,14 @@ const TAB_ALIASES: Record<string, TabKey> = {
   saude: 'diagnostico', // renomeada — manter o link antigo funcional
 };
 
-type SP = Promise<{ tab?: string }>;
+type SP = Promise<{ tab?: string; alteracao?: string }>;
 
 export default async function ConfiguracoesPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const requested = sp.tab ?? '';
   const aliased = TAB_ALIASES[requested] ?? requested;
   const active: TabKey = (TABS.find((t) => t.key === aliased)?.key ?? 'dados') as TabKey;
+  const alteracaoEnviada = sp?.alteracao === 'enviada';
 
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -62,6 +65,23 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         .maybeSingle();
       empresaFiscal = ef ?? null;
     }
+  }
+
+  // Ramo: empresa em processo de abertura — mostra visão read-only em vez das 4 abas fiscais.
+  if (company && (company as Record<string, unknown>).status === 'em_abertura') {
+    const abertura = await getAberturaByCompany(supabase, company.id as string);
+    return (
+      <main className="max-w-3xl mx-auto px-6 py-8">
+        <h1 className="text-lg font-semibold text-foreground mb-1">Informações da empresa</h1>
+        <p className="text-sm text-muted-foreground mb-6">Empresa em processo de abertura.</p>
+        {alteracaoEnviada && (
+          <p className="mb-4 text-sm text-primary bg-primary/10 border border-primary/30 rounded-md px-3 py-2">
+            Solicitação de alteração enviada. Você será avisado quando for analisada.
+          </p>
+        )}
+        {abertura ? <AberturaInfoView abertura={abertura} /> : <p className="text-sm text-muted-foreground">Solicitação não encontrada.</p>}
+      </main>
+    );
   }
 
   const needsMunicipio = (active === 'fiscal' || active === 'diagnostico') && !!company;
