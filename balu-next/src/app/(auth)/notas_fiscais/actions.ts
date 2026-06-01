@@ -41,10 +41,10 @@ type ExportRow = {
   } | null;
 };
 
-/** Escapa um campo para CSV (separador ';', padrão pt-BR/Excel). */
+/** Escapa campo CSV (sep ';'): envolve em aspas se contém `"`, `;`, `,`, quebra de linha. */
 function esc(v: unknown): string {
-  const s = v == null ? '' : String(v);
-  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const s = v == null ? '' : String(v).replace(/[\r\n]+/g, ' ');
+  return /[";\n\r,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export async function exportNotasCsvAction(filtros: NotasFiltros): Promise<ExportResult> {
