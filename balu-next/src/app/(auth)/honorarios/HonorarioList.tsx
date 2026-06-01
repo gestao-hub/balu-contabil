@@ -153,25 +153,6 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
   return (
     <div className="space-y-6">
 
-      {/* ── Barra de ações ── */}
-      <div className="flex items-center justify-end gap-2">
-        <button
-          onClick={() => downloadCSV(filtrados)}
-          disabled={filtrados.length === 0}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-2 disabled:opacity-40"
-        >
-          <Download className="size-4" />
-          Exportar CSV
-        </button>
-        <button
-          onClick={() => { setEditing(undefined); setShowForm(true); }}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          <Plus className="size-4" />
-          Novo honorário
-        </button>
-      </div>
-
       {/* ── Cards de resumo ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="flex flex-col rounded-xl border border-border bg-surface p-5">
@@ -250,6 +231,24 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
           initial={periodo}
           onChange={p => { setPeriodo(p); setPagina(1); }}
         />
+
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => downloadCSV(filtrados)}
+            disabled={filtrados.length === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-2 disabled:opacity-40"
+          >
+            <Download className="size-4" />
+            Exportar CSV
+          </button>
+          <button
+            onClick={() => { setEditing(undefined); setShowForm(true); }}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            <Plus className="size-4" />
+            Novo honorário
+          </button>
+        </div>
       </div>
 
       {/* ── Tabela ── */}
