@@ -9,10 +9,12 @@ export default async function HonorariosPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  // Verifica role Contador — metadata first (igual ao layout), DB como fallback
+  // Verifica role Contador — role_types é a fonte canônica (igual ao layout)
+  const { data: roleRow } = await supabase
+    .from('role_types').select('type').eq('user_id', user.id).maybeSingle();
   const role = String(
+    (roleRow?.type as string | null) ??
     (user.user_metadata?.type as string | null) ??
-    ((await supabase.from('role_types').select('type').eq('user_id', user.id).maybeSingle()).data?.type) ??
     ''
   ).toLowerCase();
   if (role !== 'contador') redirect('/');
