@@ -68,12 +68,12 @@ export const CompanyCreateSchema = companyObject
   .refine(numeroOuSemNumero, numeroError);
 
 export const HonorarioSchema = z.object({
-  cliente_id: z.string().uuid(),
-  company_id: z.string().uuid(),
-  mes_referencia: z.string().regex(/^\d{6}$/),
-  valor: z.number().nonnegative(),
-  data_vencimento: z.string().optional(),
-  observacao: z.string().optional(),
+  cliente_id:      z.string().uuid('cliente_id deve ser UUID.'),
+  company_id:      z.string().uuid('company_id deve ser UUID.'),
+  mes_referencia:  z.string().regex(/^\d{4}(0[1-9]|1[0-2])$/, 'Formato esperado: YYYYMM (ex: 202606).'),
+  valor:           z.number({ invalid_type_error: 'Valor deve ser numérico.' }).nonnegative('Valor não pode ser negativo.'),
+  data_vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'data_vencimento em YYYY-MM-DD.'),
+  observacao:      z.string().optional(),
 });
 export type HonorarioInput = z.infer<typeof HonorarioSchema>;
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { EmpresaFiscalSchema, CompanySchema, CompanyCreateSchema, AberturaCreateSchema } from './zod';
+import { EmpresaFiscalSchema, CompanySchema, CompanyCreateSchema, AberturaCreateSchema, HonorarioSchema } from './zod';
 import { EMPTY_ABERTURA } from '@/types/abertura';
 
 describe('EmpresaFiscalSchema', () => {
@@ -115,5 +115,37 @@ describe('AberturaCreateSchema', () => {
   it('exige razão social 1 e nome do titular', () => {
     expect(AberturaCreateSchema.safeParse({ ...valid, empresa_razao_social_1: '' }).success).toBe(false);
     expect(AberturaCreateSchema.safeParse({ ...valid, titular_nome_completo: '' }).success).toBe(false);
+  });
+});
+
+describe('HonorarioSchema', () => {
+  const base = {
+    cliente_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+    company_id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+    mes_referencia: '202606',
+    valor: 500,
+    data_vencimento: '2026-06-10',
+  };
+
+  it('aceita payload mínimo válido', () => {
+    expect(HonorarioSchema.safeParse(base).success).toBe(true);
+  });
+
+  it('rejeita mes_referencia com formato inválido', () => {
+    expect(HonorarioSchema.safeParse({ ...base, mes_referencia: '062026' }).success).toBe(false);
+    expect(HonorarioSchema.safeParse({ ...base, mes_referencia: '2026-06' }).success).toBe(false);
+  });
+
+  it('rejeita valor negativo', () => {
+    expect(HonorarioSchema.safeParse({ ...base, valor: -1 }).success).toBe(false);
+  });
+
+  it('rejeita cliente_id não-UUID', () => {
+    expect(HonorarioSchema.safeParse({ ...base, cliente_id: 'nao-uuid' }).success).toBe(false);
+  });
+
+  it('data_vencimento é obrigatória', () => {
+    const { data_vencimento, ...sem } = base;
+    expect(HonorarioSchema.safeParse(sem).success).toBe(false);
   });
 });
