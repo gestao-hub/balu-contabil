@@ -54,7 +54,7 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
 
   function handleMarcarPago(row: HonorarioRow) {
     start(async () => {
-      const res = await marcarPagoAction(row.id, companyId);
+      const res = await marcarPagoAction(row.id);
       if (res.ok) {
         toast('success', 'Honorário marcado como pago.');
         setRows(rs => rs.map(r => r.id === row.id
@@ -69,7 +69,7 @@ export default function HonorarioList({ initial, companyId, clientes }: Props) {
   function handleDelete(row: HonorarioRow) {
     if (!confirm(`Excluir honorário de ${brl(row.valor)}?`)) return;
     start(async () => {
-      const res = await deleteHonorarioAction(row.id, companyId);
+      const res = await deleteHonorarioAction(row.id);
       if (res.ok) {
         toast('success', 'Honorário excluído.');
         setRows(rs => rs.filter(r => r.id !== row.id));

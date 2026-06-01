@@ -9,14 +9,13 @@ export default async function HonorariosPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  // Verifica role Contador
-  const { data: roleRow } = await supabase
-    .from('role_types')
-    .select('role')
-    .eq('user_id', user.id)
-    .maybeSingle();
-  const role = (roleRow?.role as string | null) ?? (user.user_metadata?.type as string | null) ?? '';
-  if (role.toLowerCase() !== 'contador') redirect('/');
+  // Verifica role Contador — metadata first (igual ao layout), DB como fallback
+  const role = String(
+    (user.user_metadata?.type as string | null) ??
+    ((await supabase.from('role_types').select('role').eq('user_id', user.id).maybeSingle()).data?.role) ??
+    ''
+  ).toLowerCase();
+  if (role !== 'contador') redirect('/');
 
   // Empresa do contador
   const { data: profile } = await supabase

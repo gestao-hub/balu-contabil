@@ -80,15 +80,16 @@ export async function updateHonorarioAction(id: string, fd: FormData): Promise<R
   return { ok: true };
 }
 
-export async function marcarPagoAction(id: string, companyId: string): Promise<Result> {
-  if (!id || !companyId) return { ok: false, error: 'Parâmetros ausentes.' };
+export async function marcarPagoAction(id: string): Promise<Result> {
+  if (!id) return { ok: false, error: 'ID ausente.' };
 
   const today = new Date();
   const brt = new Date(today.getTime() - 3 * 60 * 60 * 1000);
   const dataPagamento = brt.toISOString().slice(0, 10);
 
-  const { supabase, user } = await getUserAndCompany();
-  if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const { supabase, user, companyId } = await getUserAndCompany();
+  if (!user)      return { ok: false, error: 'Sessão expirada.' };
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
   const { error } = await supabase
     .from('honorarios')
@@ -102,11 +103,12 @@ export async function marcarPagoAction(id: string, companyId: string): Promise<R
   return { ok: true };
 }
 
-export async function deleteHonorarioAction(id: string, companyId: string): Promise<Result> {
-  if (!id || !companyId) return { ok: false, error: 'Parâmetros ausentes.' };
+export async function deleteHonorarioAction(id: string): Promise<Result> {
+  if (!id) return { ok: false, error: 'ID ausente.' };
 
-  const { supabase, user } = await getUserAndCompany();
-  if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const { supabase, user, companyId } = await getUserAndCompany();
+  if (!user)      return { ok: false, error: 'Sessão expirada.' };
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
   const { error } = await supabase
     .from('honorarios')
