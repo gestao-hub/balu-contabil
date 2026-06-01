@@ -114,6 +114,21 @@ function maskDate(raw: string): string {
     .replace(/^(\d{2})\/(\d{2})(\d)/, '$1/$2/$3');
 }
 
+function maskTel(raw: string): string {
+  const d = raw.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 10) {
+    // Fixo: (35)4444-3333
+    return d
+      .replace(/^(\d{2})(\d)/, '($1)$2')
+      .replace(/^(\(\d{2}\))(\d{4})(\d)/, '$1$2-$3');
+  }
+  // Móvel: (35)9 9956-8570
+  return d
+    .replace(/^(\d{2})(\d)/, '($1)$2')
+    .replace(/^(\(\d{2}\))(\d)(\d)/, '$1$2 $3')
+    .replace(/^(\(\d{2}\)\d \d{4})(\d)/, '$1-$2');
+}
+
 function maskDecimal(raw: string): string {
   // Permite dígitos, vírgula e ponto
   return raw.replace(/[^\d.,]/g, '');
@@ -457,8 +472,10 @@ function Field({ f, data, set, onCep, onToggleSede, disabled }: {
   if (f.kind === 'tel') return (
     <label className="text-sm text-muted-foreground-2">{label}
       <input type="tel" disabled={disabled} value={String(v ?? '')}
+        placeholder="(00)0 0000-0000"
+        maxLength={16}
         onChange={(e) => set(f.name as keyof AberturaData,
-          e.target.value.replace(/[^\d\s()+\-]/g, '') as AberturaData[keyof AberturaData])}
+          maskTel(e.target.value) as AberturaData[keyof AberturaData])}
         className={cls + ' mt-1'} />
     </label>
   );
