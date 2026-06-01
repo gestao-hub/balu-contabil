@@ -55,7 +55,7 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMe
               <Linha label="RBT12">{brl(apuracao.rbt12)}</Linha>
             )}
             {apuracao?.aliquota_efetiva != null && (
-              <Linha label="Alíquota efetiva">{apuracao.aliquota_efetiva.toFixed(2)}%</Linha>
+              <Linha label="Alíquota efetiva">{(apuracao.aliquota_efetiva * 100).toFixed(2)}%</Linha>
             )}
             {guia?.vencimento && (
               <Linha label="Vencimento">{dataBR(guia.vencimento)}</Linha>

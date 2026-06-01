@@ -22,7 +22,7 @@ export async function lerReceitasParaApuracao(
     .select('data_emissao, valor_total, status, tipo_documento')
     .eq('company_id', companyId)
     .eq('status', 'ativa')
-    .eq('tipo_documento', 'NFSe')
+    .in('tipo_documento', ['NFSe', 'NFe', 'NFCe'])
     .gte('data_emissao', inicioIso);
 
   if (error) throw new Error(`Falha ao ler notas para apuração: ${error.message}`);

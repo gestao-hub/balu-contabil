@@ -106,7 +106,7 @@ export async function iniciarApuracaoAction(
       anexo,
       receitas,
       competencia,
-      atividadeMei: fiscal.anexo_simples, // null p/ MEI → núcleo usa default serviços
+      atividadeMei: null, // TODO: adicionar empresas_fiscais.atividade_mei (MEI: 'Comercio ou Industria'|'Prestacao de Servicos'|'Comercio e Servicos'); sem o campo sempre cai em "Prestacao de Servicos" (R$80,90)
       // dataInicioAtividade: não temos o campo no schema → sem anualização por ora
     });
   } catch (e) {
