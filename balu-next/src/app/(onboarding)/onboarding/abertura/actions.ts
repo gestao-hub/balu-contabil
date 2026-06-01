@@ -2,10 +2,11 @@
 'use server';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import { randomUUID } from 'node:crypto';
 import { createServerClient } from '@/lib/supabase/server';
 import { AberturaCreateSchema } from '@/types/zod';
 import { ABERTURA_TEXT_FIELDS, DOC_KEYS, EMPTY_ABERTURA, type AberturaData, type DocKey } from '@/types/abertura';
-import { uploadAberturaDoc } from '@/lib/clients/supabase-storage';
+import { uploadAberturaDoc, ABERTURA_BUCKET, downloadFromBucket } from '@/lib/clients/supabase-storage';
 import { canonical, dadosHash, sha256File } from '@/lib/abertura/hash';
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -141,4 +142,85 @@ export async function submitAberturaAction(fd: FormData): Promise<Result> {
 
   revalidatePath('/');
   redirect('/configuracoes');
+}
+
+export async function loadAberturaAtual(): Promise<{ data: AberturaData; docs: Partial<Record<DocKey, string>>; aberturaId: string } | null> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data: prof } = await supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle();
+  if (!prof?.current_company) return null;
+  const { data: ab } = await supabase.from('abertura_empresas').select('*').eq('company_id', prof.current_company).maybeSingle();
+  if (!ab) return null;
+  const data: AberturaData = { ...EMPTY_ABERTURA };
+  for (const k of ABERTURA_TEXT_FIELDS) {
+    if (k === 'empresa_cnaes_secundarios') (data as unknown as Record<string, unknown>)[k] = (ab as Record<string, unknown>)[k] ?? [];
+    else if (k === 'sede_mesmo_que_titular') (data as unknown as Record<string, unknown>)[k] = !!(ab as Record<string, unknown>)[k];
+    else (data as unknown as Record<string, unknown>)[k] = (ab as Record<string, unknown>)[k] ?? '';
+  }
+  const docs: Partial<Record<DocKey, string>> = {};
+  for (const k of DOC_KEYS) if ((ab as Record<string, unknown>)[k]) docs[k] = (ab as Record<string, unknown>)[k] as string;
+  return { data, docs, aberturaId: (ab as Record<string, unknown>).id as string };
+}
+
+export async function solicitarAlteracaoAction(fd: FormData): Promise<Result> {
+  const data = parseForm(fd);
+  const parsed = AberturaCreateSchema.safeParse(data);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const { data: prof } = await supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle();
+  if (!prof?.current_company) return { ok: false, error: 'Empresa não encontrada.' };
+  const { data: ab } = await supabase.from('abertura_empresas').select('*').eq('company_id', prof.current_company).maybeSingle();
+  if (!ab) return { ok: false, error: 'Solicitação de abertura não encontrada.' };
+
+  const aberturaId = (ab as Record<string, unknown>).id as string;
+
+  // content-hash dos docs: novos enviados vs. atuais (lidos do Storage)
+  const newDocHashes: Partial<Record<DocKey, string>> = {};
+  const newDocBytes: Partial<Record<DocKey, { bytes: Buffer; ext: string; type: string }>> = {};
+  const proposedPaths: Partial<Record<DocKey, string>> = {};
+  for (const k of DOC_KEYS) {
+    const entry = await fileEntry(fd, k);
+    if (entry) {
+      newDocHashes[k] = sha256File(entry.bytes);
+      newDocBytes[k] = entry;
+    } else if ((ab as Record<string, unknown>)[k]) {
+      // doc mantido: baixa o atual e hasheia (para comparação justa)
+      const bytes = await downloadFromBucket(ABERTURA_BUCKET, (ab as Record<string, unknown>)[k] as string);
+      newDocHashes[k] = sha256File(bytes);
+      proposedPaths[k] = (ab as Record<string, unknown>)[k] as string;
+    }
+  }
+
+  // hash novo vs base
+  const novoHash = dadosHash(canonical(data, newDocHashes));
+  const baseHash = String((ab as Record<string, unknown>).dados_hash ?? '');
+  if (baseHash && novoHash === baseHash) {
+    return { ok: false, error: 'Nenhuma alteração detectada.' };
+  }
+
+  // sobe os docs alterados em alteracoes/<uuid>
+  const alteracaoId = randomUUID();
+  for (const k of DOC_KEYS) {
+    const entry = newDocBytes[k];
+    if (!entry) continue;
+    const { path } = await uploadAberturaDoc(`${aberturaId}/alteracoes/${alteracaoId}`, `${k}.${entry.ext}`, entry.bytes, entry.type);
+    proposedPaths[k] = path;
+  }
+
+  // raw_json com as mesmas chaves das colunas
+  const dados: Record<string, unknown> = {};
+  for (const k of ABERTURA_TEXT_FIELDS) dados[k] = (data as unknown as Record<string, unknown>)[k];
+  for (const k of DOC_KEYS) if (proposedPaths[k]) dados[k] = proposedPaths[k];
+
+  const { error: insErr } = await supabase.from('abertura_alteracoes').insert({
+    abertura_id: aberturaId, user_id: user.id, dados, dados_hash: novoHash, status: 'pendente',
+  });
+  if (insErr) return { ok: false, error: 'Falha ao registrar a solicitação de alteração.' };
+
+  revalidatePath('/configuracoes');
+  redirect('/configuracoes?alteracao=enviada');
 }
