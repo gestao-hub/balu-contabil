@@ -9,6 +9,7 @@ import { X, Search, Loader2 } from 'lucide-react';
 import { ClienteSchema, type ClienteInput } from '@/types/zod';
 import { useToast } from '@/components/Toaster';
 import { createClienteAction, updateClienteAction, lookupCnpjAction } from '@/app/(auth)/clientes/actions';
+import { lookupCepAction } from '@/app/(auth)/onboarding/actions';
 import { formatCnpj, formatCpf, formatCep, formatTel } from '@/lib/format/masks';
 
 const UF_OPTIONS = [
@@ -49,6 +50,7 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
   const [form, setForm] = useState<ClienteInput>({ ...EMPTY, ...(initial ?? {}) } as ClienteInput);
   const [busy, setBusy] = useState(false);
   const [busyCnpj, setBusyCnpj] = useState(false);
+  const [busyCep, setBusyCep] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -101,6 +103,26 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
       toast('success', 'Dados do CNPJ carregados.');
     } finally {
       setBusyCnpj(false);
+    }
+  }
+
+  async function handleLookupCep() {
+    const digits = (form.cep ?? '').replace(/\D/g, '');
+    if (digits.length !== 8) { toast('warning', 'Informe um CEP com 8 dígitos.'); return; }
+    setBusyCep(true);
+    try {
+      const r = await lookupCepAction(digits);
+      if (!r.ok) { toast('error', r.error); return; }
+      const d = r.data;
+      setForm((prev) => ({
+        ...prev,
+        logradouro: d.logradouro ?? prev.logradouro,
+        bairro:     d.bairro ?? prev.bairro,
+        municipio:  d.municipio ?? prev.municipio,
+        uf:         d.uf ?? prev.uf,
+      }));
+    } finally {
+      setBusyCep(false);
     }
   }
 
@@ -257,13 +279,23 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
             <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
               <div className="md:col-span-2">
                 <Field label="CEP" error={errors.cep}>
-                  <input
-                    value={formatCep(form.cep ?? '')}
-                    onChange={(e) => update('cep', e.target.value.replace(/\D/g, ''))}
-                    placeholder="00000-000"
-                    maxLength={9}
-                    className={inputCls}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      value={formatCep(form.cep ?? '')}
+                      onChange={(e) => update('cep', e.target.value.replace(/\D/g, ''))}
+                      placeholder="00000-000"
+                      maxLength={9}
+                      className={`${inputCls} flex-1`}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleLookupCep}
+                      disabled={busyCep}
+                      className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50"
+                    >
+                      {busyCep ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+                    </button>
+                  </div>
                 </Field>
               </div>
               <div className="md:col-span-4">
