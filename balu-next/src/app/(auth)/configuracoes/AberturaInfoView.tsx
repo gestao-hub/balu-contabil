@@ -1,6 +1,7 @@
 // src/app/(auth)/configuracoes/AberturaInfoView.tsx
 'use client';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import AlteracaoDialog from './AlteracaoDialog';
 
 const ETAPAS = ['recebido','em_analise','pendente_documentos','enviado_receita','enviado_junta','enviado_prefeitura','concluido'] as const;
 const ETAPA_LABEL: Record<string, string> = {
@@ -10,7 +11,7 @@ const ETAPA_LABEL: Record<string, string> = {
 };
 
 export default function AberturaInfoView({ abertura }: { abertura: Record<string, unknown> }) {
-  const router = useRouter();
+  const [showAlteracao, setShowAlteracao] = useState(false);
   const etapa = String(abertura.processo_etapa ?? 'recebido');
   const idx = ETAPAS.indexOf(etapa as (typeof ETAPAS)[number]);
 
@@ -58,11 +59,19 @@ export default function AberturaInfoView({ abertura }: { abertura: Record<string
       </section>
 
       <div>
-        <button type="button" onClick={() => router.push('/onboarding/abertura?modo=alteracao')}
-          className="px-4 py-2 text-sm rounded-lg border border-border text-foreground hover:bg-surface-2">
+        <button
+          type="button"
+          onClick={() => setShowAlteracao(true)}
+          className="px-4 py-2 text-sm rounded-lg border border-border text-foreground hover:bg-surface-2"
+        >
           Solicitar alteração de dados
         </button>
       </div>
+
+      <AlteracaoDialog
+        open={showAlteracao}
+        onClose={() => setShowAlteracao(false)}
+      />
     </div>
   );
 }
