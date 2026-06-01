@@ -21,8 +21,24 @@ CREATE TRIGGER abertura_alteracoes_set_updated_at BEFORE UPDATE
   ON public.abertura_alteracoes FOR EACH ROW EXECUTE FUNCTION public.tg_set_updated_at();
 
 ALTER TABLE public.abertura_alteracoes ENABLE ROW LEVEL SECURITY;
+-- A política verifica: (1) linha pertence ao user, (2) abertura referenciada pertence ao user.
+-- Previne IDOR onde user_a inseriria user_id=a mas abertura_id de user_b.
 CREATE POLICY abertura_alteracoes_owner ON public.abertura_alteracoes FOR ALL
-  TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  TO authenticated
+  USING (
+    user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.abertura_empresas ae
+      WHERE ae.id = abertura_id AND ae.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.abertura_empresas ae
+      WHERE ae.id = abertura_id AND ae.user_id = auth.uid()
+    )
+  );
 
 -- Stub de empresa em abertura não tem CNPJ ainda
 ALTER TABLE public.companies ALTER COLUMN cnpj DROP NOT NULL;

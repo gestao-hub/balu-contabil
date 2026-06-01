@@ -76,6 +76,10 @@ export async function uploadAberturaDoc(
   file: ArrayBuffer | Buffer,
   contentType: string,
 ): Promise<{ path: string }> {
-  if (!scopeId) throw new Error('scopeId obrigatório');
-  return uploadToBucket(ABERTURA_BUCKET, `${scopeId}/${fileName}`, file, contentType);
+  // path traversal guard: scopeId deve ser UUID-like, fileName sem diretórios
+  if (!scopeId || !/^[\w-]+$/.test(scopeId)) throw new Error('scopeId inválido');
+  const { basename } = await import('node:path');
+  const safeName = basename(fileName);
+  if (!safeName || safeName.startsWith('.')) throw new Error('fileName inválido');
+  return uploadToBucket(ABERTURA_BUCKET, `${scopeId}/${safeName}`, file, contentType);
 }
