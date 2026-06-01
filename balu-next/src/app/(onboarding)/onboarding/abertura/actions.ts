@@ -71,7 +71,7 @@ export async function submitAberturaAction(fd: FormData): Promise<Result> {
   }
 
   // 4) insert abertura_empresas using parsed.data (trimmed values from Zod)
-  const hash = dadosHash(canonical(data, docHashes));
+  const hash = dadosHash(canonical(parsed.data as unknown as AberturaData, docHashes));
   const row: Record<string, unknown> = {
     user_id: user.id,
     company_id: stub.id,
