@@ -1,5 +1,6 @@
 'use client';
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/Toaster';
 import { createHonorarioAction, updateHonorarioAction } from './actions';
 
@@ -31,6 +32,7 @@ function dateToMesRef(d: string): string {
 }
 
 export default function HonorarioFormDialog({ open, onClose, companyId, clientes, editing }: Props) {
+  const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export default function HonorarioFormDialog({ open, onClose, companyId, clientes
 
       if (res.ok) {
         toast('success', editing ? 'Honorário atualizado.' : 'Honorário criado.');
+        router.refresh();
         onClose();
       } else {
         setErro(res.error);
