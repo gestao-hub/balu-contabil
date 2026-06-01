@@ -152,6 +152,8 @@ export async function loadAberturaAtual(): Promise<{ data: AberturaData; docs: P
   if (!prof?.current_company) return null;
   const { data: ab } = await supabase.from('abertura_empresas').select('*').eq('company_id', prof.current_company).maybeSingle();
   if (!ab) return null;
+  // Defesa explícita: RLS já filtra, mas garante invariante mesmo se RLS estiver desabilitada
+  if ((ab as Record<string, unknown>).user_id !== user.id) return null;
   const data: AberturaData = { ...EMPTY_ABERTURA };
   for (const k of ABERTURA_TEXT_FIELDS) {
     if (k === 'empresa_cnaes_secundarios') (data as unknown as Record<string, unknown>)[k] = (ab as Record<string, unknown>)[k] ?? [];
@@ -175,6 +177,8 @@ export async function solicitarAlteracaoAction(fd: FormData): Promise<Result> {
   if (!prof?.current_company) return { ok: false, error: 'Empresa não encontrada.' };
   const { data: ab } = await supabase.from('abertura_empresas').select('*').eq('company_id', prof.current_company).maybeSingle();
   if (!ab) return { ok: false, error: 'Solicitação de abertura não encontrada.' };
+  // Defesa explícita: RLS já filtra, mas garante invariante mesmo se RLS estiver desabilitada
+  if ((ab as Record<string, unknown>).user_id !== user.id) return { ok: false, error: 'Solicitação não encontrada.' };
 
   const aberturaId = (ab as Record<string, unknown>).id as string;
 
@@ -189,9 +193,13 @@ export async function solicitarAlteracaoAction(fd: FormData): Promise<Result> {
       newDocBytes[k] = entry;
     } else if ((ab as Record<string, unknown>)[k]) {
       // doc mantido: baixa o atual e hasheia (para comparação justa)
-      const bytes = await downloadFromBucket(ABERTURA_BUCKET, (ab as Record<string, unknown>)[k] as string);
-      newDocHashes[k] = sha256File(bytes);
-      proposedPaths[k] = (ab as Record<string, unknown>)[k] as string;
+      try {
+        const bytes = await downloadFromBucket(ABERTURA_BUCKET, (ab as Record<string, unknown>)[k] as string);
+        newDocHashes[k] = sha256File(bytes);
+        proposedPaths[k] = (ab as Record<string, unknown>)[k] as string;
+      } catch {
+        return { ok: false, error: 'Falha ao ler documento existente. Faça o upload novamente.' };
+      }
     }
   }
 
