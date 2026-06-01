@@ -12,7 +12,7 @@ export default async function HonorariosPage() {
   // Verifica role Contador — metadata first (igual ao layout), DB como fallback
   const role = String(
     (user.user_metadata?.type as string | null) ??
-    ((await supabase.from('role_types').select('role').eq('user_id', user.id).maybeSingle()).data?.role) ??
+    ((await supabase.from('role_types').select('type').eq('user_id', user.id).maybeSingle()).data?.type) ??
     ''
   ).toLowerCase();
   if (role !== 'contador') redirect('/');
