@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { createServerClient } from '@/lib/supabase/server';
 import { AberturaCreateSchema } from '@/types/zod';
 import { ABERTURA_TEXT_FIELDS, DOC_KEYS, EMPTY_ABERTURA, type AberturaData, type DocKey } from '@/types/abertura';
-import { uploadAberturaDoc, ABERTURA_BUCKET, downloadFromBucket } from '@/lib/clients/supabase-storage';
+import { uploadAberturaDoc, uploadToBucket, ABERTURA_BUCKET, downloadFromBucket } from '@/lib/clients/supabase-storage';
 import { canonical, dadosHash, sha256File } from '@/lib/abertura/hash';
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -202,12 +202,14 @@ export async function solicitarAlteracaoAction(fd: FormData): Promise<Result> {
     return { ok: false, error: 'Nenhuma alteração detectada.' };
   }
 
-  // sobe os docs alterados em alteracoes/<uuid>
+  // sobe os docs alterados em <aberturaId>/alteracoes/<uuid>/
+  // Usa uploadToBucket diretamente porque o scopeId contém '/' (path aninhado).
   const alteracaoId = randomUUID();
   for (const k of DOC_KEYS) {
     const entry = newDocBytes[k];
     if (!entry) continue;
-    const { path } = await uploadAberturaDoc(`${aberturaId}/alteracoes/${alteracaoId}`, `${k}.${entry.ext}`, entry.bytes, entry.type);
+    const storagePath = `${aberturaId}/alteracoes/${alteracaoId}/${k}.${entry.ext}`;
+    const { path } = await uploadToBucket(ABERTURA_BUCKET, storagePath, entry.bytes, entry.type);
     proposedPaths[k] = path;
   }
 
