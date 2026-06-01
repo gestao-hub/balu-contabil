@@ -30,7 +30,7 @@ function mesLabel(d: string) {
 function dataBR(d: string | null) {
   if (!d) return '—';
   const [y, m, day] = d.split('-');
-  return `${day}/${m}/${y}`;
+  return `${(day ?? '').padStart(2, '0')}/${(m ?? '').padStart(2, '0')}/${y ?? ''}`;
 }
 
 function primeiroDiaMesISO(): string {
@@ -44,9 +44,10 @@ function ultimoDiaMesISO(): string {
   return `${brt.getFullYear()}-${String(brt.getMonth() + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
 }
 
+/** Escapa campo CSV: envolve em aspas se contém `"`, `;`, `,`, quebra de linha. */
 function esc(v: unknown): string {
-  const s = v == null ? '' : String(v);
-  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const s = v == null ? '' : String(v).replace(/[\r\n]+/g, ' ');
+  return /[";\n\r,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 function downloadCSV(rows: HonorarioRow[]) {
@@ -56,12 +57,14 @@ function downloadCSV(rows: HonorarioRow[]) {
     ...rows.map(r => [
       r.clientes?.razao_social ?? '',
       mesLabel(r.mes_referencia),
-      String(r.valor).replace('.', ','),
+      // Valor com ponto decimal — vírgula como decimal causa shift de coluna quando
+      // o Excel usa vírgula como separador. Sempre entre aspas para segurança.
+      `"${Number(r.valor).toFixed(2).replace('.', ',')}"`,
       dataBR(r.data_vencimento),
       dataBR(r.data_pagamento),
       r.status ?? 'pendente',
       r.observacao ?? '',
-    ].map(esc).join(';')),
+    ].map((v, i) => i === 2 ? v : esc(v)).join(';')),
   ];
   const csv = lines.join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
