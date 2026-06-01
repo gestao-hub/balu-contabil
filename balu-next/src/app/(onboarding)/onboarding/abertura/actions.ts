@@ -55,10 +55,16 @@ export async function submitAberturaAction(fd: FormData): Promise<Result> {
   }).select('id').single();
   if (stubErr || !stub) return { ok: false, error: 'Falha ao iniciar a empresa.' };
 
-  // 2) profiles.current_company
-  const { data: prof } = await supabase.from('profiles').select('id').eq('user_id', user.id).maybeSingle();
-  if (prof) await supabase.from('profiles').update({ current_company: stub.id }).eq('user_id', user.id);
-  else await supabase.from('profiles').insert({ user_id: user.id, current_company: stub.id });
+  // 2) profiles.current_company — salva o valor anterior para rollback
+  const { data: prof } = await supabase.from('profiles').select('id, current_company').eq('user_id', user.id).maybeSingle();
+  const prevCompany = (prof as { current_company?: string | null } | null)?.current_company ?? null;
+  const profResult = prof
+    ? await supabase.from('profiles').update({ current_company: stub.id }).eq('user_id', user.id)
+    : await supabase.from('profiles').insert({ user_id: user.id, current_company: stub.id });
+  if (profResult.error) {
+    await supabase.from('companies').delete().eq('id', stub.id);
+    return { ok: false, error: 'Falha ao associar a empresa ao perfil.' };
+  }
 
   // 3) uploads + content-hash
   const docPaths: Partial<Record<DocKey, string>> = {};
@@ -70,8 +76,12 @@ export async function submitAberturaAction(fd: FormData): Promise<Result> {
     docPaths[k] = path; docHashes[k] = sha256File(entry.bytes);
   }
 
-  // 4) insert abertura_empresas using parsed.data (trimmed values from Zod)
-  const hash = dadosHash(canonical(parsed.data as unknown as AberturaData, docHashes));
+  // 4) insert abertura_empresas
+  // Hash usa `data` (parseForm, sempre string/boolean/'') para consistência com
+  // loadAberturaAtual que lê o banco e também retorna '' para campos vazios.
+  // parsed.data tem `undefined` em campos opcionais não preenchidos — JSON.stringify
+  // os omite, tornando os hashes incomparáveis com os futuros recomputed.
+  const hash = dadosHash(canonical(data, docHashes));
   const row: Record<string, unknown> = {
     user_id: user.id,
     company_id: stub.id,
@@ -123,8 +133,8 @@ export async function submitAberturaAction(fd: FormData): Promise<Result> {
 
   const { error: insErr } = await supabase.from('abertura_empresas').insert(row);
   if (insErr) {
-    // rollback best-effort
-    await supabase.from('profiles').update({ current_company: null }).eq('user_id', user.id);
+    // rollback best-effort — restaura current_company anterior em vez de forçar null
+    await supabase.from('profiles').update({ current_company: prevCompany }).eq('user_id', user.id);
     await supabase.from('companies').delete().eq('id', stub.id);
     return { ok: false, error: 'Falha ao registrar a solicitação. Tente novamente.' };
   }

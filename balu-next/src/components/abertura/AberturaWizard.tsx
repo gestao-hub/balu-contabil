@@ -141,11 +141,20 @@ export default function AberturaWizard({
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4">
-        {!isLast && STEPS[step].fields.map((f) => (
-          <Field key={String(f.name)} f={f} data={data} set={set}
-            onCep={f.kind === 'cep' ? () => buscarCep(f.name === 'sede_cep' ? 'sede' : 'titular') : undefined}
-            onToggleSede={f.name === 'sede_mesmo_que_titular' ? toggleSedeMesmo : undefined} />
-        ))}
+        {!isLast && STEPS[step].fields.map((f) => {
+          // Campos de endereço da sede ficam bloqueados quando "mesmo do titular" está marcado
+          const sedeLocked =
+            data.sede_mesmo_que_titular &&
+            typeof f.name === 'string' &&
+            f.name.startsWith('sede_') &&
+            f.name !== 'sede_mesmo_que_titular' &&
+            f.name !== 'sede_tipo_endereco';
+          return (
+            <Field key={String(f.name)} f={f} data={data} set={set} disabled={sedeLocked}
+              onCep={f.kind === 'cep' ? () => buscarCep(f.name === 'sede_cep' ? 'sede' : 'titular') : undefined}
+              onToggleSede={f.name === 'sede_mesmo_que_titular' ? toggleSedeMesmo : undefined} />
+          );
+        })}
         {isLast && DOC_KEYS.map((k) => (
           <label key={k} className="text-sm text-muted-foreground-2">
             {docLabel(k)}
@@ -182,14 +191,15 @@ function docLabel(k: DocKey): string {
 }
 
 // Renderizador genérico de campo
-function Field({ f, data, set, onCep, onToggleSede }: {
+function Field({ f, data, set, onCep, onToggleSede, disabled }: {
   f: StepField;
   data: AberturaData;
   set: <K extends keyof AberturaData>(name: K, value: AberturaData[K]) => void;
   onCep?: () => void;
   onToggleSede?: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
-  const cls = 'w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary';
+  const cls = 'w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed';
   const v = (data as unknown as Record<string, unknown>)[f.name];
   if (f.kind === 'checkbox') return (
     <label className="flex items-center gap-2 text-sm text-muted-foreground-2">
@@ -198,7 +208,7 @@ function Field({ f, data, set, onCep, onToggleSede }: {
   );
   if (f.kind === 'select') return (
     <label className="text-sm text-muted-foreground-2">{f.label}{'required' in f && f.required && ' *'}
-      <select value={String(v ?? '')} onChange={(e) => set(f.name as keyof AberturaData, e.target.value as AberturaData[keyof AberturaData])} className={cls + ' mt-1'}>
+      <select value={String(v ?? '')} disabled={disabled} onChange={(e) => set(f.name as keyof AberturaData, e.target.value as AberturaData[keyof AberturaData])} className={cls + ' mt-1'}>
         <option value=""></option>
         {(f as Extract<StepField, { kind: 'select' }>).options.map((o: string) => <option key={o} value={o}>{o}</option>)}
       </select>
@@ -206,20 +216,20 @@ function Field({ f, data, set, onCep, onToggleSede }: {
   );
   if (f.kind === 'csv') return (
     <label className="text-sm text-muted-foreground-2 sm:col-span-2">{f.label}
-      <input value={(v as string[]).join(', ')} onChange={(e) => set('empresa_cnaes_secundarios', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} className={cls + ' mt-1'} />
+      <input disabled={disabled} value={(v as string[]).join(', ')} onChange={(e) => set('empresa_cnaes_secundarios', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} className={cls + ' mt-1'} />
     </label>
   );
   if (f.kind === 'cep') return (
     <label className="text-sm text-muted-foreground-2">{f.label}
       <div className="flex gap-2 mt-1">
-        <input value={String(v ?? '')} onChange={(e) => set(f.name as keyof AberturaData, e.target.value as AberturaData[keyof AberturaData])} className={cls} />
-        <button type="button" onClick={onCep} className="px-3 py-2 text-sm rounded-lg border border-border whitespace-nowrap">Buscar</button>
+        <input disabled={disabled} value={String(v ?? '')} onChange={(e) => set(f.name as keyof AberturaData, e.target.value as AberturaData[keyof AberturaData])} className={cls} />
+        <button type="button" disabled={disabled} onClick={onCep} className="px-3 py-2 text-sm rounded-lg border border-border whitespace-nowrap disabled:opacity-50">Buscar</button>
       </div>
     </label>
   );
   return (
     <label className="text-sm text-muted-foreground-2">{f.label}{'required' in f && f.required && ' *'}
-      <input type={f.kind === 'text' ? 'text' : f.kind} value={String(v ?? '')} onChange={(e) => set(f.name as keyof AberturaData, e.target.value as AberturaData[keyof AberturaData])} className={cls + ' mt-1'} />
+      <input disabled={disabled} type={f.kind === 'text' ? 'text' : f.kind} value={String(v ?? '')} onChange={(e) => set(f.name as keyof AberturaData, e.target.value as AberturaData[keyof AberturaData])} className={cls + ' mt-1'} />
     </label>
   );
 }
