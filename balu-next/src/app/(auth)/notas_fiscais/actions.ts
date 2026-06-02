@@ -445,7 +445,7 @@ export async function cancelarNotaAction(
     companyForCancel.municipio as string | null,
     companyForCancel.uf as string | null,
   );
-  if (cancelamentoSoPortal(tipo, muni?.cancelamento_so_portal)) {
+  if (cancelamentoSoPortal(tipo, muni?.possui_cancelamento_nfse)) {
     return { ok: false, error: 'Esta NFS-e só pode ser cancelada pelo portal da prefeitura do município.' };
   }
 

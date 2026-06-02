@@ -48,7 +48,7 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
   const muni = companyRow
     ? await resolveMunicipioNfse(supabase, companyRow.municipio as string | null, companyRow.uf as string | null)
     : null;
-  const cancelSoPortal = cancelamentoSoPortal(nota.tipo_documento as string, muni?.cancelamento_so_portal);
+  const cancelSoPortal = cancelamentoSoPortal(nota.tipo_documento as string, muni?.possui_cancelamento_nfse);
 
   const payload = (nota.payload_focusnfe ?? {}) as unknown as Record<string, unknown>;
   const dest = (payload.destinatario ?? {}) as Record<string, unknown>;

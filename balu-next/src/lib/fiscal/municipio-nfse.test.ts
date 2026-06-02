@@ -14,20 +14,26 @@ describe('normalizeNome', () => {
 });
 
 describe('credenciaisDaAutenticacao', () => {
-  it('Login e Senha', () => {
-    expect(credenciaisDaAutenticacao('Login e Senha')).toEqual({ login: true, token: false, certificado: false });
-  });
-  it('Token', () => {
-    expect(credenciaisDaAutenticacao('Token')).toEqual({ login: false, token: true, certificado: false });
-  });
-  it('Certificado digital', () => {
-    expect(credenciaisDaAutenticacao('Certificado digital')).toEqual({ login: false, token: false, certificado: true });
-  });
-  it('combinação Certificado digital, Login e Senha, Token', () => {
-    expect(credenciaisDaAutenticacao('Certificado digital, Login e Senha, Token')).toEqual({ login: true, token: true, certificado: true });
-  });
-  it('Não possui / null → nenhum', () => {
-    expect(credenciaisDaAutenticacao('Não possui')).toEqual({ login: false, token: false, certificado: false });
+  it('null/undefined → nenhum', () => {
     expect(credenciaisDaAutenticacao(null)).toEqual({ login: false, token: false, certificado: false });
+    expect(credenciaisDaAutenticacao(undefined)).toEqual({ login: false, token: false, certificado: false });
+  });
+  it('provedor não-Nacional sem requer_certificado → login+token, sem cert', () => {
+    expect(credenciaisDaAutenticacao({ provedor_nfse: 'eGoverne', requer_certificado_nfse: false }))
+      .toEqual({ login: true, token: true, certificado: false });
+  });
+  it('provedor não-Nacional com requer_certificado → login+token+cert', () => {
+    expect(credenciaisDaAutenticacao({ provedor_nfse: 'eGoverne', requer_certificado_nfse: true }))
+      .toEqual({ login: true, token: true, certificado: true });
+  });
+  it('provedor Nacional → só certificado', () => {
+    expect(credenciaisDaAutenticacao({ provedor_nfse: 'NacionalAbrasf', requer_certificado_nfse: false }))
+      .toEqual({ login: false, token: false, certificado: false });
+    expect(credenciaisDaAutenticacao({ provedor_nfse: 'NacionalAbrasf', requer_certificado_nfse: true }))
+      .toEqual({ login: false, token: false, certificado: true });
+  });
+  it('provedor null → login+token', () => {
+    expect(credenciaisDaAutenticacao({ provedor_nfse: null, requer_certificado_nfse: null }))
+      .toEqual({ login: true, token: true, certificado: false });
   });
 });
