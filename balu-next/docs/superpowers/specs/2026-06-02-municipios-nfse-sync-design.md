@@ -10,11 +10,24 @@
 
 A tabela `municipios_nfse` veio do Bubble com um schema legado (`municipio`, `estado`, `producao_disponivel` como string "Sim"/"Não", etc.) e dados estáticos nunca mais atualizados. A Focus NFe expõe um endpoint completo com todos os municípios do Brasil e seus status de suporte a NFS-e — que é exatamente o que o Balu precisa para:
 
-1. **`/configuracoes` → Diagnóstico** — verificar se a cidade da empresa é atendida (`cidadeNfseCheck`)
-2. **`/configuracoes` → NFS-e** — mostrar provedor e flags de cancelamento do município
+1. **`/configuracoes` → Diagnóstico** — verificar se a cidade da empresa é atendida (`cidadeNfseCheck`), exibindo badge com `status_nfse` (verde/amarelo/vermelho)
+2. **`/configuracoes` → NFS-e** — mostrar provedor e flags de cancelamento do município; campos de credenciais só para provedores legados (não Nacional)
 3. **`/notas_fiscais/[id]`** e **cancelamento** — saber se o cancelamento é só pelo portal municipal
+4. **Gate de emissão NFS-e** — `emitirNotaAction` e `emissao/nfse/page.tsx` bloqueiam quando `status_nfse !== 'ativo'`, com mensagem específica por status (fora_do_ar, pausado, em_implementacao, etc.). Substitui o toggle manual `empresa_fiscal_ativada` que era escolha do usuário.
 
-O cron roda diariamente (00:00 UTC) e mantém a tabela sempre alinhada com o catálogo da Focus.
+O cron roda diariamente (00:00 UTC) via Supabase Edge Function e mantém a tabela sempre alinhada com o catálogo da Focus.
+
+**`status_nfse` — valores possíveis:**
+
+| Valor | Significado | Badge |
+|---|---|---|
+| `ativo` | Focus emitindo normalmente | 🟢 verde |
+| `fora_do_ar` | Servidor do município temporariamente indisponível | 🔴 vermelho |
+| `pausado` | Emissão pausada na Focus | 🟡 amarelo |
+| `em_implementacao` | Município sendo implementado | 🟡 amarelo |
+| `em_reimplementacao` | Município em reimplementação | 🟡 amarelo |
+| `inativo` | NFS-e desativada na Focus | 🔴 vermelho |
+| `nao_implementado` | Município não suportado | 🔴 vermelho |
 
 ---
 
