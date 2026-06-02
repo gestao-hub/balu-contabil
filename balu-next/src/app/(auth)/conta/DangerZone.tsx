@@ -60,7 +60,7 @@ export default function DangerZone({ email }: Props) {
         confirmLabel="Excluir conta"
         onConfirm={handleConfirm}
         onCancel={handleCancel}
-        busy={!confirmed || isPending}
+        busy={isPending}
       >
         <input
           type="email"
