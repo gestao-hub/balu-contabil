@@ -33,7 +33,7 @@
 - Modify: `src/app/(auth)/impostos/page.tsx` — passar `isMei` ao card.
 - Test: `*.test.ts` ao lado dos módulos puros.
 
-Comandos (de `balu-next/`): teste único `npx vitest run <path>` (o `npm run test` é watch). Typecheck: `npm run typecheck`.
+Comandos (de `app/`): teste único `npx vitest run <path>` (o `npm run test` é watch). Typecheck: `npm run typecheck`.
 
 ---
 

@@ -1,6 +1,6 @@
 # Divergência: Migrations × Banco real
 
-> **TL;DR**: Os arquivos `balu-next/supabase/migrations/0001_init.sql` (+ `src/types/database.ts`, que vem do mesmo gerador) descrevem um schema **idealizado** do PRD/Bubble que **nunca foi aplicado** ao banco em produção. O banco real (`llykzqnugdpojwnlontj`, **PostgreSQL 17.6**) segue outro schema, desenhado para o **motor fiscal n8n**, e já contém dados.
+> **TL;DR**: Os arquivos `app/supabase/migrations/0001_init.sql` (+ `src/types/database.ts`, que vem do mesmo gerador) descrevem um schema **idealizado** do PRD/Bubble que **nunca foi aplicado** ao banco em produção. O banco real (`llykzqnugdpojwnlontj`, **PostgreSQL 17.6**) segue outro schema, desenhado para o **motor fiscal n8n**, e já contém dados.
 >
 > **Decisão**: o **banco é a fonte da verdade**. O caminho é **alinhar o código ao banco** (regenerar types + reescrever queries) e criar apenas o que falta de forma **aditiva**. Não remodelar o banco para o `0001`.
 
@@ -8,14 +8,14 @@
 
 ## Como esta comparação foi obtida
 
-- **Migrations / código**: `balu-next/supabase/migrations/0001_init.sql`, `0002_signup_user_role.sql`, `balu-next/src/types/database.ts`.
+- **Migrations / código**: `app/supabase/migrations/0001_init.sql`, `0002_signup_user_role.sql`, `app/src/types/database.ts`.
 - **Banco real**: `pg_dump` (schema-only) do projeto Supabase de produção:
   ```bash
   docker run --rm --network=host postgres:17 pg_dump \
     "postgresql://postgres:***@db.llykzqnugdpojwnlontj.supabase.co:5432/postgres" \
     --schema-only --schema=public --no-owner --no-privileges > db_atual.sql
   ```
-- Servidor: **PostgreSQL 17.6**. Dump salvo (temporariamente) em `balu-next/db_atual.sql`.
+- Servidor: **PostgreSQL 17.6**. Dump salvo (temporariamente) em `app/db_atual.sql`.
 - ⚠️ Como usei `--no-privileges`, GRANT/REVOKE (incl. o `revoke select(cert_password)` do `0001`) **não** entraram no dump e não foram verificados aqui.
 
 ---
@@ -113,7 +113,7 @@ Banco real: `id, company_id, owner_user_id, competencia_referencia (varchar7), a
 - **RLS agora está LIGADA** nas 13 tabelas, via `0010_rls_policies.sql`. Modelo: `companies.user_id = auth.uid()`; tabelas escopadas por company usam o helper `user_owns_company(uuid)` (SECURITY DEFINER, sem recursão).
 - As 4 policies antigas e erradas de `notas_fiscais` (`auth.uid() = company_id`) foram **dropadas**; agora usa `user_owns_company(company_id)`.
 - **Sequência:** `0009_disable_rls.sql` foi um rollback temporário (o RLS tinha sido ligado manualmente pelo painel **sem** policies, travando toda query autenticada) → `0010` re-liga já com as policies corretas → `0011` formaliza a FK de `arquivos_auxiliares`, concede grant em `role_types` e cria policies por `user_id` em `abertura_empresas`.
-- Isolamento entre tenants **provado** por teste automatizado (`balu-next/tests/rls-isolation.spec.ts`, RED→GREEN) + fluxos do dono validados via Playwright sem regressão. Evidências: `balu-next/docs/rls-test-results-2026-05-29.md` e `balu-next/docs/saneamento-results-2026-05-29.md`.
+- Isolamento entre tenants **provado** por teste automatizado (`app/tests/rls-isolation.spec.ts`, RED→GREEN) + fluxos do dono validados via Playwright sem regressão. Evidências: `app/docs/rls-test-results-2026-05-29.md` e `app/docs/saneamento-results-2026-05-29.md`.
 - **Estado anterior (histórico, pré-2026-05-29):** RLS não habilitada em nenhuma tabela; só `notas_fiscais` tinha 4 policies inertes e erradas; a anon key lia dados de todos os tenants.
 
 ---

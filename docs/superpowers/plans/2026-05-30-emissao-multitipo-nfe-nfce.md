@@ -12,7 +12,7 @@
 - Testes: `npm test` (Vitest). Um teste só: `npx vitest run src/lib/fiscal/nfe-payload.test.ts`.
 - Typecheck: `npm run typecheck`.
 - ⚠️ NÃO rodar `npm run build` com `next dev` ativo (corrompe o `.next`).
-- Trabalhar dentro de `balu-next/`. App vive em `balu-next/`, não na raiz.
+- Trabalhar dentro de `app/`. App vive em `app/`, não na raiz.
 - Branch já criada: `feat/emissao-multitipo-nfe-nfce`.
 
 ---
@@ -1344,7 +1344,7 @@ A NFS-e atual está em `emissao/page.tsx` + `emissao/EmissaoForm.tsx`. Vamos: mo
 - [ ] **Step 1: Mover a página NFS-e para `nfse/page.tsx`**
 
 ```bash
-cd balu-next
+cd app
 git mv "src/app/(auth)/notas_fiscais/emissao/page.tsx" "src/app/(auth)/notas_fiscais/emissao/nfse/page.tsx"
 ```
 

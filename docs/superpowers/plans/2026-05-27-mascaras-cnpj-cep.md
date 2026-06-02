@@ -15,12 +15,12 @@
 ### Task 1: Formatadores puros `masks.ts` (TDD)
 
 **Files:**
-- Create: `balu-next/src/lib/format/masks.ts`
-- Test: `balu-next/src/lib/format/masks.test.ts`
+- Create: `app/src/lib/format/masks.ts`
+- Test: `app/src/lib/format/masks.test.ts`
 
 - [ ] **Step 1: Escrever o teste que falha**
 
-Criar `balu-next/src/lib/format/masks.test.ts`:
+Criar `app/src/lib/format/masks.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 import { formatCnpj, formatCep } from './masks';
@@ -62,12 +62,12 @@ describe('formatCep', () => {
 
 - [ ] **Step 2: Rodar o teste e ver falhar**
 
-Run: `cd balu-next && npx vitest run src/lib/format/masks.test.ts`
+Run: `cd app && npx vitest run src/lib/format/masks.test.ts`
 Expected: FAIL — `Failed to resolve import "./masks"` (módulo ainda não existe).
 
 - [ ] **Step 3: Implementar `masks.ts`**
 
-Criar `balu-next/src/lib/format/masks.ts`:
+Criar `app/src/lib/format/masks.ts`:
 ```ts
 // @custom — formatadores de máscara para inputs (CNPJ/CEP). Puros, sem deps.
 // O valor cru (dígitos) é o que persiste; estas funções só formatam para exibição.
@@ -92,13 +92,13 @@ export function formatCep(value: string): string {
 
 - [ ] **Step 4: Rodar o teste e ver passar**
 
-Run: `cd balu-next && npx vitest run src/lib/format/masks.test.ts`
+Run: `cd app && npx vitest run src/lib/format/masks.test.ts`
 Expected: PASS (2 describes, todos os casos verdes).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add balu-next/src/lib/format/masks.ts balu-next/src/lib/format/masks.test.ts
+git add app/src/lib/format/masks.ts app/src/lib/format/masks.test.ts
 git commit -m "feat(format): formatadores puros de máscara CNPJ/CEP (formatCnpj/formatCep)"
 ```
 
@@ -107,7 +107,7 @@ git commit -m "feat(format): formatadores puros de máscara CNPJ/CEP (formatCnpj
 ### Task 2: Máscara no cadastro (`CreateCompanyDialog`)
 
 **Files:**
-- Modify: `balu-next/src/components/CreateCompanyDialog.tsx`
+- Modify: `app/src/components/CreateCompanyDialog.tsx`
 
 - [ ] **Step 1: Importar os formatadores**
 
@@ -194,13 +194,13 @@ por:
 
 - [ ] **Step 5: `tsc`**
 
-Run: `cd balu-next && npx tsc --noEmit`
+Run: `cd app && npx tsc --noEmit`
 Expected: zero erros.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add balu-next/src/components/CreateCompanyDialog.tsx
+git add app/src/components/CreateCompanyDialog.tsx
 git commit -m "feat(cadastro): máscara de CNPJ/CEP no CreateCompanyDialog; CEP grava só dígitos"
 ```
 
@@ -209,7 +209,7 @@ git commit -m "feat(cadastro): máscara de CNPJ/CEP no CreateCompanyDialog; CEP 
 ### Task 3: Máscara + ViaCEP na edição (`DadosEmpresaForm`)
 
 **Files:**
-- Modify: `balu-next/src/app/(auth)/configuracoes/DadosEmpresaForm.tsx`
+- Modify: `app/src/app/(auth)/configuracoes/DadosEmpresaForm.tsx`
 
 - [ ] **Step 1: Atualizar imports (ícone MapPin, formatadores, lookupCepAction)**
 
@@ -344,13 +344,13 @@ por:
 
 - [ ] **Step 7: `tsc` + `vitest`**
 
-Run: `cd balu-next && npx tsc --noEmit && npx vitest run`
+Run: `cd app && npx tsc --noEmit && npx vitest run`
 Expected: tsc zero erros; vitest verde (suíte total + os novos testes de `masks.test.ts`).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add "balu-next/src/app/(auth)/configuracoes/DadosEmpresaForm.tsx"
+git add "app/src/app/(auth)/configuracoes/DadosEmpresaForm.tsx"
 git commit -m "feat(edição): máscara de CNPJ/CEP + botão Buscar (ViaCEP) no DadosEmpresaForm"
 ```
 

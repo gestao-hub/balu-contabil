@@ -33,7 +33,7 @@
 - Create: `src/app/(auth)/impostos/novo/page.tsx` + `novo/ApuracaoWizard.tsx` — wizard.
 - Test: `*.test.ts` ao lado de cada módulo puro.
 
-Comandos de referência (rodar de `balu-next/`): `npm run test -- <arquivo>`, `npm run typecheck`.
+Comandos de referência (rodar de `app/`): `npm run test -- <arquivo>`, `npm run typecheck`.
 
 ---
 

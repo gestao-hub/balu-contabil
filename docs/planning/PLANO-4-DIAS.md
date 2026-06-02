@@ -7,7 +7,7 @@
 > 2. Para cada feature listada, abra `STATUS-IMPLEMENTACAO.md` pra ver o que reusar
 > 3. Abra `V1-FUNCIONALIDADES.md` na seção correspondente para detalhe da feature
 > 4. Rode `./verify.sh` no fim de cada dia
-> 5. Mova cards no kanban (`balu-next/.kanban/board.json` → ver instruções no README §6.5)
+> 5. Mova cards no kanban (`app/.kanban/board.json` → ver instruções no README §6.5)
 >
 > **Convenções**:
 > - "PR sugerido" = 1 unidade lógica que pode virar 1 pull request (mesmo trabalhando em main)
@@ -102,7 +102,7 @@ Reusa: `<PopupConfirm variant='destructive' busy>`, `focus.baixarDanfe`, `focus.
 
 ### Verificação Day 1
 ```bash
-cd balu-next
+cd app
 npx tsc --noEmit     # zero erros
 npm run dev          # subir
 # manual: login (criar user de teste) → criar empresa → ver dashboard
@@ -168,7 +168,7 @@ Arquivos:
 ### Verificação Day 2
 ```bash
 # Sandbox Focus: usar CNPJ de teste 00000000000100
-cd balu-next
+cd app
 npm run dev
 # manual: /notas_fiscais → "Emitir nova" → preencher → submit
 # verificar: nota aparece em /notas_fiscais com status='ativa' (autorizada pelo sandbox)
@@ -265,7 +265,7 @@ Handler:
 # Sandbox Serpro: usar CNPJ 00000000000100 sempre
 # Sandbox Focus: dados de notas já criadas no Day 2 alimentam apuração
 
-cd balu-next
+cd app
 npm run dev
 # manual: /impostos → ver dashboard
 # manual: /impostos/novo → escolher competência atual → wizard até gerar DAS sandbox
@@ -337,17 +337,17 @@ Arquivos: vários componentes existentes — pequenos ajustes.
 cd "/home/luanbonadie/Documentos/Lab/Apps Bubble"
 rm -f balu.zip
 zip -r balu.zip balu/ \
-  -x "balu/balu-next/node_modules/*" \
-  -x "balu/balu-next/.next/*" \
-  -x "balu/balu-next/.env.local" \
-  -x "balu/balu-next/playwright-report/*" \
-  -x "balu/balu-next/test-results/*" \
+  -x "balu/app/node_modules/*" \
+  -x "balu/app/.next/*" \
+  -x "balu/app/.env.local" \
+  -x "balu/app/playwright-report/*" \
+  -x "balu/app/test-results/*" \
   -x "*.DS_Store"
 ```
 
 ### Verificação Day 4
 ```bash
-cd balu-next
+cd app
 ./verify.sh                    # build + tsc
 npx playwright test            # 12+ smoke + 10+ e2e
 # manual: percorrer cada rota do walkthrough no browser
@@ -379,9 +379,9 @@ Se você (dev humano) decidiu **não** usar Next.js + Supabase, leia isto antes 
 
 ### O que vai **pro lixo**
 
-- Tudo em `balu-next/src/app/`, `balu-next/src/components/` — código Next.js específico
-- Tudo em `balu-next/src/lib/supabase/` — wrappers do `@supabase/ssr`
-- `balu-next/playwright.config.ts`, `tailwind.config.ts`, `tsconfig.json` — config TS
+- Tudo em `app/src/app/`, `app/src/components/` — código Next.js específico
+- Tudo em `app/src/lib/supabase/` — wrappers do `@supabase/ssr`
+- `app/playwright.config.ts`, `tailwind.config.ts`, `tsconfig.json` — config TS
 
 ### O que precisa ser **reescrito por equivalência**
 

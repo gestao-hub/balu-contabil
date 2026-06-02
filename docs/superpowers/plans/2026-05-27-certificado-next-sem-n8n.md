@@ -14,13 +14,13 @@
 
 ## Prerequisites (uma vez, antes das tasks)
 
-**`CERT_ENC_KEY`** — chave AES-256 (32 bytes, base64) no `.env.local` do `balu-next`. Gere com:
+**`CERT_ENC_KEY`** — chave AES-256 (32 bytes, base64) no `.env.local` do `app`. Gere com:
 
 ```bash
 openssl rand -base64 32
 ```
 
-Adicione a linha `CERT_ENC_KEY=<saída do comando>` em `balu-next/.env.local` (gitignored — não commitar). Perder/rotacionar essa chave exige re-upload dos certificados.
+Adicione a linha `CERT_ENC_KEY=<saída do comando>` em `app/.env.local` (gitignored — não commitar). Perder/rotacionar essa chave exige re-upload dos certificados.
 
 > `SERPRO_CONSUMER_KEY` / `SERPRO_CONSUMER_SECRET` já estão no `.env.local` (confirmado) e são reusados de `serpro.ts`.
 
@@ -30,46 +30,46 @@ Adicione a linha `CERT_ENC_KEY=<saída do comando>` em `balu-next/.env.local` (g
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `balu-next/src/lib/crypto/envelope.ts` (novo) | Cifra/decifra AES-256-GCM com `CERT_ENC_KEY`. Puro, testável. |
-| `balu-next/src/lib/crypto/envelope.test.ts` (novo) | Testes do envelope. |
-| `balu-next/src/lib/fiscal/pkcs12.ts` (novo) | Parse PKCS#12 via node-forge → key/cert/chain PEM + metadados. Puro, testável. |
-| `balu-next/src/lib/fiscal/pkcs12.test.ts` (novo) | Testes do parse (fixture forge-gerado). |
-| `balu-next/src/lib/clients/serpro-auth.ts` (novo) | mTLS "autenticar procurador" + parse da resposta. `server-only`. |
-| `balu-next/src/lib/clients/serpro-auth.test.ts` (novo) | Teste do parser puro da resposta. |
-| `balu-next/supabase/migrations/0003_certificado_metadata.sql` (novo) | Colunas de metadados em `arquivos_auxiliares`. |
-| `balu-next/src/types/database.ts` (modificar) | Tipos das novas colunas. |
-| `balu-next/src/app/(auth)/configuracoes/actions.ts` (modificar) | `uploadCertificadoAction` reescrita; remove n8n. |
-| `balu-next/src/lib/clients/n8n.ts` (modificar) | Remove `uploadCertificado` e `postAutenticacao`. |
-| `balu-next/src/lib/clients/supabase-storage.ts` (modificar) | Remove `fileToBase64` (era só pro n8n). |
-| `balu-next/src/app/(auth)/configuracoes/page.tsx` (modificar) | Lê `cert_not_after`. |
-| `balu-next/src/app/(auth)/configuracoes/CertificadoForm.tsx` (modificar) | Exibe "válido até". |
+| `app/src/lib/crypto/envelope.ts` (novo) | Cifra/decifra AES-256-GCM com `CERT_ENC_KEY`. Puro, testável. |
+| `app/src/lib/crypto/envelope.test.ts` (novo) | Testes do envelope. |
+| `app/src/lib/fiscal/pkcs12.ts` (novo) | Parse PKCS#12 via node-forge → key/cert/chain PEM + metadados. Puro, testável. |
+| `app/src/lib/fiscal/pkcs12.test.ts` (novo) | Testes do parse (fixture forge-gerado). |
+| `app/src/lib/clients/serpro-auth.ts` (novo) | mTLS "autenticar procurador" + parse da resposta. `server-only`. |
+| `app/src/lib/clients/serpro-auth.test.ts` (novo) | Teste do parser puro da resposta. |
+| `app/supabase/migrations/0003_certificado_metadata.sql` (novo) | Colunas de metadados em `arquivos_auxiliares`. |
+| `app/src/types/database.ts` (modificar) | Tipos das novas colunas. |
+| `app/src/app/(auth)/configuracoes/actions.ts` (modificar) | `uploadCertificadoAction` reescrita; remove n8n. |
+| `app/src/lib/clients/n8n.ts` (modificar) | Remove `uploadCertificado` e `postAutenticacao`. |
+| `app/src/lib/clients/supabase-storage.ts` (modificar) | Remove `fileToBase64` (era só pro n8n). |
+| `app/src/app/(auth)/configuracoes/page.tsx` (modificar) | Lê `cert_not_after`. |
+| `app/src/app/(auth)/configuracoes/CertificadoForm.tsx` (modificar) | Exibe "válido até". |
 
-Todos os comandos rodam a partir de `balu-next/`.
+Todos os comandos rodam a partir de `app/`.
 
 ---
 
 ### Task 1: Adicionar dependência node-forge
 
 **Files:**
-- Modify: `balu-next/package.json`
+- Modify: `app/package.json`
 
 - [ ] **Step 1: Instalar**
 
 Run:
 ```bash
-cd balu-next && npm install node-forge && npm install -D @types/node-forge
+cd app && npm install node-forge && npm install -D @types/node-forge
 ```
 Expected: `node-forge` em `dependencies` e `@types/node-forge` em `devDependencies` no `package.json`.
 
 - [ ] **Step 2: Verificar typecheck ainda passa**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add balu-next/package.json balu-next/package-lock.json
+git add app/package.json app/package-lock.json
 git commit -m "build(cert): adiciona node-forge para parse de PKCS#12 legado"
 ```
 
@@ -78,12 +78,12 @@ git commit -m "build(cert): adiciona node-forge para parse de PKCS#12 legado"
 ### Task 2: Envelope AES-256-GCM
 
 **Files:**
-- Create: `balu-next/src/lib/crypto/envelope.ts`
-- Test: `balu-next/src/lib/crypto/envelope.test.ts`
+- Create: `app/src/lib/crypto/envelope.ts`
+- Test: `app/src/lib/crypto/envelope.test.ts`
 
 - [ ] **Step 1: Escrever o teste que falha**
 
-Create `balu-next/src/lib/crypto/envelope.test.ts`:
+Create `app/src/lib/crypto/envelope.test.ts`:
 ```ts
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { encryptBlob, decryptBlob } from './envelope';
@@ -124,12 +124,12 @@ describe('envelope AES-256-GCM', () => {
 
 - [ ] **Step 2: Rodar o teste e ver falhar**
 
-Run: `cd balu-next && npx vitest run src/lib/crypto/envelope.test.ts`
+Run: `cd app && npx vitest run src/lib/crypto/envelope.test.ts`
 Expected: FAIL — `Cannot find module './envelope'`.
 
 - [ ] **Step 3: Implementar**
 
-Create `balu-next/src/lib/crypto/envelope.ts`:
+Create `app/src/lib/crypto/envelope.ts`:
 ```ts
 // @custom — cifra em repouso do material de certificado (AES-256-GCM).
 // Puro (sem server-only) para ser testável; só lê CERT_ENC_KEY (segredo de server).
@@ -171,13 +171,13 @@ export function decryptBlob(blob: Buffer): Buffer {
 
 - [ ] **Step 4: Rodar o teste e ver passar**
 
-Run: `cd balu-next && npx vitest run src/lib/crypto/envelope.test.ts`
+Run: `cd app && npx vitest run src/lib/crypto/envelope.test.ts`
 Expected: PASS (4 testes).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add balu-next/src/lib/crypto/envelope.ts balu-next/src/lib/crypto/envelope.test.ts
+git add app/src/lib/crypto/envelope.ts app/src/lib/crypto/envelope.test.ts
 git commit -m "feat(cert): envelope AES-256-GCM para cifra do material de chave em repouso"
 ```
 
@@ -191,13 +191,13 @@ git commit -m "feat(cert): envelope AES-256-GCM para cifra do material de chave 
 
 Run:
 ```bash
-echo "CERT_ENC_KEY=$(openssl rand -base64 32)" >> balu-next/.env.local
+echo "CERT_ENC_KEY=$(openssl rand -base64 32)" >> app/.env.local
 ```
 Expected: linha `CERT_ENC_KEY=...` adicionada ao `.env.local`.
 
 - [ ] **Step 2: Confirmar (sem imprimir o valor)**
 
-Run: `grep -c '^CERT_ENC_KEY=' balu-next/.env.local`
+Run: `grep -c '^CERT_ENC_KEY=' app/.env.local`
 Expected: `1`.
 
 > Sem commit — `.env.local` é gitignored.
@@ -207,12 +207,12 @@ Expected: `1`.
 ### Task 3: Parse PKCS#12 (node-forge)
 
 **Files:**
-- Create: `balu-next/src/lib/fiscal/pkcs12.ts`
-- Test: `balu-next/src/lib/fiscal/pkcs12.test.ts`
+- Create: `app/src/lib/fiscal/pkcs12.ts`
+- Test: `app/src/lib/fiscal/pkcs12.test.ts`
 
 - [ ] **Step 1: Escrever o teste que falha**
 
-Create `balu-next/src/lib/fiscal/pkcs12.test.ts`:
+Create `app/src/lib/fiscal/pkcs12.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 import forge from 'node-forge';
@@ -262,12 +262,12 @@ describe('parsePkcs12', () => {
 
 - [ ] **Step 2: Rodar o teste e ver falhar**
 
-Run: `cd balu-next && npx vitest run src/lib/fiscal/pkcs12.test.ts`
+Run: `cd app && npx vitest run src/lib/fiscal/pkcs12.test.ts`
 Expected: FAIL — `Cannot find module './pkcs12'`.
 
 - [ ] **Step 3: Implementar**
 
-Create `balu-next/src/lib/fiscal/pkcs12.ts`:
+Create `app/src/lib/fiscal/pkcs12.ts`:
 ```ts
 // @custom — parse de certificado A1 (.pfx/.p12) via node-forge.
 // node-forge lê as cifras PKCS#12 legadas (RC2-40/3DES-SHA1) que o OpenSSL 3 (Node 22) recusa.
@@ -336,18 +336,18 @@ export function parsePkcs12(pfx: Buffer, senha: string): CertMaterial {
 
 - [ ] **Step 4: Rodar o teste e ver passar**
 
-Run: `cd balu-next && npx vitest run src/lib/fiscal/pkcs12.test.ts`
+Run: `cd app && npx vitest run src/lib/fiscal/pkcs12.test.ts`
 Expected: PASS (3 testes). Se algum tipo do node-forge reclamar no editor, o typecheck do passo seguinte é a fonte de verdade.
 
 - [ ] **Step 5: typecheck**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add balu-next/src/lib/fiscal/pkcs12.ts balu-next/src/lib/fiscal/pkcs12.test.ts
+git add app/src/lib/fiscal/pkcs12.ts app/src/lib/fiscal/pkcs12.test.ts
 git commit -m "feat(cert): parse de PKCS#12 legado via node-forge (key/cert PEM + metadados)"
 ```
 
@@ -356,12 +356,12 @@ git commit -m "feat(cert): parse de PKCS#12 legado via node-forge (key/cert PEM 
 ### Task 4: Migration + tipos das colunas de metadados
 
 **Files:**
-- Create: `balu-next/supabase/migrations/0003_certificado_metadata.sql`
-- Modify: `balu-next/src/types/database.ts` (bloco `arquivos_auxiliares`, ~linhas 213-223)
+- Create: `app/supabase/migrations/0003_certificado_metadata.sql`
+- Modify: `app/src/types/database.ts` (bloco `arquivos_auxiliares`, ~linhas 213-223)
 
 - [ ] **Step 1: Escrever a migration**
 
-Create `balu-next/supabase/migrations/0003_certificado_metadata.sql`:
+Create `app/supabase/migrations/0003_certificado_metadata.sql`:
 ```sql
 -- Customização 0003: metadados do certificado A1 extraídos no upload (Next/node-forge).
 -- A senha (cert_password) deixa de ser usada — o material de chave passa a ser cifrado
@@ -386,7 +386,7 @@ Expected: `cert_password`, `cert_not_after`, `cert_subject_cn`, `cert_cnpj`, `ce
 
 - [ ] **Step 3: Atualizar os tipos**
 
-In `balu-next/src/types/database.ts`, replace the `arquivos_auxiliares` block:
+In `app/src/types/database.ts`, replace the `arquivos_auxiliares` block:
 ```ts
   arquivos_auxiliares: {
     id: string;
@@ -421,13 +421,13 @@ with:
 
 - [ ] **Step 4: typecheck**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add balu-next/supabase/migrations/0003_certificado_metadata.sql balu-next/src/types/database.ts
+git add app/supabase/migrations/0003_certificado_metadata.sql app/src/types/database.ts
 git commit -m "feat(cert): migration + tipos das colunas de metadados do certificado"
 ```
 
@@ -436,14 +436,14 @@ git commit -m "feat(cert): migration + tipos das colunas de metadados do certifi
 ### Task 5: Cliente de autenticação SERPRO (mTLS)
 
 **Files:**
-- Create: `balu-next/src/lib/clients/serpro-auth.ts`
-- Test: `balu-next/src/lib/clients/serpro-auth.test.ts`
+- Create: `app/src/lib/clients/serpro-auth.ts`
+- Test: `app/src/lib/clients/serpro-auth.test.ts`
 
 > A chamada mTLS em si (`autenticarProcurador`) é validada manualmente (premissa do spec). O parser puro `parseAuthResponse` é o que tem teste unitário.
 
 - [ ] **Step 1: Escrever o teste que falha**
 
-Create `balu-next/src/lib/clients/serpro-auth.test.ts`:
+Create `app/src/lib/clients/serpro-auth.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 import { parseAuthResponse } from './serpro-auth';
@@ -471,12 +471,12 @@ describe('parseAuthResponse', () => {
 
 - [ ] **Step 2: Rodar o teste e ver falhar**
 
-Run: `cd balu-next && npx vitest run src/lib/clients/serpro-auth.test.ts`
+Run: `cd app && npx vitest run src/lib/clients/serpro-auth.test.ts`
 Expected: FAIL — `Cannot find module './serpro-auth'`.
 
 - [ ] **Step 3: Implementar**
 
-Create `balu-next/src/lib/clients/serpro-auth.ts`:
+Create `app/src/lib/clients/serpro-auth.ts`:
 ```ts
 // @custom — Autenticar Procurador na SERPRO Integra Contador via mTLS com o certificado A1.
 // Substitui o webhook n8n /post-autenticacao. server-only (faz I/O de rede com material de chave).
@@ -552,13 +552,13 @@ export async function autenticarProcurador(keyPem: string, certPem: string): Pro
 
 - [ ] **Step 4: Rodar o teste e ver passar**
 
-Run: `cd balu-next && npx vitest run src/lib/clients/serpro-auth.test.ts`
+Run: `cd app && npx vitest run src/lib/clients/serpro-auth.test.ts`
 Expected: PASS (3 testes).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add balu-next/src/lib/clients/serpro-auth.ts balu-next/src/lib/clients/serpro-auth.test.ts
+git add app/src/lib/clients/serpro-auth.ts app/src/lib/clients/serpro-auth.test.ts
 git commit -m "feat(cert): cliente de autenticação SERPRO mTLS (substitui post-autenticacao do n8n)"
 ```
 
@@ -567,11 +567,11 @@ git commit -m "feat(cert): cliente de autenticação SERPRO mTLS (substitui post
 ### Task 6: Reescrever `uploadCertificadoAction`
 
 **Files:**
-- Modify: `balu-next/src/app/(auth)/configuracoes/actions.ts` (imports + função `uploadCertificadoAction`, linhas 9-11 e 93-174)
+- Modify: `app/src/app/(auth)/configuracoes/actions.ts` (imports + função `uploadCertificadoAction`, linhas 9-11 e 93-174)
 
 - [ ] **Step 1: Trocar os imports do topo**
 
-In `balu-next/src/app/(auth)/configuracoes/actions.ts`, replace:
+In `app/src/app/(auth)/configuracoes/actions.ts`, replace:
 ```ts
 import { uploadCertificado as storageUploadCertificado, removeCertificado as storageRemoveCertificado } from '@/lib/clients/supabase-storage';
 import { n8n } from '@/lib/clients/n8n';
@@ -688,18 +688,18 @@ export async function uploadCertificadoAction(
 
 - [ ] **Step 3: typecheck**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros. (Confirma que `n8n` e `storageRemoveCertificado` não são mais referenciados nesta action.)
 
 - [ ] **Step 4: Rodar a suíte unitária inteira**
 
-Run: `cd balu-next && npm test -- --run`
+Run: `cd app && npm test -- --run`
 Expected: PASS (envelope, pkcs12, serpro-auth, certificado e demais existentes).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add balu-next/src/app/(auth)/configuracoes/actions.ts
+git add app/src/app/(auth)/configuracoes/actions.ts
 git commit -m "feat(cert): upload em Next — node-forge + cifra + auth SERPRO, sem n8n"
 ```
 
@@ -708,12 +708,12 @@ git commit -m "feat(cert): upload em Next — node-forge + cifra + auth SERPRO, 
 ### Task 7: Limpeza do n8n e helper morto
 
 **Files:**
-- Modify: `balu-next/src/lib/clients/n8n.ts` (remove `uploadCertificado` e `postAutenticacao`)
-- Modify: `balu-next/src/lib/clients/supabase-storage.ts` (remove `fileToBase64`)
+- Modify: `app/src/lib/clients/n8n.ts` (remove `uploadCertificado` e `postAutenticacao`)
+- Modify: `app/src/lib/clients/supabase-storage.ts` (remove `fileToBase64`)
 
 - [ ] **Step 1: Remover métodos do n8n**
 
-In `balu-next/src/lib/clients/n8n.ts`, delete these two lines from the `export const n8n = { ... }` object:
+In `app/src/lib/clients/n8n.ts`, delete these two lines from the `export const n8n = { ... }` object:
 ```ts
   postAutenticacao:    (p: { empresa_id: string; consumer_key: string; consumer_secret: string }) => post('/webhook/post-autenticacao', p),
   uploadCertificado:   (p: { unique_id_empresa: string; unique_id_bubble: string; file_base64: string; cert_password: string }) => post('/webhook/upload-certificado', p),
@@ -722,25 +722,25 @@ Keep `consolidarReceitas`, `calcularRbt12`, `consultaDasMei` (outros workflows, 
 
 - [ ] **Step 2: Remover `fileToBase64` (era só pro payload n8n)**
 
-In `balu-next/src/lib/clients/supabase-storage.ts`, delete the entire `fileToBase64` function (the block starting at the `/** Converte um File ... */` comment through its closing `}`).
+In `app/src/lib/clients/supabase-storage.ts`, delete the entire `fileToBase64` function (the block starting at the `/** Converte um File ... */` comment through its closing `}`).
 
 - [ ] **Step 3: Confirmar que nada referencia o removido**
 
 Run:
 ```bash
-cd balu-next && grep -rn "n8n\.uploadCertificado\|n8n\.postAutenticacao\|fileToBase64" src/ || echo "limpo"
+cd app && grep -rn "n8n\.uploadCertificado\|n8n\.postAutenticacao\|fileToBase64" src/ || echo "limpo"
 ```
 Expected: `limpo` — nenhuma chamada aos métodos n8n removidos nem ao `fileToBase64`. (O `uploadCertificado` do supabase-storage e a action `uploadCertificadoAction` permanecem e não casam com esses padrões.)
 
 - [ ] **Step 4: typecheck**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add balu-next/src/lib/clients/n8n.ts balu-next/src/lib/clients/supabase-storage.ts
+git add app/src/lib/clients/n8n.ts app/src/lib/clients/supabase-storage.ts
 git commit -m "refactor(cert): remove métodos n8n de certificado e helper fileToBase64 órfão"
 ```
 
@@ -749,12 +749,12 @@ git commit -m "refactor(cert): remove métodos n8n de certificado e helper fileT
 ### Task 8: Exibir validade do certificado na UI
 
 **Files:**
-- Modify: `balu-next/src/app/(auth)/configuracoes/page.tsx` (query do cert, ~linhas 63-71 e render ~155)
-- Modify: `balu-next/src/app/(auth)/configuracoes/CertificadoForm.tsx` (props + status)
+- Modify: `app/src/app/(auth)/configuracoes/page.tsx` (query do cert, ~linhas 63-71 e render ~155)
+- Modify: `app/src/app/(auth)/configuracoes/CertificadoForm.tsx` (props + status)
 
 - [ ] **Step 1: Ler `cert_not_after` na page**
 
-In `balu-next/src/app/(auth)/configuracoes/page.tsx`, replace the cert query block:
+In `app/src/app/(auth)/configuracoes/page.tsx`, replace the cert query block:
 ```ts
   if (active === 'certificado' && company) {
     const { data: cert } = await supabase
@@ -794,7 +794,7 @@ with:
 
 - [ ] **Step 3: Aceitar e exibir a prop no form**
 
-In `balu-next/src/app/(auth)/configuracoes/CertificadoForm.tsx`, replace the component signature:
+In `app/src/app/(auth)/configuracoes/CertificadoForm.tsx`, replace the component signature:
 ```tsx
 export default function CertificadoForm({ enviadoEm }: { enviadoEm: string | null }) {
 ```
@@ -824,13 +824,13 @@ with:
 
 - [ ] **Step 4: typecheck**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add "balu-next/src/app/(auth)/configuracoes/page.tsx" "balu-next/src/app/(auth)/configuracoes/CertificadoForm.tsx"
+git add "app/src/app/(auth)/configuracoes/page.tsx" "app/src/app/(auth)/configuracoes/CertificadoForm.tsx"
 git commit -m "feat(cert): exibe validade do certificado na aba Certificado A1"
 ```
 

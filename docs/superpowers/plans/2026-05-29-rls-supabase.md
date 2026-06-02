@@ -16,16 +16,16 @@
 - A migration é aplicada **manualmente no SQL Editor do Supabase** (não há CLI nem string de conexão local).
 - Os testes batem no **projeto Supabase de dev real** (criam e apagam um usuário/empresa descartáveis). Não são herméticos.
 - Conta tenant **A** já existe com dados: `allanvalle@outlook.com` / `teste123` (empresa "AL PISCINAS LTDA", ≥1 cliente, notas).
-- Variáveis em `balu-next/.env.local`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+- Variáveis em `app/.env.local`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
 
-Todos os comandos rodam a partir de `balu-next/`.
+Todos os comandos rodam a partir de `app/`.
 
 ---
 
 ### Task 1: Migration 0009 — helper + enable RLS + policies
 
 **Files:**
-- Create: `balu-next/supabase/migrations/0010_rls_policies.sql`
+- Create: `app/supabase/migrations/0010_rls_policies.sql`
 
 - [ ] **Step 1: Criar a migration com o conteúdo completo**
 
@@ -214,7 +214,7 @@ git commit -m "feat(rls): migration 0010 — helper user_owns_company + policies
 ### Task 2: Teste de isolamento entre tenants
 
 **Files:**
-- Create: `balu-next/tests/rls-isolation.spec.ts`
+- Create: `app/tests/rls-isolation.spec.ts`
 
 - [ ] **Step 1: Criar o teste**
 
@@ -428,7 +428,7 @@ Expected: caminho intacto, sem dependência de RLS.
 ### Task 8: Documento de resultados + commit
 
 **Files:**
-- Create: `balu-next/docs/rls-test-results-2026-05-29.md` (ou data da execução)
+- Create: `app/docs/rls-test-results-2026-05-29.md` (ou data da execução)
 
 - [ ] **Step 1: Escrever o resultado da matriz**
 

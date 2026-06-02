@@ -97,7 +97,7 @@ Total estimado: ~2 semanas de execução guiada pelo Claude Code.
 ## O que aprovar antes de começar
 
 1. ✅ Next.js + Supabase como destino (ou PHP — diga qual).
-2. ✅ Pasta de saída: `balu-next/` (irmã de `bubble-to-prd/`)?
+2. ✅ Pasta de saída: `app/` (irmã de `bubble-to-prd/`)?
 3. ✅ Manter o n8n e a Focus NFe como estão, só refatorar o front + Supabase schema?
 4. ✅ Posso criar as 5 skills novas dentro de `bubble-to-prd/skills/`?
 

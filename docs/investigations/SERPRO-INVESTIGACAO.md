@@ -39,7 +39,7 @@
 
 ## 1. O que a aplicação FAZ hoje (código real, verificado)
 
-Arquivos: `balu-next/src/lib/clients/serpro.ts`, `serpro-auth.ts`,
+Arquivos: `app/src/lib/clients/serpro.ts`, `serpro-auth.ts`,
 `src/app/(auth)/impostos/actions.ts`, `src/app/(auth)/configuracoes/actions.ts`.
 
 ### 1.1 Autenticação Trial (token OAuth) — `serpro.ts → bearer()`
@@ -272,7 +272,7 @@ direta p/ Serpro**.
 - [ ] **(PRIORIDADE 2)** Corrigir o `role-type` no código: hoje `TERCEIROS` hardcoded em
       `serpro-auth.ts`; no modelo PRÓPRIO deveria ser o valor de contribuinte. Confirmar a string
       exata aceita (a doc nomeia "PRÓPRIO" mas o valor literal do header precisa ser verificado).
-- [ ] Após assinar o Trial: **re-rodar o smoke** (`balu-next/scripts/serpro-smoke.mjs`) e
+- [ ] Após assinar o Trial: **re-rodar o smoke** (`app/scripts/serpro-smoke.mjs`) e
       confirmar 200 no `/Emitir`.
 - [ ] Decidir arquitetura de produção (§5) e **alinhar `role-type` + envelope** ao modelo escolhido.
       Se ficar "self": trocar `TERCEIROS` pelo role-type de contribuinte. Se "procurador": cert da
@@ -293,7 +293,7 @@ direta p/ Serpro**.
 
 ## 9. Evidência do smoke (2026-05-30) — teste reforçado p/ confirmar assinatura do cliente
 
-Script: `balu-next/scripts/serpro-smoke.mjs` (não imprime segredos; rodado ao vivo 2×).
+Script: `app/scripts/serpro-smoke.mjs` (não imprime segredos; rodado ao vivo 2×).
 
 ```
 [1] POST /token                              → 200  access_token OK (len 1038), expires_in 3600, scope default

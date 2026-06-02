@@ -3,10 +3,10 @@
 > **Escopo**: funcionalidades marcadas em **🟢 verde** no `planejamento-balu.pdf`, que devem ser entregues na **v1** do projeto.
 > Cada item foi enriquecido com aprendizados do `ANALISE-CONTABILIZEI.md` (engenharia reversa do site da Contabilizei).
 >
-> **Como ler**: cada feature tem (1) um **status** indicando onde estamos no `balu-next/`, (2) uma **descrição rica** com o que precisa fazer + referência ao que a Contabilizei faz, e (3) **bullets de implementação** prontos para um LLM executar sob supervisão humana.
+> **Como ler**: cada feature tem (1) um **status** indicando onde estamos no `app/`, (2) uma **descrição rica** com o que precisa fazer + referência ao que a Contabilizei faz, e (3) **bullets de implementação** prontos para um LLM executar sob supervisão humana.
 >
 > **Legenda de status**:
-> - ✅ **pronto** — implementado e testado no `balu-next/`
+> - ✅ **pronto** — implementado e testado no `app/`
 > - 🚧 **parcial** — base existe (schema, cliente API ou componente), mas falta a UI completa do behavior
 > - 🆕 **a fazer** — nada construído ainda; precisa ser feito do zero
 

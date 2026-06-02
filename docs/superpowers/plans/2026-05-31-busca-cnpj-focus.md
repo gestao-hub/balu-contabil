@@ -24,19 +24,19 @@
 - **Testes mockam `globalThis.fetch`** via `vi.spyOn` e reimportam o módulo após setar `FOCUS_NFE_TOKEN` (padrão de `focus-nfe.test.ts`). Não há uso de `vi.mock` no projeto. O teste importa o alvo por caminho relativo (`./cnpj-lookup`).
 - **Formato de erro do `call()` da Focus** (`focus-nfe.ts`): resposta com falha lança `Error("Focus <status>: <texto>")`. 5xx faz retry (3 tentativas) e relança o mesmo formato; erro de rede faz retry e relança o `Error` original. A classificação de erro do `lookupCnpj` se baseia nesse texto.
 - **`formatCnpj`/`formatCep`** já existem em `src/lib/format/masks.ts`.
-- **Comandos** (rodar dentro de `balu-next/`): testes `npm test -- run <arquivo>` (vitest, `run` = sem watch); typecheck `npm run typecheck`. `vitest.config.ts` inclui só `src/**/*.test.ts`.
+- **Comandos** (rodar dentro de `app/`): testes `npm test -- run <arquivo>` (vitest, `run` = sem watch); typecheck `npm run typecheck`. `vitest.config.ts` inclui só `src/**/*.test.ts`.
 
 ---
 
 ## Task 1: Criar a lib `cnpj-lookup.ts` com o caso de sucesso (mapeamento)
 
 **Files:**
-- Create: `balu-next/src/lib/fiscal/cnpj-lookup.ts`
-- Test: `balu-next/src/lib/fiscal/cnpj-lookup.test.ts`
+- Create: `app/src/lib/fiscal/cnpj-lookup.ts`
+- Test: `app/src/lib/fiscal/cnpj-lookup.test.ts`
 
 - [ ] **Step 1: Escrever o teste do mapeamento (falhando)**
 
-Criar `balu-next/src/lib/fiscal/cnpj-lookup.test.ts`:
+Criar `app/src/lib/fiscal/cnpj-lookup.test.ts`:
 
 ```ts
 // Testes da consulta de CNPJ compartilhada. Mocka globalThis.fetch e reimporta
@@ -124,12 +124,12 @@ describe('lookupCnpj — mapeamento', () => {
 
 - [ ] **Step 2: Rodar o teste e ver falhar**
 
-Run: `cd balu-next && npm test -- run src/lib/fiscal/cnpj-lookup.test.ts`
+Run: `cd app && npm test -- run src/lib/fiscal/cnpj-lookup.test.ts`
 Expected: FAIL — `Cannot find module './cnpj-lookup'`.
 
 - [ ] **Step 3: Implementar a lib (mínimo pro mapeamento)**
 
-Criar `balu-next/src/lib/fiscal/cnpj-lookup.ts`:
+Criar `app/src/lib/fiscal/cnpj-lookup.ts`:
 
 ```ts
 import 'server-only';
@@ -210,13 +210,13 @@ function classifyError(_e: unknown): string {
 
 - [ ] **Step 4: Rodar o teste e ver passar**
 
-Run: `cd balu-next && npm test -- run src/lib/fiscal/cnpj-lookup.test.ts`
+Run: `cd app && npm test -- run src/lib/fiscal/cnpj-lookup.test.ts`
 Expected: PASS (2 testes do bloco "mapeamento").
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd balu-next && git add src/lib/fiscal/cnpj-lookup.ts src/lib/fiscal/cnpj-lookup.test.ts
+cd app && git add src/lib/fiscal/cnpj-lookup.ts src/lib/fiscal/cnpj-lookup.test.ts
 git commit -m "feat(cnpj): lib compartilhada de consulta de CNPJ na Focus (mapeamento)"
 ```
 
@@ -225,8 +225,8 @@ git commit -m "feat(cnpj): lib compartilhada de consulta de CNPJ na Focus (mapea
 ## Task 2: Classificação de erro amigável
 
 **Files:**
-- Modify: `balu-next/src/lib/fiscal/cnpj-lookup.ts` (função `classifyError`)
-- Test: `balu-next/src/lib/fiscal/cnpj-lookup.test.ts`
+- Modify: `app/src/lib/fiscal/cnpj-lookup.ts` (função `classifyError`)
+- Test: `app/src/lib/fiscal/cnpj-lookup.test.ts`
 
 - [ ] **Step 1: Adicionar os testes de erro (falhando)**
 
@@ -273,7 +273,7 @@ describe('lookupCnpj — erros', () => {
 
 - [ ] **Step 2: Rodar e ver falhar**
 
-Run: `cd balu-next && npm test -- run src/lib/fiscal/cnpj-lookup.test.ts`
+Run: `cd app && npm test -- run src/lib/fiscal/cnpj-lookup.test.ts`
 Expected: FAIL — os casos 404/5xx/rede caem no placeholder "Falha ao consultar CNPJ." (os de CNPJ inválido já passam).
 
 - [ ] **Step 3: Implementar `classifyError`**
@@ -297,13 +297,13 @@ function classifyError(e: unknown): string {
 
 - [ ] **Step 4: Rodar e ver passar**
 
-Run: `cd balu-next && npm test -- run src/lib/fiscal/cnpj-lookup.test.ts`
+Run: `cd app && npm test -- run src/lib/fiscal/cnpj-lookup.test.ts`
 Expected: PASS (mapeamento + erros).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd balu-next && git add src/lib/fiscal/cnpj-lookup.ts src/lib/fiscal/cnpj-lookup.test.ts
+cd app && git add src/lib/fiscal/cnpj-lookup.ts src/lib/fiscal/cnpj-lookup.test.ts
 git commit -m "feat(cnpj): classificacao de erro amigavel (nao encontrado / indisponivel / invalido)"
 ```
 
@@ -312,18 +312,18 @@ git commit -m "feat(cnpj): classificacao de erro amigavel (nao encontrado / indi
 ## Task 3: Reapontar `clientes/actions.ts` para a lib
 
 **Files:**
-- Modify: `balu-next/src/app/(auth)/clientes/actions.ts`
+- Modify: `app/src/app/(auth)/clientes/actions.ts`
 
 Objetivo: remover a duplicação. O `ClienteFormDialog` importa `lookupCnpjAction` e o tipo `CnpjLookup` de `@/app/(auth)/clientes/actions` — esses nomes precisam continuar existindo.
 
 - [ ] **Step 1: Confirmar quem usa os helpers que vão sair**
 
-Run: `cd balu-next && grep -n "onlyDigits\|normCnpj\|stringOrUndef\|focus\." "src/app/(auth)/clientes/actions.ts"`
+Run: `cd app && grep -n "onlyDigits\|normCnpj\|stringOrUndef\|focus\." "src/app/(auth)/clientes/actions.ts"`
 Expected: as únicas ocorrências estão dentro de `lookupCnpjAction` e seus helpers (linhas ~114-150). Se aparecer uso em OUTRA função, manter aquele helper/import. (Hoje `lookupCnpjAction` é o único consumidor de `focus` e desses helpers neste arquivo.)
 
 - [ ] **Step 2: Remover implementação local e reexportar da lib**
 
-Em `balu-next/src/app/(auth)/clientes/actions.ts`:
+Em `app/src/app/(auth)/clientes/actions.ts`:
 
 1. Remover o bloco `export type CnpjLookup = { ... };` (linhas ~13-25).
 2. Remover os helpers `onlyDigits`, `normCnpj`, `stringOrUndef` do lookup (linhas ~114-124) e o comentário acima (~112-113).
@@ -347,18 +347,18 @@ export async function lookupCnpjAction(cnpj: string) {
 
 - [ ] **Step 3: Verificar typecheck**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros. (Se acusar `focus`/helper não usado, sobrou referência — reveja a remoção.)
 
 - [ ] **Step 4: Rodar a suíte completa**
 
-Run: `cd balu-next && npm test -- run`
+Run: `cd app && npm test -- run`
 Expected: tudo verde.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd balu-next && git add "src/app/(auth)/clientes/actions.ts"
+cd app && git add "src/app/(auth)/clientes/actions.ts"
 git commit -m "refactor(cnpj): clientes/actions reexporta lookup da lib compartilhada"
 ```
 
@@ -367,11 +367,11 @@ git commit -m "refactor(cnpj): clientes/actions reexporta lookup da lib comparti
 ## Task 4: Expor `lookupCnpjAction` no `onboarding/actions.ts`
 
 **Files:**
-- Modify: `balu-next/src/app/(auth)/onboarding/actions.ts`
+- Modify: `app/src/app/(auth)/onboarding/actions.ts`
 
 - [ ] **Step 1: Adicionar o reexport e atualizar o comentário**
 
-Em `balu-next/src/app/(auth)/onboarding/actions.ts`:
+Em `app/src/app/(auth)/onboarding/actions.ts`:
 
 1. No comentário de cabeçalho (linhas 1-6), substituir:
 
@@ -399,13 +399,13 @@ export async function lookupCnpjAction(cnpj: string) {
 
 - [ ] **Step 2: Verificar typecheck**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd balu-next && git add "src/app/(auth)/onboarding/actions.ts"
+cd app && git add "src/app/(auth)/onboarding/actions.ts"
 git commit -m "feat(cnpj): onboarding/actions expoe lookupCnpjAction para a empresa"
 ```
 
@@ -414,7 +414,7 @@ git commit -m "feat(cnpj): onboarding/actions expoe lookupCnpjAction para a empr
 ## Task 5: Cliente — máscara de CNPJ (PJ) + IE/IM no autofill
 
 **Files:**
-- Modify: `balu-next/src/components/ClienteFormDialog.tsx`
+- Modify: `app/src/components/ClienteFormDialog.tsx`
 
 Não há harness de teste de componente neste projeto; a verificação é typecheck + smoke manual (Task 7). Não inventar harness de UI (YAGNI).
 
@@ -452,13 +452,13 @@ Em `handleLookupCnpj`, dentro do `setForm((prev) => ({ ... }))` (linhas ~80-92),
 
 - [ ] **Step 4: Verificar typecheck**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros. (O tipo `CnpjLookup` agora tem `inscricao_estadual`/`inscricao_municipal`, vindos da lib via reexport.)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd balu-next && git add src/components/ClienteFormDialog.tsx
+cd app && git add src/components/ClienteFormDialog.tsx
 git commit -m "feat(cnpj): cliente com mascara de CNPJ (PJ) e IE/IM no autofill"
 ```
 
@@ -467,7 +467,7 @@ git commit -m "feat(cnpj): cliente com mascara de CNPJ (PJ) e IE/IM no autofill"
 ## Task 6: Empresa — botão "Buscar" + handler de lookup
 
 **Files:**
-- Modify: `balu-next/src/components/CreateCompanyDialog.tsx`
+- Modify: `app/src/components/CreateCompanyDialog.tsx`
 
 - [ ] **Step 1: Imports (action, ícone, state)**
 
@@ -569,13 +569,13 @@ Substituir a Etapa 1 inteira (linhas ~153-166) por:
 
 - [ ] **Step 4: Verificar typecheck**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd balu-next && git add src/components/CreateCompanyDialog.tsx
+cd app && git add src/components/CreateCompanyDialog.tsx
 git commit -m "feat(cnpj): busca de CNPJ na Focus no cadastro de empresa"
 ```
 
@@ -587,12 +587,12 @@ git commit -m "feat(cnpj): busca de CNPJ na Focus no cadastro de empresa"
 
 - [ ] **Step 1: Suíte de testes completa**
 
-Run: `cd balu-next && npm test -- run`
+Run: `cd app && npm test -- run`
 Expected: tudo verde, incluindo `cnpj-lookup.test.ts`.
 
 - [ ] **Step 2: Typecheck**
 
-Run: `cd balu-next && npm run typecheck`
+Run: `cd app && npm run typecheck`
 Expected: zero erros.
 
 - [ ] **Step 3: Smoke manual no browser (app em :3000)**

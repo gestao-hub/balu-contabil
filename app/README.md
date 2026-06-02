@@ -1,4 +1,4 @@
-# balu-next
+# app
 
 Reconstrução do app Balu (Bubble.io → Next.js 15 + Supabase + Tailwind).
 

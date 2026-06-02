@@ -3,7 +3,7 @@
 > ✅ **RESOLVIDO (2026-05-29).** Os 3 itens abaixo foram implementados na migration `0011`
 > + script one-time + ajustes de código. Spec: `2026-05-29-saneamento-arquivos-auxiliares-design.md`;
 > plano: `../plans/2026-05-29-saneamento-arquivos-auxiliares.md`; evidências:
-> `balu-next/docs/saneamento-results-2026-05-29.md`. Status por item:
+> `app/docs/saneamento-results-2026-05-29.md`. Status por item:
 > **(1) arquivos_auxiliares** → FK `company_id` + cert em `certificado.enc` + bucket limpo ✅ ·
 > **(2) abertura_empresas** → policies por `user_id` criadas ✅ (feature de abertura ainda não implementada) ·
 > **(3) role_types** → grant concedido a `authenticated`/`service_role` ✅.

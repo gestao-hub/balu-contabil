@@ -15,7 +15,7 @@
 ### Task 1: Remover Inscrição municipal e ocultar Série/Número RPS no `NfseForm`
 
 **Files:**
-- Modify: `balu-next/src/app/(auth)/configuracoes/NfseForm.tsx`
+- Modify: `app/src/app/(auth)/configuracoes/NfseForm.tsx`
 
 Cinco edições no mesmo arquivo. Os trechos abaixo mostram o estado atual → novo.
 
@@ -138,13 +138,13 @@ por:
 
 - [ ] **Step 6: `tsc` para garantir que não sobraram referências órfãs**
 
-Run: `cd balu-next && npx tsc --noEmit`
+Run: `cd app && npx tsc --noEmit`
 Expected: zero erros (nenhuma referência a `im`/`serie`/`numeroRps`/`setIm`/`setSerie`/`setNumeroRps` restante).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add "balu-next/src/app/(auth)/configuracoes/NfseForm.tsx"
+git add "app/src/app/(auth)/configuracoes/NfseForm.tsx"
 git commit -m "feat(nfse): remove inscrição municipal da aba e oculta série/número RPS
 
 IM passa a ter fonte única em Dados da empresa (companies). Série RPS e número
@@ -157,7 +157,7 @@ campos do patch parcial, preservando os valores em empresas_fiscais."
 ### Task 2: Alinhar o cast de `initial` em `page.tsx` e verificar fim-a-fim
 
 **Files:**
-- Modify: `balu-next/src/app/(auth)/configuracoes/page.tsx`
+- Modify: `app/src/app/(auth)/configuracoes/page.tsx`
 
 - [ ] **Step 1: Encolher o cast do `initial` passado ao `NfseForm`** (alinhar ao novo tipo `Initial`)
 
@@ -191,12 +191,12 @@ por:
 
 - [ ] **Step 2: `tsc` + `vitest`**
 
-Run: `cd balu-next && npx tsc --noEmit && npx vitest run`
+Run: `cd app && npx tsc --noEmit && npx vitest run`
 Expected: tsc zero erros; vitest 41/41 (nenhuma suíte cobre `NfseForm`; os helpers não mudaram).
 
 - [ ] **Step 3: Conferir o estado atual no banco ANTES do teste de UI** (baseline para provar preservação)
 
-Run (a partir de `balu-next`, lê `.env.local`):
+Run (a partir de `app`, lê `.env.local`):
 ```bash
 node --input-type=module -e '
 import { readFileSync } from "node:fs";
@@ -233,7 +233,7 @@ Expected: `inscricao_municipal` segue `"987654"`, `serie_rps` segue `"RPS-A"`, `
 - [ ] **Step 6: Commit**
 
 ```bash
-git add "balu-next/src/app/(auth)/configuracoes/page.tsx"
+git add "app/src/app/(auth)/configuracoes/page.tsx"
 git commit -m "chore(nfse): alinha cast de initial do NfseForm ao tipo enxuto"
 ```
 
