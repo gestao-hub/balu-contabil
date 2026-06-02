@@ -37,7 +37,6 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
   const [usuario, setUsuario] = useState(initial?.nfse_usuario_login ?? '');
   const [senha, setSenha] = useState(initial?.nfse_senha_login ?? '');
   const [token, setToken] = useState(initial?.nfse_token_api ?? '');
-  const [ativada, setAtivada] = useState(!!initial?.empresa_fiscal_ativada);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -61,7 +60,6 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
     setUsuario(initial?.nfse_usuario_login ?? '');
     setSenha(initial?.nfse_senha_login ?? '');
     setToken(initial?.nfse_token_api ?? '');
-    setAtivada(!!initial?.empresa_fiscal_ativada);
   }
 
   function handleCancel() {
@@ -82,8 +80,6 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
         nfse_usuario_login: cred.login ? (usuario.trim() || null) : null,
         nfse_senha_login: cred.login ? (senha.trim() || null) : null,
         nfse_token_api: cred.token ? (token.trim() || null) : null,
-        nfse_habilitada: ativada,         // espelha empresa_fiscal_ativada (v1: toggle único)
-        empresa_fiscal_ativada: ativada,
       });
       if (!r.ok) { toast('error', r.error); return; }
       // r.warning vem do best-effort de envio das credenciais pra Focus
@@ -127,11 +123,6 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
           {cred.token && <Field label="Token" value={token} onChange={setToken} disabled={locked} className="col-span-2" />}
         </fieldset>
       )}
-
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={ativada} onChange={(e) => setAtivada(e.target.checked)} disabled={locked} className="size-4 rounded border-border disabled:opacity-50" />
-        <span className="text-muted-foreground-2">Empresa fiscal ativada (habilita emissão de NFS-e)</span>
-      </label>
 
       <div className="flex justify-end gap-2">
         {editing ? (

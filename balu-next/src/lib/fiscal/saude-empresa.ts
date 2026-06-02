@@ -22,7 +22,26 @@ export type CheckResult = {
   action: CheckActionKey;
   /** Timestamp ISO da última verificação relevante, se aplicável. */
   lastCheck?: string | null;
+  /** Badge de status Focus (ex: status_nfse do município). */
+  badge?: { label: string; status: CheckStatus };
 };
+
+/** Traduz status_nfse da Focus API para label PT-BR + cor do badge. */
+export function statusNfseBadge(
+  status: string | null | undefined,
+): { label: string; status: CheckStatus } | undefined {
+  if (!status) return undefined;
+  const map: Record<string, { label: string; status: CheckStatus }> = {
+    ativo:              { label: 'Ativo',              status: 'ok' },
+    fora_do_ar:         { label: 'Fora do ar',         status: 'erro' },
+    pausado:            { label: 'Pausado',             status: 'pendente' },
+    em_implementacao:   { label: 'Em implementação',   status: 'pendente' },
+    em_reimplementacao: { label: 'Em reimplementação', status: 'pendente' },
+    inativo:            { label: 'Inativo',            status: 'erro' },
+    nao_implementado:   { label: 'Não implementado',   status: 'erro' },
+  };
+  return map[status];
+}
 
 export type SaudeState = {
   // Endereço atual (pra check 1)
@@ -275,6 +294,7 @@ function cidadeNfseCheck(state: SaudeState, now: Date): CheckResult {
       status: 'ok',
       hint: `${lugar} · atendida via NFSe Nacional.`,
       action: null,
+      badge: statusNfseBadge(state.municipioInfo?.status_nfse),
     };
   }
 
@@ -288,6 +308,7 @@ function cidadeNfseCheck(state: SaudeState, now: Date): CheckResult {
     };
   }
 
+  const badge = statusNfseBadge(state.municipioInfo.status_nfse);
   const prodOk = state.municipioInfo.nfse_habilitada && state.municipioInfo.status_nfse === 'ativo';
   const homOk = state.municipioInfo.possui_ambiente_homologacao_nfse === true;
   const provedor = state.municipioInfo.provedor_nfse;
@@ -299,6 +320,7 @@ function cidadeNfseCheck(state: SaudeState, now: Date): CheckResult {
       status: 'ok',
       hint: `${lugar} · atendida em produção${provedor ? ` · provedor ${provedor}` : ''}.`,
       action: null,
+      badge,
     };
   }
 
@@ -309,15 +331,17 @@ function cidadeNfseCheck(state: SaudeState, now: Date): CheckResult {
       status: 'pendente',
       hint: `${lugar} atendida apenas em homologação (produção ainda não disponível).`,
       action: null,
+      badge,
     };
   }
 
-  // (f) Linha existe mas sem dados — base desatualizada pra essa cidade.
+  // (f) Linha existe mas status indica problema (fora_do_ar, pausado, etc).
   return {
     key: 'cidade_nfse', label,
     status: 'pendente',
     hint: `${lugar} está na base mas sem disponibilidade declarada. Aguardando atualização do cadastro do município.`,
     action: null,
+    badge,
   };
 }
 

@@ -171,13 +171,22 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('Code_regime_tributario, empresa_fiscal_ativada, emitir_nota_homol_antes_producao')
+    .select('Code_regime_tributario, emitir_nota_homol_antes_producao')
     .eq('empresa_id', companyId)
     .is('deleted_at', null)
     .maybeSingle();
   if (!fiscal) return { ok: false, error: 'Configure o regime tributário antes de emitir.' };
-  if (fiscal.empresa_fiscal_ativada !== true) {
-    return { ok: false, error: 'Ative a empresa fiscal (aba Emissão fiscal) antes de emitir.' };
+
+  // Disponibilidade real do município na Focus (substitui o toggle empresa_fiscal_ativada).
+  if (company.codigo_municipio) {
+    const { data: muni } = await supabase
+      .from('municipios_nfse')
+      .select('status_nfse')
+      .eq('codigo_ibge', String(company.codigo_municipio))
+      .maybeSingle();
+    if (muni && muni.status_nfse !== 'ativo') {
+      return { ok: false, error: `NFS-e indisponível para este município (Focus: ${muni.status_nfse}).` };
+    }
   }
 
   const { data: cliente } = await supabase

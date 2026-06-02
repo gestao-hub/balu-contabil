@@ -28,7 +28,10 @@ export default function GroupCard({ group }: { group: CheckGroup }) {
         <div className="flex items-start gap-3">
           <Icon className={`size-5 mt-0.5 ${cls}`} />
           <div>
-            <p className="text-sm font-medium text-foreground">{group.label}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-foreground">{group.label}</p>
+              {item.badge && <StatusBadge badge={item.badge} />}
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">{item.hint}</p>
           </div>
         </div>
@@ -100,6 +103,18 @@ function SubItem({ item }: { item: CheckResult }) {
         <p className="text-xs text-muted-foreground mt-0.5">{item.hint}</p>
       </div>
     </div>
+  );
+}
+
+function StatusBadge({ badge }: { badge: NonNullable<CheckResult['badge']> }) {
+  const cls =
+    badge.status === 'ok' ? 'bg-success/10 text-success' :
+    badge.status === 'erro' ? 'bg-destructive/10 text-destructive' :
+    'bg-alert/10 text-alert';
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}>
+      {badge.label}
+    </span>
   );
 }
 

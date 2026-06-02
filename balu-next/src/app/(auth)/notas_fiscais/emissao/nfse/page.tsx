@@ -27,7 +27,7 @@ export default async function NotasFiscaisEmissaoPage({ searchParams }: { search
   const [{ data: company }, { data: fiscal }, { data: clientes }] = await Promise.all([
     supabase.from('companies').select('id, razao_social, nome, codigo_municipio').eq('id', companyId).single(),
     supabase.from('empresas_fiscais')
-      .select('empresa_fiscal_ativada, emitir_nota_homol_antes_producao, Code_regime_tributario')
+      .select('emitir_nota_homol_antes_producao, Code_regime_tributario')
       .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle(),
     supabase.from('clientes')
       .select('id, razao_social, document, person_type, email')
@@ -49,15 +49,25 @@ export default async function NotasFiscaisEmissaoPage({ searchParams }: { search
       />
     );
   }
-  if (fiscal.empresa_fiscal_ativada !== true) {
-    return (
-      <Bloqueio
-        titulo="Empresa fiscal não ativada"
-        mensagem='Ative a empresa fiscal na aba "Emissão fiscal" antes de emitir notas.'
-        href="/configuracoes?tab=fiscal"
-        labelLink="Ir para Emissão fiscal"
-      />
-    );
+  // Verifica disponibilidade real do município na Focus (status_nfse da tabela municipios_nfse).
+  if (company.codigo_municipio) {
+    const { data: muni } = await supabase
+      .from('municipios_nfse')
+      .select('status_nfse')
+      .eq('codigo_ibge', company.codigo_municipio)
+      .maybeSingle();
+    if (muni && muni.status_nfse !== 'ativo') {
+      const statusLabel: Record<string, string> = {
+        fora_do_ar: 'O servidor da Focus para este município está temporariamente fora do ar.',
+        pausado: 'A emissão NFS-e para este município está pausada na Focus.',
+        em_implementacao: 'Este município está sendo implementado na Focus. Aguarde.',
+        em_reimplementacao: 'Este município está em reimplementação na Focus. Aguarde.',
+        inativo: 'A NFS-e para este município foi desativada na Focus.',
+        nao_implementado: 'Este município não é suportado pela Focus para NFS-e.',
+      };
+      const mensagem = statusLabel[muni.status_nfse ?? ''] ?? `Status Focus: ${muni.status_nfse}`;
+      return <Bloqueio titulo="NFS-e indisponível para este município" mensagem={mensagem} />;
+    }
   }
   if (!company.codigo_municipio) {
     return (
