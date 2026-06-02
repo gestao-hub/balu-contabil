@@ -1,0 +1,57 @@
+// src/app/(auth)/conta/actions.ts
+'use server';
+import { redirect } from 'next/navigation';
+import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+
+export type ContaActionResult = { ok: true; message?: string } | { ok: false; error: string };
+
+/** Atualiza o nome de exibição em user_metadata.full_name. */
+export async function updateNomeAction(nome: string): Promise<ContaActionResult> {
+  const trimmed = nome.trim();
+  if (!trimmed) return { ok: false, error: 'Informe um nome.' };
+
+  const supabase = await createServerClient();
+  const { error } = await supabase.auth.updateUser({ data: { full_name: trimmed } });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Envia link de confirmação para o novo email.
+ *  O email só muda após o usuário clicar no link recebido. */
+export async function updateEmailAction(newEmail: string): Promise<ContaActionResult> {
+  const trimmed = newEmail.trim().toLowerCase();
+  if (!trimmed || !trimmed.includes('@')) return { ok: false, error: 'Informe um email válido.' };
+
+  const supabase = await createServerClient();
+  const { error } = await supabase.auth.updateUser({ email: trimmed });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, message: `Link enviado para ${trimmed}. O email atual permanece ativo até a confirmação.` };
+}
+
+/** Atualiza a senha do usuário autenticado. */
+export async function updateSenhaAction(senha: string, confirmar: string): Promise<ContaActionResult> {
+  if (senha.length < 6) return { ok: false, error: 'A senha deve ter pelo menos 6 caracteres.' };
+  if (senha !== confirmar) return { ok: false, error: 'As senhas não coincidem.' };
+
+  const supabase = await createServerClient();
+  const { error } = await supabase.auth.updateUser({ password: senha });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Exclui permanentemente a conta e todos os dados vinculados (cascade no banco).
+ *  Após a exclusão, invalida a sessão e redireciona para /login. */
+export async function deleteAccountAction(): Promise<ContaActionResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.deleteUser(user.id);
+  if (error) return { ok: false, error: error.message };
+
+  // Invalida os cookies de sessão antes do redirect.
+  await supabase.auth.signOut();
+  redirect('/login');
+}
