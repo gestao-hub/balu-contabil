@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getSiteUrl } from '@/lib/site-url';
 
 export type ContaActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -24,7 +25,11 @@ export async function updateEmailAction(newEmail: string): Promise<ContaActionRe
   if (!trimmed || !trimmed.includes('@')) return { ok: false, error: 'Informe um email válido.' };
 
   const supabase = await createServerClient();
-  const { error } = await supabase.auth.updateUser({ email: trimmed });
+  const origin = getSiteUrl();
+  const { error } = await supabase.auth.updateUser(
+    { email: trimmed },
+    { emailRedirectTo: `${origin}/auth/callback?next=/conta` },
+  );
   if (error) return { ok: false, error: error.message };
   return { ok: true, message: `Link enviado para ${trimmed}. O email atual permanece ativo até a confirmação.` };
 }
