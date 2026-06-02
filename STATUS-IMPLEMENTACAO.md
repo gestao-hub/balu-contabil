@@ -12,7 +12,7 @@
 
 ## 0. Progresso da execução (PLANO-4-DIAS)
 
-> Atualizado em **2026-05-25**. Branch: `feat/day1-dashboard`. Cadência: PR a PR, com revisão.
+> Atualizado em **2026-06-02**. Branch: `main`. Cadência: PR a PR, com revisão.
 
 | PR | Escopo | Estado | Commit |
 |---|---|---|---|
@@ -20,6 +20,7 @@
 | 1.2 | Listagem `/notas_fiscais` (4 filtros + export CSV) | ✅ código (tsc + build OK); ⏳ runtime aguarda Supabase | `4fe1e80` |
 | 1.3 | Detalhe + cancelamento `/notas_fiscais/[id]` | 🆕 próximo | — |
 | Auth | Cadastro: dropdown "Tipo de conta" + "Confirmar senha"; tipo gravado em `role_types` via trigger | ✅ código (tsc OK); ⏳ aplicar trigger `0002` no Supabase | `1594e50`, `4df6899` |
+| municipios | Rebuild `municipios_nfse` (schema Focus) + cron `GET /api/cron/sync-municipios` | ✅ completo — migration 0016 aplicada; 5.571 municípios upsertados; 317 testes | `ed80dd1` |
 
 - **Baseline git**: commit `2ff8fd6` (estado pré-Day-1). `excluviapainel.bubble` ficou **fora** do versionamento (continha PII + tokens; slices já extraídos e limpos).
 - **Ambiente**: deps instaladas; `tsc --noEmit` e `next build` verificados limpos. Falta `.env.local` com credenciais Supabase para verificação de runtime.
@@ -136,12 +137,14 @@ Todos têm `import 'server-only'` — só chamar de server actions ou route hand
 | `serpro` (`serpro.ts`) | `transmitirDeclaracao`, `emitirDas`, `consultarDeclaracao`, helper `buildEnvelope`, `normalizeCnpj`, `_resetSerproTokenCache` (teste). Constantes `SERPRO_SERVICES`, `Tipo`, `TRIBUTO_CODIGOS` | cache de token module-scoped |
 | `n8n` (`n8n.ts`) | `consolidarReceitas`, `calcularRbt12`, `consultaDasMei`, `postAutenticacao`, `uploadCertificado` | HMAC SHA-256 em todo body via `N8N_WEBHOOK_SECRET` |
 | `supabase-storage` (`supabase-storage.ts`) | `uploadCertificado(file, fileName, companyId)`, `removeCertificado(path)`, `fileToBase64(File)` | usa `service_role`, bucket `company-certificates` |
+| `focus-municipios` (`focus-municipios.ts`) | `fetchAllMunicipiosFocus()` | pagina `GET /v2/municipios` (5.571 itens, 100/page via `x-total-count`); `server-only`; usado pelo cron |
 | `_endpoints` (`_endpoints.ts`) | `ENDPOINTS` (catálogo bruto dos 81 endpoints do Bubble) | referência só |
 
-### 2.4 Schema Supabase (`supabase/migrations/0001_init.sql`)
+### 2.4 Schema Supabase
 
 13 tabelas com RLS + triggers + RPCs:
 - `profiles` (1:1 auth.users), `companies`, `clientes`, `empresas_fiscais`, `notas_fiscais`, `apuracoes_fiscais`, `declaracoes_fiscais`, `guias_fiscais`, `arquivos_auxiliares`, `municipios_nfse`, `honorarios`, `abertura_empresas`, `aux_produtos`
+- **`municipios_nfse`** recriada em `0016_rebuild_municipios_nfse.sql` (2026-06-02): schema alinhado à Focus API — `codigo_ibge` (UNIQUE), `nfse_habilitada`, `status_nfse`, `provedor_nfse`, `possui_cancelamento_nfse`, `possui_ambiente_homologacao_nfse`, `focus_synced_at`, etc. Populada via cron `GET /api/cron/sync-municipios`. Spec em `docs/superpowers/specs/2026-06-02-municipios-nfse-sync-design.md`.
 - RPC: `add_company_to_profile(p_user_id, p_company_id)`
 - Trigger: auto-criar profile no signup (`handle_new_user`)
 - Trigger: `updated_at` automático em todas as tabelas com a coluna
@@ -157,7 +160,13 @@ Todos têm `import 'server-only'` — só chamar de server actions ou route hand
 - `enums.ts` — 26 option sets do Bubble como const arrays
 - `zod.ts` — `ClienteSchema`, `CompanySchema` (endereço rua/número/cidade/estado obrigatório; número com `sem_numero`), `CompanyCreateSchema` (CNPJ por dígitos verificadores), `EmpresaFiscalSchema` (regime + NFS-e), `HonorarioSchema`. Validador em `src/lib/validators/cnpj.ts` (`isValidCnpj`)
 
-### 2.6 Configuração / Tooling
+### 2.6 Crons Vercel (`vercel.json`)
+
+| Rota | Schedule | Função |
+|---|---|---|
+| `GET /api/cron/sync-municipios` | `0 5 1 * *` (dia 1, 05:00 UTC) | Pagina `GET /v2/municipios` da Focus e faz upsert de todos os 5.571 municípios em `municipios_nfse` (chunks de 500). Protegida por `Authorization: Bearer CRON_SECRET`. Executada manualmente na primeira carga (2026-06-02). |
+
+### 2.7 Configuração / Tooling
 
 | Arquivo | Função |
 |---|---|
