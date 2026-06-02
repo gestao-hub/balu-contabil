@@ -1,15 +1,15 @@
 # ── Dependências / build (app Next.js) ──────────────────────
-balu-next/node_modules/
-balu-next/.next/
-balu-next/out/
-balu-next/.vercel/
-balu-next/tsconfig.tsbuildinfo
-balu-next/next-env.d.ts
+app/node_modules/
+app/.next/
+app/out/
+app/.vercel/
+app/tsconfig.tsbuildinfo
+app/next-env.d.ts
 
 # ── Segredos / ambiente ──────────────────────────────────────
-balu-next/.env
-balu-next/.env.local
-balu-next/.env.*.local
+app/.env
+app/.env.local
+app/.env.*.local
 .env
 .env.local
 
@@ -19,14 +19,14 @@ balu-next/.env.*.local
 excluviapainel.bubble
 
 # ── Testes / artefatos ───────────────────────────────────────
-balu-next/playwright-report/
-balu-next/test-results/
-balu-next/blob-report/
-balu-next/.playwright/
+app/playwright-report/
+app/test-results/
+app/blob-report/
+app/.playwright/
 
 # ── Artefatos do Playwright MCP (snapshots/console — efêmeros) ─
 .playwright-mcp/
-balu-next/.playwright-mcp/
+app/.playwright-mcp/
 # Screenshots .png salvos no root pelo playwright MCP (cwd do processo) — efêmeros
 /*.png
 
@@ -52,3 +52,7 @@ docs/n8n/
 # ── Diversos ─────────────────────────────────────────────────
 *.log
 .DS_Store
+
+# ── App: saída de testes (screenshots) + kanban stray ──
+app/screenshots/
+app/.kanban/

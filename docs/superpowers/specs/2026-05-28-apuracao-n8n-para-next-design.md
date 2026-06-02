@@ -5,8 +5,8 @@
 **Inputs analisados:**
 - `docs/n8n/Fluxo_apuração.json` (3 webhooks + 22 nós)
 - `docs/n8n/api serpro integra contador.json` (auth + chamadas)
-- Schema real: `balu-next/db_atual.sql` (`receitas_fiscais`, `apuracoes_fiscais`, `empresas_fiscais`)
-- Código existente: `balu-next/src/lib/fiscal/regime.ts`, `guia.ts`
+- Schema real: `app/db_atual.sql` (`receitas_fiscais`, `apuracoes_fiscais`, `empresas_fiscais`)
+- Código existente: `app/src/lib/fiscal/regime.ts`, `guia.ts`
 
 ---
 

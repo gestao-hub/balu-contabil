@@ -7,7 +7,7 @@ description: Converte um reusable do Bubble (FloatingGroup/Popup/Group em elemen
 
 ## Quando usar
 - Existe um `.bubble` na raiz do projeto.
-- O scaffold `balu-next/` já existe (criado por `gen_schema.py` + `gen_routes.py` + `gen_clients.py`).
+- O scaffold `app/` já existe (criado por `gen_schema.py` + `gen_routes.py` + `gen_clients.py`).
 - Usuário quer gerar 1 componente React específico (ou em lote — chame a skill N vezes).
 
 ## Algoritmo
@@ -33,14 +33,14 @@ Carregue como contexto, nesta ordem:
 4. `_packs/<id>/states.json` (reatividade)
 5. `_packs/<id>/workflows.json` (eventos → ações)
 6. `bubble-to-prd/slices/06_design_tokens.json` (cores/fontes)
-7. `balu-next/src/types/enums.ts` (se workflows usam option_sets)
-8. `balu-next/src/lib/clients/_endpoints.ts` (se workflows chamam APIs)
+7. `app/src/types/enums.ts` (se workflows usam option_sets)
+8. `app/src/lib/clients/_endpoints.ts` (se workflows chamam APIs)
 
-Escreva em `balu-next/src/components/<PascalName>.tsx`.
+Escreva em `app/src/components/<PascalName>.tsx`.
 
 ### Passo 4 — Validar
 ```bash
-cd balu-next && npx tsc --noEmit
+cd app && npx tsc --noEmit
 ```
 Tem que compilar limpo. Se faltar import, ajustar.
 

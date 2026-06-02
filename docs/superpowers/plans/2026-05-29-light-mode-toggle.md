@@ -10,14 +10,14 @@
 
 **Verificação:** Este trabalho é re-tematização por tokens + estado de UI; não há testes unitários significativos. Cada task verifica com `npm run typecheck` e, ao final, inspeção visual via Playwright. **Não rodar `npm run build` com `next dev` ativo** (corrompe o `.next` compartilhado — usar `typecheck`).
 
-Todos os comandos rodam a partir de `balu-next/`.
+Todos os comandos rodam a partir de `app/`.
 
 ---
 
 ### Task 1: Instalar next-themes
 
 **Files:**
-- Modify: `balu-next/package.json` (via npm)
+- Modify: `app/package.json` (via npm)
 
 - [ ] **Step 1: Instalar a dependência**
 
@@ -41,7 +41,7 @@ git commit -m "build(branding): adiciona next-themes para o toggle de tema"
 ### Task 2: Paleta clara nas CSS vars + var de border
 
 **Files:**
-- Modify: `balu-next/src/app/globals.css`
+- Modify: `app/src/app/globals.css`
 
 - [ ] **Step 1: Adicionar `--border` ao `:root` escuro e o bloco `.light`**
 
@@ -93,7 +93,7 @@ git commit -m "feat(branding): paleta do tema claro + var --border em globals.cs
 ### Task 3: Tailwind — darkMode class + border via var
 
 **Files:**
-- Modify: `balu-next/tailwind.config.ts`
+- Modify: `app/tailwind.config.ts`
 
 - [ ] **Step 1: Adicionar `darkMode: 'class'` e trocar `border` para usar a var**
 
@@ -129,7 +129,7 @@ git commit -m "feat(branding): border via --border + darkMode class no Tailwind"
 ### Task 4: ThemeProvider
 
 **Files:**
-- Create: `balu-next/src/components/ThemeProvider.tsx`
+- Create: `app/src/components/ThemeProvider.tsx`
 
 - [ ] **Step 1: Criar o provider**
 
@@ -171,7 +171,7 @@ git commit -m "feat(branding): ThemeProvider (next-themes, default escuro)"
 ### Task 5: Plugar o ThemeProvider no layout
 
 **Files:**
-- Modify: `balu-next/src/app/layout.tsx`
+- Modify: `app/src/app/layout.tsx`
 
 - [ ] **Step 1: Importar o provider, adicionar `suppressHydrationWarning` e envolver o corpo**
 
@@ -216,7 +216,7 @@ git commit -m "feat(branding): pluga ThemeProvider no root layout"
 ### Task 6: ThemeToggle
 
 **Files:**
-- Create: `balu-next/src/components/ThemeToggle.tsx`
+- Create: `app/src/components/ThemeToggle.tsx`
 
 - [ ] **Step 1: Criar o toggle**
 
@@ -278,7 +278,7 @@ git commit -m "feat(branding): ThemeToggle (sol/lua) para a sidebar"
 ### Task 7: Integrar o toggle na sidebar
 
 **Files:**
-- Modify: `balu-next/src/components/MenuLateral.tsx`
+- Modify: `app/src/components/MenuLateral.tsx`
 
 - [ ] **Step 1: Importar e renderizar o toggle no rodapé**
 

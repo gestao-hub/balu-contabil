@@ -51,7 +51,7 @@ export function createAdminClient() {
 - [ ] **Step 2: Typecheck**
 
 ```bash
-cd /home/allan/Projetos/claude/balu/balu-next && npm run typecheck 2>&1 | tail -5
+cd /home/allan/Projetos/claude/balu/app && npm run typecheck 2>&1 | tail -5
 ```
 
 Esperado: `Found 0 errors`.

@@ -12,21 +12,21 @@
 
 **Pré-requisitos de ambiente:**
 - Migration aplicada **manualmente no SQL Editor** (sem CLI/conexão local).
-- Script e testes batem no **Supabase de dev real** via `balu-next/.env.local`.
+- Script e testes batem no **Supabase de dev real** via `app/.env.local`.
 - Dados-âncora (descobertos por introspecção em 2026-05-29):
   - Empresa válida: `companies.id = 41a9c2a4-241f-40b0-a1c5-da3fced49359`.
   - Linha válida: `arquivos_auxiliares.id = 0b44bdec-f9b5-43b2-b65c-9e9ea3dd12e4`, objeto atual `41a9c2a4-241f-40b0-a1c5-da3fced49359/9783c30f-3238-45c4-8e7e-96dec4ad86d0.enc`.
   - Linhas órfãs a apagar: `5d8325bc-b125-4f4b-a307-4337bfdb55ca`, `5e29855c-bfb0-4ede-b964-40f4458335fe`.
   - Keep-set no bucket após o move: `41a9c2a4-241f-40b0-a1c5-da3fced49359/certificado.enc` + `.emptyFolderPlaceholder`.
 
-Todos os comandos rodam a partir de `balu-next/`.
+Todos os comandos rodam a partir de `app/`.
 
 ---
 
 ### Task 1: Script de saneamento (dry-run por padrão)
 
 **Files:**
-- Create: `balu-next/scripts/saneamento-arquivos-auxiliares.mjs`
+- Create: `app/scripts/saneamento-arquivos-auxiliares.mjs`
 
 - [ ] **Step 1: Escrever o script**
 
@@ -155,7 +155,7 @@ Expected: `move pulado (destino já existe)`, `objetos a remover do bucket: []`,
 ### Task 3: Migration `0011_arquivos_auxiliares_fk.sql`
 
 **Files:**
-- Create: `balu-next/supabase/migrations/0011_arquivos_auxiliares_fk.sql`
+- Create: `app/supabase/migrations/0011_arquivos_auxiliares_fk.sql`
 
 - [ ] **Step 1: Escrever a migration**
 
@@ -235,7 +235,7 @@ Expected: existe `company_id` (uuid), NÃO existem `unique_id_empresa`/`unique_i
 ### Task 5: Código — `actions.ts` (nome fixo + company_id)
 
 **Files:**
-- Modify: `balu-next/src/app/(auth)/configuracoes/actions.ts:176-209`
+- Modify: `app/src/app/(auth)/configuracoes/actions.ts:176-209`
 
 - [ ] **Step 1: Substituir o bloco de reuso de unique_id_bubble + insert/update**
 
@@ -314,9 +314,9 @@ Expected: PASS (sem novos erros).
 ### Task 6: Código — `page.tsx`, storage morto, tipos
 
 **Files:**
-- Modify: `balu-next/src/app/(auth)/configuracoes/page.tsx:79`
-- Modify: `balu-next/src/lib/clients/supabase-storage.ts:50-59`
-- Modify: `balu-next/src/types/database.ts:234-248`
+- Modify: `app/src/app/(auth)/configuracoes/page.tsx:79`
+- Modify: `app/src/lib/clients/supabase-storage.ts:50-59`
+- Modify: `app/src/types/database.ts:234-248`
 
 - [ ] **Step 1: `page.tsx` — filtrar por company_id**
 
@@ -403,7 +403,7 @@ git commit -m "refactor(saneamento): cert por company_id + nome fixo certificado
 ### Task 7: Teste de isolamento — ajustar para company_id + GREEN
 
 **Files:**
-- Modify: `balu-next/tests/rls-isolation.spec.ts`
+- Modify: `app/tests/rls-isolation.spec.ts`
 
 - [ ] **Step 1: Trocar a checagem de arquivos_auxiliares**
 
@@ -459,7 +459,7 @@ Expected: upload conclui; bucket segue com 1 objeto `certificado.enc` para a emp
 ### Task 9: Documento de resultados + commit
 
 **Files:**
-- Create: `balu-next/docs/saneamento-results-2026-05-29.md`
+- Create: `app/docs/saneamento-results-2026-05-29.md`
 
 - [ ] **Step 1: Escrever o resultado**
 

@@ -15,7 +15,7 @@
 ### Task 1: Botão "Nova empresa" + dialog no `MenuLateral` (dev-only)
 
 **Files:**
-- Modify: `balu-next/src/components/MenuLateral.tsx`
+- Modify: `app/src/components/MenuLateral.tsx`
 
 Quatro edições no mesmo arquivo.
 
@@ -110,13 +110,13 @@ por:
 
 - [ ] **Step 5: `tsc` + `vitest`**
 
-Run: `cd balu-next && npx tsc --noEmit && npx vitest run`
+Run: `cd app && npx tsc --noEmit && npx vitest run`
 Expected: tsc zero erros; vitest verde (nenhuma suíte cobre `MenuLateral`; nada de helper mudou — total 50 testes).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add balu-next/src/components/MenuLateral.tsx
+git add app/src/components/MenuLateral.tsx
 git commit -m "feat(menu): botão Nova empresa (dev-only) abre CreateCompanyDialog sob demanda
 
 Gated por process.env.NODE_ENV !== 'production'; ao criar, router.refresh()

@@ -15,7 +15,7 @@
 ### Task 1: Modal de confirmação na substituição no `CertificadoForm`
 
 **Files:**
-- Modify: `balu-next/src/app/(auth)/configuracoes/CertificadoForm.tsx`
+- Modify: `app/src/app/(auth)/configuracoes/CertificadoForm.tsx`
 
 Três edições no mesmo arquivo.
 
@@ -152,13 +152,13 @@ por:
 
 - [ ] **Step 4: `tsc` + `vitest`**
 
-Run: `cd balu-next && npx tsc --noEmit && npx vitest run`
+Run: `cd app && npx tsc --noEmit && npx vitest run`
 Expected: tsc zero erros; vitest 50/50 (nenhuma suíte cobre `CertificadoForm`).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add "balu-next/src/app/(auth)/configuracoes/CertificadoForm.tsx"
+git add "app/src/app/(auth)/configuracoes/CertificadoForm.tsx"
 git commit -m "feat(cert): confirma antes de substituir certificado (PopupConfirm destructive)
 
 Na substituição (enviadoEm), o submit valida arquivo+senha e abre um modal de

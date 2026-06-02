@@ -2,7 +2,7 @@
 
 Esta pasta contém **o app Balu** (gestão fiscal brasileira) sendo convertido de **Bubble.io** para **Next.js 15 + Supabase**, junto com um **pipeline reutilizável** que automatiza grande parte da conversão.
 
-> **TL;DR** — `balu-next/` é o app real, pronto pra rodar (`npm install && npm run dev`). `bubble-to-prd/` é o pipeline que converte o `.bubble` em código. `PRD-Balu.md` é a especificação humano-validada do app, e serve como ponte entre os dois mundos.
+> **TL;DR** — `app/` é o app real, pronto pra rodar (`npm install && npm run dev`). `bubble-to-prd/` é o pipeline que converte o `.bubble` em código. `PRD-Balu.md` é a especificação humano-validada do app, e serve como ponte entre os dois mundos.
 
 ---
 
@@ -45,7 +45,7 @@ balu/
 │           ├── PROMPT.md
 │           └── _packs/          ← packs por reusable (gerado)
 │
-└── balu-next/                   ← APP NEXT.JS resultante (44 arquivos, compila limpo)
+└── app/                   ← APP NEXT.JS resultante (44 arquivos, compila limpo)
     ├── package.json             ← deps: Next 15, React 19, Tailwind 3, Supabase, Zod, Playwright
     ├── tsconfig.json
     ├── tailwind.config.ts       ← tokens de marca: brand-teal #03B4C6, brand-navy, brand-danger
@@ -126,9 +126,9 @@ Três scripts Python convertem slices em código deterministicamente:
 
 ```bash
 cd bubble-to-prd/skills
-python3 gen_schema.py ../slices ../../balu-next   # SQL + enums + types
-python3 gen_routes.py ../slices ../../balu-next   # rotas Next.js
-python3 gen_clients.py ../slices ../../balu-next  # clients API
+python3 gen_schema.py ../slices ../../app   # SQL + enums + types
+python3 gen_routes.py ../slices ../../app   # rotas Next.js
+python3 gen_clients.py ../slices ../../app  # clients API
 ```
 
 O scaffold sai com a estrutura, mas as páginas internas começam como stubs.
@@ -151,7 +151,7 @@ Cada behavior (login, CRUD de cliente, onboarding…) foi implementado por um su
 
 **1. Instalar e configurar variáveis**
 ```bash
-cd balu-next
+cd app
 npm install
 cp .env.example .env.local
 # Editar .env.local e preencher pelo menos:
@@ -322,7 +322,7 @@ local-kanban
 # servidor roda em http://127.0.0.1:7421
 ```
 
-**Board pré-populado**: `balu-next/.kanban/board.json` já vem com:
+**Board pré-populado**: `app/.kanban/board.json` já vem com:
 - 4 colunas (`Backlog`, `Em andamento`, `Bloqueado`, `Done`)
 - Cards organizados por dia (`label: day-1`, `day-2`, `day-3`, `day-4`)
 - Features já implementadas vão pra coluna `Done` com label `done-pre-handoff`
@@ -354,7 +354,7 @@ fim     ─►  ./verify.sh (build + tsc)
 
 Leia o **Apêndice A** de `PLANO-4-DIAS.md`. Resumo:
 - `V1-FUNCIONALIDADES.md`, `PRD-Balu.md`, `bubble-to-prd/slices/`, `supabase/migrations/0001_init.sql` continuam valendo em **qualquer stack**
-- Tudo em `balu-next/src/` é descartável
+- Tudo em `app/src/` é descartável
 - Trocar de stack adiciona ~3-5 dias ao escopo de 4 dias
 
 ### 6.5.5 Estado real hoje (snapshot)
@@ -377,9 +377,9 @@ Leia o **Apêndice A** de `PLANO-4-DIAS.md`. Resumo:
 cd bubble-to-prd
 python3 extract.py ../excluviapainel.bubble --out slices
 cd skills
-python3 gen_schema.py ../slices ../../balu-next
-python3 gen_routes.py ../slices ../../balu-next
-python3 gen_clients.py ../slices ../../balu-next
+python3 gen_schema.py ../slices ../../app
+python3 gen_routes.py ../slices ../../app
+python3 gen_clients.py ../slices ../../app
 
 # ─── Inventário rápido dos reusables ───
 python3 bubble-to-prd/skills/inventory_reusables.py excluviapainel.bubble
@@ -388,7 +388,7 @@ python3 bubble-to-prd/skills/inventory_reusables.py excluviapainel.bubble
 python3 bubble-to-prd/validate.py bubble-to-prd/slices PRD-Balu.md
 
 # ─── Trabalhar no app ───
-cd balu-next
+cd app
 npm install
 npm run dev                 # dev server em http://localhost:3000
 npm run build               # build de produção
