@@ -140,7 +140,7 @@ function isValidEmail(v: string): boolean {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function AberturaWizard({
-  mode, initial, existingDocs, action, onBack,
+  mode, initial, existingDocs, action, onBack, naked = false,
 }: {
   mode: 'criar' | 'alterar';
   initial?: AberturaData;
@@ -148,6 +148,8 @@ export default function AberturaWizard({
   action: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Sobrescreve o comportamento do botão Voltar na etapa 0 (ex.: fechar um popup). */
   onBack?: () => void;
+  /** Remove borda/bg/rounded — para uso dentro de um popup que já fornece o card. */
+  naked?: boolean;
 }) {
   const router = useRouter();
   const [data, setData] = useState<AberturaData>(() => {
@@ -264,7 +266,7 @@ export default function AberturaWizard({
   const isLast = step === STEPS.length - 1;
 
   return (
-    <div className="w-full max-w-2xl bg-surface rounded-2xl border border-border p-6">
+    <div className={`w-full max-w-2xl ${naked ? '' : 'bg-surface rounded-2xl border border-border p-6'}`}>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-semibold text-foreground">
           {mode === 'criar' ? 'Abertura de empresa' : 'Solicitar alteração'} — {STEPS[step].title}

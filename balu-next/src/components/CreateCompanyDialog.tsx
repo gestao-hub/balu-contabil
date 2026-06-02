@@ -26,6 +26,8 @@ type Props = {
   forceCreate?: boolean;
   onClose?: () => void;
   onCreated?: (id: string) => void;
+  /** Quando fornecido, exibe botão "← Seleção" no footer (uso dentro de AddEmpresaDialog). */
+  onBack?: () => void;
 };
 
 type Form = CompanyInput;
@@ -49,7 +51,7 @@ const EMPTY: Form = {
   Code_regime_tributario: undefined,
 };
 
-export default function CreateCompanyDialog({ open, forceCreate = false, onClose, onCreated }: Props) {
+export default function CreateCompanyDialog({ open, forceCreate = false, onClose, onCreated, onBack }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const toast = useToast();
   const titleId = useId(); // id único por instância — evita aria-labelledby duplicado
@@ -317,24 +319,35 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
           </div>
         </section>
 
-        <footer className="mt-6 flex justify-end gap-2">
-          {!forceCreate && (
+        <footer className="mt-6 flex items-center justify-between gap-2">
+          {onBack ? (
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2"
+              onClick={onBack}
+              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-surface-2"
             >
-              Cancelar
+              ← Seleção
             </button>
-          )}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {submitting && <Loader2 className="size-4 animate-spin" />}
-            Criar empresa
-          </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            {!forceCreate && !onBack && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2"
+              >
+                Cancelar
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {submitting && <Loader2 className="size-4 animate-spin" />}
+              Criar empresa
+            </button>
+          </div>
         </footer>
       </form>
     </dialog>

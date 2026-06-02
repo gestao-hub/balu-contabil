@@ -34,6 +34,7 @@ export default function AddEmpresaDialog({ open, onClose, onCreated }: Props) {
         open
         onClose={handleClose}
         onCreated={(id) => { handleClose(); onCreated?.(id); }}
+        onBack={() => setView('select')}
       />
     );
   }
@@ -85,6 +86,7 @@ export default function AddEmpresaDialog({ open, onClose, onCreated }: Props) {
               mode="criar"
               action={submitAberturaAction}
               onBack={() => setView('select')}
+              naked
             />
           )}
         </div>
