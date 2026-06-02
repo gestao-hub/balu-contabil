@@ -61,18 +61,11 @@ async function fetchAll(token: string): Promise<FocusMunicipio[]> {
   return pages.flat();
 }
 
-Deno.serve(async (req) => {
-  // Aceita dois tokens válidos:
-  // 1. CRON_SECRET — para chamadas manuais / externos
-  // 2. SUPABASE_SERVICE_ROLE_KEY — para o agendador interno do Supabase (não precisa copiar o valor no dashboard)
-  const cronSecret = Deno.env.get('CRON_SECRET');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  const validTokens = [cronSecret, serviceRoleKey].filter(Boolean);
-
-  const bearer = (req.headers.get('authorization') ?? '').replace('Bearer ', '');
-  if (!validTokens.includes(bearer)) {
-    return new Response(JSON.stringify({ error: 'Não autorizado' }), { status: 401 });
-  }
+Deno.serve(async (_req) => {
+  // Auth delegada ao Supabase: a função é deployada COM verificação de JWT (padrão).
+  // O agendador passa Authorization: Bearer <service_role_key> — visível em
+  // Project Settings → API, sem precisar copiar nenhum secret extra.
+  // Para chamadas manuais (curl/test), use o mesmo service_role_key.
 
   const focusToken = Deno.env.get('FOCUS_API_TOKEN');
   if (!focusToken) {
