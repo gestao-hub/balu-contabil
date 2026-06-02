@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /*
- * Tokens de marca Balu — tema escuro (branding/balu-manual-de-marca.html §cores)
+ * Tokens de marca Balu — tema escuro (docs/branding/balu-manual-de-marca.html §cores)
  * Canais RGB separados p/ permitir modificadores de opacidade do Tailwind
  * (ex: bg-border/50). Trocar estes valores re-tematiza o app inteiro.
  */

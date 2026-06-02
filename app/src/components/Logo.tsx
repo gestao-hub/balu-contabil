@@ -1,4 +1,4 @@
-// Logo da marca Balu — geometria canônica do manual (branding/balu-manual-de-marca.html).
+// Logo da marca Balu — geometria canônica do manual (docs/branding/balu-manual-de-marca.html).
 // Símbolo = "u" com sorriso (viewBox 0 0 200 224, traço 34, pontas arredondadas).
 // Gradiente oficial vertical #0D3558 → #1882C8.
 //

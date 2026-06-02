@@ -5,7 +5,7 @@ import { Outfit, Syne, Nunito } from 'next/font/google';
 import { ToastProvider } from '@/components/Toaster';
 import ThemeProvider from '@/components/ThemeProvider';
 
-// Tipografia da marca (branding/balu-manual-de-marca.html):
+// Tipografia da marca (docs/branding/balu-manual-de-marca.html):
 // Outfit = corpo, Syne = títulos, Nunito = wordmark "Balu".
 const outfit = Outfit({ subsets: ['latin'], variable: '--font-body', display: 'swap' });
 const syne = Syne({ subsets: ['latin'], weight: ['700', '800'], variable: '--font-head', display: 'swap' });
