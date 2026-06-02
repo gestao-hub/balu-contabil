@@ -14,7 +14,7 @@ A tabela `municipios_nfse` veio do Bubble com um schema legado (`municipio`, `es
 2. **`/configuracoes` → NFS-e** — mostrar provedor e flags de cancelamento do município
 3. **`/notas_fiscais/[id]`** e **cancelamento** — saber se o cancelamento é só pelo portal municipal
 
-O cron roda mensalmente e mantém a tabela sempre alinhada com o catálogo da Focus.
+O cron roda diariamente (00:00 UTC) e mantém a tabela sempre alinhada com o catálogo da Focus.
 
 ---
 
@@ -214,7 +214,7 @@ Adiciona entrada no array `crons` (cria o arquivo se não existir):
   "crons": [
     {
       "path": "/api/cron/sync-municipios",
-      "schedule": "0 5 1 * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }

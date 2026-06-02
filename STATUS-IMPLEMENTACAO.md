@@ -164,7 +164,7 @@ Todos têm `import 'server-only'` — só chamar de server actions ou route hand
 
 | Rota | Schedule | Função |
 |---|---|---|
-| `GET /api/cron/sync-municipios` | `0 5 1 * *` (dia 1, 05:00 UTC) | Pagina `GET /v2/municipios` da Focus e faz upsert de todos os 5.571 municípios em `municipios_nfse` (chunks de 500). Protegida por `Authorization: Bearer CRON_SECRET`. Executada manualmente na primeira carga (2026-06-02). |
+| `GET /api/cron/sync-municipios` | `0 0 * * *` (diário, 00:00 UTC) | Pagina `GET /v2/municipios` da Focus e faz upsert de todos os 5.571 municípios em `municipios_nfse` (chunks de 500). Supabase Edge Function — auth via service_role key (JWT verification padrão). Executada manualmente na primeira carga (2026-06-02). |
 
 ### 2.7 Configuração / Tooling
 
