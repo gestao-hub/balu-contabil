@@ -177,21 +177,27 @@ export default function ClienteFormDialog({ open, mode, initial, onClose, onSave
         </header>
 
         <div className="space-y-5 px-6 py-5">
-          {/* Toggle PF/PJ */}
-          <div className="inline-flex rounded-lg border border-border bg-surface-2 p-1">
-            {(['PF', 'PJ'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => update('person_type', t)}
-                className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                  form.person_type === t ? 'bg-surface text-primary shadow-sm' : 'text-muted-foreground-2'
-                }`}
-              >
-                {t === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
-              </button>
-            ))}
-          </div>
+          {/* Toggle PF/PJ — só na criação; na edição o tipo é fixo */}
+          {mode === 'create' ? (
+            <div className="inline-flex rounded-lg border border-border bg-surface-2 p-1">
+              {(['PF', 'PJ'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => update('person_type', t)}
+                  className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                    form.person_type === t ? 'bg-surface text-primary shadow-sm' : 'text-muted-foreground-2'
+                  }`}
+                >
+                  {t === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground-2">
+              {form.person_type === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
+            </span>
+          )}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label={form.person_type === 'PF' ? 'Nome completo' : 'Razão social'} error={errors.razao_social} required>
