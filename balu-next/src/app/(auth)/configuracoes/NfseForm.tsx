@@ -116,24 +116,26 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
       )}
 
       {(cred.login || cred.token) && (
-        <fieldset className="grid grid-cols-2 gap-4">
-          <legend className="text-sm font-semibold text-foreground">Credenciais do município</legend>
-          {cred.login && <Field label="Usuário (login)" value={usuario} onChange={setUsuario} disabled={locked} />}
-          {cred.login && <Field label="Senha" type="password" value={senha} onChange={setSenha} disabled={locked} />}
-          {cred.token && <Field label="Token" value={token} onChange={setToken} disabled={locked} className="col-span-2" />}
-        </fieldset>
-      )}
+        <>
+          <fieldset className="grid grid-cols-2 gap-4">
+            <legend className="text-sm font-semibold text-foreground">Credenciais do município</legend>
+            {cred.login && <Field label="Usuário (login)" value={usuario} onChange={setUsuario} disabled={locked} />}
+            {cred.login && <Field label="Senha" type="password" value={senha} onChange={setSenha} disabled={locked} />}
+            {cred.token && <Field label="Token" value={token} onChange={setToken} disabled={locked} className="col-span-2" />}
+          </fieldset>
 
-      <div className="flex justify-end gap-2">
-        {editing ? (
-          <>
-            <button type="button" onClick={handleCancel} disabled={busy} className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50">Cancelar</button>
-            <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">{busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}Salvar</button>
-          </>
-        ) : (
-          <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"><Pencil className="size-4" />Editar</button>
-        )}
-      </div>
+          <div className="flex justify-end gap-2">
+            {editing ? (
+              <>
+                <button type="button" onClick={handleCancel} disabled={busy} className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50">Cancelar</button>
+                <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">{busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}Salvar</button>
+              </>
+            ) : (
+              <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"><Pencil className="size-4" />Editar</button>
+            )}
+          </div>
+        </>
+      )}
     </form>
   );
 }
