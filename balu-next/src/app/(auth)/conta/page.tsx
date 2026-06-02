@@ -1,5 +1,6 @@
 // src/app/(auth)/conta/page.tsx
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import PerfilForm from './PerfilForm';
 import AlterarSenhaForm from './AlterarSenhaForm';
@@ -20,7 +21,7 @@ export default async function ContaPage({ searchParams }: { searchParams: SP }) 
 
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect('/login');
 
   const { data: roleRow } = await supabase
     .from('role_types')

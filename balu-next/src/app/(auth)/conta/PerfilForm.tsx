@@ -13,7 +13,8 @@ type Props = {
 
 export default function PerfilForm({ initialNome, email, role }: Props) {
   const toast = useToast();
-  const [isPending, startTransition] = useTransition();
+  const [isPendingNome, startNome] = useTransition();
+  const [isPendingEmail, startEmail] = useTransition();
 
   // — Nome
   const [editingNome, setEditingNome] = useState(false);
@@ -25,7 +26,7 @@ export default function PerfilForm({ initialNome, email, role }: Props) {
   const [newEmail, setNewEmail] = useState('');
 
   function handleNomeSave() {
-    startTransition(async () => {
+    startNome(async () => {
       const r = await updateNomeAction(nomeTemp);
       if (!r.ok) { toast('error', r.error); return; }
       setNome(nomeTemp);
@@ -40,7 +41,7 @@ export default function PerfilForm({ initialNome, email, role }: Props) {
   }
 
   function handleEmailSend() {
-    startTransition(async () => {
+    startEmail(async () => {
       const r = await updateEmailAction(newEmail);
       if (!r.ok) { toast('error', r.error); return; }
       toast('info', r.message ?? 'Link enviado.');
@@ -67,7 +68,7 @@ export default function PerfilForm({ initialNome, email, role }: Props) {
             <button
               type="button"
               onClick={handleNomeSave}
-              disabled={isPending}
+              disabled={isPendingNome}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             >
               <Save className="size-3.5" />
@@ -76,7 +77,7 @@ export default function PerfilForm({ initialNome, email, role }: Props) {
             <button
               type="button"
               onClick={handleNomeCancel}
-              disabled={isPending}
+              disabled={isPendingNome}
               className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50"
             >
               <X className="size-3.5" />
@@ -126,7 +127,7 @@ export default function PerfilForm({ initialNome, email, role }: Props) {
             <button
               type="button"
               onClick={handleEmailSend}
-              disabled={isPending || !newEmail.trim()}
+              disabled={isPendingEmail || !newEmail.trim()}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             >
               Enviar confirmação
@@ -134,7 +135,7 @@ export default function PerfilForm({ initialNome, email, role }: Props) {
             <button
               type="button"
               onClick={() => { setShowEmailForm(false); setNewEmail(''); }}
-              disabled={isPending}
+              disabled={isPendingEmail}
               className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2"
             >
               <X className="size-3.5" />

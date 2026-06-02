@@ -8,15 +8,17 @@ import { updateSenhaAction } from './actions';
 export default function AlterarSenhaForm() {
   const toast = useToast();
   const [isPending, startTransition] = useTransition();
+  const [senhaAtual, setSenhaAtual] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmar, setConfirmar] = useState('');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
-      const r = await updateSenhaAction(senha, confirmar);
+      const r = await updateSenhaAction(senhaAtual, senha, confirmar);
       if (!r.ok) { toast('error', r.error); return; }
       toast('success', 'Senha atualizada com sucesso.');
+      setSenhaAtual('');
       setSenha('');
       setConfirmar('');
     });
@@ -26,6 +28,17 @@ export default function AlterarSenhaForm() {
     <form onSubmit={handleSubmit} className="max-w-lg space-y-4">
       <div className="rounded-lg border border-border bg-surface p-4 space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Alterar senha</p>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-muted-foreground-2">Senha atual</span>
+          <input
+            type="password"
+            value={senhaAtual}
+            onChange={(e) => setSenhaAtual(e.target.value)}
+            required
+            autoComplete="current-password"
+            className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-foreground"
+          />
+        </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-xs font-medium text-muted-foreground-2">Nova senha</span>
           <input

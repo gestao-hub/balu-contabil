@@ -29,12 +29,23 @@ export async function updateEmailAction(newEmail: string): Promise<ContaActionRe
   return { ok: true, message: `Link enviado para ${trimmed}. O email atual permanece ativo até a confirmação.` };
 }
 
-/** Atualiza a senha do usuário autenticado. */
-export async function updateSenhaAction(senha: string, confirmar: string): Promise<ContaActionResult> {
-  if (senha.length < 6) return { ok: false, error: 'A senha deve ter pelo menos 6 caracteres.' };
+/** Atualiza a senha do usuário autenticado, verificando a senha atual primeiro. */
+export async function updateSenhaAction(senhaAtual: string, senha: string, confirmar: string): Promise<ContaActionResult> {
+  if (!senhaAtual) return { ok: false, error: 'Informe a senha atual.' };
+  if (senha.length < 6) return { ok: false, error: 'A nova senha deve ter pelo menos 6 caracteres.' };
   if (senha !== confirmar) return { ok: false, error: 'As senhas não coincidem.' };
 
   const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) return { ok: false, error: 'Sessão expirada.' };
+
+  // Re-autentica com a senha atual antes de permitir a troca.
+  const { error: authError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: senhaAtual,
+  });
+  if (authError) return { ok: false, error: 'Senha atual incorreta.' };
+
   const { error } = await supabase.auth.updateUser({ password: senha });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
