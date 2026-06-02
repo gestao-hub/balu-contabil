@@ -10,13 +10,11 @@ import { upsertEmpresaFiscalAction } from './actions';
 
 export type MunicipioInfo = {
   id: string;
-  municipio: string | null;
-  estado: string | null;
-  provedor: string | null;
-  autenticacao: string | null;
-  cancelamento: string | null;
-  cancelamento_so_portal: boolean | null;
-  requer_liberacao_rps: boolean | null;
+  nome_municipio: string;
+  uf: string;
+  provedor_nfse: string | null;
+  requer_certificado_nfse: boolean | null;
+  possui_cancelamento_nfse: boolean | null;
 };
 
 type Initial = {
@@ -57,7 +55,7 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
     );
   }
 
-  const cred = credenciaisDaAutenticacao(municipio.autenticacao);
+  const cred = credenciaisDaAutenticacao(municipio);
 
   function resetFromInitial() {
     setUsuario(initial?.nfse_usuario_login ?? '');
@@ -81,7 +79,6 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
     try {
       const r = await upsertEmpresaFiscalAction({
         municipio_id: mun.id,
-        nfse_autenticacao_tipo: mun.autenticacao ?? null,
         nfse_usuario_login: cred.login ? (usuario.trim() || null) : null,
         nfse_senha_login: cred.login ? (senha.trim() || null) : null,
         nfse_token_api: cred.token ? (token.trim() || null) : null,
@@ -103,12 +100,10 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
     <form onSubmit={handleSubmit} className="max-w-2xl space-y-5">
       <div className="rounded-lg border border-border bg-surface-2 p-4 text-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Município (do endereço)</p>
-        <p className="mt-1 text-foreground">{municipio.municipio}/{municipio.estado}</p>
+        <p className="mt-1 text-foreground">{municipio.nome_municipio}/{municipio.uf}</p>
         <div className="mt-3 grid grid-cols-2 gap-2 text-muted-foreground-2">
-          <span>Provedor: <strong>{municipio.provedor ?? '—'}</strong></span>
-          <span>Autenticação: <strong>{municipio.autenticacao ?? '—'}</strong></span>
-          <span>Cancelamento: <strong>{municipio.cancelamento ?? '—'}{municipio.cancelamento_so_portal ? ' (só portal)' : ''}</strong></span>
-          <span>Liberação RPS: <strong>{municipio.requer_liberacao_rps ? 'requer' : 'não'}</strong></span>
+          <span>Provedor: <strong>{municipio.provedor_nfse ?? '—'}</strong></span>
+          <span>Cancelamento via portal: <strong>{municipio.possui_cancelamento_nfse ? 'sim' : 'não'}</strong></span>
         </div>
       </div>
 

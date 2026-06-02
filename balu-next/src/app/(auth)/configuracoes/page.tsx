@@ -117,9 +117,10 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         ((company.codigo_municipio as string | null) ?? null),
       municipioInfo: municipioNfse
         ? {
-            producao_disponivel: (municipioNfse as { producao_disponivel?: string | null }).producao_disponivel ?? null,
-            homologacao_disponivel: (municipioNfse as { homologacao_disponivel?: string | null }).homologacao_disponivel ?? null,
-            provedor: (municipioNfse as { provedor?: string | null }).provedor ?? null,
+            nfse_habilitada: municipioNfse.nfse_habilitada,
+            status_nfse: municipioNfse.status_nfse,
+            provedor_nfse: municipioNfse.provedor_nfse,
+            possui_ambiente_homologacao_nfse: municipioNfse.possui_ambiente_homologacao_nfse,
           }
         : null,
       certPresente: !!certStorageKey,
