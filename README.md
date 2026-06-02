@@ -2,7 +2,7 @@
 
 Plataforma de **gestão fiscal e contábil** para contadores e empresas brasileiras — emissão de notas fiscais (NFe/NFCe/NFS-e), apuração de impostos (Simples Nacional / MEI), gestão de clientes, honorários e abertura/alteração de empresas.
 
-Construído em **Next.js 15 + Supabase**. Originalmente um app Bubble.io, reconstruído como aplicação web nativa (o pipeline de conversão vive em [`bubble-to-prd/`](bubble-to-prd/) e a história do processo em [`docs/`](docs/)).
+Construído em **Next.js 15 + Supabase**. Originalmente um app Bubble.io, reconstruído como aplicação web nativa (o pipeline de conversão vive em [`docs/bubble-to-prd/`](docs/bubble-to-prd/) e a história do processo em [`docs/`](docs/)).
 
 ---
 
@@ -42,18 +42,22 @@ balu/                          ← raiz do git (rode o Claude daqui — ver Conv
 │   ├── tests/                 ← Playwright E2E (smoke, walkthrough, rls-isolation)
 │   └── package.json           ← pacote npm "balu-app"
 │
-├── docs/                      ← TODA a documentação
+├── docs/                      ← TODA a documentação e tooling
 │   ├── product/               ← PRD, V1/V2-FUNCIONALIDADES
 │   ├── planning/              ← STATUS, PLANO-4-DIAS, STAGE-2
 │   ├── investigations/        ← SERPRO, ANALISE-CONTABILIZEI, DB-DIVERGENCIA
-│   ├── reference/             ← db_atual.sql, resultados de teste, READMEs antigos
-│   ├── assets/                ← imagens, PDFs
+│   ├── reference/             ← db_atual.sql, resultados de teste, READMEs legados
+│   ├── assets/                ← imagens, PDFs (+ assets/branding: PNGs de marca)
+│   ├── branding/              ← manual de marca (.html)
+│   ├── bubble-to-prd/         ← pipeline de conversão Bubble→código (Python + skills)
 │   ├── superpowers/           ← specs + plans (brainstorm → design → implementação)
 │   └── n8n/                   ← exports do motor fiscal (gitignored — contém segredos)
 │
-├── bubble-to-prd/             ← pipeline de conversão Bubble→código (Python + skills)
-├── branding/                  ← assets de marca
-└── excluviapainel.bubble      ← export original do Bubble (gitignored)
+└── README.md                  ← este arquivo
+
+# Arquivado FORA do repo, em ../balu-history/:
+#   balu-history.bundle      ← histórico git completo (376 commits)
+#   excluviapainel.bubble    ← export original do Bubble (input do pipeline)
 ```
 
 ---
@@ -136,7 +140,7 @@ Detalhes e contexto em `docs/investigations/` e nos specs de `docs/superpowers/`
 
 - **Rodar o Claude/ferramentas a partir da raiz** (`balu/`), nunca de dentro de `app/`. Os skills de planejamento gravam em `docs/` relativo ao diretório atual; rodar de outro lugar cria árvores de doc divergentes.
 - **Thin client, fat server**: nenhum secret no frontend. Clients de APIs externas (`src/lib/clients/`) têm `import 'server-only'` e só são chamados de server actions / route handlers.
-- **Markers `@generated` vs `@custom`**: arquivos gerados pelos scripts de `bubble-to-prd/` trazem `// @generated` e são sobrescritos no próximo run; troque para `// @custom` ao editar à mão para preservar.
+- **Markers `@generated` vs `@custom`**: arquivos gerados pelos scripts de `docs/bubble-to-prd/` trazem `// @generated` e são sobrescritos no próximo run; troque para `// @custom` ao editar à mão para preservar.
 - **Spec é fonte da verdade**: divergência entre código e PRD/specs → ajustar o código. Specs e planos ficam em `docs/superpowers/`.
 
 ---

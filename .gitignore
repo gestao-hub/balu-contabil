@@ -33,7 +33,8 @@ empresa_test.jpeg
 # ── Exports de infra (n8n) — contêm secrets/PII, NUNCA versionar ─
 docs/n8n/
 
-# ── Cache do vitest/vite (artefato de teste) ─────────────────
+# ── Caches/deps órfãos na raiz (não há projeto npm aqui) ─────
+node_modules/
 .vite/
 
 # ── Diversos ─────────────────────────────────────────────────

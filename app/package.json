@@ -10,9 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:e2e": "playwright test",
-    "gen:schema": "python3 ../bubble-to-prd/skills/gen_schema.py ../bubble-to-prd/slices .",
-    "gen:routes": "python3 ../bubble-to-prd/skills/gen_routes.py ../bubble-to-prd/slices .",
-    "gen:clients": "python3 ../bubble-to-prd/skills/gen_clients.py ../bubble-to-prd/slices .",
+    "gen:schema": "python3 ../docs/bubble-to-prd/skills/gen_schema.py ../docs/bubble-to-prd/slices .",
+    "gen:routes": "python3 ../docs/bubble-to-prd/skills/gen_routes.py ../docs/bubble-to-prd/slices .",
+    "gen:clients": "python3 ../docs/bubble-to-prd/skills/gen_clients.py ../docs/bubble-to-prd/slices .",
     "gen:all": "npm run gen:schema && npm run gen:routes && npm run gen:clients"
   },
   "dependencies": {

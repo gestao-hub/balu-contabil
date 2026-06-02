@@ -14,7 +14,7 @@ Escreve em <out>/src/lib/:
     clients/index.ts          — barrel + ENDPOINTS catalog
 
 Uso:
-    python3 gen_clients.py ../slices ../../app
+    python3 gen_clients.py ../slices ../../../app
 """
 from __future__ import annotations
 import json, sys, re

@@ -21,7 +21,7 @@ Escreve em <out>/src/app/:
     not-found.tsx                     — 404
 
 Uso:
-    python3 gen_routes.py ../slices ../../app
+    python3 gen_routes.py ../slices ../../../app
 """
 from __future__ import annotations
 import json, sys

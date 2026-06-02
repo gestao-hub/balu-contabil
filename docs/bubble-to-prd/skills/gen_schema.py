@@ -14,7 +14,7 @@ Escreve (em <out>/):
     src/types/database.ts        (placeholder — substituível por supabase gen)
 
 Uso:
-    python3 gen_schema.py ../slices ../../app
+    python3 gen_schema.py ../slices ../../../app
 """
 from __future__ import annotations
 import json, sys, re, os
