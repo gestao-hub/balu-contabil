@@ -13,7 +13,7 @@ const BASE: SaudeState = {
   municipio: 'Londrina',
   uf: 'PR',
   codigoMunicipio: null,
-  municipioInfo: { producao_disponivel: 'sim', homologacao_disponivel: 'sim', provedor: 'ISSWeb' },
+  municipioInfo: { nfse_habilitada: true, status_nfse: 'ativo', provedor_nfse: 'ISSWeb', possui_ambiente_homologacao_nfse: true },
   certPresente: true,
   certNotAfter: '2027-03-20T00:00:00Z',
   serproTokenExpiration: '2026-05-28T13:00:00Z',
@@ -97,7 +97,7 @@ describe('cidade_nfse — pura capacidade Focus (independente da empresa)', () =
   });
   it('(d) producao_disponivel="Sim" → ok "atendida em produção"', () => {
     const [check] = buildSaudeChecks(
-      { ...BASE, municipioInfo: { producao_disponivel: 'Sim', homologacao_disponivel: 'Sim', provedor: 'Elotech' } },
+      { ...BASE, municipioInfo: { nfse_habilitada: true, status_nfse: 'ativo', provedor_nfse: 'Elotech', possui_ambiente_homologacao_nfse: true } },
       NOW,
     );
     expect(check!.status).toBe('ok');
@@ -106,7 +106,7 @@ describe('cidade_nfse — pura capacidade Focus (independente da empresa)', () =
   });
   it('(e) só homologação disponível → pendente "apenas em hom"', () => {
     const [check] = buildSaudeChecks(
-      { ...BASE, municipioInfo: { producao_disponivel: null, homologacao_disponivel: 'Sim', provedor: 'X' } },
+      { ...BASE, municipioInfo: { nfse_habilitada: false, status_nfse: 'nao_implementado', provedor_nfse: 'X', possui_ambiente_homologacao_nfse: true } },
       NOW,
     );
     expect(check!.status).toBe('pendente');
@@ -114,7 +114,7 @@ describe('cidade_nfse — pura capacidade Focus (independente da empresa)', () =
   });
   it('(f) linha existe mas tudo null → pendente "aguardando atualização" (não engana com "só hom")', () => {
     const [check] = buildSaudeChecks(
-      { ...BASE, municipioInfo: { producao_disponivel: null, homologacao_disponivel: null, provedor: null } },
+      { ...BASE, municipioInfo: { nfse_habilitada: false, status_nfse: null, provedor_nfse: null, possui_ambiente_homologacao_nfse: null } },
       NOW,
     );
     expect(check!.status).toBe('pendente');

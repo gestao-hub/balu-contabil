@@ -32,9 +32,10 @@ export type SaudeState = {
   codigoMunicipio: string | null;
   // Resolvido por resolveMunicipioNfse: presença = município conhecido; null = desconhecido
   municipioInfo: {
-    producao_disponivel: string | null;
-    homologacao_disponivel: string | null;
-    provedor: string | null;
+    nfse_habilitada: boolean;
+    status_nfse: string | null;
+    provedor_nfse: string | null;
+    possui_ambiente_homologacao_nfse: boolean | null;
   } | null;
   // Cert (arquivos_auxiliares)
   certPresente: boolean;
@@ -287,10 +288,9 @@ function cidadeNfseCheck(state: SaudeState, now: Date): CheckResult {
     };
   }
 
-  const isSim = (v: string | null) => !!v && v.trim().toLowerCase() === 'sim';
-  const prodOk = isSim(state.municipioInfo.producao_disponivel);
-  const homOk = isSim(state.municipioInfo.homologacao_disponivel);
-  const provedor = state.municipioInfo.provedor;
+  const prodOk = state.municipioInfo.nfse_habilitada && state.municipioInfo.status_nfse === 'ativo';
+  const homOk = state.municipioInfo.possui_ambiente_homologacao_nfse === true;
+  const provedor = state.municipioInfo.provedor_nfse;
 
   // (d) Produção disponível → Focus atende em prod.
   if (prodOk) {
