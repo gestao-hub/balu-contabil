@@ -5,21 +5,20 @@ import { normalizeNome } from './municipio-nfse';
 
 export type MunicipioNfse = {
   id: string;
-  municipio: string | null;
-  estado: string | null;
-  provedor: string | null;
-  autenticacao: string | null;
-  cancelamento: string | null;
-  cancelamento_so_portal: boolean | null;
-  requer_liberacao_rps: boolean | null;
-  requer_token_portal: boolean | null;
-  serie_rps_so_numeros: boolean | null;
-  im_zeros_esquerda: boolean | null;
-  instrucoes_configuracao: string | null;
+  codigo_ibge: string;
+  nome_municipio: string;
+  uf: string;
+  nfse_habilitada: boolean;
+  status_nfse: string | null;
+  provedor_nfse: string | null;
+  requer_certificado_nfse: boolean | null;
+  possui_ambiente_homologacao_nfse: boolean | null;
+  possui_cancelamento_nfse: boolean | null;
 };
 
 // Resolve a linha de municipios_nfse pelo município + UF do endereço da empresa.
-// Match por nome normalizado (a base não tem código IBGE; homônimos via UF).
+// Match por nome normalizado; homônimos desambiguados pela UF.
+// Retorna null para cidades não habilitadas (nfse_habilitada=false) ou não encontradas.
 export async function resolveMunicipioNfse(
   supabase: SupabaseClient,
   municipio: string | null | undefined,
@@ -29,11 +28,11 @@ export async function resolveMunicipioNfse(
   const { data } = await supabase
     .from('municipios_nfse')
     .select(
-      'id, municipio, estado, provedor, autenticacao, cancelamento, cancelamento_so_portal, requer_liberacao_rps, requer_token_portal, serie_rps_so_numeros, im_zeros_esquerda, instrucoes_configuracao',
+      'id, codigo_ibge, nome_municipio, uf, nfse_habilitada, status_nfse, provedor_nfse, requer_certificado_nfse, possui_ambiente_homologacao_nfse, possui_cancelamento_nfse',
     )
-    .eq('estado', uf.trim().toUpperCase())
-    .is('deleted_at', null);
+    .eq('uf', uf.trim().toUpperCase())
+    .eq('nfse_habilitada', true);  // cidades não habilitadas retornam null → cidadeNfseCheck mostra "não atendida"
   const alvo = normalizeNome(municipio);
   const rows = (data ?? []) as MunicipioNfse[];
-  return rows.find((m) => normalizeNome(m.municipio) === alvo) ?? null;
+  return rows.find((m) => normalizeNome(m.nome_municipio) === alvo) ?? null;
 }

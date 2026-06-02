@@ -11,13 +11,20 @@ export function normalizeNome(s: string | null | undefined): string {
 
 export type CredenciaisNfse = { login: boolean; token: boolean; certificado: boolean };
 
-// Deriva quais credenciais o município exige a partir da string `autenticacao`
-// (pode conter combinações: "Certificado digital, Login e Senha, Token").
-export function credenciaisDaAutenticacao(autenticacao: string | null | undefined): CredenciaisNfse {
-  const a = (autenticacao ?? '').toLowerCase();
+/**
+ * Deriva quais credenciais o município exige a partir dos campos da Focus API.
+ * Provedores "Nacional*" usam só certificado (sem login/senha/token).
+ * Provedores legados geralmente aceitam login+senha e/ou token — mostramos ambos
+ * e o usuário preenche o que o provedor exige.
+ */
+export function credenciaisDaAutenticacao(
+  municipio: { provedor_nfse: string | null; requer_certificado_nfse: boolean | null } | null | undefined,
+): CredenciaisNfse {
+  if (!municipio) return { login: false, token: false, certificado: false };
+  const isNacional = (municipio.provedor_nfse ?? '').startsWith('Nacional');
   return {
-    login: a.includes('login e senha'),
-    token: a.includes('token'),
-    certificado: a.includes('certificado'),
+    login: !isNacional,
+    token: !isNacional,
+    certificado: municipio.requer_certificado_nfse === true,
   };
 }
