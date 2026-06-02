@@ -1,15 +1,9 @@
-# ── Dependências / build (app Next.js) ──────────────────────
-app/node_modules/
-app/.next/
-app/out/
-app/.vercel/
-app/tsconfig.tsbuildinfo
-app/next-env.d.ts
+# ─────────────────────────────────────────────────────────────
+# .gitignore da RAIZ — apenas itens root-wide / fora do app/.
+# O app Next.js tem seu próprio app/.gitignore (build, env, testes).
+# ─────────────────────────────────────────────────────────────
 
-# ── Segredos / ambiente ──────────────────────────────────────
-app/.env
-app/.env.local
-app/.env.*.local
+# ── Segredos / ambiente (raiz) ───────────────────────────────
 .env
 .env.local
 
@@ -18,15 +12,8 @@ app/.env.*.local
 # O arquivo continua no disco; só não vai pro versionamento.
 excluviapainel.bubble
 
-# ── Testes / artefatos ───────────────────────────────────────
-app/playwright-report/
-app/test-results/
-app/blob-report/
-app/.playwright/
-
-# ── Artefatos do Playwright MCP (snapshots/console — efêmeros) ─
+# ── Artefatos do Playwright MCP na raiz (snapshots/console — efêmeros) ─
 .playwright-mcp/
-app/.playwright-mcp/
 # Screenshots .png salvos no root pelo playwright MCP (cwd do processo) — efêmeros
 /*.png
 
@@ -52,7 +39,3 @@ docs/n8n/
 # ── Diversos ─────────────────────────────────────────────────
 *.log
 .DS_Store
-
-# ── App: saída de testes (screenshots) + kanban stray ──
-app/screenshots/
-app/.kanban/
