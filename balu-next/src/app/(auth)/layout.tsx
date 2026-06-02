@@ -28,7 +28,11 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   return (
     <div className="h-screen flex overflow-hidden">
       <MenuLateral
-        userName={user.email ?? 'Usuário'}
+        userName={
+          ((user.user_metadata?.full_name as string | null)?.trim()) ||
+          user.email ||
+          'Usuário'
+        }
         userRole={userRole}
         companies={companies ?? []}
         currentCompanyId={profile?.current_company ?? null}

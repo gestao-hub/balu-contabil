@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2,
-  ChevronDown, Menu as MenuIcon, X, LogOut, Plus,
+  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -39,6 +39,7 @@ const NAV: NavItem[] = [
   { href: '/impostos',              label: 'Impostos',       Icon: Calculator },
   { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, roles: ['contador'] },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings },
+  { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
 ];
 
 export default function MenuLateral({
