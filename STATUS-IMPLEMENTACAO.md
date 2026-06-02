@@ -99,7 +99,10 @@
 | `<Loading>` | `Loading.tsx` | spinner com label + modo fullscreen |
 | `<FilterPeriodo>` | `FilterPeriodo.tsx` | date range filter, devolve `{start, end}` via `onChange` |
 | `<PopupConfirm>` | `PopupConfirm.tsx` | confirmação destructiva ou neutra; props `variant='destructive'`, `busy`, etc. |
-| `<ClienteFormDialog>` | `ClienteFormDialog.tsx` | popup criar/editar cliente — referência de padrão para outros forms |
+| `<ClienteFormDialog>` | `ClienteFormDialog.tsx` | popup criar/editar cliente — referência de padrão. **Edit mode**: toggle PF/PJ oculto, tipo exibido como label read-only (não pode mudar na edição) |
+| `<PerfilForm>` | `app/(auth)/conta/PerfilForm.tsx` | aba Perfil da /conta — nome editável (salva em `user_metadata.full_name`), alterar email inline (envia link de confirmação via Supabase), role read-only |
+| `<AlterarSenhaForm>` | `app/(auth)/conta/AlterarSenhaForm.tsx` | aba Segurança — 3 campos: senha atual (re-autentica antes de trocar), nova senha, confirmar |
+| `<DangerZone>` | `app/(auth)/conta/DangerZone.tsx` | seção "Zona de risco" — delete com `PopupConfirm` bloqueado até usuário digitar o próprio email; usa `deleteAccountAction` com service_role (cascade no banco) |
 | `<ClientesListClient>` | `ClientesListClient.tsx` | tabela + busca + filtros — referência de padrão para listagens |
 | `<CreateCompanyDialog>` | `CreateCompanyDialog.tsx` | onboarding empresa — referência de padrão para wizards; máscara CNPJ/CEP (`formatCnpj`/`formatCep`) + ViaCEP |
 | `<DadosEmpresaForm>` | `app/(auth)/configuracoes/DadosEmpresaForm.tsx` | edição de empresa — modo leitura/edição (Editar → Salvar/Cancelar), CNPJ fixo, endereço (rua/cidade/estado) obrigatório; máscara CNPJ/CEP + botão Buscar (ViaCEP). CNPJ/CEP gravam só dígitos |
@@ -120,6 +123,7 @@
 | `loginAction` | `app/(public)/login/actions.ts` | Supabase signin |
 | `signupAction` | `app/(public)/cadastro/actions.ts` | Supabase signup; envia `full_name` + `type` no metadata; trigger cria registro em `role_types` |
 | `requestResetAction` + `updatePasswordAction` | `app/(public)/reset_pw/actions.ts` | Reset 2 telas |
+| `updateNomeAction` + `updateEmailAction` + `updateSenhaAction` + `deleteAccountAction` | `app/(auth)/conta/actions.ts` | Conta: salva `full_name`; envia link de troca de email (com `emailRedirectTo`); troca senha (verifica atual via `signInWithPassword`); delete via `auth.admin.deleteUser` (service_role) + signOut + redirect |
 | `createClienteAction` + `updateClienteAction` + `softDeleteClienteAction` + `lookupCnpjAction` | `app/(auth)/clientes/actions.ts` | CRUD cliente com dedup CPF/CNPJ; `lookupCnpjAction` consulta Focus p/ pré-preencher cliente PJ |
 | `updateCompanyAction` + `upsertEmpresaFiscalAction` + `uploadCertificadoAction` + `syncFocusEmpresaAction` | `app/(auth)/configuracoes/actions.ts` | PATCH companies; upsert `empresas_fiscais` (PR 1.4); upload de certificado A1 → Storage + upsert `arquivos_auxiliares` + SERPRO best-effort (PR 1.6). **Focus 2.1**: `syncFocusEmpresaAction` adaptativa (POST `/v2/empresas` se sem token / PUT `/v2/empresas/:id` se com), chamada pelo botão "Sincronizar com Focus" no Diagnóstico. **Focus 2.2** (best-effort, não bloqueia save local): (a) `uploadCertificadoAction` envia PFX+senha pra Focus (via `atualizarEmpresaNaFocus` com `extras.certificado`) — só momento em que a senha está em memória; (b) `upsertEmpresaFiscalAction` envia login+senha prefeitura quando município é legado (via `extras.credenciaisPrefeitura`). Erros viram `warning` no return |
 | `lookupCepAction` + `createCompanyAction` | `app/(auth)/onboarding/actions.ts` | ViaCEP + insert via `CompanyCreateSchema` (CNPJ validado por dígitos + endereço obrigatório). **Focus 1**: `CompanyCreateSchema` agora exige `Code_regime_tributario`; `createCompanyAction` insere `companies` → upsert `profiles.current_company` → insert `empresas_fiscais` (regime via `normalizeRegimePatch`) → **POST best-effort `/v2/empresas` na Focus** (helper `syncEmpresaNaFocus`). Falha da Focus não rejeita o cadastro — grava `companies.focus_status='erro'` + `focus_last_error` (exibido no painel Saúde, com botão de retry) |
@@ -160,13 +164,32 @@ Todos têm `import 'server-only'` — só chamar de server actions ou route hand
 - `enums.ts` — 26 option sets do Bubble como const arrays
 - `zod.ts` — `ClienteSchema`, `CompanySchema` (endereço rua/número/cidade/estado obrigatório; número com `sem_numero`), `CompanyCreateSchema` (CNPJ por dígitos verificadores), `EmpresaFiscalSchema` (regime + NFS-e), `HonorarioSchema`. Validador em `src/lib/validators/cnpj.ts` (`isValidCnpj`)
 
-### 2.6 Crons Vercel (`vercel.json`)
+### 2.6 Rota `/conta` (2026-06-02)
+
+| Aba | Conteúdo | Status |
+|---|---|---|
+| Perfil | Nome de exibição (editável), email (troca via link), role (read-only) | ✅ |
+| Segurança | Alterar senha (exige senha atual), Zona de risco (delete com confirmação por email) | ✅ |
+
+**Auth callback** (`app/auth/callback/route.ts`) — atualizado para tratar dois fluxos:
+- `code` (PKCE): reset de senha, convites → `exchangeCodeForSession`
+- `token_hash + type` (OTP): troca de email, confirmação de cadastro → `verifyOtp`
+
+**`src/lib/supabase/admin.ts`** — `createAdminClient()` com service_role; usado exclusivamente em server actions para operações privilegiadas (deleteUser).
+
+**Menu:** item "Conta" com `UserCircle` visível para todos os roles. `layout.tsx` prefere `user_metadata.full_name` no `userName`.
+
+**Spec:** `docs/superpowers/specs/2026-06-02-conta-page-design.md`
+
+---
+
+### 2.7 Crons Vercel (`vercel.json`)
 
 | Rota | Schedule | Função |
 |---|---|---|
 | `GET /api/cron/sync-municipios` | `0 0 * * *` (diário, 00:00 UTC) | Pagina `GET /v2/municipios` da Focus e faz upsert de todos os 5.571 municípios em `municipios_nfse` (chunks de 500). Supabase Edge Function — auth via service_role key (JWT verification padrão). Executada manualmente na primeira carga (2026-06-02). |
 
-### 2.7 Configuração / Tooling
+### 2.8 Configuração / Tooling
 
 | Arquivo | Função |
 |---|---|

@@ -69,10 +69,10 @@ Após salvar, o `MenuLateral` exibe `user_metadata.full_name ?? user.email` — 
 
 **Alterar email:** botão "Alterar email" expande sub-form inline (não modal):
 - Campo "Novo email" + botão "Enviar confirmação"
-- `updateEmailAction(newEmail)` → `supabase.auth.updateUser({ email: newEmail })`
+- `updateEmailAction(newEmail)` → `supabase.auth.updateUser({ email: newEmail }, { emailRedirectTo: ${origin}/auth/callback?next=/conta })`
 - Supabase envia link de confirmação para o **novo** endereço; o email só muda após o clique
+- O `/auth/callback` foi atualizado para tratar `token_hash + type=email_change` via `verifyOtp` (além do fluxo PKCE `code` já existente)
 - Mensagem de retorno: *"Link enviado para [newEmail]. O email atual permanece ativo até a confirmação."*
-- Nenhum redirect necessário — o usuário permanece logado
 
 ---
 
