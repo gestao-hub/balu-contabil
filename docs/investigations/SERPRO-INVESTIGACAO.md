@@ -1,6 +1,12 @@
-# 🔴 SERPRO — Investigação de Autenticação, Procuração e DAS (SUMA PRIORIDADE)
+# 🟢 SERPRO — Investigação de Autenticação, Procuração e DAS
 
-> **Status:** investigação em andamento — iniciada 2026-05-30, revisada 2026-05-30 (rodada 2).
+> **✅ RESOLVIDO PONTA A PONTA (2026-06-02, rodada 6):** fluxo procurador validado em PRODUÇÃO com
+> dados reais. Contratante FIXO (cert PIPER no mTLS) + cliente assina **Termo de Autorização XML**
+> (XMLDSig) com o próprio cert → `/Apoiar` → `autenticar_procurador_token` → `/Consultar` retorna os
+> dados (DAS 2025 da AL PISCINAS). Assinatura de produção ATIVA (só o Trial falta inscrever). Ver
+> Changelog rodada 6 + memória `balu-serpro-procuracao-investigacao`. **Pendente:** virar feature.
+>
+> **Status original:** investigação iniciada 2026-05-30, revisada 2026-05-30 (rodada 2).
 > **Por quê suma prioridade:** o caminho de produção do Serpro tem **uma incógnita estrutural não
 > resolvida** (modelo multi-cliente da consumer key) e o código herdado do Bubble/n8 mistura
 > sinais de dois modelos de autenticação. Trial não valida nada disso; só produção dirá. Este doc
@@ -354,3 +360,16 @@ cuja consumer key está no `.env.local` (28 chars), se o produto **Integra Conta
   `900908` em `/Emitir` **e** `/Consultar` → app autentica mas **sem subscription ativa** no produto.
   Prova que a consumer key não tem o produto ativo hoje; **não** distingue o motivo (nunca assinou /
   inadimplente / produto errado / outra app). Ver §9.
+- **2026-06-02 (rodada 6)** — ✅✅ **RESOLVIDO PONTA A PONTA EM PRODUÇÃO.** Com o cert do **contratante
+  (PIPER, 61061690000183)** + cert do **cliente (AL PISCINAS, 10358425000120)**:
+  (1) mTLS PIPER → `/authenticate` 200; (2) `/Consultar` direto deu 403 `ICGERENCIADOR-022` (sem
+  procuração eCAC) — **mas NÃO 900908: a assinatura de PRODUÇÃO está ATIVA** (só o Trial segue sem);
+  (3) implementado o **fluxo procurador via Termo de Autorização**: XML oficial assinado (XMLDSig
+  RSA-SHA256, c14n 1.0, cert do CLIENTE, lib `xml-crypto`) → POST `/Apoiar`
+  (`AUTENTICAPROCURADOR/ENVIOXMLASSINADO81`, **envelope completo** contratante=PIPER/autor+contribuinte=cliente,
+  `dados={"xml":<b64>}`) → 200 + `autenticar_procurador_token` → `/Consultar` (PGDASD/CONSDECLARACAO13)
+  com header `autenticar_procurador_token` → **200, DAS reais 2025 da AL PISCINAS**. **Resolve a tensão
+  da rodada 4:** o Termo XML assinado pelo cliente é a alternativa à procuração eCAC manual; modelo =
+  contratante FIXO + Termo (ou procuração eCAC) por cliente. Spike: `app/scripts/test-serpro-procurador-al-piscinas.mjs`
+  e `…-consulta-prod-al-piscinas.mjs`. **Falta:** virar feature (redesenhar `serpro-auth.ts`/`serpro.ts`
+  + cachear token por cliente + onboarding do cert do contratante).
