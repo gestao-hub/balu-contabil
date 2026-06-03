@@ -107,7 +107,7 @@ export async function garantirTokenProcurador(
 
   // 6. Persiste.
   const expiration = proximaMeiaNoiteSaoPaulo();
-  await supabase
+  const { error: writeErr } = await supabase
     .from('empresas_fiscais')
     .update({
       serpro_token_procurador: token,
@@ -115,6 +115,7 @@ export async function garantirTokenProcurador(
       updated_at: new Date().toISOString(),
     })
     .eq('empresa_id', companyId);
+  if (writeErr) console.warn('[serpro-procurador] falha ao persistir token_procurador:', writeErr.message);
 
   return { ok: true, token, expiration };
 }
