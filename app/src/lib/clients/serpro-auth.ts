@@ -1,4 +1,4 @@
-// @custom — Autenticar Procurador na SERPRO Integra Contador via mTLS com o certificado A1.
+// @custom — Autenticar Procurador na SERPRO Integra Contador via mTLS com o certificado do contratante.
 // Substitui o webhook n8n /post-autenticacao. server-only (faz I/O de rede com material de chave).
 import 'server-only';
 import https from 'node:https';
@@ -23,10 +23,10 @@ export function parseAuthResponse(raw: unknown): ProcuradorTokens {
 }
 
 /**
- * mTLS: usa key+cert do certificado da empresa como cert cliente TLS.
- * `consumer key/secret` globais do Balu via env (Basic auth), role-type TERCEIROS.
+ * mTLS com o PFX do CONTRATANTE (cert fixo da Balu). Consumer key/secret globais via env.
+ * role-type TERCEIROS (modelo software-house / Termo de Autorização).
  */
-export async function autenticarProcurador(keyPem: string, certPem: string): Promise<ProcuradorTokens> {
+export async function autenticarContratante(pfx: Buffer, passphrase: string): Promise<ProcuradorTokens> {
   const ck = process.env.SERPRO_CONSUMER_KEY;
   const cs = process.env.SERPRO_CONSUMER_SECRET;
   if (!ck || !cs) throw new Error('SERPRO_CONSUMER_KEY / SERPRO_CONSUMER_SECRET não configurados');
@@ -40,8 +40,8 @@ export async function autenticarProcurador(keyPem: string, certPem: string): Pro
         host: AUTH_HOST,
         path: AUTH_PATH,
         method: 'POST',
-        key: keyPem,
-        cert: certPem,
+        pfx,
+        passphrase,
         headers: {
           Authorization: basic,
           'role-type': 'TERCEIROS',
@@ -61,9 +61,7 @@ export async function autenticarProcurador(keyPem: string, certPem: string): Pro
         });
       },
     );
-    req.setTimeout(10_000, () => {
-      req.destroy(new Error('SERPRO /authenticate: timeout (10s).'));
-    });
+    req.setTimeout(10_000, () => req.destroy(new Error('SERPRO /authenticate: timeout (10s).')));
     req.on('error', reject);
     req.write(body);
     req.end();
