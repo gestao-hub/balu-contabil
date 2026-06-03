@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   tipoFromCode, isMei, faixaFromAnexo, anexoFromFaixa, fatorRAplicavel, normalizeRegimePatch,
+  regimeFromOptante,
 } from './regime';
 
 describe('regime helpers', () => {
@@ -60,5 +61,24 @@ describe('normalizeRegimePatch', () => {
   });
   it('code vazio não sincroniza regime_tributario', () => {
     expect(normalizeRegimePatch({ Code_regime_tributario: '' }).regime_tributario).toBeUndefined();
+  });
+});
+
+describe('regimeFromOptante', () => {
+  it('optante_mei true → MEI (4)', () => {
+    expect(regimeFromOptante(true, false)).toBe('4');
+    expect(regimeFromOptante(true, true)).toBe('4'); // MEI tem precedência
+  });
+  it('optante_simples true (não MEI) → Simples (1)', () => {
+    expect(regimeFromOptante(false, true)).toBe('1');
+  });
+  it('ambos explicitamente false → Regime Normal (3)', () => {
+    expect(regimeFromOptante(false, false)).toBe('3');
+  });
+  it('desconhecido (null/undefined) → undefined (não infere)', () => {
+    expect(regimeFromOptante(null, null)).toBeUndefined();
+    expect(regimeFromOptante(undefined, undefined)).toBeUndefined();
+    expect(regimeFromOptante(false, null)).toBeUndefined();
+    expect(regimeFromOptante(null, true)).toBe('1'); // simples true ainda decide
   });
 });

@@ -13,7 +13,7 @@ import {
   lookupCnpjAction,
 } from '@/app/(auth)/onboarding/actions';
 import { formatCnpj, formatCep, formatTel } from '@/lib/format/masks';
-import { REGIME_OPTIONS, type RegimeCode } from '@/lib/fiscal/regime';
+import { REGIME_OPTIONS, regimeFromOptante, type RegimeCode } from '@/lib/fiscal/regime';
 
 const UF_OPTIONS = [
   'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
@@ -49,6 +49,7 @@ const EMPTY: Form = {
   telefone: '',
   email: '',
   Code_regime_tributario: undefined,
+  cnae_principal: undefined,
 };
 
 export default function CreateCompanyDialog({ open, forceCreate = false, onClose, onCreated, onBack }: Props) {
@@ -128,6 +129,9 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
         cep: d.cep ? formatCep(d.cep) : prev.cep,
         telefone: d.telefone ?? prev.telefone,
         email: d.email ?? prev.email,
+        // Pré-seleciona o regime pelos flags de optante; vazio → mantém o atual (como hoje).
+        Code_regime_tributario: regimeFromOptante(d.optante_mei, d.optante_simples_nacional) ?? prev.Code_regime_tributario,
+        cnae_principal: d.cnae_principal ?? prev.cnae_principal,
       }));
       toast('success', 'Dados do CNPJ carregados.');
     } finally {

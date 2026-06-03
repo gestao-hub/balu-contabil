@@ -48,6 +48,18 @@ export type RegimePatch = {
   cnae_principal?: string | null;
 };
 
+// Deriva o regime a partir dos flags de optante da consulta de CNPJ (Receita/Focus).
+// MEI tem precedência; ambos explicitamente false → Regime Normal; desconhecido → undefined.
+export function regimeFromOptante(
+  optanteMei: boolean | null | undefined,
+  optanteSimples: boolean | null | undefined,
+): RegimeCode | undefined {
+  if (optanteMei === true) return '4';
+  if (optanteSimples === true) return '1';
+  if (optanteMei === false && optanteSimples === false) return '3';
+  return undefined;
+}
+
 // Normaliza um patch de empresas_fiscais antes de persistir:
 // - mantém regime_tributario coerente com o Code
 // - MEI (code 4) zera anexo_simples + usa_fator_r

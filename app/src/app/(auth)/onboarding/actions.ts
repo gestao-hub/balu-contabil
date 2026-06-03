@@ -70,9 +70,9 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada. Faça login novamente.' };
 
-  // Code_regime_tributario mora em empresas_fiscais, não em companies — separa
-  // antes do insert pra não tentar gravar coluna inexistente.
-  const { Code_regime_tributario, ...companyFields } = parsed.data;
+  // Code_regime_tributario e cnae_principal moram em empresas_fiscais, não em companies —
+  // separa antes do insert pra não tentar gravar coluna inexistente.
+  const { Code_regime_tributario, cnae_principal, ...companyFields } = parsed.data;
 
   const payload = {
     ...companyFields,
@@ -112,6 +112,7 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
     empresa_id: row.id,
     owner_user_id: user.id,
     cnpj: companyFields.cnpj,
+    cnae_principal: cnae_principal ?? null,
     ...fiscalPatch,
   });
   if (fiscalErr) {

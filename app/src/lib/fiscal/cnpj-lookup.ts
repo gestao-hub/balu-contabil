@@ -19,6 +19,9 @@ export type CnpjLookup = {
   cep?: string;
   telefone?: string;
   email?: string;
+  optante_mei?: boolean;
+  optante_simples_nacional?: boolean;
+  cnae_principal?: string;
 };
 
 export type CnpjLookupResult =
@@ -37,6 +40,10 @@ function stringOrUndef(v: unknown): string | undefined {
   if (v == null) return undefined;
   const s = String(v).trim();
   return s.length ? s : undefined;
+}
+
+function boolOrUndef(v: unknown): boolean | undefined {
+  return typeof v === 'boolean' ? v : undefined;
 }
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -65,6 +72,9 @@ function mapLookup(raw: Record<string, unknown>): CnpjLookup {
     cep:                 stringOrUndef(e['cep'] ?? raw['cep'])?.replace(/\D+/g, ''),
     telefone:            stringOrUndef(raw['telefone']),
     email:               stringOrUndef(raw['email']),
+    optante_mei:              boolOrUndef(raw['optante_mei']),
+    optante_simples_nacional: boolOrUndef(raw['optante_simples_nacional']),
+    cnae_principal:           stringOrUndef(raw['cnae_principal']),
   };
 }
 
