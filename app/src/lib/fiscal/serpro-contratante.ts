@@ -60,7 +60,7 @@ export async function garantirAuthContratante(): Promise<{
 
   const tokens = await autenticarContratante(c.pfx, c.senha);
   const admin = createAdminClient();
-  await admin
+  const { error: cacheErr } = await admin
     .from('serpro_contratante')
     .update({
       auth_access_token: tokens.accessToken,
@@ -69,5 +69,6 @@ export async function garantirAuthContratante(): Promise<{
       updated_at: new Date().toISOString(),
     })
     .eq('id', c.id);
+  if (cacheErr) console.warn('[serpro-contratante] falha ao cachear tokens de auth:', cacheErr.message);
   return { accessToken: tokens.accessToken, jwt: tokens.jwt, pfx: c.pfx, passphrase: c.senha, cnpj: c.cnpj, nome: c.nome };
 }

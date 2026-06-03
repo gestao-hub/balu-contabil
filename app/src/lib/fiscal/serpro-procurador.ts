@@ -78,7 +78,7 @@ export async function garantirTokenProcurador(
   try {
     const xml = buildTermoXml({
       destinatario: { cnpj: auth.cnpj, nome: auth.nome },
-      autor: { cnpj: empresaCnpj, nome: mat.nome },
+      autor: { cnpj: empresaCnpj, nome: mat.nome.replace(/:\d+\s*$/, '').trim() },
     });
     const signed = signTermoXml(xml, { keyPem: mat.keyPem, certPem: mat.certPem });
     const xmlB64 = Buffer.from(signed, 'utf8').toString('base64');
