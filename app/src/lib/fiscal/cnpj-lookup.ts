@@ -39,19 +39,30 @@ function stringOrUndef(v: unknown): string | undefined {
   return s.length ? s : undefined;
 }
 
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : {};
+}
+
 function mapLookup(raw: Record<string, unknown>): CnpjLookup {
+  // A Focus (/v2/cnpjs) devolve o endereço ANINHADO em `endereco`, com o
+  // município em `nome_municipio`. Mantemos fallback pro nível raiz p/ tolerar
+  // variações/shape plano. nome_fantasia, IE/IM, telefone e email NÃO vêm desse
+  // endpoint — ficam undefined (preenchidos à mão).
+  const e = asRecord(raw['endereco']);
   return {
     razao_social:        stringOrUndef(raw['razao_social'] ?? raw['nome']),
     nome_fantasia:       stringOrUndef(raw['nome_fantasia'] ?? raw['fantasia']),
     inscricao_estadual:  stringOrUndef(raw['inscricao_estadual']),
     inscricao_municipal: stringOrUndef(raw['inscricao_municipal']),
-    logradouro:          stringOrUndef(raw['logradouro']),
-    numero:              stringOrUndef(raw['numero']),
-    complemento:         stringOrUndef(raw['complemento']),
-    bairro:              stringOrUndef(raw['bairro']),
-    municipio:           stringOrUndef(raw['municipio']),
-    uf:                  stringOrUndef(raw['uf']),
-    cep:                 stringOrUndef(raw['cep'])?.replace(/\D+/g, ''),
+    logradouro:          stringOrUndef(e['logradouro'] ?? raw['logradouro']),
+    numero:              stringOrUndef(e['numero'] ?? raw['numero']),
+    complemento:         stringOrUndef(e['complemento'] ?? raw['complemento']),
+    bairro:              stringOrUndef(e['bairro'] ?? raw['bairro']),
+    municipio:           stringOrUndef(e['nome_municipio'] ?? raw['nome_municipio'] ?? raw['municipio']),
+    uf:                  stringOrUndef(e['uf'] ?? raw['uf']),
+    cep:                 stringOrUndef(e['cep'] ?? raw['cep'])?.replace(/\D+/g, ''),
     telefone:            stringOrUndef(raw['telefone']),
     email:               stringOrUndef(raw['email']),
   };
