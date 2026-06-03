@@ -60,7 +60,9 @@ export type SaudeState = {
   certPresente: boolean;
   certNotAfter: string | null;   // ISO; null se ausente
   // SERPRO (empresas_fiscais)
-  serproTokenExpiration: string | null; // ISO; null se nunca autenticado
+  serproTokenExpiration: string | null; // ISO; null se nunca autenticado (= serpro_token_procurador_expiration)
+  /** Contratante SERPRO provisionado no sistema (tabela singleton). Gate global. */
+  contratanteConfigurado: boolean;
   // Focus (companies)
   focusStatus: 'ok' | 'erro' | null;
   focusToken: string | null;
@@ -415,6 +417,15 @@ function certValidoCheck(state: SaudeState, now: Date): CheckResult {
 }
 
 function serproCheck(state: SaudeState, now: Date): CheckResult {
+  if (!state.contratanteConfigurado) {
+    return {
+      key: 'serpro',
+      label: 'Contratante SERPRO não configurado',
+      status: 'erro',
+      hint: 'Cadastro do certificado do contratante pendente (ação do admin).',
+      action: null,
+    };
+  }
   if (!state.serproTokenExpiration) {
     return {
       key: 'serpro',

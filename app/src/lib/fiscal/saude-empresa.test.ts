@@ -17,6 +17,7 @@ const BASE: SaudeState = {
   certPresente: true,
   certNotAfter: '2027-03-20T00:00:00Z',
   serproTokenExpiration: '2026-05-28T13:00:00Z',
+  contratanteConfigurado: true,
   focusStatus: 'ok',
   focusToken: 'XYZ',
   focusLastCheck: '2026-05-28T11:00:00Z',
@@ -166,6 +167,23 @@ describe('serpro', () => {
     const checks = buildSaudeChecks({ ...BASE, serproTokenExpiration: '2026-05-28T11:00:00Z' }, NOW);
     expect(checks[3]!.status).toBe('pendente');
     expect(checks[3]!.hint).toMatch(/expirado/i);
+  });
+});
+
+describe('serproCheck — gate do contratante', () => {
+  it('contratante não configurado → erro (gate global)', () => {
+    const checks = buildSaudeChecks({ ...BASE, contratanteConfigurado: false }, NOW);
+    const serpro = checks.find((c) => c.key === 'serpro')!;
+    expect(serpro.status).toBe('erro');
+    expect(serpro.label).toBe('Contratante SERPRO não configurado');
+  });
+
+  it('contratante ok + token válido → ok', () => {
+    const checks = buildSaudeChecks(
+      { ...BASE, contratanteConfigurado: true, serproTokenExpiration: '2026-05-28T13:00:00Z' },
+      NOW,
+    );
+    expect(checks.find((c) => c.key === 'serpro')!.status).toBe('ok');
   });
 });
 

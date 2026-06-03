@@ -69,6 +69,11 @@ export async function downloadFromBucket(bucket: string, path: string): Promise<
   return Buffer.from(await data.arrayBuffer());
 }
 
+/** Baixa o blob cifrado do certificado da empresa a partir do `storage_key` em `arquivos_auxiliares`. */
+export async function downloadCertificado(path: string): Promise<Buffer> {
+  return downloadFromBucket(BUCKET, path);
+}
+
 /** Sobe um documento de abertura em `${scopeId}/${fileName}` no bucket de abertura. */
 export async function uploadAberturaDoc(
   scopeId: string,
