@@ -245,3 +245,54 @@ export async function enviarTermoApoiar(params: {
   if (!token) throw new Error(`SERPRO /Apoiar não retornou autenticar_procurador_token: ${respBody.slice(0, 200)}`);
   return token;
 }
+
+/**
+ * POST /Consultar (produção) via mTLS com o cert do CONTRATANTE + token do procurador.
+ * Headers: Authorization Bearer, jwt_token e autenticar_procurador_token. Lança em status >= 400.
+ * Devolve o envelope de resposta já parseado (objeto).
+ */
+export async function consultarComProcurador(params: {
+  pfx: Buffer;
+  passphrase: string;
+  accessToken: string;
+  jwt: string;
+  procuradorToken: string;
+  envelope: Envelope;
+}): Promise<unknown> {
+  const body = JSON.stringify(params.envelope);
+  const { status, body: respBody } = await new Promise<{ status: number; body: string }>(
+    (resolve, reject) => {
+      const req = https.request(
+        {
+          host: 'gateway.apiserpro.serpro.gov.br',
+          path: '/integra-contador/v1/Consultar',
+          method: 'POST',
+          pfx: params.pfx,
+          passphrase: params.passphrase,
+          headers: {
+            Authorization: `Bearer ${params.accessToken}`,
+            jwt_token: params.jwt,
+            autenticar_procurador_token: params.procuradorToken,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body),
+          },
+        },
+        (res) => {
+          let d = '';
+          res.on('data', (c) => (d += c));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body: d }));
+        },
+      );
+      req.setTimeout(25_000, () => req.destroy(new Error('SERPRO /Consultar: timeout (25s).')));
+      req.on('error', reject);
+      req.write(body);
+      req.end();
+    },
+  );
+  if (status >= 400) throw new Error(`SERPRO /Consultar → ${status}: ${respBody.slice(0, 200)}`);
+  try {
+    return JSON.parse(respBody);
+  } catch {
+    throw new Error(`SERPRO /Consultar retornou não-JSON: ${respBody.slice(0, 200)}`);
+  }
+}

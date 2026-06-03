@@ -3,8 +3,10 @@
 // Server actions ligadas ao histórico de guias.
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
-import type { AnexoSimples } from '@/lib/fiscal/regime';
+import { type AnexoSimples, tipoFromCode } from '@/lib/fiscal/regime';
 import type { ResultadoApuracao } from '@/lib/fiscal/apuracao-types';
+import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
+import { consultarDeclaracoesSimples } from '@/lib/fiscal/serpro-consulta';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
 import { lerReceitasParaApuracao } from '@/lib/fiscal/receitas-source';
 import { serpro, buildEnvelope, PGMEI_SERVICES, type ProdAuth } from '@/lib/clients/serpro';
@@ -239,4 +241,58 @@ export async function gerarDasMeiAction(competencia: string): Promise<GerarDasRe
 
   revalidatePath('/impostos');
   return { ok: true };
+}
+
+export type ConsultaDasResult = { ok: true; count: number } | { ok: false; error: string };
+
+/**
+ * Consulta na SERPRO (PGDAS-D / CONSDECLARACAO13) as declarações/DAS do ano-calendário atual
+ * e faz upsert da SITUAÇÃO em guias_fiscais. Só Simples. Read-only na SERPRO (não emite/declara).
+ */
+export async function consultarDeclaracoesAction(ano?: number): Promise<ConsultaDasResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Não autenticado.' };
+
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+
+  const { data: fiscal } = await supabase
+    .from('empresas_fiscais')
+    .select('Code_regime_tributario')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+  if (!fiscal) return { ok: false, error: 'Empresa fiscal não configurada.' };
+  if (tipoFromCode((fiscal.Code_regime_tributario ?? '') as string) !== 'simples') {
+    return { ok: false, error: 'A consulta de listagem cobre Simples (PGDAS-D); MEI virá depois.' };
+  }
+
+  const year = ano ?? Number(competenciaReferenciaBrt(new Date()).slice(0, 4));
+
+  const r = await consultarDeclaracoesSimples(supabase, companyId, year);
+  if (!r.ok) return r;
+
+  const rows = r.situacoes.map((s) => ({
+    company_id: companyId,
+    owner_user_id: user.id,
+    competencia_referencia: s.competencia,
+    competencia_mes: Number(s.competencia.slice(4, 6)),
+    competencia_ano: Number(s.competencia.slice(0, 4)),
+    numero_das: s.numeroDas,
+    status: s.status,
+    origem: 'serpro',
+    updated_at: new Date().toISOString(),
+    deleted_at: null,
+  }));
+
+  if (rows.length > 0) {
+    const { error } = await supabase
+      .from('guias_fiscais')
+      .upsert(rows, { onConflict: 'company_id,competencia_referencia' });
+    if (error) return { ok: false, error: `Falha ao salvar a listagem: ${error.message}` };
+  }
+
+  revalidatePath('/impostos');
+  return { ok: true, count: rows.length };
 }
