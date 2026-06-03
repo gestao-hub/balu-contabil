@@ -7,7 +7,6 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Pencil, Trash2, Plus, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Tables } from '@/types/database';
-import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import PopupConfirm from '@/components/PopupConfirm';
 import ClienteFormDialog from '@/components/ClienteFormDialog';
 import { useToast } from '@/components/Toaster';
@@ -30,7 +29,6 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
   const [query, setQuery] = useState('');
   const POR_PAGINA = 100;
   const [pagina, setPagina] = useState(1);
-  const [, setPeriodo] = useState<PeriodoRange>({ start: null, end: null });
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [deleting, setDeleting] = useState<Cliente | null>(null);
@@ -125,7 +123,6 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
           />
         </div>
         <div className="flex items-center gap-2">
-          <FilterPeriodo onChange={setPeriodo} />
           <button
             type="button"
             onClick={() => setCreating(true)}
