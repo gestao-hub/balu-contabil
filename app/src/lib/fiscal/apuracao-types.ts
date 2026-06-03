@@ -16,3 +16,8 @@ export type ResultadoApuracao = {
   valorImposto: number;
   breakdown: Record<string, unknown>; // vira payload_calculo
 };
+
+export type PreviewImposto =
+  | { tipo: 'simples'; aliquota: number }   // alíquota efetiva 0..1
+  | { tipo: 'mei'; valorFixo: number }       // DAS fixo mensal
+  | { tipo: 'indisponivel' };                // Regime Normal / sem anexo / sem regime
