@@ -8,8 +8,10 @@ import Link from 'next/link';
 import { Receipt } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 import { competenciaReferenciaBrt, competenciaLabel } from '@/lib/fiscal/guia';
+import { tipoFromCode } from '@/lib/fiscal/regime';
 import CompetenciaAtualCard from './CompetenciaAtualCard';
 import HistoricoGuias, { type GuiaRow } from './HistoricoGuias';
+import ConsultarSerproButton from './ConsultarSerproButton';
 
 export type ApuracaoRow = {
   id: string;
@@ -76,6 +78,7 @@ export default async function ImpostosPage() {
 
   const empresaNome = (company?.nome as string) ?? (company?.razao_social as string) ?? '—';
   const isMei = (fiscal?.Code_regime_tributario ?? null) === '4';
+  const isSimples = tipoFromCode((fiscal?.Code_regime_tributario ?? '') as string) === 'simples';
 
   return (
     <Page>
@@ -101,7 +104,10 @@ export default async function ImpostosPage() {
           </section>
 
           <section>
-            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Histórico de guias</h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-xs uppercase tracking-wide text-muted-foreground">Histórico de guias</h2>
+              {isSimples && <ConsultarSerproButton />}
+            </div>
             <HistoricoGuias initial={historico} />
           </section>
         </>
