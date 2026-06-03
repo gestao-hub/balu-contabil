@@ -116,6 +116,36 @@ describe('lookupCnpj — mapeamento', () => {
     expect(r.data.razao_social).toBe('Beta SA');
     expect(r.data.nome_fantasia).toBe('Beta');
   });
+
+  it('expõe optante_mei/optante_simples_nacional/cnae_principal (shape real)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        razao_social: 'AL PISCINAS LTDA',
+        cnae_principal: '4299501',
+        optante_simples_nacional: true,
+        optante_mei: false,
+        endereco: { nome_municipio: 'Londrina', uf: 'PR' },
+      }),
+    );
+    const r = await lookupCnpj('10358425000120');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.optante_simples_nacional).toBe(true);
+    expect(r.data.optante_mei).toBe(false);
+    expect(r.data.cnae_principal).toBe('4299501');
+  });
+
+  it('optante ausente → undefined (não vira false)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(200, { razao_social: 'Sem Flags SA' }),
+    );
+    const r = await lookupCnpj('10358425000120');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.optante_mei).toBeUndefined();
+    expect(r.data.optante_simples_nacional).toBeUndefined();
+    expect(r.data.cnae_principal).toBeUndefined();
+  });
 });
 
 describe('lookupCnpj — erros', () => {
