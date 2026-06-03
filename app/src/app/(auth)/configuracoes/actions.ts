@@ -12,7 +12,7 @@ import { uploadCertificado as storageUploadCertificado } from '@/lib/clients/sup
 import { validateCertificadoUpload } from '@/lib/fiscal/certificado';
 import { parsePkcs12, type CertMaterial } from '@/lib/fiscal/pkcs12';
 import { encryptBlob } from '@/lib/crypto/envelope';
-import { autenticarProcurador } from '@/lib/clients/serpro-auth';
+import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
 
 type ActionResult = { ok: true; warning?: string } | { ok: false; error: string };
 
@@ -210,25 +210,17 @@ export async function uploadCertificadoAction(
     if (error) return { ok: false, error: error.message };
   }
 
-  // Best-effort: autentica na SERPRO e cacheia o JWT. Falha não perde o certificado.
+  // Best-effort: gera o token_procurador (mTLS contratante + Termo assinado pela empresa).
+  // Falha não perde o certificado.
   const warnings: string[] = [];
-  try {
-    const tokens = await autenticarProcurador(material.keyPem, material.certPem + material.chainPem);
-    const { data: fiscalRows } = await supabase
-      .from('empresas_fiscais')
-      .update({
-        certificado_jwt: tokens.jwt,
-        certificado_access_token: tokens.accessToken,
-        certificado_token_expiration: tokens.expiration,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('empresa_id', companyId)
-      .select('empresa_id');
-    if (!fiscalRows || fiscalRows.length === 0) {
-      warnings.push('Conclua o cadastro fiscal (NFS-e) para ativar a autenticação na SERPRO.');
-    }
-  } catch {
-    warnings.push('Autenticação na SERPRO falhou — será refeita depois.');
+  {
+    const r = await garantirTokenProcurador(supabase, companyId, {
+      keyPem: material.keyPem,
+      certPem: material.certPem,
+      cnpj: material.cnpj,
+      nome: material.subjectCN,
+    });
+    if (!r.ok) warnings.push(r.warning);
   }
 
   // Focus 2.2 (best-effort): se a empresa já tem cadastro na Focus, envia o
