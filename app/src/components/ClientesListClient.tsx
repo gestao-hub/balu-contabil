@@ -5,7 +5,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Pencil, Trash2, Plus, Search } from 'lucide-react';
+import { Pencil, Trash2, Plus, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Tables } from '@/types/database';
 import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import PopupConfirm from '@/components/PopupConfirm';
@@ -28,6 +28,8 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
   const router = useRouter();
   const toast = useToast();
   const [query, setQuery] = useState('');
+  const POR_PAGINA = 100;
+  const [pagina, setPagina] = useState(1);
   const [, setPeriodo] = useState<PeriodoRange>({ start: null, end: null });
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
@@ -45,6 +47,10 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
       );
     });
   }, [initial, query]);
+
+  const totalPaginas = Math.max(1, Math.ceil(filtered.length / POR_PAGINA));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const paginados = filtered.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA);
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -86,6 +92,25 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
     };
   }
 
+  const paginador = totalPaginas > 1 ? (
+    <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <span>
+        {((paginaAtual - 1) * POR_PAGINA) + 1}–{Math.min(paginaAtual * POR_PAGINA, filtered.length)} de {filtered.length}
+      </span>
+      <div className="flex items-center gap-1">
+        <button onClick={() => setPagina((p) => Math.max(1, p - 1))} disabled={paginaAtual === 1}
+          className="rounded-lg border border-border p-1.5 hover:bg-surface-2 disabled:opacity-40" aria-label="Página anterior">
+          <ChevronLeft className="size-4" />
+        </button>
+        <span className="px-3 py-1 text-foreground font-medium">{paginaAtual} / {totalPaginas}</span>
+        <button onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))} disabled={paginaAtual === totalPaginas}
+          className="rounded-lg border border-border p-1.5 hover:bg-surface-2 disabled:opacity-40" aria-label="Próxima página">
+          <ChevronRight className="size-4" />
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -94,7 +119,7 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
           <input
             type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPagina(1); }}
             placeholder="Buscar por nome, documento ou e-mail"
             className="w-full rounded-lg border border-border bg-surface-2 py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
           />
@@ -111,6 +136,8 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
           </button>
         </div>
       </div>
+
+      {paginador && <div className="mb-3">{paginador}</div>}
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
@@ -132,7 +159,7 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
                 </td>
               </tr>
             ) : (
-              filtered.map((c) => (
+              paginados.map((c) => (
                 <tr key={c.id} className="hover:bg-surface-2">
                   <td className="px-4 py-3 font-medium text-foreground">{c.razao_social ?? '—'}</td>
                   <td className="px-4 py-3 text-muted-foreground-2">{formatDoc(c.document)}</td>
@@ -167,6 +194,8 @@ export default function ClientesListClient({ initial }: { initial: Cliente[] }) 
           </tbody>
         </table>
       </div>
+
+      {paginador && <div className="mt-3">{paginador}</div>}
 
       <ClienteFormDialog
         open={creating}
