@@ -116,9 +116,6 @@ export type Tables = {
     nfse_chave_api: string | null;
     nfse_url_portal_producao: string | null;
     nfse_url_portal_homologacao: string | null;
-    certificado_jwt: string | null;
-    certificado_access_token: string | null;
-    certificado_token_expiration: string | null;
     rps_liberado: boolean | null;
     webservice_liberado: boolean | null;
     homologacao_liberada: boolean | null;
