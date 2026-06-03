@@ -27,6 +27,18 @@ describe('buildTermoXml', () => {
     expect(xml).toContain('data="20260603"'); // dataAssinatura
     expect(xml).toMatch(/vigencia data="\d{8}"/);
   });
+
+  it('escapa caracteres especiais do nome (& e aspas não quebram o XML)', () => {
+    const out = buildTermoXml({
+      destinatario: { cnpj: '61061690000183', nome: 'A & B "LTDA"' },
+      autor: { cnpj: '10358425000120', nome: 'PISCINAS <SA>' },
+      hoje: new Date('2026-06-03T12:00:00Z'),
+    });
+    expect(out).toContain('nome="A &amp; B &quot;LTDA&quot;"');
+    expect(out).toContain('nome="PISCINAS &lt;SA&gt;"');
+    // não deve sobrar nenhum & cru (todo & vira &amp; ou outra entidade)
+    expect(out).not.toMatch(/&(?!amp;|lt;|gt;|quot;|apos;)/);
+  });
 });
 
 describe('signTermoXml', () => {

@@ -8,6 +8,19 @@ export type TermoParte = { cnpj: string; nome: string };
 const ymd = (d: Date) =>
   `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
 
+/**
+ * Escapa um valor para uso seguro em atributo XML. Necessário porque `nome` vem do CN do
+ * certificado (texto livre): razões sociais com `&` ("A & B LTDA") ou aspas quebrariam o XML
+ * — e a assinatura — além de abrir injeção de atributo. Aplicado a todo valor interpolado.
+ */
+const xmlAttr = (s: string): string =>
+  String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
 const TERMO =
   'Autorizo a empresa CONTRATANTE, identificada neste termo de autorização como DESTINATÁRIO, a executar as requisições dos serviços web disponibilizados pela API INTEGRA CONTADOR, onde terei o papel de AUTOR PEDIDO DE DADOS no corpo da mensagem enviada na requisição do serviço web. Esse termo de autorização está assinado digitalmente com o certificado digital do PROCURADOR ou OUTORGADO DO CONTRIBUINTE responsável, identificado como AUTOR DO PEDIDO DE DADOS.';
 const AVISO =
@@ -27,7 +40,7 @@ export function buildTermoXml(params: {
   vig.setUTCDate(vig.getUTCDate() + (params.vigenciaDias ?? 365));
   const d = params.destinatario;
   const a = params.autor;
-  return `<?xml version="1.0" encoding="UTF-8"?><termoDeAutorizacao><dados><sistema id="API Integra Contador"/><termo texto="${TERMO}"/><avisoLegal texto="${AVISO}"/><finalidade texto="${FINAL}"/><dataAssinatura data="${ymd(hoje)}"/><vigencia data="${ymd(vig)}"/><destinatario numero="${d.cnpj}" nome="${d.nome}" tipo="PJ" papel="contratante"/><assinadoPor numero="${a.cnpj}" nome="${a.nome}" tipo="PJ" papel="autor pedido de dados"/></dados></termoDeAutorizacao>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><termoDeAutorizacao><dados><sistema id="API Integra Contador"/><termo texto="${TERMO}"/><avisoLegal texto="${AVISO}"/><finalidade texto="${FINAL}"/><dataAssinatura data="${ymd(hoje)}"/><vigencia data="${ymd(vig)}"/><destinatario numero="${xmlAttr(d.cnpj)}" nome="${xmlAttr(d.nome)}" tipo="PJ" papel="contratante"/><assinadoPor numero="${xmlAttr(a.cnpj)}" nome="${xmlAttr(a.nome)}" tipo="PJ" papel="autor pedido de dados"/></dados></termoDeAutorizacao>`;
 }
 
 /** DER base64 a partir do PEM (corpo entre os marcadores, sem espaços). */
