@@ -390,7 +390,29 @@ CREATE TABLE public.empresas_fiscais (
     cadastro_homologacao_feito boolean DEFAULT false,
     nota_homol_emitida boolean DEFAULT false,
     nfse_habilitada boolean,
-    empresa_fiscal_ativada boolean
+    empresa_fiscal_ativada boolean,
+    serpro_token_procurador text,
+    serpro_token_procurador_expiration timestamp with time zone
+);
+
+
+--
+-- Name: serpro_contratante; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.serpro_contratante (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    cnpj character varying(20) NOT NULL,
+    nome text,
+    cert_pfx_enc text NOT NULL,
+    cert_password_enc text NOT NULL,
+    cert_not_after timestamp with time zone,
+    cert_subject_cn text,
+    auth_access_token text,
+    auth_jwt_token text,
+    auth_token_expiration timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
 );
 
 
