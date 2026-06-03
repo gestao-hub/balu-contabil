@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { parseFiltrosFromParams, filtrosToQueryString } from './notas-filtros';
-import { Search, Download, FileText } from 'lucide-react';
+import { Search, Download, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import { useToast } from '@/components/Toaster';
 import { exportNotasCsvAction } from './actions';
@@ -54,6 +54,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
   const [status, setStatus] = useState<string>(inicial.status);
   const [pagina, setPagina] = useState(inicial.page);
   const [exporting, setExporting] = useState(false);
+  const POR_PAGINA = 100;
 
   // Sincroniza os filtros na URL (sem empilhar histórico nem rolar a página).
   // Pula o 1º run pra não reescrever a URL limpa da primeira visita.
@@ -86,6 +87,10 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
     });
   }, [initial, query, tipo, status, periodo]);
 
+  const totalPaginas = Math.max(1, Math.ceil(filtered.length / POR_PAGINA));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const paginados = filtered.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA);
+
   async function exportCsv() {
     setExporting(true);
     try {
@@ -117,6 +122,25 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
     }
   }
 
+  const paginador = totalPaginas > 1 ? (
+    <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <span>
+        {((paginaAtual - 1) * POR_PAGINA) + 1}–{Math.min(paginaAtual * POR_PAGINA, filtered.length)} de {filtered.length}
+      </span>
+      <div className="flex items-center gap-1">
+        <button onClick={() => setPagina((p) => Math.max(1, p - 1))} disabled={paginaAtual === 1}
+          className="rounded-lg border border-border p-1.5 hover:bg-surface-2 disabled:opacity-40" aria-label="Página anterior">
+          <ChevronLeft className="size-4" />
+        </button>
+        <span className="px-3 py-1 text-foreground font-medium">{paginaAtual} / {totalPaginas}</span>
+        <button onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))} disabled={paginaAtual === totalPaginas}
+          className="rounded-lg border border-border p-1.5 hover:bg-surface-2 disabled:opacity-40" aria-label="Próxima página">
+          <ChevronRight className="size-4" />
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -125,7 +149,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
           <input
             type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPagina(1); }}
             placeholder="Buscar por referência ou cliente"
             className="w-full rounded-lg border border-border bg-surface-2 text-foreground py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
           />
@@ -134,7 +158,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={tipo}
-            onChange={(e) => setTipo(e.target.value)}
+            onChange={(e) => { setTipo(e.target.value); setPagina(1); }}
             aria-label="Filtrar por tipo"
             className="rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:border-primary focus:outline-none"
           >
@@ -146,7 +170,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
 
           <select
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(e) => { setStatus(e.target.value); setPagina(1); }}
             aria-label="Filtrar por status"
             className="rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:border-primary focus:outline-none"
           >
@@ -157,7 +181,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             <option value="cancelada">Cancelada</option>
           </select>
 
-          <FilterPeriodo initial={periodo} onChange={setPeriodo} />
+          <FilterPeriodo initial={periodo} onChange={(p) => { setPeriodo(p); setPagina(1); }} />
 
           <button
             type="button"
@@ -178,6 +202,8 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
           </Link>
         </div>
       </div>
+
+      {paginador && <div className="mb-3">{paginador}</div>}
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
@@ -201,7 +227,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
                 </td>
               </tr>
             ) : (
-              filtered.map((n) => {
+              paginados.map((n) => {
                 const st = n.status ? STATUS_META[n.status] : undefined;
                 return (
                   <tr
@@ -239,6 +265,8 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
           </tbody>
         </table>
       </div>
+
+      {paginador && <div className="mt-3">{paginador}</div>}
     </>
   );
 }
