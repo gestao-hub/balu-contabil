@@ -135,7 +135,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         : null,
       certPresente: !!certStorageKey,
       certNotAfter: certValidoAte,
-      serproTokenExpiration: (empresaFiscal?.certificado_token_expiration as string | null) ?? null,
+      serproTokenExpiration: (empresaFiscal?.serpro_token_procurador_expiration as string | null) ?? null,
       contratanteConfigurado,
       focusStatus: (company.focus_status as 'ok' | 'erro' | null) ?? null,
       focusToken: (company.focus_token as string | null) ?? null,
