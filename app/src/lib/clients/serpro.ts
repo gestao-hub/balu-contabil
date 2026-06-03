@@ -246,26 +246,31 @@ export async function enviarTermoApoiar(params: {
   return token;
 }
 
-/**
- * POST /Consultar (produção) via mTLS com o cert do CONTRATANTE + token do procurador.
- * Headers: Authorization Bearer, jwt_token e autenticar_procurador_token. Lança em status >= 400.
- * Devolve o envelope de resposta já parseado (objeto).
- */
-export async function consultarComProcurador(params: {
+type ProcuradorRequest = {
   pfx: Buffer;
   passphrase: string;
   accessToken: string;
   jwt: string;
   procuradorToken: string;
   envelope: Envelope;
-}): Promise<unknown> {
+};
+
+/**
+ * mTLS POST com o cert do CONTRATANTE + token do procurador (headers Bearer, jwt_token e
+ * autenticar_procurador_token). Compartilhado por /Consultar e /Emitir. Lança em status >= 400.
+ * Devolve o envelope de resposta já parseado (objeto).
+ */
+async function requestComProcurador(
+  path: '/integra-contador/v1/Consultar' | '/integra-contador/v1/Emitir',
+  params: ProcuradorRequest,
+): Promise<unknown> {
   const body = JSON.stringify(params.envelope);
   const { status, body: respBody } = await new Promise<{ status: number; body: string }>(
     (resolve, reject) => {
       const req = https.request(
         {
           host: 'gateway.apiserpro.serpro.gov.br',
-          path: '/integra-contador/v1/Consultar',
+          path,
           method: 'POST',
           pfx: params.pfx,
           passphrase: params.passphrase,
@@ -283,16 +288,26 @@ export async function consultarComProcurador(params: {
           res.on('end', () => resolve({ status: res.statusCode ?? 0, body: d }));
         },
       );
-      req.setTimeout(25_000, () => req.destroy(new Error('SERPRO /Consultar: timeout (25s).')));
+      req.setTimeout(25_000, () => req.destroy(new Error(`SERPRO ${path}: timeout (25s).`)));
       req.on('error', reject);
       req.write(body);
       req.end();
     },
   );
-  if (status >= 400) throw new Error(`SERPRO /Consultar → ${status}: ${respBody.slice(0, 200)}`);
+  if (status >= 400) throw new Error(`SERPRO ${path} → ${status}: ${respBody.slice(0, 200)}`);
   try {
     return JSON.parse(respBody);
   } catch {
-    throw new Error(`SERPRO /Consultar retornou não-JSON: ${respBody.slice(0, 200)}`);
+    throw new Error(`SERPRO ${path} retornou não-JSON: ${respBody.slice(0, 200)}`);
   }
+}
+
+/** POST /Consultar (produção) via mTLS + token do procurador. */
+export function consultarComProcurador(params: ProcuradorRequest): Promise<unknown> {
+  return requestComProcurador('/integra-contador/v1/Consultar', params);
+}
+
+/** POST /Emitir (produção) via mTLS + token do procurador. */
+export function emitirComProcurador(params: ProcuradorRequest): Promise<unknown> {
+  return requestComProcurador('/integra-contador/v1/Emitir', params);
 }
