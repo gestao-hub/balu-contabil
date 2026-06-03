@@ -46,6 +46,8 @@ const companyObject = z.object({
   // o POST /v2/empresas da Focus). Opcional aqui pra não quebrar o form de edição;
   // o CompanyCreateSchema reforça como obrigatório.
   Code_regime_tributario: z.enum(['1', '2', '3', '4']).optional(),
+  // CNAE principal — capturado da consulta de CNPJ no cadastro; mora em empresas_fiscais.
+  cnae_principal: z.string().optional(),
 });
 
 // Número obrigatório, salvo quando "Sem número" (sem_numero) estiver marcado.
