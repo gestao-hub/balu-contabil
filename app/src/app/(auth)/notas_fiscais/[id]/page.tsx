@@ -11,6 +11,7 @@ import { extrairCamposNota } from '@/lib/fiscal/nfse-callback';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import { cancelamentoSoPortal } from '@/lib/fiscal/notas-tipo';
 import CancelarButton from './CancelarButton';
+import BackButton from './BackButton';
 
 const STATUS_LABEL: Record<string, { txt: string; cls: string }> = {
   ativa: { txt: 'Ativa', cls: 'bg-success/10 text-success' },
@@ -85,7 +86,7 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
 
   return (
     <main className="p-6 max-w-3xl">
-      <a href="/notas_fiscais" className="text-sm text-primary hover:underline">← Voltar</a>
+      <BackButton />
 
       <header className="mt-3 flex items-start justify-between gap-4">
         <div>
