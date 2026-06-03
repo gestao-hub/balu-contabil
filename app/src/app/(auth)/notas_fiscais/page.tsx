@@ -1,6 +1,9 @@
 // @custom — bubble-behavior (Day 1 / PR 1.2 — V1 §3.2)
 import { createServerClient } from '@/lib/supabase/server';
 import NotasFiscaisList, { type NotaListRow } from './NotasFiscaisList';
+import { calcularLimiteEmissao, type LimiteEmissao } from '@/lib/fiscal/limite-emissao';
+import { somarEmitidoNoAno } from '@/lib/fiscal/emitido-ano';
+import LimiteEmissaoBanner from './LimiteEmissaoBanner';
 
 export default async function NotasFiscaisPage() {
   const supabase = await createServerClient();
@@ -9,6 +12,7 @@ export default async function NotasFiscaisPage() {
   } = await supabase.auth.getUser();
 
   let notas: NotaListRow[] = [];
+  let limite: LimiteEmissao = { mostrar: false };
   if (user) {
     const { data: profile } = await supabase
       .from('profiles')
@@ -52,6 +56,19 @@ export default async function NotasFiscaisPage() {
           payload_focusnfe?.destinatario?.razao_social ||
           null,
       }));
+      const { data: fiscal } = await supabase
+        .from('empresas_fiscais')
+        .select('Code_regime_tributario')
+        .eq('empresa_id', companyId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      const ano = new Date(Date.now() - 3 * 60 * 60 * 1000).getFullYear(); // BRT
+      const totalAno = await somarEmitidoNoAno(supabase, companyId, ano);
+      limite = calcularLimiteEmissao(
+        (fiscal?.Code_regime_tributario as string | null) ?? null,
+        totalAno,
+        ano,
+      );
     }
   }
 
@@ -64,6 +81,7 @@ export default async function NotasFiscaisPage() {
         </p>
       </header>
 
+      <LimiteEmissaoBanner limite={limite} />
       <NotasFiscaisList initial={notas} />
     </main>
   );
