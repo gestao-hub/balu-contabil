@@ -74,6 +74,9 @@ export default function MenuLateral({
       }
       toast('success', 'Empresa alterada');
       setCompanyMenuOpen(false);
+      // Leva pro Início e re-renderiza o layout com a empresa nova (o refresh cobre
+      // o caso de já estarmos em '/', onde push('/') não dispararia novo render).
+      router.push('/');
       router.refresh();
     } finally {
       // Reabilita o seletor em TODOS os caminhos. Antes, o caminho de sucesso não
