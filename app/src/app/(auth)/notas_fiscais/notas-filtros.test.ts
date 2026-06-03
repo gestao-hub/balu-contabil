@@ -76,4 +76,16 @@ describe('filtrosToQueryString', () => {
     const round = parseFiltrosFromParams(new URLSearchParams(filtrosToQueryString(original)));
     expect(round).toEqual(original);
   });
+
+  it('mês vigente é omitido (não congela na URL)', () => {
+    const qs = filtrosToQueryString({
+      q: '', tipo: 'todos', status: 'todos',
+      start: primeiroDiaMesISO(), end: ultimoDiaMesISO(), page: 1,
+    });
+    const sp = new URLSearchParams(qs);
+    expect(sp.get('start')).toBeNull();
+    expect(sp.get('end')).toBeNull();
+    expect(sp.get('periodo')).toBeNull();
+    expect(qs).toBe('');
+  });
 });

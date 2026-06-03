@@ -45,7 +45,12 @@ export function filtrosToQueryString(f: Filtros): string {
   if (f.q) sp.set('q', f.q);
   if (f.tipo !== 'todos') sp.set('tipo', f.tipo);
   if (f.status !== 'todos') sp.set('status', f.status);
-  if (f.start || f.end) {
+  // O mês vigente é o default (parse cai nele sem params), então o omitimos pra não
+  // "congelar" o mês na URL (bookmark/voltar depois de virar o mês traria o mês velho).
+  const ehMesVigente = f.start === primeiroDiaMesISO() && f.end === ultimoDiaMesISO();
+  if (ehMesVigente) {
+    // omite — re-parse deriva o mês vigente atual
+  } else if (f.start || f.end) {
     if (f.start) sp.set('start', f.start);
     if (f.end) sp.set('end', f.end);
   } else {
