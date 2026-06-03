@@ -6,6 +6,7 @@ import { useMemo } from 'react';
 import { Archive } from 'lucide-react';
 import { brl, dataBR, competenciaLabel, statusGuiaBadge, isGuiaVencida } from '@/lib/fiscal/guia';
 import GuiaActions from './GuiaActions';
+import GerarDasSimplesButton from './GerarDasSimplesButton';
 
 export type GuiaRow = {
   id: string;
@@ -19,7 +20,7 @@ export type GuiaRow = {
   numero: string | null;
 };
 
-export default function HistoricoGuias({ initial }: { initial: GuiaRow[] }) {
+export default function HistoricoGuias({ initial, isSimples = false }: { initial: GuiaRow[]; isSimples?: boolean }) {
   // Marca como "vencida" visualmente quando vencimento < hoje E status != paga.
   // Não muta o status do banco; é só pra UX. Vence-de-fato vira write quando o
   // cron de atualização rodar (fora do escopo de PR 3.1).
@@ -69,6 +70,9 @@ export default function HistoricoGuias({ initial }: { initial: GuiaRow[] }) {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap justify-end gap-1.5">
+                    {isSimples && g.statusVisual !== 'paga' && g.competencia && (
+                      <GerarDasSimplesButton competencia={g.competencia} variant="inline" />
+                    )}
                     <GuiaActions guia={g} variant="inline" />
                   </div>
                 </td>

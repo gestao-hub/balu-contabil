@@ -7,6 +7,7 @@ import { type AnexoSimples, tipoFromCode } from '@/lib/fiscal/regime';
 import type { ResultadoApuracao } from '@/lib/fiscal/apuracao-types';
 import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
 import { consultarDeclaracoesSimples } from '@/lib/fiscal/serpro-consulta';
+import { gerarDasSimples } from '@/lib/fiscal/serpro-das-simples';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
 import { lerReceitasParaApuracao } from '@/lib/fiscal/receitas-source';
 import { serpro, buildEnvelope, PGMEI_SERVICES, type ProdAuth } from '@/lib/clients/serpro';
@@ -295,4 +296,71 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
 
   revalidatePath('/impostos');
   return { ok: true, count: rows.length };
+}
+
+export type GerarDasSimplesResult =
+  | { ok: true; semValor: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Gera o DAS (PGDAS-D / GERARDAS12) de uma competência via o token do procurador e persiste
+ * em guias_fiscais. Só Simples. Período pago → { ok:true, semValor:true } (não persiste valor).
+ */
+export async function gerarDasSimplesAction(competencia: string): Promise<GerarDasSimplesResult> {
+  if (!/^\d{6}$/.test(competencia)) return { ok: false, error: 'Competência inválida (YYYYMM).' };
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Não autenticado.' };
+
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+
+  const { data: fiscal } = await supabase
+    .from('empresas_fiscais')
+    .select('Code_regime_tributario')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+  if (!fiscal) return { ok: false, error: 'Empresa fiscal não configurada.' };
+  if (tipoFromCode((fiscal.Code_regime_tributario ?? '') as string) !== 'simples') {
+    return { ok: false, error: 'Geração de DAS por aqui cobre Simples (PGDAS-D); MEI usa o fluxo próprio.' };
+  }
+
+  const r = await gerarDasSimples(supabase, companyId, competencia);
+  if (!r.ok) return r;
+  if (r.result.semValor) return { ok: true, semValor: true };
+
+  const d = r.result;
+  const mes = Number(competencia.slice(4, 6));
+  const ano = Number(competencia.slice(0, 4));
+  const { error } = await supabase
+    .from('guias_fiscais')
+    .upsert(
+      {
+        company_id: companyId,
+        owner_user_id: user.id,
+        competencia_referencia: competencia,
+        competencia_mes: mes,
+        competencia_ano: ano,
+        numero_das: d.numeroDas,
+        valor_principal: d.valores.principal,
+        valor_multa: d.valores.multa,
+        valor_juros: d.valores.juros,
+        valor_total: d.valores.total,
+        data_vencimento: d.dataVencimento,
+        linha_digitavel: d.codigoDeBarras.join(' '),
+        codigo_barras: d.codigoDeBarras.join(''),
+        url_pdf: d.pdfBase64 ? `data:application/pdf;base64,${d.pdfBase64}` : null,
+        status: 'gerada',
+        origem: 'serpro',
+        updated_at: new Date().toISOString(),
+        deleted_at: null,
+      },
+      { onConflict: 'company_id,competencia_referencia' },
+    );
+  if (error) return { ok: false, error: `Falha ao salvar a guia: ${error.message}` };
+
+  revalidatePath('/impostos');
+  return { ok: true, semValor: false };
 }

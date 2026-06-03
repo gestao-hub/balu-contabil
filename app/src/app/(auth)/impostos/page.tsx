@@ -100,6 +100,7 @@ export default async function ImpostosPage() {
               guia={guiaAtual ? toGuiaRow(guiaAtual) : null}
               competencia={competenciaAtual}
               isMei={isMei}
+              isSimples={isSimples}
             />
           </section>
 
@@ -108,7 +109,7 @@ export default async function ImpostosPage() {
               <h2 className="text-xs uppercase tracking-wide text-muted-foreground">Histórico de guias</h2>
               {isSimples && <ConsultarSerproButton />}
             </div>
-            <HistoricoGuias initial={historico} />
+            <HistoricoGuias initial={historico} isSimples={isSimples} />
           </section>
         </>
       )}
