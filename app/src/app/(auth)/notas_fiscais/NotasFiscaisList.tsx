@@ -4,9 +4,10 @@
 // Listagem de notas: 4 filtros combináveis (período, tipo, status, texto),
 // badges, linha clicável → detalhe, export CSV. Padrão de ClientesListClient.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { parseFiltrosFromParams, filtrosToQueryString } from './notas-filtros';
 import { Search, Download, FileText } from 'lucide-react';
 import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import { useToast } from '@/components/Toaster';
@@ -43,12 +44,28 @@ function fmtData(iso: string | null): string {
 
 export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toast = useToast();
-  const [query, setQuery] = useState('');
-  const [periodo, setPeriodo] = useState<PeriodoRange>({ start: null, end: null });
-  const [tipo, setTipo] = useState<string>('todos');
-  const [status, setStatus] = useState<string>('todos');
+  // Estado inicial derivado da URL (parse uma vez no mount). Sem params → mês vigente.
+  const inicial = useMemo(() => parseFiltrosFromParams(searchParams), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [query, setQuery] = useState(inicial.q);
+  const [periodo, setPeriodo] = useState<PeriodoRange>({ start: inicial.start, end: inicial.end });
+  const [tipo, setTipo] = useState<string>(inicial.tipo);
+  const [status, setStatus] = useState<string>(inicial.status);
+  const [pagina, setPagina] = useState(inicial.page);
   const [exporting, setExporting] = useState(false);
+
+  // Sincroniza os filtros na URL (sem empilhar histórico nem rolar a página).
+  // Pula o 1º run pra não reescrever a URL limpa da primeira visita.
+  const primeiroSync = useRef(true);
+  useEffect(() => {
+    if (primeiroSync.current) {
+      primeiroSync.current = false;
+      return;
+    }
+    const qs = filtrosToQueryString({ q: query, tipo, status, start: periodo.start, end: periodo.end, page: pagina });
+    router.replace(qs ? `/notas_fiscais?${qs}` : '/notas_fiscais', { scroll: false });
+  }, [query, tipo, status, periodo, pagina, router]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -140,7 +157,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             <option value="cancelada">Cancelada</option>
           </select>
 
-          <FilterPeriodo onChange={setPeriodo} />
+          <FilterPeriodo initial={periodo} onChange={setPeriodo} />
 
           <button
             type="button"
