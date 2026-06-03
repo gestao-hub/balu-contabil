@@ -13,6 +13,7 @@ import {
   isCodigoTributacaoValido,
 } from '@/lib/fiscal/codigos-tributacao';
 import { emitirNotaFormAction } from '../actions';
+import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
 
 const Schema = z.object({
   clienteId: z.string().uuid({ message: 'Selecione um cliente.' }),
@@ -22,7 +23,13 @@ const Schema = z.object({
   aliquotaIssPercentual: z.number().min(0, 'Alíquota inválida.').max(100, 'Alíquota inválida.'),
 });
 
-export default function EmissaoForm({ clientes }: { clientes: ClienteOption[] }) {
+export default function EmissaoForm({
+  clientes,
+  previewImposto,
+}: {
+  clientes: ClienteOption[];
+  previewImposto: PreviewImposto;
+}) {
   const [clienteId, setClienteId] = useState<string>('');
   const [codigoBase, setCodigoBase] = useState<string>(CODIGOS_TRIBUTACAO_FREQUENTES[0]!.codigo);
   const [codigoOutro, setCodigoOutro] = useState<string>('');
@@ -142,6 +149,26 @@ export default function EmissaoForm({ clientes }: { clientes: ClienteOption[] })
           />
         </div>
       </div>
+
+      {previewImposto.tipo === 'simples' && (() => {
+        const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+        const valor = parseDecimal(valorTexto) || 0;
+        const imposto = valor * previewImposto.aliquota;
+        return (
+          <p className="text-sm text-muted-foreground bg-surface-2 border border-border rounded-md px-3 py-2">
+            Imposto estimado (DAS): <span className="font-medium text-foreground">{brl.format(imposto)}</span>
+            {' '}— ≈{(previewImposto.aliquota * 100).toFixed(2)}% · estimativa
+          </p>
+        );
+      })()}
+      {previewImposto.tipo === 'mei' && (() => {
+        const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+        return (
+          <p className="text-sm text-muted-foreground bg-surface-2 border border-border rounded-md px-3 py-2">
+            MEI: DAS fixo de <span className="font-medium text-foreground">{brl.format(previewImposto.valorFixo)}</span>/mês — não varia por nota.
+          </p>
+        );
+      })()}
 
       {clientErr && (
         <p className="text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">{clientErr}</p>

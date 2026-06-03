@@ -4,6 +4,8 @@
 import Link from 'next/link';
 import { createServerClient } from '@/lib/supabase/server';
 import EmissaoForm from '../EmissaoForm';
+import { obterPreviewImposto } from '@/lib/fiscal/preview-imposto';
+import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
 
 type SP = Promise<{ error?: string }>;
 
@@ -35,6 +37,8 @@ export default async function NotasFiscaisEmissaoPage({ searchParams }: { search
       .order('razao_social', { ascending: true })
       .limit(500),
   ]);
+
+  const previewImposto: PreviewImposto = await obterPreviewImposto(supabase, companyId);
 
   if (!company) {
     return <Bloqueio titulo="Empresa não encontrada" mensagem="A empresa selecionada não existe." />;
@@ -102,12 +106,15 @@ export default async function NotasFiscaisEmissaoPage({ searchParams }: { search
         </div>
       )}
 
-      <EmissaoForm clientes={(clientes ?? []).map((c) => ({
-        id: c.id as string,
-        razao_social: (c.razao_social as string | null) ?? '—',
-        document: (c.document as string | null) ?? '',
-        person_type: (c.person_type as string | null) ?? 'PJ',
-      }))} />
+      <EmissaoForm
+        clientes={(clientes ?? []).map((c) => ({
+          id: c.id as string,
+          razao_social: (c.razao_social as string | null) ?? '—',
+          document: (c.document as string | null) ?? '',
+          person_type: (c.person_type as string | null) ?? 'PJ',
+        }))}
+        previewImposto={previewImposto}
+      />
     </main>
   );
 }
