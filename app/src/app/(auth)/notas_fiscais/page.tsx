@@ -27,7 +27,7 @@ export default async function NotasFiscaisPage() {
         .select('id, tipo_documento, referencia, data_emissao, valor_total, status, cliente_id, payload_focusnfe')
         .eq('company_id', companyId)
         .order('data_emissao', { ascending: false, nullsFirst: false })
-        .limit(50);
+        .limit(2000);
 
       type NotaRaw = Omit<NotaListRow, 'cliente_nome'> & {
         cliente_id: string | null;
