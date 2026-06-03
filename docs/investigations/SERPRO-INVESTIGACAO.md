@@ -278,8 +278,10 @@ direta p/ Serpro**.
 - [ ] **(PRIORIDADE 2)** Corrigir o `role-type` no código: hoje `TERCEIROS` hardcoded em
       `serpro-auth.ts`; no modelo PRÓPRIO deveria ser o valor de contribuinte. Confirmar a string
       exata aceita (a doc nomeia "PRÓPRIO" mas o valor literal do header precisa ser verificado).
-- [ ] Após assinar o Trial: **re-rodar o smoke** (`app/scripts/serpro-smoke.mjs`) e
-      confirmar 200 no `/Emitir`.
+- [x] ~~Após assinar o Trial: re-rodar o smoke e confirmar 200 no `/Emitir`.~~ **DESCARTADO (rodada 7):**
+      o fluxo procurador (XML) também bate `900908` no Trial (`test-serpro-procurador-trial.mjs`) — é
+      bloqueio de **subscription do produto**, não da operação. Trial é beco sem saída p/ essa consumer
+      key; produção já valida o fluxo (rodada 6). Não vale assinar/insistir no Trial.
 - [ ] Decidir arquitetura de produção (§5) e **alinhar `role-type` + envelope** ao modelo escolhido.
       Se ficar "self": trocar `TERCEIROS` pelo role-type de contribuinte. Se "procurador": cert da
       Balu + procuração/Termo + contratante≠contribuinte.
@@ -360,6 +362,15 @@ cuja consumer key está no `.env.local` (28 chars), se o produto **Integra Conta
   `900908` em `/Emitir` **e** `/Consultar` → app autentica mas **sem subscription ativa** no produto.
   Prova que a consumer key não tem o produto ativo hoje; **não** distingue o motivo (nunca assinou /
   inadimplente / produto errado / outra app). Ver §9.
+- **2026-06-03 (rodada 7)** — ❌ **Fluxo procurador (XML) NÃO passa no Trial — fecha a lacuna.** Variante
+  `app/scripts/test-serpro-procurador-trial.mjs` (mesmo fluxo da rodada 6, mas operações em
+  `integra-contador-trial/v1/...`): `/authenticate` mTLS PIPER → **200**; Termo XML montado + assinado
+  (5531 chars, `<Signature>` presente) → **OK**; `POST /Apoiar` (trial) → **403 `900908`** (mesmo erro do
+  smoke de DAS antigo). **Prova:** o `900908` é bloqueio de **assinatura do produto** (a consumer key não
+  tem o *Integra Contador Trial* ativo) e dispara **antes** da operação — o XML/Termo chega ao gateway mas
+  é barrado na camada de subscription. **Não** é bug de código/cert/XML. **Consequência:** Trial é beco sem
+  saída p/ essa consumer key; o caminho validado é **produção** (rodada 6). Próximo passo real = virar o
+  procurador de produção em feature, não insistir no Trial.
 - **2026-06-02 (rodada 6)** — ✅✅ **RESOLVIDO PONTA A PONTA EM PRODUÇÃO.** Com o cert do **contratante
   (PIPER, 61061690000183)** + cert do **cliente (AL PISCINAS, 10358425000120)**:
   (1) mTLS PIPER → `/authenticate` 200; (2) `/Consultar` direto deu 403 `ICGERENCIADOR-022` (sem
