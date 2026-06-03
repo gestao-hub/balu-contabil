@@ -25,7 +25,10 @@ export function montarPreview(input: {
       atividadeMei: input.atividadeMei ?? null,
     });
     if (r.tipoApuracao === 'DAS-MEI') return { tipo: 'mei', valorFixo: r.valorImposto };
-    return { tipo: 'simples', aliquota: r.aliquotaEfetiva ?? 0 };
+    // Simples sempre traz aliquotaEfetiva numérica; se vier null (caminho futuro),
+    // não mostra estimativa zerada enganosa → indisponivel.
+    if (r.aliquotaEfetiva == null) return { tipo: 'indisponivel' };
+    return { tipo: 'simples', aliquota: r.aliquotaEfetiva };
   } catch {
     return { tipo: 'indisponivel' };
   }
