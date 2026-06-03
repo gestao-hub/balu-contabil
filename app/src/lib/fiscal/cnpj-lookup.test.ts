@@ -66,6 +66,44 @@ describe('lookupCnpj — mapeamento', () => {
     });
   });
 
+  it('lê endereço aninhado em `endereco` (shape REAL da Focus /v2/cnpjs)', async () => {
+    // Resposta real capturada em produção: endereço fica sob `endereco` e o
+    // município é `nome_municipio` (não `municipio`).
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        razao_social: 'MAGAZINE LUIZA S/A',
+        cnpj: '47960950000121',
+        situacao_cadastral: 'ativa',
+        cnae_principal: '4713004',
+        endereco: {
+          codigo_municipio: '6425',
+          codigo_ibge: '3516200',
+          nome_municipio: 'Franca',
+          logradouro: 'VOLUNTARIOS DA FRANCA',
+          complemento: '',
+          numero: '1465',
+          bairro: 'CENTRO',
+          cep: '14400490',
+          uf: 'SP',
+        },
+      }),
+    );
+
+    const r = await lookupCnpj('47960950000121');
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.razao_social).toBe('MAGAZINE LUIZA S/A');
+    expect(r.data.logradouro).toBe('VOLUNTARIOS DA FRANCA');
+    expect(r.data.numero).toBe('1465');
+    expect(r.data.bairro).toBe('CENTRO');
+    expect(r.data.municipio).toBe('Franca');
+    expect(r.data.uf).toBe('SP');
+    expect(r.data.cep).toBe('14400490');
+    // complemento vazio → undefined (não vira string vazia)
+    expect(r.data.complemento).toBeUndefined();
+  });
+
   it('usa apelidos `nome` e `fantasia` quando os canônicos faltam', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       mockJsonResponse(200, { nome: 'Beta SA', fantasia: 'Beta' }),
