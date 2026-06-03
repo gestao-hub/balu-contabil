@@ -3,6 +3,8 @@
 // A estrutura "com valor" é modelada no parseDasMei (mesma família) e deve ser
 // confirmada contra o primeiro DAS real em aberto (smoke). Puro/testável.
 
+import { isNadaDevido } from './serpro-das-comum';
+
 export type DasSimplesResult =
   | { semValor: true }
   | {
@@ -27,13 +29,7 @@ export function parseDasSimples(resp: unknown): DasSimplesResult {
   const env = (resp ?? {}) as { dados?: unknown; mensagens?: unknown };
 
   // "Nada devido": dados vazio OU mensagem MSG_E0139.
-  const msgs = Array.isArray(env.mensagens) ? env.mensagens : [];
-  const temE0139 = msgs.some(
-    (m) => typeof (m as { codigo?: unknown })?.codigo === 'string' && (m as { codigo: string }).codigo.includes('MSG_E0139'),
-  );
-  const dadosVazio =
-    env.dados == null || (typeof env.dados === 'string' && env.dados.trim() === '');
-  if (temE0139 || dadosVazio) return { semValor: true };
+  if (isNadaDevido(resp)) return { semValor: true };
 
   let dados: unknown = env.dados;
   if (typeof dados === 'string') {

@@ -15,7 +15,10 @@ export default function GerarDasButton({ competencia }: { competencia: string })
     if (pending) return;
     startTransition(async () => {
       const r = await gerarDasMeiAction(competencia);
-      if (r.ok) {
+      if (r.ok && r.semValor) {
+        toast('info', 'Sem débito em aberto para esta competência.');
+        router.refresh();
+      } else if (r.ok) {
         toast('success', 'DAS gerado.');
         router.refresh();
       } else {
