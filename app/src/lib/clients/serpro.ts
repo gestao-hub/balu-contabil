@@ -1,5 +1,6 @@
 // @custom — Onda 4 hardening — Cliente Serpro Integra Contador (PGDAS-D, DAS, declarações)
 import 'server-only';
+import https from 'node:https';
 
 const PROD = 'https://gateway.apiserpro.serpro.gov.br/integra-contador';
 const TRIAL = 'https://gateway.apiserpro.serpro.gov.br/integra-contador-trial';
@@ -179,3 +180,68 @@ export const TRIBUTO_CODIGOS = {
   ISS:    1050,
 } as const;
 export type TributoCodigo = (typeof TRIBUTO_CODIGOS)[keyof typeof TRIBUTO_CODIGOS];
+
+/** Lê o autenticar_procurador_token do corpo (200) ou do ETag (304). Puro. */
+export function parseApoiarToken(body: string, etag: string | undefined): string | null {
+  try {
+    const j = JSON.parse(body) as { dados?: string; autenticarProcuradorToken?: string };
+    const d = j.dados ? (JSON.parse(j.dados) as { autenticar_procurador_token?: string }) : {};
+    const tok = d.autenticar_procurador_token || j.autenticarProcuradorToken || null;
+    if (tok) return tok;
+  } catch {
+    // corpo vazio/não-JSON → tenta ETag abaixo
+  }
+  if (etag) {
+    const m = String(etag).match(/autenticar_procurador_token:([^"]+)/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/**
+ * POST /Apoiar (AUTENTICAPROCURADOR/ENVIOXMLASSINADO81) em produção, mTLS com o cert do contratante.
+ * Devolve o autenticar_procurador_token. Lança em status >= 400.
+ */
+export async function enviarTermoApoiar(params: {
+  pfx: Buffer;
+  passphrase: string;
+  accessToken: string;
+  jwt: string;
+  envelope: Envelope;
+}): Promise<string> {
+  const body = JSON.stringify(params.envelope);
+  const { status, body: respBody, etag } = await new Promise<{ status: number; body: string; etag?: string }>(
+    (resolve, reject) => {
+      const req = https.request(
+        {
+          host: 'gateway.apiserpro.serpro.gov.br',
+          path: '/integra-contador/v1/Apoiar',
+          method: 'POST',
+          pfx: params.pfx,
+          passphrase: params.passphrase,
+          headers: {
+            Authorization: `Bearer ${params.accessToken}`,
+            jwt_token: params.jwt,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body),
+          },
+        },
+        (res) => {
+          let d = '';
+          res.on('data', (c) => (d += c));
+          res.on('end', () =>
+            resolve({ status: res.statusCode ?? 0, body: d, etag: res.headers.etag as string | undefined }),
+          );
+        },
+      );
+      req.setTimeout(25_000, () => req.destroy(new Error('SERPRO /Apoiar: timeout (25s).')));
+      req.on('error', reject);
+      req.write(body);
+      req.end();
+    },
+  );
+  if (status >= 400) throw new Error(`SERPRO /Apoiar → ${status}: ${respBody.slice(0, 200)}`);
+  const token = parseApoiarToken(respBody, etag);
+  if (!token) throw new Error(`SERPRO /Apoiar não retornou autenticar_procurador_token: ${respBody.slice(0, 200)}`);
+  return token;
+}
