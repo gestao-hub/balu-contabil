@@ -4,6 +4,7 @@
 // Focus 4: as antigas abas "NFS-e" e "Certificado A1" viraram seções da nova aba.
 import Link from 'next/link';
 import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import DadosEmpresaForm from './DadosEmpresaForm';
 import RegimeTributarioForm from './RegimeTributarioForm';
 import EmissaoFiscalTab from './EmissaoFiscalTab';
@@ -104,6 +105,15 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     certStorageKey = (cert?.storage_key as string | null) ?? null;
   }
 
+  let contratanteConfigurado = false;
+  if (active === 'diagnostico') {
+    const admin = createAdminClient();
+    const { count } = await admin
+      .from('serpro_contratante')
+      .select('id', { count: 'exact', head: true });
+    contratanteConfigurado = (count ?? 0) > 0;
+  }
+
   let saudeState: SaudeState | null = null;
   if (active === 'diagnostico' && company) {
     const focusSyncEm = (empresaFiscal?.focus_sync_em as string | null) ?? null;
@@ -126,6 +136,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       certPresente: !!certStorageKey,
       certNotAfter: certValidoAte,
       serproTokenExpiration: (empresaFiscal?.certificado_token_expiration as string | null) ?? null,
+      contratanteConfigurado,
       focusStatus: (company.focus_status as 'ok' | 'erro' | null) ?? null,
       focusToken: (company.focus_token as string | null) ?? null,
       focusLastCheck: (company.focus_last_check as string | null) ?? null,
