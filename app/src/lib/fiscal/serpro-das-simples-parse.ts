@@ -1,7 +1,13 @@
 // Parser puro da resposta do PGDAS-D / GERARDAS12 (gerar DAS de um período).
 // Distingue "nada devido" (período sem débito em aberto) de "com valor".
-// A estrutura "com valor" é modelada no parseDasMei (mesma família) e deve ser
-// confirmada contra o primeiro DAS real em aberto (smoke). Puro/testável.
+//
+// Nomes de campo confirmados contra a doc oficial (Integra Contador / PGDAS-D):
+// numeroDocumento, dataVencimento, valores{principal,multa,juros,total,totalConsolidado},
+// codigoDeBarras, pdf. O ANINHAMENTO exato (dados[].detalhamento[]) ainda espelha o
+// parseDasMei e só foi validado no caso "nada devido" (fixture real). Por isso, em vez
+// de mascarar uma resposta inesperada como "nada devido" (= guia R$0 silenciosa), aqui
+// a gente FALHA ALTO: loga a estrutura crua e lança — o 1º DAS real que divergir vira
+// erro visível + log (o "smoke" acontece sozinho, com segurança). Puro/testável.
 
 import { isNadaDevido } from './serpro-das-comum';
 
@@ -36,26 +42,34 @@ export function parseDasSimples(resp: unknown): DasSimplesResult {
     try {
       dados = JSON.parse(dados);
     } catch {
-      return { semValor: true };
+      // Não é "nada devido" (já descartado acima) e não dá pra ler: não mascarar
+      // como semValor — falhar alto e logar a forma crua p/ confirmar a estrutura.
+      console.warn('[parseDasSimples] `dados` não-JSON numa resposta com valor:', String(env.dados).slice(0, 300));
+      throw new Error('Resposta do DAS (Simples) em formato inesperado (dados não-JSON).');
     }
   }
   const first = Array.isArray(dados) ? dados[0] : dados;
   const obj = (first ?? {}) as { detalhamento?: unknown; pdf?: unknown };
   const det = Array.isArray(obj.detalhamento) ? obj.detalhamento[0] : undefined;
-  if (!det) return { semValor: true };
+  if (!det) {
+    console.warn('[parseDasSimples] resposta com valor sem `detalhamento` — estrutura inesperada:', JSON.stringify(dados).slice(0, 500));
+    throw new Error('Resposta do DAS (Simples) sem detalhamento — estrutura inesperada (ver log).');
+  }
 
   const d = det as {
     numeroDocumento?: unknown;
     dataVencimento?: unknown;
-    valores?: { principal?: unknown; multa?: unknown; juros?: unknown; total?: unknown };
+    valores?: { principal?: unknown; multa?: unknown; juros?: unknown; total?: unknown; totalConsolidado?: unknown };
     codigoDeBarras?: unknown;
   };
   const v = d.valores ?? {};
+  // total com fallback p/ totalConsolidado (campo extra documentado pela SERPRO).
+  const total = num(v.total) || num(v.totalConsolidado);
   return {
     semValor: false,
     numeroDas: typeof d.numeroDocumento === 'string' ? d.numeroDocumento : null,
     dataVencimento: isoFromAaaammdd(d.dataVencimento),
-    valores: { principal: num(v.principal), multa: num(v.multa), juros: num(v.juros), total: num(v.total) },
+    valores: { principal: num(v.principal), multa: num(v.multa), juros: num(v.juros), total },
     codigoDeBarras: Array.isArray(d.codigoDeBarras) ? d.codigoDeBarras.map(String) : [],
     pdfBase64: typeof obj.pdf === 'string' ? obj.pdf : null,
   };

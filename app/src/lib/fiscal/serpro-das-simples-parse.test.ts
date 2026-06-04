@@ -43,9 +43,28 @@ describe('parseDasSimples', () => {
     expect(r.pdfBase64).toBe('JVBERi0xLjQK');
   });
 
-  it('defensivo: dados ausente/ inválido → { semValor: true }', () => {
+  it('nada devido legítimo (dados vazio/ausente) → { semValor: true }', () => {
     expect(parseDasSimples({})).toEqual({ semValor: true });
-    expect(parseDasSimples({ dados: 'não-json' })).toEqual({ semValor: true });
+    expect(parseDasSimples({ dados: '' })).toEqual({ semValor: true });
     expect(parseDasSimples(null)).toEqual({ semValor: true });
+  });
+
+  it('resposta com valor mas formato inesperado → LANÇA (não mascara como semValor)', () => {
+    // dados não-JSON numa resposta que não é "nada devido".
+    expect(() => parseDasSimples({ dados: 'não-json' })).toThrow(/formato inesperado/i);
+    // dados válido mas sem detalhamento.
+    expect(() => parseDasSimples({ dados: JSON.stringify([{ foo: 1 }]) })).toThrow(/detalhamento/i);
+  });
+
+  it('total com fallback p/ totalConsolidado quando total ausente', () => {
+    const resp = {
+      dados: JSON.stringify([
+        { detalhamento: [{ numeroDocumento: 'X', dataVencimento: '20260220', valores: { totalConsolidado: 250.75 }, codigoDeBarras: [] }] },
+      ]),
+    };
+    const r = parseDasSimples(resp);
+    expect(r.semValor).toBe(false);
+    if (r.semValor) return;
+    expect(r.valores.total).toBe(250.75);
   });
 });
