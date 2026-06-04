@@ -98,6 +98,12 @@ atividades dos §5º). É publicada como **tabela curada** (softwares contábeis
 → **Tem que ser construída/curada por nós** (dá pra semear com os CNAEs que aparecem na base e ir
 crescendo). É o **ativo que destrava o cálculo automático** de anexo/Fator R.
 
+> ⚠️ **Fator R NÃO sai da hierarquia do CNAE** (seção/divisão/classe que a Focus/IBGE retornam): é
+> classificação **tributária** (LC 123 §5º-J/M), não **econômica**. Verificado com dado real
+> (2026-06-04): a **seção G** tem representação comercial (Fator R) **e** comércio (Anexo I); a
+> **prótese dentária** (Fator R) está na **seção C/Indústria**. Não há regra por hierarquia — só a
+> curadoria por código (LC 123) crava. A hierarquia serve no máximo como dica fraca.
+
 ---
 
 ## 4. Estrutura proposta (incremental)
@@ -144,3 +150,8 @@ Verificado end-to-end na AL Piscinas (principal `4299501` → **Anexo IV** via `
   usa **full-replace** (delete + insert), que também reflete remoções de CNAE.
 - **BrasilAPI 403 por rate-limit** (ver caveat na §3.1) — backfill em massa esbarra nisso; o fluxo
   on-demand (1 consulta/empresa) é OK e cai na Focus pro principal.
+
+**Auto-stub do catálogo (2026-06-04):** ao sincronizar os CNAEs de uma empresa, os códigos ainda não
+mapeados entram em `cnae_anexo` como `observacao='auto-stub — curar'` (sem classificação) — a base
+real de clientes vira a **fila de curadoria**. Usa admin client (cnae_anexo só aceita escrita
+service-role) + upsert `ignoreDuplicates` (nunca sobrescreve uma classificação curada).
