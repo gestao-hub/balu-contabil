@@ -78,10 +78,12 @@ export type SaudeState = {
     habilitaNfsenHomologacao: boolean | null;
     syncEm: string | null;
   } | null;
-  // Timestamps locais usados pra detectar drift Balu↔Focus (Focus 2.1).
-  // Quando max(updated_at) > focusSnapshot.syncEm, há mudanças não sincronizadas.
-  companiesUpdatedAt: string | null;
-  empresaFiscalUpdatedAt: string | null;
+  // Drift Balu↔Focus (Focus 2.1): timestamp da última edição de um campo que
+  // vai no payload da Focus (dados/regime). Bumpado explicitamente nos forms —
+  // NÃO usa companies/empresas_fiscais.updated_at (que o trigger tg_set_updated_at
+  // suja em qualquer UPDATE, ex.: renovação de token SERPRO). Drift quando
+  // focusFieldsDirtyAt > focusSnapshot.syncEm. null = nada pendente.
+  focusFieldsDirtyAt: string | null;
 };
 
 const SKEW_MS = 5 * 60 * 1000;
@@ -137,39 +139,29 @@ function rollupStatus(items: CheckResult[]): CheckStatus {
 
 /**
  * "Há mudanças não sincronizadas com a Focus?"
- * True quando o último save local (companies.updated_at ou empresa_fiscal.updated_at)
- * é mais novo que focusSnapshot.syncEm. Sem syncEm ainda → false (cobre pelo
- * estado "não cadastrada"; não queremos mostrar drift antes do primeiro POST).
+ * True quando `focusFieldsDirtyAt` (última edição de um campo do payload Focus,
+ * bumpado explicitamente nos forms Dados/Regime) é mais novo que
+ * `focusSnapshot.syncEm`. Sem syncEm ainda → false (cobre pelo estado "não
+ * cadastrada"; não queremos mostrar drift antes do primeiro POST).
  *
- * **Margem de 60s** pra evitar falso positivo logo após o sync:
- * `focus_sync_em` é calculado no Node antes dos UPDATEs em `companies` e
- * `empresas_fiscais`, e os triggers `tg_set_updated_at` no banco gravam
- * `updated_at = now()` na hora do UPDATE — o que naturalmente é 1-3s depois
- * (PUT na Focus + GET snapshot + roundtrips). Sem essa margem, todo sync
- * dispararia drift fantasma. 60s é folgado o suficiente pra não pegar edits
- * humanos (que levam muito mais que 1 minuto entre clicks).
+ * Sem margem de tempo: ao contrário do antigo `updated_at` (sujo pelo trigger
+ * tg_set_updated_at em qualquer UPDATE, ex. token SERPRO), `focus_fields_dirty_at`
+ * só é gravado quando um campo Focus realmente muda. Após um sync,
+ * `focus_sync_em >= focus_fields_dirty_at`, então o drift se auto-resolve.
  */
-const DRIFT_MARGIN_MS = 60_000;
-
 export function detectFocusDrift(state: SaudeState): { drift: boolean; lastEditAt: string | null } {
   const syncAt = state.focusSnapshot?.syncEm ?? null;
   if (!syncAt) return { drift: false, lastEditAt: null };
 
-  const candidates = [state.companiesUpdatedAt, state.empresaFiscalUpdatedAt]
-    .filter((t): t is string => !!t)
-    .map((t) => Date.parse(t))
-    .filter((t) => Number.isFinite(t));
-  if (candidates.length === 0) return { drift: false, lastEditAt: null };
+  const dirtyAt = state.focusFieldsDirtyAt;
+  if (!dirtyAt) return { drift: false, lastEditAt: null };
 
-  const lastEdit = Math.max(...candidates);
+  const dirtyMs = Date.parse(dirtyAt);
   const syncMs = Date.parse(syncAt);
-  if (!Number.isFinite(syncMs)) return { drift: false, lastEditAt: null };
+  if (!Number.isFinite(dirtyMs) || !Number.isFinite(syncMs)) return { drift: false, lastEditAt: null };
 
-  const drift = lastEdit - syncMs > DRIFT_MARGIN_MS;
-  return {
-    drift,
-    lastEditAt: drift ? new Date(lastEdit).toISOString() : null,
-  };
+  const drift = dirtyMs > syncMs;
+  return { drift, lastEditAt: drift ? dirtyAt : null };
 }
 
 /** Ação do grupo: pega do primeiro item não-ok (com fallback null). */

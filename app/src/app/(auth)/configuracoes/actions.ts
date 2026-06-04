@@ -16,6 +16,33 @@ import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
 
 type ActionResult = { ok: true; warning?: string } | { ok: false; error: string };
 
+// Campos de `companies` que entram no payload da Focus (buildFocusEmpresaPayload).
+// Editar qualquer um = drift até re-sincronizar. cnpj é imutável na edição.
+const FOCUS_COMPANY_FIELDS = [
+  'razao_social', 'nome', 'logradouro', 'numero', 'sem_numero', 'complemento',
+  'bairro', 'municipio', 'uf', 'cep', 'email', 'telefone',
+  'inscricao_estadual', 'inscricao_municipal',
+] as const;
+
+/**
+ * Marca que um campo do payload Focus mudou (Diagnóstico mostra "há mudanças não
+ * sincronizadas"). Best-effort: se a empresa não tem empresa_fiscal ainda, ou a
+ * coluna não existir (migration 0019 não aplicada), apenas loga — a detecção de
+ * drift degrada graciosamente (sem bump = sem drift).
+ */
+async function markFocusFieldsDirty(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  companyId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('empresas_fiscais')
+    .update({ focus_fields_dirty_at: new Date().toISOString() })
+    .eq('empresa_id', companyId)
+    .is('deleted_at', null);
+  if (error) console.warn('[markFocusFieldsDirty]', error.message);
+}
+
 export async function updateCompanyAction(id: string, patch: Partial<CompanyInput>): Promise<ActionResult> {
   if (!id) return { ok: false, error: 'ID da empresa ausente.' };
 
@@ -30,6 +57,14 @@ export async function updateCompanyAction(id: string, patch: Partial<CompanyInpu
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
 
+  // Snapshot dos campos Focus antes do update, pra detectar mudança relevante.
+  const { data: before } = await supabase
+    .from('companies')
+    .select(FOCUS_COMPANY_FIELDS.join(','))
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
   const { error } = await supabase
     .from('companies')
     .update({ ...parsed.data, updated_at: new Date().toISOString() })
@@ -37,6 +72,17 @@ export async function updateCompanyAction(id: string, patch: Partial<CompanyInpu
     .eq('user_id', user.id);
 
   if (error) return { ok: false, error: error.message };
+
+  // Se algum campo do payload Focus mudou, marca drift (compara como string pra
+  // tratar null/''/undefined de forma equivalente).
+  const norm = (v: unknown) => String(v ?? '');
+  const beforeRow = before as unknown as Record<string, unknown> | null;
+  const focusChanged =
+    !beforeRow ||
+    FOCUS_COMPANY_FIELDS.some(
+      (f) => norm((parsed.data as Record<string, unknown>)[f]) !== norm(beforeRow[f]),
+    );
+  if (focusChanged) await markFocusFieldsDirty(supabase, id);
 
   revalidatePath('/configuracoes');
   revalidatePath('/');
@@ -65,19 +111,25 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
 
   const { data: existing } = await supabase
     .from('empresas_fiscais')
-    .select('id')
+    .select('id, Code_regime_tributario')
     .eq('empresa_id', companyId)
     .eq('owner_user_id', user.id)
     .is('deleted_at', null)
     .maybeSingle();
 
   if (existing) {
+    // Regime é o único campo de empresas_fiscais que entra no payload da Focus.
+    const regimeMudou =
+      data.Code_regime_tributario != null &&
+      data.Code_regime_tributario !== (existing as { Code_regime_tributario?: string | null }).Code_regime_tributario;
     const { error } = await supabase
       .from('empresas_fiscais')
       .update({ ...data, updated_at: new Date().toISOString() })
       .eq('empresa_id', companyId)
       .eq('owner_user_id', user.id);
     if (error) return { ok: false, error: error.message };
+    // Drift à parte (best-effort) pra não acoplar o save à coluna 0019.
+    if (regimeMudou) await markFocusFieldsDirty(supabase, companyId);
   } else {
     const { data: company } = await supabase
       .from('companies')

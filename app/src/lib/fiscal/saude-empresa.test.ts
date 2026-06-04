@@ -28,9 +28,8 @@ const BASE: SaudeState = {
     habilitaNfsenHomologacao: null,
     syncEm: '2026-05-28T10:00:00Z',
   },
-  // Sem drift (updated_at ≤ syncEm) — happy path do BASE.
-  companiesUpdatedAt: '2026-05-28T09:00:00Z',
-  empresaFiscalUpdatedAt: '2026-05-28T09:30:00Z',
+  // Sem drift (dirty ≤ syncEm 10:00) — happy path do BASE.
+  focusFieldsDirtyAt: '2026-05-28T09:30:00Z',
 };
 
 describe('isInFutureISO', () => {
@@ -264,9 +263,9 @@ describe('buildSaudeGroups — 4 grupos com roll-up', () => {
     expect(focus.meta).toMatch(/Sincronizado em/);
   });
 
-  it('focus.meta: COM drift (updated_at > syncEm) → grupo vira pendente + meta de drift', () => {
+  it('focus.meta: COM drift (dirty > syncEm) → grupo vira pendente + meta de drift', () => {
     const groups = buildSaudeGroups(
-      { ...BASE, companiesUpdatedAt: '2026-05-28T11:30:00Z' /* > syncEm 10:00 */ },
+      { ...BASE, focusFieldsDirtyAt: '2026-05-28T11:30:00Z' /* > syncEm 10:00 */ },
       NOW,
     );
     const focus = groups.find((g) => g.key === 'focus')!;
@@ -275,18 +274,21 @@ describe('buildSaudeGroups — 4 grupos com roll-up', () => {
     expect(focus.meta).toMatch(/mudanças não sincronizadas/);
   });
 
-  it('focus.meta: jitter de ~3s do trigger updated_at NÃO conta como drift (cenário real do sync)', () => {
-    // Caso real visto na AL Piscinas em 28/05/2026:
-    //   focus_sync_em        = 21:56:09.020
-    //   companies.updated_at = 21:56:10.673 (+1.6s)
-    //   empresas_fiscais.updated_at = 21:56:11.527 (+2.5s)
-    // Sem margem >2s, drift fantasma. Com margem 60s, fica OK.
-    const groups = buildSaudeGroups({
-      ...BASE,
-      focusSnapshot: { ...BASE.focusSnapshot!, syncEm: '2026-05-28T21:56:09.020Z' },
-      companiesUpdatedAt: '2026-05-28T21:56:10.673Z',
-      empresaFiscalUpdatedAt: '2026-05-28T21:56:11.527Z',
-    }, new Date('2026-05-28T21:56:20Z'));
+  it('focus.meta: token SERPRO renovado (dirty null) NÃO conta como drift', () => {
+    // Regressão do bug da AL Piscinas: renovar o token SERPRO bumpava
+    // empresas_fiscais.updated_at (via trigger) e disparava falso drift. Agora o
+    // drift olha só focus_fields_dirty_at — escritas não-Focus não o tocam.
+    const groups = buildSaudeGroups({ ...BASE, focusFieldsDirtyAt: null }, NOW);
+    const focus = groups.find((g) => g.key === 'focus')!;
+    expect(focus.status).toBe('ok');
+    expect(focus.meta).toMatch(/Sincronizado em/);
+  });
+
+  it('focus.meta: dirty igual a syncEm (re-sincronizado) → sem drift', () => {
+    const groups = buildSaudeGroups(
+      { ...BASE, focusFieldsDirtyAt: BASE.focusSnapshot!.syncEm },
+      NOW,
+    );
     const focus = groups.find((g) => g.key === 'focus')!;
     expect(focus.status).toBe('ok');
     expect(focus.meta).toMatch(/Sincronizado em/);
@@ -299,16 +301,6 @@ describe('buildSaudeGroups — 4 grupos com roll-up', () => {
     );
     const focus = groups.find((g) => g.key === 'focus')!;
     expect(focus.meta).toBeUndefined();
-  });
-
-  it('focus.meta: drift por empresa_fiscal.updated_at também conta', () => {
-    const groups = buildSaudeGroups(
-      { ...BASE, empresaFiscalUpdatedAt: '2026-05-28T11:30:00Z' /* > syncEm */ },
-      NOW,
-    );
-    const focus = groups.find((g) => g.key === 'focus')!;
-    expect(focus.status).toBe('pendente');
-    expect(focus.meta).toMatch(/mudanças não sincronizadas/);
   });
 });
 

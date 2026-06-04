@@ -151,9 +151,8 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
             syncEm: focusSyncEm,
           }
         : null,
-      // Drift detection (Focus 2.1): compara updated_at locais vs focus_sync_em.
-      companiesUpdatedAt: (company.updated_at as string | null) ?? null,
-      empresaFiscalUpdatedAt: (empresaFiscal?.updated_at as string | null) ?? null,
+      // Drift detection (Focus 2.1): última edição de campo Focus vs focus_sync_em.
+      focusFieldsDirtyAt: (empresaFiscal?.focus_fields_dirty_at as string | null) ?? null,
     };
   }
 
