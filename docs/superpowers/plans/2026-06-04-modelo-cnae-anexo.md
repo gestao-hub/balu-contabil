@@ -8,6 +8,8 @@
 
 **Tech Stack:** Next.js (server actions), Supabase (Postgres + RLS), TypeScript, Vitest. Spec: `docs/superpowers/specs/2026-06-04-modelo-cnae-anexo-design.md`.
 
+> **Status (2026-06-04):** ✅ Executado na branch `feat/fundacao-cnae-anexo`; migration 0020 aplicada; AL Piscinas verificada (principal `4299501` → Anexo IV). **Desvio do plano:** Tasks 4 e 7 usavam `upsert`/`ON CONFLICT`, mas o índice único de `company_cnaes` é parcial (`WHERE deleted_at IS NULL`) e o Postgres rejeita `ON CONFLICT` contra índice parcial (`42P10`) — o sync passou a usar **full-replace** (delete + insert). Backfill em massa esbarra no rate-limit (403) da BrasilAPI; ver caveat de produção no doc de investigação.
+
 ---
 
 ## File Structure

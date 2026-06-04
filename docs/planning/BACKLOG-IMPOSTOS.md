@@ -16,6 +16,7 @@ Tiers: **P0** = correção/risco antes de emitir DAS de verdade · **P1** = esse
 | **0.1** | **Transmitir PGDAS-D antes de gerar DAS Simples** (`TRANSDECLARACAO11`, entrada/saída) | 🔧 | O DAS do Simples pressupõe a declaração transmitida no período. Hoje geramos o DAS pulando essa etapa → guia pode não bater / ser inválida. Scaffolding `transmitirDeclaracao` já existe em `serpro.ts` (morto). | M | proc. 00146 |
 | **0.2** | **Smoke do parser de DAS Simples contra DAS real em aberto** | 🔧 | `serpro-das-simples-parse.ts` foi modelado por inferência (espelha o MEI). Valor/vencimento podem vir errados em produção. | S | empresa Simples com DAS em aberto |
 | **0.3** | **Fator R: calcular e decidir anexo (III↔V)** | 🔧 | Sem Fator R, empresa de serviços pode cair no anexo errado → alíquota e valor do imposto errados. Coluna `apuracoes_fiscais.fator_r` existe e nunca é preenchida; só há a flag visual `fatorRAplicavel`. | M | folha/pró-labore na apuração |
+| | ↳ **Fundação feita (2026-06-04):** modelo CNAE→anexo (`cnae_anexo` + `company_cnaes`), apuração resolve anexo pelo CNAE principal. Falta o **cálculo de Fator R** (folha÷RBT12, III↔V) e a **segregação por anexo**. Ver `docs/investigations/FATOR-R-CNAE-SEGREGACAO.md`. | ✨ | — | — |
 | **0.4** | **`atividade_mei` → DAS-MEI com valor certo** | 🔧 | Falta coluna `empresas_fiscais.atividade_mei`; cálculo local sempre assume R$80,90 (serviços). Comércio/indústria/transporte saem errados. | S | migration nova |
 
 ## P1 — Essencial p/ fechar a V1

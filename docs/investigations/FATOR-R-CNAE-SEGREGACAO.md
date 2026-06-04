@@ -67,11 +67,19 @@ deixar estruturado** para multi-atividade/segregação.
 | Canal | Traz secundários? | Descrição do CNAE? | Observação |
 |---|---|---|---|
 | **Focus** `GET /v2/cnpjs/{cnpj}` (prod) — já integrado (`cnpj-lookup.ts`) | ❌ **NÃO** | ❌ (só código) | Resposta real só tem `cnae_principal` (código). **Confirmado** na AL Piscinas. |
-| **BrasilAPI** `GET /api/cnpj/v1/{cnpj}` (público, grátis) | ✅ **SIM** (`cnaes_secundarios[]`) | ✅ (código + descrição) | **Necessário** para secundários. Tem `cnae_fiscal` + `cnae_fiscal_descricao`. |
-| ReceitaWS / CNPJá | ✅ | ✅ | Alternativas. |
+| **BrasilAPI** `GET /api/cnpj/v1/{cnpj}` (público, grátis) | ✅ **SIM** (`cnaes_secundarios[]`) | ✅ (código + descrição) | **Necessário** para secundários. Tem `cnae_fiscal` + `cnae_fiscal_descricao`. ⚠️ Ver caveat de produção abaixo. |
+| ReceitaWS / CNPJá | ✅ | ✅ | Alternativas (CNPJá tem plano pago/API key). |
 
 → **Conclusão:** pra capturar a lista completa de CNAEs da empresa, a Focus **não basta** — usar
 **BrasilAPI** (ou equivalente). Hoje o `mapLookup` da Focus só extrai `cnae_principal`.
+
+> ⚠️ **BrasilAPI em produção:** é gratuita e **sem plano pago/SLA** — tem rate-limit anti-abuso
+> (devolve **403** em burst; confirmado em 2026-06-04 ao rodar o backfill). Por isso o desenho usa a
+> **Focus** como fonte do CNAE **principal** (confiável, já paga; é o que a apuração da fundação
+> precisa) e a BrasilAPI **só best-effort** pros secundários. Quando os secundários virarem crítico
+> (multi-atividade), avaliar provedor pago (**CNPJá**) ou checar se o **SERPRO Integra Contador**
+> (já integrado, mTLS) tem consulta cadastral/CNAEs oficial. Backfill em massa: throttle pesado ou
+> provedor pago.
 
 ### 3.2 Catálogo de CNAE (pesquisar/validar código ↔ descrição)
 
@@ -94,23 +102,44 @@ crescendo). É o **ativo que destrava o cálculo automático** de anexo/Fator R.
 
 ## 4. Estrutura proposta (incremental)
 
-1. **Catálogo de CNAE via Focus** — métodos no client (`consultarCnae`, `listarCnaes`) + wrapper.
-   Habilita busca/validação. *(menor passo — em andamento)*
-2. **Capturar CNAEs secundários** da empresa (via **BrasilAPI**) e persistir
-   (`companies`/`empresas_fiscais`, ex. coluna `jsonb`). É o dado-base de tudo.
-3. **Tabela de referência `cnae_anexo`** (código → anexo-base + `fator_r` bool + flag Anexo IV).
-   Curada, semeada com os CNAEs dos clientes.
-4. **Apuração aceitando receita segregada por anexo** (lista, não balde). Cliente pequeno tem 1
-   fatia hoje, mas o modelo comporta multi-atividade sem retrabalho. Fator R (folha ÷ RBT12) entra
-   decidindo III↔V das fatias sujeitas.
-5. **Fonte da folha** (para o Fator R): input manual (12m) enquanto não há módulo de folha.
+1. ✅ **Catálogo de CNAE via Focus** — `focus.consultarCnae/listarCnaes` + `lib/fiscal/cnae-catalog.ts`. **Feito.**
+2. ✅ **Capturar CNAEs (principal + secundários)** via BrasilAPI → tabela relacional `company_cnaes`.
+   **Feito** (decidimos **tabela relacional**, não jsonb). Best-effort com fallback pro principal da Focus.
+3. ✅ **Tabela de referência `cnae_anexo`** (código → `anexo_base` + `fator_r` + `anexo_iv`).
+   **Feito** (migration 0020, semeada com 7 CNAEs iniciais). Curadoria completa = passo futuro.
+4. ⏳ **Apuração SEGREGADA por anexo** (lista, não balde) — **futuro**. Hoje a apuração lê o anexo do
+   CNAE **principal** via `resolverAnexo` (1 fatia); o modelo de dados já comporta multi-atividade.
+5. ⏳ **Cálculo de Fator R** (folha ÷ RBT12, decisão III↔V) — **futuro**. Hoje só o flag `fator_r` é
+   guardado; CNAE Fator-R cai no anexo manual com aviso. **Fonte da folha:** input manual (12m).
+
+Ver `docs/superpowers/specs/2026-06-04-modelo-cnae-anexo-design.md` (spec) e
+`docs/superpowers/plans/2026-06-04-modelo-cnae-anexo.md` (plano executado).
 
 ---
 
-## 5. Decisões pendentes
+## 5. Decisões pendentes (para a fase de segregação/Fator R)
 
 - **Fonte da folha de 12 meses** para o Fator R (input manual? Fator R % direto?). Sem isso, o III↔V
   não calcula — no mínimo, **sinalizar** que o anexo é suposição (não tratar valor como final).
-- **Curadoria da `cnae_anexo`**: de onde semear a tabela inicial (lista da LC/CGSN, planilha
-  contábil de referência).
+- **Curadoria da `cnae_anexo`**: de onde semear a tabela completa (lista da LC/CGSN, planilha
+  contábil de referência). Hoje só 7 CNAEs semeados.
 - **Anexo IV** tem particularidade (INSS pago à parte, fora do DAS) — tratar quando entrar.
+- **Conflito CNAE×manual:** quando o CNAE mapeado e o `anexo_simples` manual divergem, hoje o CNAE
+  sobrescreve (ex.: AL Piscinas migrou III→IV, que é a classificação correta p/ construção). Avaliar
+  se vale **sinalizar o conflito** em vez de sobrescrever em silêncio.
+
+---
+
+## 6. Atualização — fundação implementada (2026-06-04)
+
+Branch `feat/fundacao-cnae-anexo`. Tabelas `cnae_anexo` + `company_cnaes` (migration 0020),
+`resolverAnexo` (puro), `brasilapi.ts`, `cnae-sync.ts` (`sincronizarCnaesEmpresa` + `resolverAnexoEmpresa`),
+wiring no `createCompanyAction` e na apuração. Não muda o cálculo; degrada p/ manual sem a migration.
+Verificado end-to-end na AL Piscinas (principal `4299501` → **Anexo IV** via `cnae_anexo`).
+
+**Gotchas descobertos:**
+- **Índice único PARCIAL ≠ ON CONFLICT.** `company_cnaes` tem unique `(company_id,codigo) WHERE
+  deleted_at IS NULL`; o Postgres rejeita `ON CONFLICT` contra índice parcial (erro `42P10`). O sync
+  usa **full-replace** (delete + insert), que também reflete remoções de CNAE.
+- **BrasilAPI 403 por rate-limit** (ver caveat na §3.1) — backfill em massa esbarra nisso; o fluxo
+  on-demand (1 consulta/empresa) é OK e cai na Focus pro principal.

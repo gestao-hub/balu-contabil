@@ -10,6 +10,7 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { CompanyCreateSchema, type CompanyInput } from '@/types/zod';
 import { syncEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
+import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
 
@@ -127,6 +128,14 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
   if (!sync.ok) {
     console.warn('[createCompany] Focus POST falhou:', sync.error);
   }
+
+  // Popula company_cnaes (principal + secundários) — best-effort, não derruba o cadastro.
+  await sincronizarCnaesEmpresa(supabase, {
+    companyId: row.id,
+    ownerUserId: user.id,
+    cnpj: companyFields.cnpj ?? '',
+    cnaePrincipalFallback: cnae_principal ?? null,
+  });
 
   revalidatePath('/');
   return { ok: true, id: row.id };
