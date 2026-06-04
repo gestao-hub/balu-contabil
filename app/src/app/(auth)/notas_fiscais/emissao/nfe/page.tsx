@@ -1,5 +1,6 @@
 // @custom — Emissão multi-tipo: página NF-e. Server Component: guard + carga de dados.
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 import { listarProdutosAction } from '../../actions';
 import NfeForm from './NfeForm';
@@ -54,7 +55,7 @@ function Bloqueio({ msg, href }: { msg: string; href?: string }) {
       <div className="rounded-lg border border-border bg-surface-2 p-6">
         <p className="text-sm text-foreground">{msg}</p>
         {href && <Link href={href} className="mt-3 inline-block text-sm text-primary">Resolver →</Link>}
-        <Link href="/notas_fiscais/emissao" className="mt-3 ml-4 inline-block text-sm text-muted-foreground">← Voltar</Link>
+        <Link href="/notas_fiscais/emissao" className="mt-3 ml-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition"><ArrowLeft className="size-4" />Voltar</Link>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 // @custom — Emissão multi-tipo: tela de escolha do tipo de nota.
 // Os 3 cards sempre visíveis; desabilitados conforme as flags focus_habilita_*.
 import Link from 'next/link';
-import { FileText, Package, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, FileText, Package, ShoppingCart } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 
 type Tipo = { key: 'nfse' | 'nfe' | 'nfce'; titulo: string; sub: string; href: string; icon: React.ReactNode; habilitado: boolean };
@@ -34,6 +34,11 @@ export default async function EmissaoEscolhaPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-6">
+      <Link href="/notas_fiscais"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition mb-4">
+        <ArrowLeft className="size-4" />
+        Voltar
+      </Link>
       <h1 className="text-xl font-semibold mb-1">Emitir nota fiscal</h1>
       <p className="text-sm text-muted-foreground mb-6">Escolha o tipo de documento.</p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
