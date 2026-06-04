@@ -1,6 +1,8 @@
 # Spec — Modelo CNAE + anexo (fundação multi-atividade)
 
 **Data:** 2026-06-04
+**Status:** ✅ Implementado (branch `feat/fundacao-cnae-anexo`; migration 0020 aplicada; verificado na
+AL Piscinas). Plano: `docs/superpowers/plans/2026-06-04-modelo-cnae-anexo.md`.
 **Origem:** P0.3 (Fator R) do `docs/planning/BACKLOG-IMPOSTOS.md`. Contexto e modelo fiscal em
 `docs/investigations/FATOR-R-CNAE-SEGREGACAO.md`.
 
@@ -84,9 +86,12 @@ vazio e a resolução cai no `anexo_simples` — exatamente o comportamento atua
 - Novo client `lib/clients/brasilapi.ts`: `consultarCnpj(cnpj)` → `{ cnae_principal: {codigo,descricao},
   cnaes_secundarios: [{codigo,descricao}] }`. Endpoint público `GET /api/cnpj/v1/{cnpj}`.
 - Server helper `sincronizarCnaesEmpresa(supabase, companyId, cnpj, ownerUserId)`: chama a BrasilAPI
-  best-effort e faz **upsert** em `company_cnaes` (principal + secundários, `fonte:'brasilapi'`).
+  best-effort e grava em `company_cnaes` (principal + secundários, `fonte:'brasilapi'`).
   Falha da BrasilAPI → grava só o principal já conhecido da empresa (`fonte:'focus'`).
   Idempotente; nunca lança (best-effort, loga em erro).
+  **Implementação:** usa **full-replace** (delete dos CNAEs da empresa + insert da lista), NÃO upsert
+  — o índice único de `company_cnaes` é parcial (`WHERE deleted_at IS NULL`) e o Postgres não aceita
+  `ON CONFLICT` contra índice parcial (`42P10`). Full-replace também reflete remoções de CNAE.
 - **Quando roda:** ao **criar/salvar a empresa** (server actions de cadastro/onboarding — onde a
   empresa já é persistida), chamando o helper. NÃO no lookup client-side (que só autofilla o form).
 - **Backfill** das empresas existentes: script Node best-effort (não migration SQL — precisa de
