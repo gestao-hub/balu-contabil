@@ -13,6 +13,8 @@ import { validateCertificadoUpload } from '@/lib/fiscal/certificado';
 import { parsePkcs12, type CertMaterial } from '@/lib/fiscal/pkcs12';
 import { encryptBlob } from '@/lib/crypto/envelope';
 import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
+import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
+import { camposOficiaisDaReceita } from '@/lib/fiscal/campos-empresa';
 
 type ActionResult = { ok: true; warning?: string } | { ok: false; error: string };
 
@@ -345,3 +347,60 @@ export async function syncFocusEmpresaAction(): Promise<{ ok: true } | { ok: fal
 
 /** @deprecated use syncFocusEmpresaAction. Mantido pra não quebrar callers durante a migração. */
 export const retryFocusEmpresaAction = syncFocusEmpresaAction;
+
+export type AtualizarReceitaResult =
+  | { ok: true; atualizados: Partial<CompanyInput> }
+  | { ok: false; error: string };
+
+/**
+ * Re-consulta a Receita (Focus /v2/cnpjs) e atualiza os campos oficiais da empresa
+ * (razão social + endereço). Mescla sobre os valores atuais e chama updateCompanyAction
+ * (que valida com CompanySchema completo e bumpa o drift → "Sincronizar com Focus").
+ */
+export async function atualizarDadosReceitaAction(id: string): Promise<AtualizarReceitaResult> {
+  if (!id) return { ok: false, error: 'ID da empresa ausente.' };
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const { data: company } = await supabase
+    .from('companies').select('*').eq('id', id).eq('user_id', user.id).maybeSingle();
+  if (!company) return { ok: false, error: 'Empresa não encontrada.' };
+
+  const cnpj = String(company.cnpj ?? '').replace(/\D+/g, '');
+  if (cnpj.length !== 14) return { ok: false, error: 'CNPJ inválido.' };
+
+  const r = await lookupCnpj(cnpj);
+  if (!r.ok) return { ok: false, error: r.error };
+
+  const patch = camposOficiaisDaReceita(r.data);
+  if (Object.keys(patch).length === 0) {
+    return { ok: false, error: 'A Receita não retornou dados para atualizar.' };
+  }
+
+  // updateCompanyAction valida com CompanySchema COMPLETO (endereço obrigatório), então mesclamos
+  // o patch oficial sobre os valores atuais e enviamos o objeto inteiro.
+  const atual: Partial<CompanyInput> = {
+    cnpj: company.cnpj as string,
+    razao_social: company.razao_social as string,
+    nome: (company.nome as string) ?? '',
+    inscricao_estadual: (company.inscricao_estadual as string) ?? '',
+    inscricao_municipal: (company.inscricao_municipal as string) ?? '',
+    codigo_municipio: (company.codigo_municipio as string) ?? '',
+    logradouro: (company.logradouro as string) ?? '',
+    numero: (company.numero as string) ?? '',
+    sem_numero: (company.sem_numero as boolean) ?? false,
+    complemento: (company.complemento as string) ?? '',
+    bairro: (company.bairro as string) ?? '',
+    municipio: (company.municipio as string) ?? '',
+    uf: (company.uf as string) ?? '',
+    cep: (company.cep as string) ?? '',
+    telefone: (company.telefone as string) ?? '',
+    email: (company.email as string) ?? '',
+  };
+  const res = await updateCompanyAction(id, { ...atual, ...patch });
+  if (!res.ok) return res;
+
+  return { ok: true, atualizados: patch };
+}
