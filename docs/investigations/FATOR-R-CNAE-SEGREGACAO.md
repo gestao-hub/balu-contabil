@@ -122,7 +122,8 @@ Ver `docs/superpowers/specs/2026-06-04-modelo-cnae-anexo-design.md` (spec) e
 - **Fonte da folha de 12 meses** para o Fator R (input manual? Fator R % direto?). Sem isso, o III↔V
   não calcula — no mínimo, **sinalizar** que o anexo é suposição (não tratar valor como final).
 - **Curadoria da `cnae_anexo`**: de onde semear a tabela completa (lista da LC/CGSN, planilha
-  contábil de referência). Hoje só 7 CNAEs semeados.
+  contábil de referência). Semeados: 6 do 0020 (construção/comércio) + **60 Fator R** no 0021
+  (saúde/TI/engenharia/representação, validados contra o catálogo Focus). Crescer conforme aparecem.
 - **Anexo IV** tem particularidade (INSS pago à parte, fora do DAS) — tratar quando entrar.
 - **Conflito CNAE×manual:** quando o CNAE mapeado e o `anexo_simples` manual divergem, hoje o CNAE
   sobrescreve (ex.: AL Piscinas migrou III→IV, que é a classificação correta p/ construção). Avaliar
