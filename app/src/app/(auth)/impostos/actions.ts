@@ -11,6 +11,7 @@ import { gerarDasSimples } from '@/lib/fiscal/serpro-das-simples';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
 import { lerReceitasParaApuracao } from '@/lib/fiscal/receitas-source';
 import { gerarDasMei } from '@/lib/fiscal/serpro-das-mei';
+import { resolverAnexoEmpresa } from '@/lib/fiscal/cnae-sync';
 
 export type GuiaActionResult = { ok: true } | { ok: false; error: string };
 
@@ -97,7 +98,8 @@ export async function iniciarApuracaoAction(
   if (!fiscal) return { ok: false, error: 'Empresa fiscal não configurada.' };
 
   const regimeCode = (fiscal.Code_regime_tributario ?? '') as string;
-  const anexo = (fiscal.anexo_simples ?? null) as AnexoSimples | null;
+  const resolvido = await resolverAnexoEmpresa(supabase, companyId, (fiscal.anexo_simples ?? null) as AnexoSimples | null);
+  const anexo = resolvido.anexo;
 
   let resultado: ResultadoApuracao;
   try {

@@ -1,6 +1,8 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { consultarCnpjBrasilApi } from '@/lib/clients/brasilapi';
+import { resolverAnexo, type AnexoResolvido, type CnaeAnexoRef } from '@/lib/fiscal/anexo-resolver';
+import type { AnexoSimples } from '@/lib/fiscal/regime';
 
 /**
  * Popula company_cnaes (principal + secundários) via BrasilAPI. Best-effort:
@@ -38,5 +40,33 @@ export async function sincronizarCnaesEmpresa(
     if (error) console.warn('[sincronizarCnaesEmpresa]', error.message);
   } catch (e) {
     console.warn('[sincronizarCnaesEmpresa] falhou:', e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Resolve o anexo da empresa (CNAE principal → cnae_anexo → fallback manual). Degrada p/ manual se tabelas ausentes. */
+export async function resolverAnexoEmpresa(
+  supabase: SupabaseClient,
+  companyId: string,
+  anexoManual: AnexoSimples | null,
+): Promise<AnexoResolvido> {
+  try {
+    const { data: cnae } = await supabase
+      .from('company_cnaes')
+      .select('codigo')
+      .eq('company_id', companyId).eq('tipo', 'principal').is('deleted_at', null)
+      .maybeSingle();
+    const cnaePrincipal = (cnae?.codigo as string | null) ?? null;
+    let ref: CnaeAnexoRef = null;
+    if (cnaePrincipal) {
+      const { data: a } = await supabase
+        .from('cnae_anexo')
+        .select('codigo, anexo_base, fator_r')
+        .eq('codigo', cnaePrincipal).maybeSingle();
+      ref = a ? { codigo: a.codigo as string, anexo_base: (a.anexo_base as AnexoSimples | null) ?? null, fator_r: a.fator_r === true } : null;
+    }
+    return resolverAnexo({ cnaePrincipal, cnaeAnexo: ref, anexoManual });
+  } catch (e) {
+    console.warn('[resolverAnexoEmpresa]', e instanceof Error ? e.message : String(e));
+    return { anexo: anexoManual, origem: 'manual', aviso: 'CNAE não mapeado — usando anexo informado.' };
   }
 }
