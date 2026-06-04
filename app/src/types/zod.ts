@@ -36,6 +36,7 @@ const companyObject = z.object({
   logradouro: z.string().trim().min(1, 'Logradouro (rua) é obrigatório.'),
   numero: z.string().optional(),
   sem_numero: z.boolean().optional(),
+  complemento: z.string().optional(),
   bairro: z.string().optional(),
   municipio: z.string().trim().min(1, 'Município (cidade) é obrigatório.'),
   uf: z.string().trim().length(2, 'UF (estado) é obrigatória.'),
