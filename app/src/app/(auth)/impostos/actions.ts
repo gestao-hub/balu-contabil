@@ -292,13 +292,27 @@ export async function gerarDasSimplesAction(competencia: string): Promise<GerarD
     return { ok: false, error: 'Geração de DAS por aqui cobre Simples (PGDAS-D); MEI usa o fluxo próprio.' };
   }
 
+  // P0.1 (paliativo) — não gerar DAS sem a PGDAS-D transmitida no período.
+  // No Simples a guia (DAS) nasce da declaração: emitir o boleto sem declaração
+  // transmitida pode gerar guia inválida e deixa a obrigação principal (PGDAS-D)
+  // em falta. Reusa o mesmo procurador (CONSDECLARACAO13, read-only) p/ checar.
+  const ano = Number(competencia.slice(0, 4));
+  const situacao = await consultarDeclaracoesSimples(supabase, companyId, ano);
+  if (!situacao.ok) return { ok: false, error: situacao.error };
+  const declarada = situacao.situacoes.find((s) => s.competencia === competencia)?.numeroDeclaracao;
+  if (!declarada) {
+    return {
+      ok: false,
+      error: 'A PGDAS-D desta competência ainda não foi transmitida na Receita Federal. Transmita a declaração (PGDAS-D) antes de gerar o DAS.',
+    };
+  }
+
   const r = await gerarDasSimples(supabase, companyId, competencia);
   if (!r.ok) return r;
   if (r.result.semValor) return { ok: true, semValor: true };
 
   const d = r.result;
   const mes = Number(competencia.slice(4, 6));
-  const ano = Number(competencia.slice(0, 4));
   const { error } = await supabase
     .from('guias_fiscais')
     .upsert(
