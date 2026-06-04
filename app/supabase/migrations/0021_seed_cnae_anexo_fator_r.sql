@@ -8,7 +8,6 @@ INSERT INTO public.cnae_anexo (codigo, anexo_base, fator_r, anexo_iv, descricao)
   ('3250706', NULL, true, false, 'Serviços de prótese dentária'),
   ('3250709', NULL, true, false, 'Serviço de laboratório óptico'),
   ('4512901', NULL, true, false, 'Representantes comerciais e agentes do comércio de veículos automotores'),
-  ('4541201', NULL, true, false, 'Comércio por atacado de motocicletas e motonetas'),
   ('4611700', NULL, true, false, 'Representantes comerciais e agentes do comércio de matérias-primas agrícolas e animais vivos'),
   ('4612500', NULL, true, false, 'Representantes comerciais e agentes do comércio de combustíveis, minerais, produtos siderúrgicos e químicos'),
   ('4613300', NULL, true, false, 'Representantes comerciais e agentes do comércio de madeira, material de construção e ferragens'),
@@ -65,4 +64,10 @@ INSERT INTO public.cnae_anexo (codigo, anexo_base, fator_r, anexo_iv, descricao)
   ('8650006', NULL, true, false, 'Atividades de fonoaudiologia'),
   ('8650007', NULL, true, false, 'Atividades de terapia de nutrição enteral e parenteral'),
   ('8650099', NULL, true, false, 'Atividades de profissionais da área de saúde não especificadas anteriormente')
+ON CONFLICT (codigo) DO NOTHING;
+
+-- 4541-2/01 veio na lista como "representante de motocicletas", mas o código oficial é
+-- comércio por atacado → Anexo I, sem Fator R.
+INSERT INTO public.cnae_anexo (codigo, anexo_base, fator_r, anexo_iv, descricao) VALUES
+  ('4541201', 'Anexo I', false, false, 'Comércio por atacado de motocicletas e motonetas')
 ON CONFLICT (codigo) DO NOTHING;
