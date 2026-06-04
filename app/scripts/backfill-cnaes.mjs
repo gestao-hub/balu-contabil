@@ -26,7 +26,9 @@ for (const c of companies) {
     if (cod) rows.push({ company_id: c.id, owner_user_id: c.user_id, codigo: cod, descricao: descStr(s.descricao), tipo: 'secundario', fonte: 'brasilapi', deleted_at: null });
   }
   if (rows.length === 0) { skip++; continue; }
-  const up = await fetch(`${url}/rest/v1/company_cnaes?on_conflict=company_id,codigo`, { method: 'POST', headers: { ...H, Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify(rows) });
+  // Full-replace (índice único parcial não serve p/ ON CONFLICT): apaga + reinsere.
+  await fetch(`${url}/rest/v1/company_cnaes?company_id=eq.${c.id}`, { method: 'DELETE', headers: H });
+  const up = await fetch(`${url}/rest/v1/company_cnaes`, { method: 'POST', headers: H, body: JSON.stringify(rows) });
   if (up.ok) ok++; else { console.warn('falhou', c.id, await up.text()); skip++; }
   await new Promise((r) => setTimeout(r, 300)); // rate-limit gentil com a BrasilAPI
 }

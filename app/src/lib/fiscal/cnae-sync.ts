@@ -34,9 +34,11 @@ export async function sincronizarCnaesEmpresa(
     }
 
     if (rows.length === 0) return;
-    const { error } = await supabase
-      .from('company_cnaes')
-      .upsert(rows, { onConflict: 'company_id,codigo' });
+    // Full-replace: o índice único de company_cnaes é PARCIAL (WHERE deleted_at IS NULL),
+    // e o Postgres não aceita ON CONFLICT contra índice parcial (42P10). Então apagamos os
+    // CNAEs atuais da empresa e reinserimos a lista — também reflete remoções na Receita.
+    await supabase.from('company_cnaes').delete().eq('company_id', companyId);
+    const { error } = await supabase.from('company_cnaes').insert(rows);
     if (error) console.warn('[sincronizarCnaesEmpresa]', error.message);
   } catch (e) {
     console.warn('[sincronizarCnaesEmpresa] falhou:', e instanceof Error ? e.message : String(e));
