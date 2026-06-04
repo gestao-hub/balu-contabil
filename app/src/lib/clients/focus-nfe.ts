@@ -149,9 +149,26 @@ export type FocusEmpresaSnapshot = {
 };
 
 export const focus = {
-  /** GET /v2/cnpjs/:cnpj — consulta dados de empresa */
+  /** GET /v2/cnpjs/:cnpj — consulta dados de empresa (só cnae_principal; sem secundários) */
   consultarCnpj: (cnpj: string, env: FocusEnv = 'prod') =>
     call<Record<string, unknown>>(env, 'GET', `/v2/cnpjs/${cnpj}`),
+
+  /** GET /v2/codigos_cnae/:codigo — consulta um CNAE no catálogo (código, descrição, hierarquia). */
+  consultarCnae: (codigo: string, env: FocusEnv = 'prod') =>
+    call<Record<string, unknown>>(env, 'GET', `/v2/codigos_cnae/${codigo}`),
+
+  /**
+   * GET /v2/codigos_cnae?... — busca/lista CNAEs no catálogo (paginado, até 50/req).
+   * Filtros: codigo, descricao, secao, divisao, grupo, classe, subclasse, offset.
+   */
+  listarCnaes: (filtros: Record<string, string | number> = {}, env: FocusEnv = 'prod') => {
+    const qs = new URLSearchParams(
+      Object.entries(filtros)
+        .filter(([, v]) => v != null && v !== '')
+        .map(([k, v]) => [k, String(v)]),
+    ).toString();
+    return call<Array<Record<string, unknown>>>(env, 'GET', `/v2/codigos_cnae${qs ? `?${qs}` : ''}`);
+  },
 
   /**
    * POST /v2/empresas — cadastra empresa na API de **revenda** da Focus. Retorna
