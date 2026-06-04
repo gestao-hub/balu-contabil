@@ -1,5 +1,6 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { consultarCnpjBrasilApi } from '@/lib/clients/brasilapi';
 import { resolverAnexo, type AnexoResolvido, type CnaeAnexoRef } from '@/lib/fiscal/anexo-resolver';
 import type { AnexoSimples } from '@/lib/fiscal/regime';
@@ -40,8 +41,62 @@ export async function sincronizarCnaesEmpresa(
     await supabase.from('company_cnaes').delete().eq('company_id', companyId);
     const { error } = await supabase.from('company_cnaes').insert(rows);
     if (error) console.warn('[sincronizarCnaesEmpresa]', error.message);
+
+    // Auto-stub: registra no catálogo cnae_anexo os CNAEs ainda não mapeados,
+    // como "a curar" — vira a fila de curadoria a partir do uso real.
+    await registrarStubsCnaeAnexo(rows.map((r) => ({ codigo: r.codigo as string, descricao: (r.descricao as string | null) ?? null })));
   } catch (e) {
     console.warn('[sincronizarCnaesEmpresa] falhou:', e instanceof Error ? e.message : String(e));
+  }
+}
+
+export type CnaeAnexoStub = {
+  codigo: string;
+  descricao: string | null;
+  anexo_base: null;
+  fator_r: false;
+  anexo_iv: false;
+  observacao: string;
+};
+
+/**
+ * Monta linhas-stub p/ `cnae_anexo`: os CNAEs `cnaes` que ainda NÃO estão em `existentes`,
+ * deduplicados e normalizados (só dígitos), pra entrar como "a curar" (sem classificação).
+ * Pura — testável sem rede.
+ */
+export function montarStubsCnaeAnexo(
+  cnaes: Array<{ codigo: string; descricao?: string | null }>,
+  existentes: Set<string>,
+): CnaeAnexoStub[] {
+  const vistos = new Set<string>();
+  const out: CnaeAnexoStub[] = [];
+  for (const c of cnaes) {
+    const codigo = String(c.codigo ?? '').replace(/\D+/g, '');
+    if (!codigo || existentes.has(codigo) || vistos.has(codigo)) continue;
+    vistos.add(codigo);
+    out.push({ codigo, descricao: c.descricao ?? null, anexo_base: null, fator_r: false, anexo_iv: false, observacao: 'auto-stub — curar' });
+  }
+  return out;
+}
+
+/**
+ * Insere stubs em `cnae_anexo` p/ os CNAEs ainda não catalogados. Best-effort; nunca lança.
+ * Usa admin client (cnae_anexo não tem policy de escrita p/ `authenticated`). `ignoreDuplicates`
+ * garante que NUNCA sobrescreve uma classificação já curada.
+ */
+async function registrarStubsCnaeAnexo(cnaes: Array<{ codigo: string; descricao: string | null }>): Promise<void> {
+  try {
+    const codigos = [...new Set(cnaes.map((c) => String(c.codigo).replace(/\D+/g, '')).filter(Boolean))];
+    if (codigos.length === 0) return;
+    const admin = createAdminClient();
+    const { data: existRows } = await admin.from('cnae_anexo').select('codigo').in('codigo', codigos);
+    const existentes = new Set((existRows ?? []).map((r) => r.codigo as string));
+    const stubs = montarStubsCnaeAnexo(cnaes, existentes);
+    if (stubs.length === 0) return;
+    const { error } = await admin.from('cnae_anexo').upsert(stubs, { onConflict: 'codigo', ignoreDuplicates: true });
+    if (error) console.warn('[registrarStubsCnaeAnexo]', error.message);
+  } catch (e) {
+    console.warn('[registrarStubsCnaeAnexo] falhou:', e instanceof Error ? e.message : String(e));
   }
 }
 
