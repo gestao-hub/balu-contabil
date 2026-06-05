@@ -115,18 +115,50 @@ Rota: `POST /integra-contador/v1/Declarar` (produção, mTLS + token procurador)
 | `estabelecimentos[].atividades[].valorAtividade` | a **receita segregada por anexo** que construímos |
 | `valoresParaComparacao[]` | os tributos da apuração (precisa abrir o `valorImposto` por tributo) |
 
-## ⚠️ A peça que falta: catálogo `idAtividade`
+## Catálogo `idAtividade` (RESOLVIDO — fonte: dados_de_domínio)
 
-A SERPRO segmenta por **`idAtividade`** (código de atividade do PGDAS-D — NÃO é CNAE nem o "Anexo X"
-direto). Ex.: `1` e `10` no exemplo. Precisamos do **catálogo idAtividade → anexo** (lista fixa da
-Receita: "Revenda de mercadorias — Anexo I", "Prestação de serviços — Anexo III", etc.). É curadoria,
-no mesmo espírito do `cnae_anexo`. Sem isso, mapeamos receita→atividade no chute.
-- Caminho: manual do PGDAS-D (Receita) ou o `idAtividade` que volta no `CONSDECLARACAO13`/extrato.
-- MVP possível: empresa de atividade única → 1 atividade; refinar multi-atividade depois.
+A SERPRO segmenta por **`idAtividade`** (código de atividade do PGDAS-D, 43 valores). **Não é só o
+anexo** — codifica anexo **+** substituição tributária (ST) **+** retenção de ISS **+** município do
+ISS (próprio × outro) **+** exterior **+** sujeição ao Fator R. Tabela completa no SDK espelho:
+`github.com/MarlonSantosDev/serpro_integra_contador_api` → `bk.cursor/rules/pgdasd/pgdasd_dados_de_dominio.md`.
 
-Outros tributos detalhados (`valoresParaComparacao`): hoje a apuração só dá `valorImposto` agregado;
-abrir por tributo exige a repartição do Simples (percentuais por anexo/faixa) — ou deixar
-`indicadorComparacao=false` e confiar no cálculo da SERPRO (o dry-run já devolve os valores).
+**Mapa idAtividade → anexo (casos principais):**
+| Anexo | idAtividade (caso comum: município próprio, sem ST, sem retenção) | Variações |
+|---|---|---|
+| **I** (revenda/comércio) | **1** (sem ST) | 2 (com ST), 3 (exterior) |
+| **II** (indústria) | **4** (sem ST) | 5 (com ST), 6 (exterior) |
+| **III** locação bens móveis | **7** | 8 (exterior) |
+| **III↔V** serviço sujeito a Fator R | **11** (ISS próprio) | 10 (outro muni), 12 (c/ retenção), 29 (exterior) |
+| **III** serviço não-Fator-R | **14** (ISS próprio) | 13 (outro muni), 15 (c/ retenção), 30 (exterior) |
+| **III** construção civil 7.02/7.05 | **20** | 19 (outro muni), 21 (retenção), 32 (exterior) |
+| **IV** serviço | **17** | 16 (outro muni), 18 (retenção), 31 (exterior) |
+| **IV** construção civil 7.02/7.05 | **23** | 22 (outro muni), 24 (retenção), 33 (exterior) |
+| escritório contábil (ISS fixo) | 9 | 28 (exterior) |
+| transporte coletivo municipal (III) | 26 | 25, 27 |
+| transporte/comunicação interest. (ICMS) | 34–39 | — |
+| IPI + ISS simultâneo | 40–43 | — |
+
+> 🔑 **Fator R é a SERPRO que decide**: para serviço sujeito a Fator R usamos `idAtividade` 10/11/12 e
+> mandamos `folhasSalario` — a SERPRO calcula folha÷RBT12 e aplica **Anexo III ou V sozinha**. Não
+> precisamos cravar III/V na declaração (a nossa decisão local do P0.3 continua valendo só pra
+> estimativa/exibição).
+
+**Onde mora a curadoria:** o `idAtividade` comum de cada empresa é função do CNAE — proposta:
+adicionar `id_atividade_pgdas` ao catálogo `cnae_anexo` (default do caso comum por CNAE). As variações
+por nota (retenção de ISS, outro município, ST) são per-nota e ficam pra refinamento; o MVP usa o
+default por CNAE.
+
+### Outros domínios
+- **`tipoDeclaracao`**: `1`=Original, `2`=Retificadora.
+- **`codigoTributo`** (já no doc): +`1008`=IPI.
+- **Tipo de isenção** (campo `isencoes[].identificador`): 1=Imunidade, 3=Lançamento de Ofício,
+  8=Substituição Tributária, 9=Monofásica, 10=Antecipação c/ encerramento, 11=Retenção de ISS.
+- **Tipo de redução** (`reducoes[].identificador`): 1=Normal, 2=Cesta básica.
+
+**`valoresParaComparacao`** (tributos detalhados): hoje a apuração só dá `valorImposto` agregado; abrir
+por tributo exigiria a repartição do Simples. **Decisão p/ o MVP:** `indicadorComparacao=false` — a
+SERPRO calcula e devolve os tributos (o dry-run já mostra os valores). A comparação fica como reforço
+opcional num passo futuro.
 
 ## Estratégia escalonada (confirmada pela API)
 1. **Builder + dry-run (`indicadorTransmissao=false`, `indicadorComparacao=false`):** monta o `dados`
