@@ -2,6 +2,11 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { consultarCnpjBrasilApi } from '@/lib/clients/brasilapi';
+import { calcularRbt12 } from '@/lib/fiscal/rbt12';
+import { somarFolha12 } from '@/lib/fiscal/folha';
+import { calcularFatorR, type FatorRResult } from '@/lib/fiscal/fator-r';
+import { lerFolhaParaApuracao } from '@/lib/fiscal/folha-source';
+import { lerReceitasParaApuracao } from '@/lib/fiscal/receitas-source';
 import { resolverAnexo, type AnexoResolvido, type CnaeAnexoRef } from '@/lib/fiscal/anexo-resolver';
 import type { AnexoSimples } from '@/lib/fiscal/regime';
 
@@ -105,6 +110,7 @@ export async function resolverAnexoEmpresa(
   supabase: SupabaseClient,
   companyId: string,
   anexoManual: AnexoSimples | null,
+  competencia?: string,
 ): Promise<AnexoResolvido> {
   try {
     const { data: cnae } = await supabase
@@ -121,7 +127,20 @@ export async function resolverAnexoEmpresa(
         .eq('codigo', cnaePrincipal).maybeSingle();
       ref = a ? { codigo: a.codigo as string, anexo_base: (a.anexo_base as AnexoSimples | null) ?? null, fator_r: a.fator_r === true } : null;
     }
-    return resolverAnexo({ cnaePrincipal, cnaeAnexo: ref, anexoManual });
+
+    // Só calcula o Fator R quando o CNAE depende dele E a competência foi informada.
+    let fatorR: FatorRResult | null = null;
+    if (ref?.fator_r && competencia) {
+      const [folhas, receitas] = await Promise.all([
+        lerFolhaParaApuracao(supabase, companyId, competencia),
+        lerReceitasParaApuracao(supabase, companyId, competencia),
+      ]);
+      const { folha12m } = somarFolha12(folhas, competencia);
+      const { rbt12 } = calcularRbt12(receitas, competencia);
+      fatorR = calcularFatorR({ folha12m, rbt12 });
+    }
+
+    return resolverAnexo({ cnaePrincipal, cnaeAnexo: ref, anexoManual, fatorR });
   } catch (e) {
     console.warn('[resolverAnexoEmpresa]', e instanceof Error ? e.message : String(e));
     return { anexo: anexoManual, origem: 'manual', aviso: 'CNAE não mapeado — usando anexo informado.' };
