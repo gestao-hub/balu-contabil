@@ -26,6 +26,11 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMe
 
   const badge = guia ? statusGuiaBadge(guia.status) : null;
 
+  const payload = (apuracao?.payload_calculo ?? null) as
+    | { segregado?: boolean; porAnexo?: Array<{ anexo: string; receita: number; aliquotaEfetiva: number; valor: number }> }
+    | null;
+  const porAnexo = payload?.segregado && Array.isArray(payload.porAnexo) ? payload.porAnexo : null;
+
   return (
     <div className="rounded-xl border border-border bg-surface p-6">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
@@ -69,6 +74,22 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMe
               <Linha label="Número">{guia.numero}</Linha>
             )}
           </dl>
+
+          {porAnexo && (
+            <div className="mt-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Por anexo</p>
+              <div className="rounded-md border border-border divide-y divide-border text-sm">
+                {porAnexo.map((p) => (
+                  <div key={p.anexo} className="flex items-center justify-between px-3 py-2">
+                    <span className="text-muted-foreground-2">{p.anexo}</span>
+                    <span className="tabular-nums">
+                      {brl(p.receita)} · {(p.aliquotaEfetiva * 100).toFixed(2)}% · <strong className="text-foreground">{brl(p.valor)}</strong>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="sm:w-56 flex flex-col gap-2 shrink-0">

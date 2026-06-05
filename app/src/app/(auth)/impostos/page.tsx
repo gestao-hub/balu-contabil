@@ -22,6 +22,7 @@ export type ApuracaoRow = {
   receita_mes: number | null;
   valor_imposto: number | null;
   status: string | null;
+  payload_calculo: Record<string, unknown> | null;
 };
 
 export default async function ImpostosPage() {
@@ -52,7 +53,7 @@ export default async function ImpostosPage() {
       .select('Code_regime_tributario, anexo_simples')
       .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle(),
     supabase.from('apuracoes_fiscais')
-      .select('id, competencia_referencia, anexo_simples, aliquota_efetiva, rbt12, receita_mes, valor_imposto, status')
+      .select('id, competencia_referencia, anexo_simples, aliquota_efetiva, rbt12, receita_mes, valor_imposto, status, payload_calculo')
       .eq('company_id', companyId)
       .is('deleted_at', null)
       .order('competencia_referencia', { ascending: false })
@@ -179,6 +180,7 @@ function toApuracaoRow(a: Record<string, unknown>): ApuracaoRow {
     receita_mes: numero(a.receita_mes),
     valor_imposto: numero(a.valor_imposto),
     status: (a.status as string | null) ?? null,
+    payload_calculo: (a.payload_calculo as Record<string, unknown> | null) ?? null,
   };
 }
 
