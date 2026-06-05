@@ -10,6 +10,7 @@ import type { GuiaRow } from './HistoricoGuias';
 import GuiaActions from './GuiaActions';
 import GerarDasButton from './GerarDasButton';
 import GerarDasSimplesButton from './GerarDasSimplesButton';
+import PreviewDeclaracaoButton from './PreviewDeclaracaoButton';
 
 type Props = {
   apuracao: ApuracaoRow | null;
@@ -90,6 +91,8 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMe
               </div>
             </div>
           )}
+
+          {isSimples && <PreviewDeclaracaoButton competencia={competencia} />}
         </div>
 
         <div className="sm:w-56 flex flex-col gap-2 shrink-0">

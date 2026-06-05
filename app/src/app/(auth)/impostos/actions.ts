@@ -13,6 +13,8 @@ import { lerReceitasParaApuracao } from '@/lib/fiscal/receitas-source';
 import { gerarDasMei } from '@/lib/fiscal/serpro-das-mei';
 import { resolverAnexoEmpresa } from '@/lib/fiscal/cnae-sync';
 import { anexarAnexosDasReceitas } from '@/lib/fiscal/segregacao';
+import { transmitirPgdasd } from '@/lib/fiscal/serpro-pgdasd';
+import type { DeclaracaoPgdasdResult } from '@/lib/fiscal/serpro-pgdasd-parse';
 
 export type GuiaActionResult = { ok: true } | { ok: false; error: string };
 
@@ -417,4 +419,28 @@ export async function salvarFolhaAction(rows: FolhaInput[]): Promise<SalvarFolha
   revalidatePath('/impostos/folha');
   revalidatePath('/impostos');
   return { ok: true };
+}
+
+export type PreviewDeclaracaoResult =
+  | { ok: true; result: DeclaracaoPgdasdResult }
+  | { ok: false; error: string };
+
+/** Dry-run da PGDAS-D (indicadorTransmissao=false): a SERPRO calcula SEM transmitir. */
+export async function previewDeclaracaoAction(competencia: string): Promise<PreviewDeclaracaoResult> {
+  if (!/^\d{6}$/.test(competencia)) return { ok: false, error: 'Competência inválida (YYYYMM).' };
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Não autenticado.' };
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+  const { data: fiscal } = await supabase
+    .from('empresas_fiscais').select('Code_regime_tributario')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+  if (!fiscal) return { ok: false, error: 'Empresa fiscal não configurada.' };
+  if (tipoFromCode((fiscal.Code_regime_tributario ?? '') as string) !== 'simples') {
+    return { ok: false, error: 'A declaração PGDAS-D cobre Simples; MEI usa a DASN-SIMEI.' };
+  }
+  return transmitirPgdasd(supabase, companyId, competencia, { indicadorTransmissao: false });
 }
