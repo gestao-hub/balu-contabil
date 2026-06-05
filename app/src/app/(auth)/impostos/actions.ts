@@ -283,7 +283,7 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
   }
 
   revalidatePath('/impostos');
-  return { ok: true, count: rows.length };
+  return { ok: true, count: r.situacoes.length };
 }
 
 export type GerarDasSimplesResult =
