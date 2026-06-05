@@ -12,6 +12,7 @@ import { tipoFromCode } from '@/lib/fiscal/regime';
 import CompetenciaAtualCard from './CompetenciaAtualCard';
 import HistoricoGuias, { type GuiaRow } from './HistoricoGuias';
 import ConsultarSerproButton from './ConsultarSerproButton';
+import DeclaracoesSection, { type DeclaracaoRow } from './DeclaracoesSection';
 
 export type ApuracaoRow = {
   id: string;
@@ -47,7 +48,7 @@ export default async function ImpostosPage() {
 
   const competenciaAtual = competenciaReferenciaBrt(new Date());
 
-  const [{ data: company }, { data: fiscal }, { data: apuracoes }, { data: guias }] = await Promise.all([
+  const [{ data: company }, { data: fiscal }, { data: apuracoes }, { data: guias }, { data: declaracoes }] = await Promise.all([
     supabase.from('companies').select('razao_social, nome').eq('id', companyId).single(),
     supabase.from('empresas_fiscais')
       .select('Code_regime_tributario, anexo_simples')
@@ -69,6 +70,11 @@ export default async function ImpostosPage() {
       .is('deleted_at', null)
       .order('competencia_referencia', { ascending: false })
       .limit(24),
+    supabase.from('declaracoes_fiscais')
+      .select('id, competencia_referencia, tipo, numero_declaracao, data_transmissao, status')
+      .eq('company_id', companyId)
+      .order('competencia_referencia', { ascending: false })
+      .limit(24),
   ]);
 
   const apuracaoAtual = (apuracoes ?? []).find((a) => a.competencia_referencia === competenciaAtual) ?? null;
@@ -76,6 +82,15 @@ export default async function ImpostosPage() {
   const historico: GuiaRow[] = (guias ?? [])
     .filter((g) => g.competencia_referencia !== competenciaAtual)
     .map(toGuiaRow);
+
+  const declaracoesRows: DeclaracaoRow[] = (declaracoes ?? []).map((d) => ({
+    id: d.id as string,
+    competencia: (d.competencia_referencia as string) ?? '',
+    tipo: (d.tipo as string) ?? 'PGDAS-D',
+    numeroDeclaracao: (d.numero_declaracao as string | null) ?? null,
+    dataTransmissao: (d.data_transmissao as string | null) ?? null,
+    status: (d.status as string | null) ?? null,
+  }));
 
   const empresaNome = (company?.nome as string) ?? (company?.razao_social as string) ?? '—';
   const isMei = (fiscal?.Code_regime_tributario ?? null) === '4';
@@ -110,6 +125,21 @@ export default async function ImpostosPage() {
               isSimples={isSimples}
             />
           </section>
+
+          {isSimples && (
+            <section className="mb-8">
+              <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações (PGDAS-D)</h2>
+              <DeclaracoesSection declaracoes={declaracoesRows} />
+            </section>
+          )}
+          {isMei && (
+            <section className="mb-8">
+              <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações</h2>
+              <p className="text-sm text-muted-foreground rounded-md border border-border bg-surface px-4 py-3">
+                DASN-SIMEI (declaração anual do MEI) em breve.
+              </p>
+            </section>
+          )}
 
           <section>
             <div className="mb-3 flex items-center justify-between gap-3">
