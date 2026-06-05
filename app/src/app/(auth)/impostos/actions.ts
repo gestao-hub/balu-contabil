@@ -98,7 +98,7 @@ export async function iniciarApuracaoAction(
   if (!fiscal) return { ok: false, error: 'Empresa fiscal não configurada.' };
 
   const regimeCode = (fiscal.Code_regime_tributario ?? '') as string;
-  const resolvido = await resolverAnexoEmpresa(supabase, companyId, (fiscal.anexo_simples ?? null) as AnexoSimples | null);
+  const resolvido = await resolverAnexoEmpresa(supabase, companyId, (fiscal.anexo_simples ?? null) as AnexoSimples | null, competencia);
   const anexo = resolvido.anexo;
 
   let resultado: ResultadoApuracao;
@@ -128,6 +128,7 @@ export async function iniciarApuracaoAction(
       anexo_simples: anexo,
       receita_mes: resultado.receitaMes,
       rbt12: resultado.rbt12,
+      fator_r: resolvido.fatorR ?? null,
       aliquota_efetiva: resultado.aliquotaEfetiva,
       valor_imposto: resultado.valorImposto,
       status: 'calculada',
@@ -344,4 +345,53 @@ export async function gerarDasSimplesAction(competencia: string): Promise<GerarD
 
   revalidatePath('/impostos');
   return { ok: true, semValor: false };
+}
+
+export type SalvarFolhaResult = { ok: true } | { ok: false; error: string };
+
+export type FolhaInput = {
+  competencia: string; // YYYYMM
+  proLabore: number;
+  salarios: number;
+  encargos: number;
+};
+
+/**
+ * Upsert da folha mensal (lote) da empresa ativa. Usado pela tela /impostos/folha.
+ * UNIQUE(company_id, competencia) → onConflict direto (sem soft-delete).
+ */
+export async function salvarFolhaAction(rows: FolhaInput[]): Promise<SalvarFolhaResult> {
+  if (!Array.isArray(rows) || rows.length === 0) return { ok: true };
+  for (const r of rows) {
+    if (!/^\d{6}$/.test(r.competencia)) return { ok: false, error: `Competência inválida: ${r.competencia}.` };
+  }
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Não autenticado.' };
+
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+
+  const now = new Date().toISOString();
+  const payload = rows.map((r) => ({
+    company_id: companyId,
+    owner_user_id: user.id,
+    competencia: r.competencia,
+    pro_labore: Number.isFinite(r.proLabore) ? r.proLabore : 0,
+    salarios: Number.isFinite(r.salarios) ? r.salarios : 0,
+    encargos: Number.isFinite(r.encargos) ? r.encargos : 0,
+    updated_at: now,
+  }));
+
+  const { error } = await supabase
+    .from('folha_mensal')
+    .upsert(payload, { onConflict: 'company_id,competencia' });
+  if (error) return { ok: false, error: `Falha ao salvar a folha: ${error.message}` };
+
+  revalidatePath('/impostos/folha');
+  revalidatePath('/impostos');
+  return { ok: true };
 }
