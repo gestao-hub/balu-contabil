@@ -234,6 +234,15 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
   const valorReaisRound = Math.round(input.valorReais * 100) / 100;
   const dataEmissao = new Date().toISOString();
 
+  // CNAE da nota: usa o informado; se vier vazio e a empresa tem exatamente 1 CNAE,
+  // usa esse (espelha no servidor o select travado da UI p/ atividade única).
+  let cnaeNota = input.cnae ? String(input.cnae).replace(/\D+/g, '') || null : null;
+  if (!cnaeNota) {
+    const { data: ccs } = await supabase
+      .from('company_cnaes').select('codigo').eq('company_id', companyId).is('deleted_at', null);
+    if (ccs && ccs.length === 1) cnaeNota = String(ccs[0]!.codigo).replace(/\D+/g, '') || null;
+  }
+
   const { data: nota, error: insertErr } = await supabase
     .from('notas_fiscais')
     .insert({
@@ -245,7 +254,7 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
       valor_total: valorReaisRound,
       payload_focusnfe: payload as unknown as Record<string, unknown>,
       cliente_id: cliente.id,
-      cnae: input.cnae ? String(input.cnae).replace(/\D+/g, '') || null : null,
+      cnae: cnaeNota,
     })
     .select('id')
     .single();

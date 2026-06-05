@@ -5,6 +5,7 @@ import type { ReceitaApuracao, PreviewImposto } from './apuracao-types';
 import { calcularApuracao } from './apuracao';
 import { lerReceitasParaApuracao } from './receitas-source';
 import { anexarAnexosDasReceitas } from './segregacao';
+import { resolverAnexoEmpresa } from './cnae-sync';
 import { competenciaReferenciaBrt } from './guia';
 
 // Mapeia o resultado da apuração para a prévia. Puro (sem Supabase) → testável.
@@ -50,7 +51,11 @@ export async function obterPreviewImposto(
 
   const competencia = competenciaReferenciaBrt();
   const receitas = await lerReceitasParaApuracao(supabase, companyId, competencia);
-  const fallbackAnexo = (fiscal.anexo_simples as AnexoSimples | null) ?? null;
+  // Mesmo fallback da apuração: resolve o anexo via CNAE/Fator R (não o anexo_simples cru).
+  const resolvido = await resolverAnexoEmpresa(
+    supabase, companyId, (fiscal.anexo_simples as AnexoSimples | null) ?? null, competencia,
+  );
+  const fallbackAnexo = resolvido.anexo;
   const receitasAnexadas = await anexarAnexosDasReceitas(supabase, companyId, competencia, receitas, fallbackAnexo);
   return montarPreview({
     regimeCode: fiscal.Code_regime_tributario as string,

@@ -82,7 +82,8 @@ export function calcularApuracao(input: {
       valorImposto,
       breakdown: {
         tipo: 'Simples Nacional', anexo, rbt12, mesesConsiderados, anualizado,
-        faixa: faixaFallback.faixa, aliquotaNominal: faixaFallback.nominal, parcelaDeduzir: faixaFallback.deduzir,
+        // faixa/nominal/dedução só fazem sentido com 1 anexo; segregado → ver porAnexo.
+        ...(segregado ? {} : { faixa: faixaFallback.faixa, aliquotaNominal: faixaFallback.nominal, parcelaDeduzir: faixaFallback.deduzir }),
         segregado, porAnexo,
         aliquotaEfetiva: Number(aliquotaGeral.toFixed(4)), receitaMes, valorImposto,
       },
