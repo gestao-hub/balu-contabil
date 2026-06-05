@@ -86,23 +86,37 @@ export async function transmitirPgdasd(
       }).reverse()
     : [];
 
-  const dados = montarDeclaracaoPgdasd({
-    cnpj: empresaCnpj, competencia, atividadesMes,
-    receitasBrutasAnteriores, folhasSalario, indicadorTransmissao: opts.indicadorTransmissao,
-  });
-
-  const envelope = {
-    contratante: { numero: auth.cnpj, tipo: Tipo.CNPJ },
-    autorPedidoDados: { numero: empresaCnpj, tipo: Tipo.CNPJ },
-    contribuinte: { numero: empresaCnpj, tipo: Tipo.CNPJ },
-    pedidoDados: { idSistema: 'PGDASD', idServico: 'TRANSDECLARACAO11', versaoSistema: '1.0', dados: JSON.stringify(dados) },
-  };
-
-  try {
-    const resp = await declararComProcurador({
+  const chamar = async (cnpjsAdicionais: string[]) => {
+    const dados = montarDeclaracaoPgdasd({
+      cnpj: empresaCnpj, competencia, atividadesMes,
+      receitasBrutasAnteriores, folhasSalario, indicadorTransmissao: opts.indicadorTransmissao,
+      cnpjsAdicionais,
+    });
+    const envelope = {
+      contratante: { numero: auth.cnpj, tipo: Tipo.CNPJ },
+      autorPedidoDados: { numero: empresaCnpj, tipo: Tipo.CNPJ },
+      contribuinte: { numero: empresaCnpj, tipo: Tipo.CNPJ },
+      pedidoDados: { idSistema: 'PGDASD', idServico: 'TRANSDECLARACAO11', versaoSistema: '1.0', dados: JSON.stringify(dados) },
+    };
+    return declararComProcurador({
       pfx: auth.pfx, passphrase: auth.passphrase, accessToken: auth.accessToken,
       jwt: auth.jwt, procuradorToken: tk.token, envelope,
     });
+  };
+
+  try {
+    let resp: unknown;
+    try {
+      resp = await chamar([]);
+    } catch (e1) {
+      // A SERPRO exige TODOS os estabelecimentos do CNPJ. Ela nomeia os faltantes no erro
+      // ("...não foram enviados no campo Estabelecimento: 10358425000201."). Extrai e reenvia
+      // uma vez com eles como estabelecimentos vazios (a SERPRO é a autoridade sobre quais existem).
+      const msg1 = e1 instanceof Error ? e1.message : '';
+      const faltantes = /Estabelecimento/i.test(msg1) ? (msg1.match(/\d{14}/g) ?? []) : [];
+      if (faltantes.length === 0) throw e1;
+      resp = await chamar(faltantes);
+    }
     return { ok: true, result: parseDeclaracaoPgdasd(resp) };
   } catch (e) {
     const msg = e instanceof Error ? e.message : '';

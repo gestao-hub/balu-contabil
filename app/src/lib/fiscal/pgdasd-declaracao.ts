@@ -48,11 +48,17 @@ export function montarDeclaracaoPgdasd(input: {
   receitasBrutasAnteriores: Array<{ pa: number; valorInterno: number; valorExterno: number }>;
   folhasSalario: Array<{ pa: number; valor: number }>;
   indicadorTransmissao: boolean;
+  // CNPJs de filiais sem receita que a SERPRO exige enviar mesmo zeradas (estabelecimentos vazios).
+  cnpjsAdicionais?: string[];
 }): PgdasdDados {
   const cnpj = input.cnpj.replace(/\D+/g, '');
   const receitaInterno = Number(
     input.atividadesMes.reduce((acc, a) => acc + a.valor, 0).toFixed(2),
   );
+  const estabelecimentosVazios = (input.cnpjsAdicionais ?? [])
+    .map((c) => c.replace(/\D+/g, ''))
+    .filter((c) => c.length === 14 && c !== cnpj)
+    .map((c) => ({ cnpjCompleto: c, atividades: [] as PgdasdDados['declaracao']['estabelecimentos'][number]['atividades'] }));
   return {
     cnpjCompleto: cnpj,
     pa: Number(input.competencia),
@@ -88,6 +94,7 @@ export function montarDeclaracaoPgdasd(input: {
             ],
           })),
         },
+        ...estabelecimentosVazios,
       ],
     },
     valoresParaComparacao: [],
