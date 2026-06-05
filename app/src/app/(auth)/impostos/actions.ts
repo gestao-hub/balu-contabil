@@ -91,7 +91,7 @@ export async function iniciarApuracaoAction(
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('Code_regime_tributario, anexo_simples')
+    .select('Code_regime_tributario, anexo_simples, atividade_mei')
     .eq('empresa_id', companyId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -109,7 +109,7 @@ export async function iniciarApuracaoAction(
       anexo,
       receitas,
       competencia,
-      atividadeMei: null, // TODO: adicionar empresas_fiscais.atividade_mei (MEI: 'Comercio ou Industria'|'Prestacao de Servicos'|'Comercio e Servicos'); sem o campo sempre cai em "Prestacao de Servicos" (R$80,90)
+      atividadeMei: (fiscal.atividade_mei ?? null) as string | null,
       // dataInicioAtividade: não temos o campo no schema → sem anualização por ora
     });
   } catch (e) {

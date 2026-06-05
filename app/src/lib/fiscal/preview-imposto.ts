@@ -41,7 +41,7 @@ export async function obterPreviewImposto(
 ): Promise<PreviewImposto> {
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('Code_regime_tributario, anexo_simples')
+    .select('Code_regime_tributario, anexo_simples, atividade_mei')
     .eq('empresa_id', companyId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -54,6 +54,6 @@ export async function obterPreviewImposto(
     anexo: (fiscal.anexo_simples as AnexoSimples | null) ?? null,
     receitas,
     competencia,
-    atividadeMei: null,
+    atividadeMei: (fiscal.atividade_mei as string | null) ?? null,
   });
 }
