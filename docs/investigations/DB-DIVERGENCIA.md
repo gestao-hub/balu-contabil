@@ -25,7 +25,7 @@
 | Situação | Tabelas |
 |---|---|
 | Nos migrations **e** no banco | `profiles`, `companies`, `clientes`, `empresas_fiscais`, `notas_fiscais`, `apuracoes_fiscais`, `guias_fiscais`, `arquivos_auxiliares`, `municipios_nfse`, `honorarios`, `abertura_empresas` |
-| **Só nos migrations** (não existem no banco) | `aux_produtos`, `declaracoes_fiscais` |
+| **Só nos migrations** (não existem no banco) | ~~`aux_produtos`~~ (criada pela 0013), ~~`declaracoes_fiscais`~~ (criada pela 0025 na convenção real) |
 | **Só no banco** (nenhum migration cria) | `receitas_fiscais` (tabela órfã — **descontinuada 2026-05-31**, removida pela migration `0014_drop_receitas_fiscais.sql`); `role_types` (o `0002` faz `INSERT`/trigger mas nunca `CREATE`) |
 | Tipo só no banco | enum `user_types` ('Empresa','Contador') — o `0002` faz cast `::user_types` mas não cria o tipo |
 
@@ -135,7 +135,7 @@ Os PRs marcados "✅ FEITO" no `PLANO-4-DIAS.md` trazem a ressalva *"runtime pen
 **Passo 0** — Regenerar `src/types/database.ts` a partir do banco real → `tsc --noEmit` vira a checklist de divergências.
 **Passo 1** — Reescrever `lib/dashboard/queries.ts` + telas de notas pros nomes reais (`company_id`, `competencia_referencia`, `tipo_documento`, `referencia`, `payload_focusnfe`); papel do usuário via `role_types`. Ajustar `types/enums.ts`/`zod.ts` (valores `NFe/NFCe/NFSe`).
 **Passo 2** — Migration `0003` **aditivo**: `ALTER TABLE notas_fiscais ADD COLUMN …` para os campos que emissão/cancelamento precisam (`cliente_id`, `chave_acesso`, `protocolo_autorizacao`, `xml_url`, `pdf_url`, `qrcode`, `numero_nf`, `serie`, `cancelled_at`, `cancellation_reason`, `updated_at`).
-**Passo 3** — Day 3: reescrever o wizard de apuração/DAS para o formato real (`apuracoes_fiscais`/`guias_fiscais` do motor n8n); a receita vem de `notas_fiscais` (`receitas_fiscais` descontinuada — ver Passo 4). Decidir `declaracoes_fiscais`: criar mínima (aditivo) ou cortar da v1.
+**Passo 3** — Day 3: reescrever o wizard de apuração/DAS para o formato real (`apuracoes_fiscais`/`guias_fiscais` do motor n8n); a receita vem de `notas_fiscais` (`receitas_fiscais` descontinuada — ver Passo 4). **Decisão (2026-06-05): RESOLVIDO** — `declaracoes_fiscais` criada de forma aditiva pela `0025` na convenção real (`company_id`/`competencia_referencia`/`owner_user_id`), NÃO na convenção idealizada da 0001. Ver spec `2026-06-05-declaracoes-impostos-design.md`.
 **Passo 4** — Versionar no repo o que só existe no banco: `CREATE TYPE user_types`, `CREATE TABLE role_types`, ~~`CREATE TABLE receitas_fiscais`~~ (descontinuada 2026-05-31 — em vez de versionar, foi dropada pela migration 0014).
 
 > **Nada destrutivo**: o banco só recebe `ADD COLUMN`/`CREATE` aditivos; o grosso do trabalho é alinhar o **código**.

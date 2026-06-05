@@ -181,6 +181,19 @@ export type Tables = {
     updated_at: string | null;
     deleted_at: string | null;
   };
+  declaracoes_fiscais: {
+    id: string;
+    company_id: string;
+    owner_user_id: string;
+    competencia_referencia: string;
+    tipo: string;
+    numero_declaracao: string | null;
+    data_transmissao: string | null;
+    status: string | null;
+    guia_fiscal_id: string | null;
+    created_at: string;
+    updated_at: string;
+  };
   guias_fiscais: {
     id: string;
     company_id: string | null;

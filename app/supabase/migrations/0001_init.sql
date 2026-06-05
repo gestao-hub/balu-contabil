@@ -180,6 +180,9 @@ create table if not exists public.aux_produtos (
 );
 
 -- ─────────────────────────────────────────────────────
+-- ⚠️ SCHEMA IDEALIZADO NÃO APLICADO (convenção velha empresa_id/char6). A tabela real é criada
+-- pela 0025_declaracoes_fiscais.sql na convenção correta (company_id/competencia_referencia).
+-- Ver DB-DIVERGENCIA.md. Mantido aqui só por histórico — não é a fonte da verdade.
 create table if not exists public.declaracoes_fiscais (
   id uuid primary key default gen_random_uuid(),
   empresa_id uuid references companies(id) on delete cascade not null,
