@@ -64,6 +64,23 @@ describe('normalizeRegimePatch', () => {
   });
 });
 
+describe('normalizeRegimePatch — atividade_mei', () => {
+  it('mantém atividade_mei quando MEI (code 4)', () => {
+    const out = normalizeRegimePatch({ Code_regime_tributario: '4', atividade_mei: 'Comercio ou Industria' });
+    expect(out.atividade_mei).toBe('Comercio ou Industria');
+  });
+
+  it('zera atividade_mei quando não-MEI (code definido)', () => {
+    const out = normalizeRegimePatch({ Code_regime_tributario: '1', atividade_mei: 'Comercio ou Industria' });
+    expect(out.atividade_mei).toBeNull();
+  });
+
+  it('não fabrica atividade_mei em patch sem Code', () => {
+    const out = normalizeRegimePatch({ atividade_mei: 'Prestacao de Servicos' });
+    expect(out.atividade_mei).toBe('Prestacao de Servicos');
+  });
+});
+
 describe('regimeFromOptante', () => {
   it('optante_mei true → MEI (4)', () => {
     expect(regimeFromOptante(true, false)).toBe('4');

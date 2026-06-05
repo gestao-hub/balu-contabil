@@ -84,6 +84,7 @@ export type Tables = {
     Code_regime_tributario: string | null;
     regime_especial_tributacao: string | null;
     cnae_principal: string | null;
+    atividade_mei: string | null;
     anexo_simples: string | null;
     usa_fator_r: boolean | null;
     inscricao_municipal: string | null;

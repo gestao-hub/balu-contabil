@@ -20,6 +20,15 @@ export const FAIXA_OPTIONS: ReadonlyArray<{ label: string; anexo: AnexoSimples }
   { label: 'V Serviços especializados', anexo: 'Anexo V' },
 ];
 
+export type AtividadeMei = 'Comercio ou Industria' | 'Prestacao de Servicos' | 'Comercio e Servicos';
+
+// value bate EXATAMENTE com as chaves de DAS_MEI_2026 (das-mei.ts) — é o contrato da estimativa.
+export const ATIVIDADE_MEI_OPTIONS: ReadonlyArray<{ value: AtividadeMei; label: string }> = [
+  { value: 'Comercio ou Industria', label: 'Comércio ou Indústria' },
+  { value: 'Prestacao de Servicos', label: 'Prestação de Serviços' },
+  { value: 'Comercio e Servicos', label: 'Comércio e Serviços' },
+];
+
 export function tipoFromCode(code: string | null | undefined): RegimeTipo {
   return code === '4' ? 'mei' : 'simples';
 }
@@ -46,6 +55,7 @@ export type RegimePatch = {
   anexo_simples?: string | null;
   usa_fator_r?: boolean | null;
   cnae_principal?: string | null;
+  atividade_mei?: string | null;
 };
 
 // Deriva o regime a partir dos flags de optante da consulta de CNPJ (Receita/Focus).
@@ -74,8 +84,12 @@ export function normalizeRegimePatch(patch: RegimePatch): RegimePatch {
   if (out.Code_regime_tributario === '4') {
     out.anexo_simples = null;
     out.usa_fator_r = false;
-  } else if (out.anexo_simples != null && !fatorRAplicavel(out.anexo_simples)) {
-    out.usa_fator_r = false;
+  } else {
+    if (out.anexo_simples != null && !fatorRAplicavel(out.anexo_simples)) {
+      out.usa_fator_r = false;
+    }
+    // Atividade do MEI só faz sentido p/ MEI; fora dele, zera.
+    if (out.Code_regime_tributario != null) out.atividade_mei = null;
   }
   return out;
 }

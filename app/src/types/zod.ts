@@ -87,6 +87,7 @@ export const EmpresaFiscalSchema = z.object({
   anexo_simples: z.enum(['Anexo I', 'Anexo II', 'Anexo III', 'Anexo IV', 'Anexo V']).nullable().optional(),
   usa_fator_r: z.boolean().nullable().optional(),
   cnae_principal: z.string().trim().min(1, 'CNAE inválido.').nullable().optional(),
+  atividade_mei: z.enum(['Comercio ou Industria', 'Prestacao de Servicos', 'Comercio e Servicos']).nullable().optional(),
   // NFS-e (PR 1.5) — todos opcionais (o upsert é parcial).
   municipio_id: z.string().uuid().nullable().optional(),
   inscricao_municipal: z.string().nullable().optional(),
