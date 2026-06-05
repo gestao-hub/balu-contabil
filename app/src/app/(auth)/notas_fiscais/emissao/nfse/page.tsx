@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 import EmissaoForm from '../EmissaoForm';
+import { listarCnaesEmpresaAction } from '../../actions';
 import { obterPreviewImposto } from '@/lib/fiscal/preview-imposto';
 import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
 
@@ -40,6 +41,7 @@ export default async function NotasFiscaisEmissaoPage({ searchParams }: { search
   ]);
 
   const previewImposto: PreviewImposto = await obterPreviewImposto(supabase, companyId);
+  const cnaes = await listarCnaesEmpresaAction();
 
   if (!company) {
     return <Bloqueio titulo="Empresa não encontrada" mensagem="A empresa selecionada não existe." />;
@@ -115,6 +117,7 @@ export default async function NotasFiscaisEmissaoPage({ searchParams }: { search
           person_type: (c.person_type as string | null) ?? 'PJ',
         }))}
         previewImposto={previewImposto}
+        cnaes={cnaes}
       />
     </main>
   );

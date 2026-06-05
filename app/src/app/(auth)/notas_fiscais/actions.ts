@@ -140,6 +140,7 @@ export type EmitirNotaInput = {
   descricao: string;
   valorReais: number;
   aliquotaIssPercentual: number;
+  cnae?: string | null;
 };
 
 export type EmitirNotaResult =
@@ -244,6 +245,7 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
       valor_total: valorReaisRound,
       payload_focusnfe: payload as unknown as Record<string, unknown>,
       cliente_id: cliente.id,
+      cnae: input.cnae ? String(input.cnae).replace(/\D+/g, '') || null : null,
     })
     .select('id')
     .single();
@@ -391,6 +393,7 @@ export async function emitirNotaFormAction(formData: FormData): Promise<void> {
     descricao: String(formData.get('descricao') ?? ''),
     valorReais: Number(formData.get('valorReais') ?? 0),
     aliquotaIssPercentual: Number(formData.get('aliquotaIssPercentual') ?? 0),
+    cnae: String(formData.get('cnae') ?? '') || null,
   };
   const r = await emitirNotaAction(input);
   if (!r.ok) {
@@ -668,6 +671,40 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
   }
   revalidatePath('/notas_fiscais');
   return { ok: true, notaId };
+}
+
+export type CnaeOption = { codigo: string; descricao: string | null; anexoLabel: string | null };
+
+/** CNAEs da empresa ativa (principal + secundários) com o rótulo do anexo, p/ o select da emissão. */
+export async function listarCnaesEmpresaAction(): Promise<CnaeOption[]> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return [];
+
+  const { data: cnaes } = await supabase
+    .from('company_cnaes')
+    .select('codigo, descricao, tipo')
+    .eq('company_id', companyId).is('deleted_at', null)
+    .order('tipo', { ascending: true }); // 'principal' antes de 'secundario'
+  if (!cnaes || cnaes.length === 0) return [];
+
+  const codigos = cnaes.map((c) => c.codigo as string);
+  const { data: refs } = await supabase
+    .from('cnae_anexo').select('codigo, anexo_base, fator_r').in('codigo', codigos);
+  const refMap = new Map<string, { anexo_base: string | null; fator_r: boolean }>();
+  for (const r of refs ?? []) {
+    refMap.set(r.codigo as string, { anexo_base: (r.anexo_base as string | null) ?? null, fator_r: r.fator_r === true });
+  }
+
+  return cnaes.map((c) => {
+    const ref = refMap.get(c.codigo as string);
+    const anexoLabel = ref ? (ref.fator_r ? 'Anexo III/V — Fator R' : ref.anexo_base) : null;
+    return { codigo: c.codigo as string, descricao: (c.descricao as string | null) ?? null, anexoLabel };
+  });
 }
 
 // ---------- Emissão NFC-e (modelo 65) ----------

@@ -12,7 +12,7 @@ import {
   CODIGO_OUTRO_SENTINEL,
   isCodigoTributacaoValido,
 } from '@/lib/fiscal/codigos-tributacao';
-import { emitirNotaFormAction } from '../actions';
+import { emitirNotaFormAction, type CnaeOption } from '../actions';
 import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
 
 const Schema = z.object({
@@ -26,11 +26,14 @@ const Schema = z.object({
 export default function EmissaoForm({
   clientes,
   previewImposto,
+  cnaes,
 }: {
   clientes: ClienteOption[];
   previewImposto: PreviewImposto;
+  cnaes: CnaeOption[];
 }) {
   const [clienteId, setClienteId] = useState<string>('');
+  const [cnae, setCnae] = useState<string>(cnaes.length === 1 ? cnaes[0]!.codigo : '');
   const [codigoBase, setCodigoBase] = useState<string>(CODIGOS_TRIBUTACAO_FREQUENTES[0]!.codigo);
   const [codigoOutro, setCodigoOutro] = useState<string>('');
   const [descricao, setDescricao] = useState<string>('');
@@ -39,6 +42,11 @@ export default function EmissaoForm({
   const [clientErr, setClientErr] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    if (cnaes.length > 1 && !cnae) {
+      e.preventDefault();
+      setClientErr('Selecione a atividade (CNAE) da nota.');
+      return;
+    }
     const codigoFinal = codigoBase === CODIGO_OUTRO_SENTINEL ? codigoOutro.trim() : codigoBase;
     const valor = parseDecimal(valorTexto);
     const aliquota = parseDecimal(aliquotaTexto);
@@ -101,6 +109,32 @@ export default function EmissaoForm({
         )}
         <input type="hidden" name="codigoTributacao" value={codigoBase === CODIGO_OUTRO_SENTINEL ? codigoOutro : codigoBase} />
       </div>
+
+      {cnaes.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-muted-foreground-2 mb-1">Atividade (CNAE)</label>
+          {cnaes.length === 1 ? (
+            <div className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm">
+              {cnaes[0]!.codigo}{cnaes[0]!.descricao ? ` · ${cnaes[0]!.descricao}` : ''}
+              {cnaes[0]!.anexoLabel ? ` (${cnaes[0]!.anexoLabel})` : ''}
+            </div>
+          ) : (
+            <select
+              value={cnae}
+              onChange={(e) => setCnae(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Selecione…</option>
+              {cnaes.map((c) => (
+                <option key={c.codigo} value={c.codigo}>
+                  {c.codigo}{c.descricao ? ` · ${c.descricao}` : ''}{c.anexoLabel ? ` (${c.anexoLabel})` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          <input type="hidden" name="cnae" value={cnae} />
+        </div>
+      )}
 
       {/* Descrição */}
       <div>
