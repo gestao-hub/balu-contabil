@@ -70,15 +70,21 @@ export async function transmitirPgdasd(
     return { pa: Number(pa), valorInterno: Number(valorInterno.toFixed(2)), valorExterno: 0 };
   }).reverse();
 
-  // folhasSalario: 12 meses anteriores (total do mês = pró-labore+salários+encargos).
-  const folhas = await lerFolhaParaApuracao(supabase, companyId, competencia);
-  const folhasSalario = Array.from({ length: 12 }, (_, i) => {
-    const pa = competenciaAddMonths(competencia, -(i + 1));
-    const valor = folhas
-      .filter((f) => f.competencia === pa)
-      .reduce((acc, f) => acc + f.proLabore + f.salarios + f.encargos, 0);
-    return { pa: Number(pa), valor: Number(valor.toFixed(2)) };
-  }).reverse();
+  // folhasSalario: só vale p/ atividade sujeita a Fator R (idAtividade 10/11/12/29). A SERPRO
+  // recusa folha sem atividade que a exija ("Foi informada a lista de Folha de Salários mas não há
+  // atividade com este requisito."). Sem Fator R → lista vazia.
+  const ID_ATIV_FATOR_R = [10, 11, 12, 29];
+  const temFatorR = atividadesMes.some((a) => ID_ATIV_FATOR_R.includes(a.idAtividade));
+  const folhas = temFatorR ? await lerFolhaParaApuracao(supabase, companyId, competencia) : [];
+  const folhasSalario = temFatorR
+    ? Array.from({ length: 12 }, (_, i) => {
+        const pa = competenciaAddMonths(competencia, -(i + 1));
+        const valor = folhas
+          .filter((f) => f.competencia === pa)
+          .reduce((acc, f) => acc + f.proLabore + f.salarios + f.encargos, 0);
+        return { pa: Number(pa), valor: Number(valor.toFixed(2)) };
+      }).reverse()
+    : [];
 
   const dados = montarDeclaracaoPgdasd({
     cnpj: empresaCnpj, competencia, atividadesMes,
@@ -103,6 +109,6 @@ export async function transmitirPgdasd(
     if (/ICGERENCIADOR-022|procura(c|ç)[aã]o/i.test(msg)) {
       return { ok: false, error: 'A empresa ainda não autorizou a Balu (Termo/procuração) na SERPRO.' };
     }
-    return { ok: false, error: `Falha na declaração (SERPRO): ${msg.slice(0, 200)}` };
+    return { ok: false, error: `Falha na declaração (SERPRO): ${msg.slice(0, 600)}` };
   }
 }

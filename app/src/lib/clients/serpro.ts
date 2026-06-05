@@ -294,7 +294,17 @@ async function requestComProcurador(
       req.end();
     },
   );
-  if (status >= 400) throw new Error(`SERPRO ${path} → ${status}: ${respBody.slice(0, 200)}`);
+  if (status >= 400) {
+    // A SERPRO devolve um envelope com `mensagens[].texto` (códigos MSG_ISN_*); surfa-las
+    // (o início do body é só o eco do request — inútil pra diagnóstico).
+    let detalhe = respBody.slice(0, 400);
+    try {
+      const env = JSON.parse(respBody) as { mensagens?: Array<{ texto?: string }> };
+      const msgs = (env?.mensagens ?? []).map((m) => m.texto).filter(Boolean);
+      if (msgs.length) detalhe = msgs.join(' | ');
+    } catch { /* mantém o slice */ }
+    throw new Error(`SERPRO ${path} → ${status}: ${detalhe}`);
+  }
   try {
     return JSON.parse(respBody);
   } catch {
