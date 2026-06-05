@@ -151,6 +151,7 @@ export type Tables = {
     created_at: string | null;
     chave_acesso: string | null;
     cliente_id: string | null;
+    cnae: string | null;
     protocolo_autorizacao: string | null;
     xml_url: string | null;
     pdf_url: string | null;
