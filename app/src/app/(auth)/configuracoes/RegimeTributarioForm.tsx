@@ -6,8 +6,8 @@ import { useState } from 'react';
 import { Loader2, Save, Pencil } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import {
-  REGIME_OPTIONS, FAIXA_OPTIONS,
-  isMei, anexoFromFaixa, faixaFromAnexo, fatorRAplicavel, type RegimeCode,
+  REGIME_OPTIONS, FAIXA_OPTIONS, ATIVIDADE_MEI_OPTIONS,
+  isMei, anexoFromFaixa, faixaFromAnexo, fatorRAplicavel, type RegimeCode, type AtividadeMei,
 } from '@/lib/fiscal/regime';
 import { upsertEmpresaFiscalAction } from './actions';
 
@@ -16,6 +16,7 @@ type Initial = {
   anexo_simples?: string | null;
   usa_fator_r?: boolean | null;
   cnae_principal?: string | null;
+  atividade_mei?: string | null;
 };
 
 export default function RegimeTributarioForm({ initial }: { initial: Initial | null }) {
@@ -24,6 +25,7 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
   const [faixa, setFaixa] = useState<string>(faixaFromAnexo(initial?.anexo_simples ?? null) ?? '');
   const [fatorR, setFatorR] = useState<boolean>(!!initial?.usa_fator_r);
   const [cnae, setCnae] = useState<string>(initial?.cnae_principal ?? '');
+  const [atividadeMei, setAtividadeMei] = useState<string>(initial?.atividade_mei ?? '');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -37,6 +39,7 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
     setFaixa(faixaFromAnexo(initial?.anexo_simples ?? null) ?? '');
     setFatorR(!!initial?.usa_fator_r);
     setCnae(initial?.cnae_principal ?? '');
+    setAtividadeMei(initial?.atividade_mei ?? '');
   }
 
   function handleCancel() {
@@ -54,6 +57,7 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
         anexo_simples: mei ? null : anexo,
         usa_fator_r: mostraFatorR ? fatorR : false,
         cnae_principal: cnae.trim() || null,
+        atividade_mei: mei ? ((atividadeMei as AtividadeMei) || null) : null,
       });
       if (!r.ok) { toast('error', r.error); return; }
       toast('success', 'Regime tributário salvo.');
@@ -94,6 +98,24 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
               <option key={o.anexo} value={o.label}>{o.label} ({o.anexo})</option>
             ))}
           </select>
+        </label>
+      )}
+
+      {mei && (
+        <label className="col-span-2 flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-muted-foreground-2">Atividade do MEI</span>
+          <select
+            value={atividadeMei}
+            onChange={(e) => setAtividadeMei(e.target.value)}
+            disabled={locked}
+            className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
+          >
+            <option value="">Selecione…</option>
+            {ATIVIDADE_MEI_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">Define o valor estimado do DAS-MEI (ICMS e/ou ISS).</span>
         </label>
       )}
 
