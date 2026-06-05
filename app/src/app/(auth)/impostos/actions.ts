@@ -439,8 +439,11 @@ export async function previewDeclaracaoAction(competencia: string): Promise<Prev
     .from('empresas_fiscais').select('Code_regime_tributario')
     .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
   if (!fiscal) return { ok: false, error: 'Empresa fiscal não configurada.' };
-  if (tipoFromCode((fiscal.Code_regime_tributario ?? '') as string) !== 'simples') {
-    return { ok: false, error: 'A declaração PGDAS-D cobre Simples; MEI usa a DASN-SIMEI.' };
+  // PGDAS-D só Simples (codes 1/2). tipoFromCode mapeia code 3 (Lucro Real/Presumido) como 'simples'
+  // → checar os códigos explicitamente para não deixar LP/LR cair na declaração.
+  const regimeCode = (fiscal.Code_regime_tributario ?? '') as string;
+  if (regimeCode !== '1' && regimeCode !== '2') {
+    return { ok: false, error: 'A declaração PGDAS-D cobre Simples (anexos I–V); MEI usa a DASN-SIMEI e Regime Normal não declara aqui.' };
   }
   return transmitirPgdasd(supabase, companyId, competencia, { indicadorTransmissao: false });
 }
