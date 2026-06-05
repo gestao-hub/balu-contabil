@@ -10,6 +10,9 @@ export type FolhaRow = {
   encargos: number;
 };
 
+// Estado interno em string para não perder o ponto decimal ao digitar (ex.: "1000.5").
+type FolhaDraft = { competencia: string; proLabore: string; salarios: string; encargos: string };
+
 function rotulo(competencia: string): string {
   return `${competencia.slice(4, 6)}/${competencia.slice(0, 4)}`;
 }
@@ -17,24 +20,42 @@ function rotulo(competencia: string): string {
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+// Aceita "1000.5" e "1000,5"; vazio/sem número → 0.
+function num(s: string): number {
+  const v = Number(s.replace(',', '.'));
+  return Number.isFinite(v) ? v : 0;
+}
+
+function toDraft(r: FolhaRow): FolhaDraft {
+  return {
+    competencia: r.competencia,
+    proLabore: r.proLabore === 0 ? '' : String(r.proLabore),
+    salarios: r.salarios === 0 ? '' : String(r.salarios),
+    encargos: r.encargos === 0 ? '' : String(r.encargos),
+  };
+}
+
 export function FolhaGrid({ initialRows }: { initialRows: FolhaRow[] }) {
-  const [rows, setRows] = useState<FolhaRow[]>(initialRows);
+  const [rows, setRows] = useState<FolhaDraft[]>(() => initialRows.map(toDraft));
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
 
-  function setCampo(idx: number, campo: keyof Omit<FolhaRow, 'competencia'>, valor: string) {
-    const num = valor === '' ? 0 : Number(valor);
-    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [campo]: Number.isFinite(num) ? num : 0 } : r)));
+  function setCampo(idx: number, campo: keyof Omit<FolhaDraft, 'competencia'>, valor: string) {
+    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [campo]: valor } : r)));
   }
 
   function salvar() {
     setMsg(null);
     const payload: FolhaInput[] = rows.map((r) => ({
       competencia: r.competencia,
-      proLabore: r.proLabore,
-      salarios: r.salarios,
-      encargos: r.encargos,
+      proLabore: num(r.proLabore),
+      salarios: num(r.salarios),
+      encargos: num(r.encargos),
     }));
+    if (payload.some((r) => r.proLabore < 0 || r.salarios < 0 || r.encargos < 0)) {
+      setMsg({ tipo: 'erro', texto: 'Valores da folha não podem ser negativos.' });
+      return;
+    }
     startTransition(async () => {
       const res = await salvarFolhaAction(payload);
       setMsg(res.ok ? { tipo: 'ok', texto: 'Folha salva.' } : { tipo: 'erro', texto: res.error });
@@ -56,7 +77,7 @@ export function FolhaGrid({ initialRows }: { initialRows: FolhaRow[] }) {
           </thead>
           <tbody>
             {rows.map((r, idx) => {
-              const total = r.proLabore + r.salarios + r.encargos;
+              const total = num(r.proLabore) + num(r.salarios) + num(r.encargos);
               return (
                 <tr key={r.competencia} className="border-t">
                   <td className="px-3 py-2">{rotulo(r.competencia)}</td>
@@ -67,7 +88,7 @@ export function FolhaGrid({ initialRows }: { initialRows: FolhaRow[] }) {
                         min="0"
                         step="0.01"
                         inputMode="decimal"
-                        value={r[campo] === 0 ? '' : r[campo]}
+                        value={r[campo]}
                         placeholder="0,00"
                         onChange={(e) => setCampo(idx, campo, e.target.value)}
                         className="w-28 rounded border px-2 py-1 text-right"

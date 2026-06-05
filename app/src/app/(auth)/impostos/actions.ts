@@ -364,6 +364,9 @@ export async function salvarFolhaAction(rows: FolhaInput[]): Promise<SalvarFolha
   if (!Array.isArray(rows) || rows.length === 0) return { ok: true };
   for (const r of rows) {
     if (!/^\d{6}$/.test(r.competencia)) return { ok: false, error: `Competência inválida: ${r.competencia}.` };
+    if (r.proLabore < 0 || r.salarios < 0 || r.encargos < 0) {
+      return { ok: false, error: 'Valores da folha não podem ser negativos.' };
+    }
   }
 
   const supabase = await createServerClient();
