@@ -12,6 +12,7 @@ import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao
 import { lerReceitasParaApuracao } from '@/lib/fiscal/receitas-source';
 import { gerarDasMei } from '@/lib/fiscal/serpro-das-mei';
 import { resolverAnexoEmpresa } from '@/lib/fiscal/cnae-sync';
+import { anexarAnexosDasReceitas } from '@/lib/fiscal/segregacao';
 
 export type GuiaActionResult = { ok: true } | { ok: false; error: string };
 
@@ -104,10 +105,11 @@ export async function iniciarApuracaoAction(
   let resultado: ResultadoApuracao;
   try {
     const receitas = await lerReceitasParaApuracao(supabase, companyId, competencia);
+    const receitasAnexadas = await anexarAnexosDasReceitas(supabase, companyId, competencia, receitas, anexo);
     resultado = calcularApuracao({
       regimeCode,
       anexo,
-      receitas,
+      receitas: receitasAnexadas,
       competencia,
       atividadeMei: (fiscal.atividade_mei ?? null) as string | null,
       // dataInicioAtividade: não temos o campo no schema → sem anualização por ora

@@ -4,6 +4,7 @@ import type { AnexoSimples } from './regime';
 import type { ReceitaApuracao, PreviewImposto } from './apuracao-types';
 import { calcularApuracao } from './apuracao';
 import { lerReceitasParaApuracao } from './receitas-source';
+import { anexarAnexosDasReceitas } from './segregacao';
 import { competenciaReferenciaBrt } from './guia';
 
 // Mapeia o resultado da apuração para a prévia. Puro (sem Supabase) → testável.
@@ -49,10 +50,12 @@ export async function obterPreviewImposto(
 
   const competencia = competenciaReferenciaBrt();
   const receitas = await lerReceitasParaApuracao(supabase, companyId, competencia);
+  const fallbackAnexo = (fiscal.anexo_simples as AnexoSimples | null) ?? null;
+  const receitasAnexadas = await anexarAnexosDasReceitas(supabase, companyId, competencia, receitas, fallbackAnexo);
   return montarPreview({
     regimeCode: fiscal.Code_regime_tributario as string,
-    anexo: (fiscal.anexo_simples as AnexoSimples | null) ?? null,
-    receitas,
+    anexo: fallbackAnexo,
+    receitas: receitasAnexadas,
     competencia,
     atividadeMei: (fiscal.atividade_mei as string | null) ?? null,
   });

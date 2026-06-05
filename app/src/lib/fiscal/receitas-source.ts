@@ -19,7 +19,7 @@ export async function lerReceitasParaApuracao(
 
   const { data, error } = await supabase
     .from('notas_fiscais')
-    .select('data_emissao, valor_total, status, tipo_documento')
+    .select('data_emissao, valor_total, status, tipo_documento, cnae')
     .eq('company_id', companyId)
     .eq('status', 'ativa')
     .in('tipo_documento', ['NFSe', 'NFe', 'NFCe'])
@@ -31,6 +31,6 @@ export async function lerReceitasParaApuracao(
     .filter((n) => n.data_emissao != null && n.valor_total != null)
     .map((n) => {
       const competencia = competenciaReferenciaBrt(new Date(n.data_emissao as string));
-      return { competencia, valor: Number(n.valor_total) };
+      return { competencia, valor: Number(n.valor_total), cnae: (n.cnae as string | null) ?? null };
     });
 }
