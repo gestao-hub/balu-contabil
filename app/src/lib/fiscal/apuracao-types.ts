@@ -1,10 +1,13 @@
 // Tipos normalizados da apuração. O núcleo de cálculo consome ReceitaApuracao[]
 // e não conhece a origem dos dados (notas_fiscais vs receitas_fiscais).
+import type { AnexoSimples } from './regime';
 
 /** Uma receita já normalizada para apuração. competencia em YYYYMM. */
 export type ReceitaApuracao = {
   competencia: string; // "YYYYMM"
   valor: number;       // R$ (receita bruta do documento)
+  cnae?: string | null;          // CNAE da nota (rastreio/segregação)
+  anexo?: AnexoSimples | null;   // anexo já resolvido da nota (override do fallback)
 };
 
 export type ResultadoApuracao = {

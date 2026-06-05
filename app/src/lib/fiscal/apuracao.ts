@@ -45,20 +45,46 @@ export function calcularApuracao(input: {
     const { rbt12, mesesConsiderados, anualizado } = calcularRbt12(
       receitas, competencia, input.dataInicioAtividade,
     );
-    const faixa = identificarFaixa(rbt12, anexo, competencia);
-    const aliquota = aliquotaEfetiva(rbt12, faixa);
-    const valorImposto = Number((receitaMes * aliquota).toFixed(2));
+
+    // Agrupa a receita da própria competência por anexo (r.anexo ?? fallback `anexo`).
+    const doMes = receitas.filter((r) => r.competencia === competencia);
+    const buckets = new Map<AnexoSimples, number>();
+    for (const r of doMes) {
+      const a = (r.anexo ?? anexo) as AnexoSimples;
+      buckets.set(a, (buckets.get(a) ?? 0) + r.valor);
+    }
+
+    const porAnexo: Array<{ anexo: AnexoSimples; receita: number; aliquotaEfetiva: number; valor: number; faixa: number }> = [];
+    let valorImposto = 0;
+    for (const [a, receitaBruta] of buckets) {
+      const receita = Number(receitaBruta.toFixed(2));
+      const faixa = identificarFaixa(rbt12, a, competencia);
+      const aliq = aliquotaEfetiva(rbt12, faixa);
+      const valor = Number((receita * aliq).toFixed(2));
+      valorImposto += valor;
+      porAnexo.push({ anexo: a, receita, aliquotaEfetiva: Number(aliq.toFixed(4)), valor, faixa: faixa.faixa });
+    }
+    valorImposto = Number(valorImposto.toFixed(2));
+
+    // Alíquota "manchete": ponderada quando há receita; senão a marginal do anexo fallback
+    // (preserva a prévia útil mesmo com mês ainda sem notas).
+    const faixaFallback = identificarFaixa(rbt12, anexo, competencia);
+    const aliquotaFallback = aliquotaEfetiva(rbt12, faixaFallback);
+    const aliquotaGeral = receitaMes > 0 ? valorImposto / receitaMes : aliquotaFallback;
+    const segregado = buckets.size > 1;
+
     return {
       tipoApuracao: 'Simples Nacional',
       competencia,
       receitaMes,
       rbt12,
-      aliquotaEfetiva: Number(aliquota.toFixed(4)),
+      aliquotaEfetiva: Number(aliquotaGeral.toFixed(4)),
       valorImposto,
       breakdown: {
         tipo: 'Simples Nacional', anexo, rbt12, mesesConsiderados, anualizado,
-        faixa: faixa.faixa, aliquotaNominal: faixa.nominal, parcelaDeduzir: faixa.deduzir,
-        aliquotaEfetiva: Number(aliquota.toFixed(4)), receitaMes, valorImposto,
+        faixa: faixaFallback.faixa, aliquotaNominal: faixaFallback.nominal, parcelaDeduzir: faixaFallback.deduzir,
+        segregado, porAnexo,
+        aliquotaEfetiva: Number(aliquotaGeral.toFixed(4)), receitaMes, valorImposto,
       },
     };
   }

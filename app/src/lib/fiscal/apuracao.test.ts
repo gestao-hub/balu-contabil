@@ -47,6 +47,59 @@ describe('calcularApuracao', () => {
   });
 });
 
+describe('calcularApuracao — segregação por anexo', () => {
+  // rbt12 = 120000 (faixa 1 em todos os anexos): uma receita no mês anterior.
+  const prior = { competencia: '202605', valor: 120000 };
+
+  it('atividade única (sem anexo por nota) = comportamento de hoje', () => {
+    const r = calcularApuracao({
+      regimeCode: '1', anexo: 'Anexo I', competencia: '202606',
+      receitas: [prior, { competencia: '202606', valor: 10000 }],
+    });
+    expect(r.tipoApuracao).toBe('Simples Nacional');
+    expect(r.valorImposto).toBeCloseTo(400, 2); // 10000 * 4% (Anexo I faixa 1)
+    expect((r.breakdown as { segregado: boolean }).segregado).toBe(false);
+  });
+
+  it('dois anexos: soma as fatias com alíquotas distintas', () => {
+    const r = calcularApuracao({
+      regimeCode: '1', anexo: 'Anexo I', competencia: '202606',
+      receitas: [
+        prior,
+        { competencia: '202606', valor: 10000, anexo: 'Anexo I' },   // 4% → 400
+        { competencia: '202606', valor: 5000, anexo: 'Anexo III' },  // 6% → 300
+      ],
+    });
+    expect(r.valorImposto).toBeCloseTo(700, 2);
+    const bd = r.breakdown as { segregado: boolean; porAnexo: Array<{ anexo: string; valor: number }> };
+    expect(bd.segregado).toBe(true);
+    expect(bd.porAnexo).toHaveLength(2);
+    expect(bd.porAnexo.find((p) => p.anexo === 'Anexo III')!.valor).toBeCloseTo(300, 2);
+  });
+
+  it('nota sem anexo usa o fallback; mistura com nota anexada', () => {
+    const r = calcularApuracao({
+      regimeCode: '1', anexo: 'Anexo I', competencia: '202606',
+      receitas: [
+        prior,
+        { competencia: '202606', valor: 10000 },                     // fallback Anexo I → 400
+        { competencia: '202606', valor: 5000, anexo: 'Anexo III' },  // 6% → 300
+      ],
+    });
+    expect(r.valorImposto).toBeCloseTo(700, 2);
+    expect((r.breakdown as { segregado: boolean }).segregado).toBe(true);
+  });
+
+  it('receita zero no mês → imposto zero', () => {
+    const r = calcularApuracao({
+      regimeCode: '1', anexo: 'Anexo I', competencia: '202606',
+      receitas: [prior],
+    });
+    expect(r.valorImposto).toBe(0);
+    expect((r.breakdown as { segregado: boolean }).segregado).toBe(false);
+  });
+});
+
 // helper local do teste: volta `n` meses de uma competência YYYYMM
 function competenciaBack(comp: string, n: number): string {
   const y = Number(comp.slice(0, 4));
