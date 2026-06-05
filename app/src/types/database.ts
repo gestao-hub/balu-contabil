@@ -335,6 +335,17 @@ export type Tables = {
     created_at: string | null;
     updated_at: string | null;
   };
+  folha_mensal: {
+    id: string;
+    company_id: string;
+    owner_user_id: string;
+    competencia: string;
+    pro_labore: number;
+    salarios: number;
+    encargos: number;
+    created_at: string;
+    updated_at: string;
+  };
 };
 
 // Helper: linha de tabela X
