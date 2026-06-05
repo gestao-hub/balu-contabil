@@ -261,7 +261,7 @@ type ProcuradorRequest = {
  * Devolve o envelope de resposta já parseado (objeto).
  */
 async function requestComProcurador(
-  path: '/integra-contador/v1/Consultar' | '/integra-contador/v1/Emitir',
+  path: '/integra-contador/v1/Consultar' | '/integra-contador/v1/Emitir' | '/integra-contador/v1/Declarar',
   params: ProcuradorRequest,
 ): Promise<unknown> {
   const body = JSON.stringify(params.envelope);
@@ -310,4 +310,9 @@ export function consultarComProcurador(params: ProcuradorRequest): Promise<unkno
 /** POST /Emitir (produção) via mTLS + token do procurador. */
 export function emitirComProcurador(params: ProcuradorRequest): Promise<unknown> {
   return requestComProcurador('/integra-contador/v1/Emitir', params);
+}
+
+/** POST /Declarar (produção) via mTLS + token do procurador. PGDAS-D (TRANSDECLARACAO11). */
+export function declararComProcurador(params: ProcuradorRequest): Promise<unknown> {
+  return requestComProcurador('/integra-contador/v1/Declarar', params);
 }
