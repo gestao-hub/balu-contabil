@@ -264,6 +264,24 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
     if (error) return { ok: false, error: `Falha ao salvar a listagem: ${error.message}` };
   }
 
+  // Declarações (numeroDeclaracao/dataTransmissao) vão p/ a tabela própria — separadas do DAS.
+  const decls = r.situacoes.map((s) => ({
+    company_id: companyId,
+    owner_user_id: user.id,
+    competencia_referencia: s.competencia,
+    tipo: 'PGDAS-D',
+    numero_declaracao: s.numeroDeclaracao,
+    data_transmissao: s.dataTransmissao,
+    status: s.numeroDeclaracao ? 'transmitida' : 'pendente',
+    updated_at: new Date().toISOString(),
+  }));
+  if (decls.length > 0) {
+    const { error: decErr } = await supabase
+      .from('declaracoes_fiscais')
+      .upsert(decls, { onConflict: 'company_id,competencia_referencia,tipo' });
+    if (decErr) return { ok: false, error: `Falha ao salvar as declarações: ${decErr.message}` };
+  }
+
   revalidatePath('/impostos');
   return { ok: true, count: rows.length };
 }
