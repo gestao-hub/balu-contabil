@@ -22,6 +22,20 @@ não é igual aos valores calculados"*). Rede de segurança extra antes do trans
 Conclusão: a barreira do "só produção / sem homologação" some — o `indicadorTransmissao=false` é uma
 homologação de fato, na própria produção, sem transmitir.
 
+> ✅ **CONFIRMADO na doc oficial** (`.../servicos/entregar_declaracao_mensal_entrada/`): *"indicadorTransmissao
+> — Indica se a declaração deve ser transmitida. No caso de 'false', serão devolvidos os valores devidos
+> sem transmissão."* E *(b)* "no caso de qualquer erro, nenhum dado será salvo"; *(d)* receitas brutas de
+> períodos já transmitidos são **ignoradas** (a SERPRO usa as dela). **Validado ao vivo 2026-06-05**:
+> dry-run AL Piscinas 202605 → SERPRO calculou **R$ 1.746,55**, `transmitida=false`, e a 202605 seguiu
+> não-declarada (guard antes/depois). Ver [[balu-pgdasd-transmissao]].
+
+### ⚠️ Gotchas do payload (descobertos no dry-run, já tratados no código)
+1. **`folhasSalario` só com atividade Fator R** (idAtividade 10/11/12/29). Senão a SERPRO recusa
+   (*"Foi informada a lista de Folha de Salários mas não há atividade com este requisito"*). → enviar `[]`.
+2. **TODOS os estabelecimentos** (matriz + filiais ativas, mesmo zeradas). A SERPRO nomeia os faltantes
+   no erro (*"...não foram enviados no campo Estabelecimento: <CNPJ>"*) → extrair os CNPJs e reenviar com
+   eles como estabelecimentos vazios (não há API pública limpa de filiais por raiz).
+
 ## Envelope (igual ao GERARDAS12, fluxo procurador)
 
 ```

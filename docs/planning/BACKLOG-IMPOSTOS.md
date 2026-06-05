@@ -13,7 +13,7 @@ Tiers: **P0** = correção/risco antes de emitir DAS de verdade · **P1** = esse
 
 **Todos os P0 fechados.**
 
-- ✅ **0.1** — paliativo: `gerarDasSimplesAction` bloqueia DAS sem PGDAS-D transmitida (checa via `CONSDECLARACAO13`). Transmissão completa (`/Declarar`) ainda pendente → ver **P1**.
+- 🟡 **0.1** — (a) paliativo ✅: `gerarDasSimplesAction` bloqueia DAS sem PGDAS-D transmitida (`CONSDECLARACAO13`). (b) **Transmissão — Fase 1 (builder + dry-run) ✅** (2026-06-05): monta a PGDAS-D (`TRANSDECLARACAO11`) e chama `/Declarar` com `indicadorTransmissao=false` (SERPRO calcula SEM transmitir); botão "Pré-visualizar declaração" no `/impostos`; validado ao vivo (AL Piscinas 202605 → R$1.746,55, nada transmitido). Spec/plan `2026-06-05-pgdasd-transmissao-fase1*`, API `docs/investigations/PGDAS-D-TRANSDECLARACAO11.md`. (c) **Fase 2 (transmit real `indicadorTransmissao=true`) PENDENTE** — gated + sign-off do contador + persistir em `declaracoes_fiscais` + retificadora.
 - ✅ **0.2** — paliativo: parser de DAS Simples falha alto + loga em formato inesperado (não grava R$0). Smoke contra DAS real ainda recomendado.
 - ✅ **0.3** — **Fator R completo**: `folha_mensal` (migration 0022) + `somarFolha12`/`calcularFatorR`, resolução no `resolverAnexo`/`resolverAnexoEmpresa`, tela `/impostos/folha`. Spec/plan `2026-06-05-fator-r-calculo*`.
 - ✅ **0.3 (segregação)** — **CNAE por nota + apuração segregada por anexo**: coluna `notas_fiscais.cnae` (migration 0024), dropdown na emissão de NFS-e, `calcularApuracao` fatia receita por anexo (Fator R da empresa decide III↔V). **Validado ao vivo** (emissão real em homologação na AL Piscinas → apuração segregou Anexo I × Anexo IV). Spec/plan `2026-06-05-cnae-na-nota-segregacao*`.

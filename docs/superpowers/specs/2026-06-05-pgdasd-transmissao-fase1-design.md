@@ -143,3 +143,26 @@ Um componente client `PreviewDeclaracaoButton` numa subseção da "Competência 
 - **Modify** `app/src/app/(auth)/impostos/actions.ts` (`previewDeclaracaoAction`)
 - **Create** `app/src/app/(auth)/impostos/PreviewDeclaracaoButton.tsx`
 - **Modify** `app/src/app/(auth)/impostos/CompetenciaAtualCard.tsx` (ou page) — montar o botão
+
+---
+
+## Validação ao vivo (2026-06-05) — ✅ FEITA + refinamentos
+
+Dry-run real (`indicadorTransmissao=false`) na **AL Piscinas, competência 202605**:
+- A SERPRO calculou **R$ 1.746,55** e devolveu *"Requisição efetuada com sucesso"*, `transmitida=false`.
+- Guard antes/depois (CONSDECLARACAO13): **202605 seguiu não-declarada** → nada foi transmitido. ✅
+- `indicadorTransmissao=false` confirmado na doc oficial: *"serão devolvidos os valores devidos sem transmissão"*.
+
+**3 ajustes que o dry-run revelou (todos implementados):**
+1. **Folha só p/ atividade Fator R** — a SERPRO recusa `folhasSalario` se nenhuma atividade for
+   idAtividade 10/11/12/29 (*"Foi informada a lista de Folha de Salários mas não há atividade com este
+   requisito"*). `transmitirPgdasd` envia `folhasSalario: []` quando não há atividade Fator R.
+2. **Todos os estabelecimentos** — a SERPRO exige matriz + filiais ativas, mesmo zeradas (*"Um ou mais
+   nis... não foram enviados no campo Estabelecimento: <CNPJ>"*). Sem API pública limpa de filiais por
+   raiz → a SERPRO nomeia os faltantes no erro; `transmitirPgdasd` extrai os CNPJs e **reenvia uma vez**
+   com eles como estabelecimentos vazios (`montarDeclaracaoPgdasd` ganhou `cnpjsAdicionais?`).
+3. **Surface de erro da SERPRO** — `requestComProcurador` passou a extrair `mensagens[].texto` do
+   envelope em status ≥ 400 (antes truncava no eco do request). Vale p/ todos os serviços SERPRO.
+
+**Refinamentos futuros (Fase 2 ou antes):** override `id_atividade_pgdas` por CNAE (construção 20/23,
+retenção/ST, outro município); fonte própria de filiais (em vez do retry pelo erro); export/regime de caixa.
