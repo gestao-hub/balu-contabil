@@ -174,14 +174,67 @@ por tributo exigiria a repartição do Simples. **Decisão p/ o MVP:** `indicado
 SERPRO calcula e devolve os tributos (o dry-run já mostra os valores). A comparação fica como reforço
 opcional num passo futuro.
 
+## Prazo, multa e retificadora
+
+> Confirmado na fonte oficial (Resolução CGSN nº 140/2018; LC 214/2025 + Resolução CGSN nº 183/2025).
+> Ver `docs/investigations/REVISAO-ESCOPO-IMPOSTOS.md` / busca oficial 2026-06-06.
+
+**Prazo de entrega da PGDAS-D = dia 20 do mês subsequente** à competência — **o mesmo dia 20** do
+pagamento do DAS. Na prática a **declaração vem antes** do DAS: transmite a PGDAS-D → a SERPRO calcula
+os tributos → emite o DAS → contribuinte paga. Sem a declaração transmitida não há DAS válido a pagar
+(é o que o paliativo do P0.1 já trava via `CONSDECLARACAO13`).
+
+- Ex.: competência **202605 (maio)** → prazo **20/06**. A AL Piscinas ainda não transmitiu maio.
+- **Multa por atraso (regra nova 2026):** com a LC 214/2025 + CGSN 183/2025 (Reforma Tributária), a
+  multa passa a contar **no dia seguinte ao vencimento da declaração** (antes, a partir da entrega/
+  notificação). Prazo segue dia 20, mas a penalidade ficou imediata → transmitir no prazo é crítico.
+
+**Caráter declaratório:** a PGDAS-D **constitui confissão de dívida** (instrumento hábil e suficiente
+p/ exigir os tributos não recolhidos). Por isso a Fase 2 (transmit real) exige sign-off explícito.
+
+### Retificadora (`tipoDeclaracao`)
+A competência tem **uma declaração vigente**. A original (`tipoDeclaracao=1`) é **imutável**: para
+corrigir (nota a mais, anexo segregado errado, retenção esquecida) **não se edita** — transmite-se uma
+**nova declaração completa** marcada **Retificadora (`tipoDeclaracao=2`)**, que **substitui integralmente**
+a anterior (não é diff; é o conjunto total recalculado).
+
+- Pode haver **N retificadoras** na mesma competência; vale **a última** transmitida.
+- Se a retificadora **aumenta** o imposto, gera **DAS complementar/recalculado** → ordem importa
+  (declaração → DAS, sempre).
+- **Detecção (sem novo input do usuário):** `CONSDECLARACAO13` já devolve `numeroDeclaracao` por
+  competência. Sem número → **Original (1)**; com número → **Retificadora (2)** + avisar o contador
+  *"isto vai retificar a declaração de DD/MM"*.
+- ✅ **CONFIRMADO (2026-06-06, modelo oficial do SDK `entregar_declaracao_request.dart`):**
+  (a) **A retificadora NÃO referencia a declaração anterior.** O payload de entrada (`Declaracao`) só
+  tem `tipoDeclaracao` — **não existe** `numeroDeclaracaoAnterior`/`numeroRecibo`. Reenvia-se a
+  declaração inteira com `tipoDeclaracao=2` p/ o mesmo `pa`; a SERPRO infere por CNPJ+`pa` (última vale).
+  (b) **`indicadorTransmissao` (request) e `tipoDeclaracao` (declaração) são campos independentes** —
+  sem acoplamento no modelo → **dá pra pré-visualizar retificadora** (`false`+`2`). Resíduo barato:
+  confirmar no 1º dry-run real (mesmo padrão da original).
+
+### Resposta da transmissão — `DeclaracaoTransmitida` (achado-chave: MAED)
+> Fonte: `entregar_declaracao_response.dart` (SDK Dart), serviço TRANSDECLARACAO11.
+
+O envelope de **transmissão real** (`indicadorTransmissao=true`) devolve:
+- `idDeclaracao` (número, 17 díg.), `dataHoraTransmissao` (`AAAAMMDDHHmmSS`), `valoresDevidos[]`
+  (`codigoTributo`+`valor`), `declaracao` (PDF base64) e `recibo` (PDF base64).
+- **🔑 Multa embutida:** `notificacaoMaed` (PDF, **null se não houver**), `darf` (PDF do DARF da multa,
+  null se não houver) e `detalhamentoDarfMaed`. Helper `temMaed = notificacaoMaed != null && darf != null`.
+
+**MAED = Multa por Atraso na Entrega da Declaração.** Implicação de design: **nós NÃO calculamos a
+multa** — quando a entrega é atrasada (após o dia 20), a **própria SERPRO devolve o MAED + DARF** na
+resposta da transmissão. O alerta "vencida" vira concreto: pós-transmissão atrasada, surfar o valor do
+MAED + oferecer o DARF. Persistir `idDeclaracao`/`dataHoraTransmissao`/`recibo` em `declaracoes_fiscais`.
+
 ## Estratégia escalonada (confirmada pela API)
 1. **Builder + dry-run (`indicadorTransmissao=false`, `indicadorComparacao=false`):** monta o `dados`
    da apuração+folha, chama `/Declarar`, e mostra **os valores que a SERPRO calculou** pro contador
-   conferir. Zero efeito legal. Persiste nada (ou um rascunho).
+   conferir. Zero efeito legal. Persiste nada (ou um rascunho). ✅ **Fase 1 feita (2026-06-05).**
 2. **Transmit real (`indicadorTransmissao=true`):** atrás de confirmação explícita; idealmente
    `indicadorComparacao=true` com `valoresParaComparacao` da apuração p/ a SERPRO recusar divergência.
    Testar 1 competência real (ex.: 202605 AL Piscinas) com sign-off. Retificadora (`tipoDeclaracao`)
-   como rede.
+   como rede. + **alerta de prazo/multa** e painel de competências **pendentes/no prazo/vencidas**
+   (derivado do `CONSDECLARACAO13`). **Fase 2 (pendente).**
 
 ## Referências
 - Serviço: `https://apicenter.estaleiro.serpro.gov.br/documentacao/api-integra-contador/pt/sistemas/pgdasd/`
