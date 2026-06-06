@@ -120,14 +120,11 @@ export async function transmitirDasnSimeiAction(anoCalendario: number, opts: { c
 - `somarReceitaAnualMei`: classifica NFS-e→serviço, NF-e/NFC-e→comércio; soma o ano; zera lados vazios.
 - `parseDasnSimei`: extrai número/data/tipo/recibo; caso **com MAED** e **sem**; caso **com excesso**;
   caso aviso `10008` → `desenquadramento=true`; lança em formato inesperado.
-- **Smoke estrutural no Trial (sem empresa/cert):** o ambiente Trial da SERPRO aceita o **token Bearer
-  demo fixo** (`06aef429-…`) sem mTLS/chaves/assinatura, com CNPJ demo `00000000000100`
-  (`gateway…/integra-contador-trial/v1/…`). Provado p/ PGMEI (`GERARDASPDF21`→PDF, `DIVIDAATIVA24`→dados).
-  Usar p/ validar **envelope + parser** do DASN-SIMEI contra resposta real da SERPRO (confirmar que há
-  cenário trial p/ `DASNSIMEI`). ⚠️ Trial devolve dados canned ("EXEMPLO") → valida plumbing/shape/parser,
-  não correção p/ um CNPJ real. Ver [[balu-serpro-subscription-gap]].
-- Validação ao vivo final (com sign-off, dados reais): aí sim precisa de **e-CNPJ MEI real** — único
-  passo de fato bloqueado; todo o resto (puro + parser + smoke estrutural no Trial + UI) sai sem MEI.
+- ⚠️ **DASN-SIMEI NÃO está no Trial** (testado 2026-06-06: `101507 Error in Sender` nos 3 serviços, vs
+  PGMEI 200). Logo o `parseDasnSimei` é **modelado pela doc** (não há resposta real p/ fixture agora) e o
+  **smoke estrutural fica adiado p/ e-CNPJ MEI real**. Builder/receita/parser puros seguem 100% testáveis
+  por unit test (fixture modelada pela doc, marcada como tal). Ver [[balu-serpro-subscription-gap]].
+- Validação ao vivo final (com sign-off, dados reais): precisa de **e-CNPJ MEI real**.
 
 ## Arquivos
 - **Create** `app/src/lib/fiscal/dasn-simei.ts` + teste

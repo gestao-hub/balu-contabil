@@ -88,6 +88,14 @@ valor principal/multa/juros/total, composição por código de receita, PDF base
   simples em `empresas_fiscais` (ou derivar de folha, se houver). Decidir na spec.
 - **`anoCalendario`:** ano anterior (declara-se até 31/05 do ano seguinte).
 
+## Disponibilidade no Trial (testado 2026-06-06)
+⚠️ **DASN-SIMEI NÃO está no ambiente Trial.** Os 3 serviços (`CONSULTIMADECREC152`,
+`TRANSDECLARACAO151`, `GERARDASEXCESSO153`) devolvem `101507 "Runtime Error / Error in Sender"`
+(erro de roteamento/backend, não auth) no `…/integra-contador-trial/v1/`, enquanto **PGMEI responde 200**
+com o mesmo token demo. Logo: o parser do DASN-SIMEI é **modelado pela doc** (estrutura `declaracaoTransmitida`
+acima) e o smoke estrutural fica **adiado p/ e-CNPJ MEI real** (ou até a SERPRO liberar DASN-SIMEI no trial).
+Contraste: PGMEI dá pra smoke no Trial sem empresa (ver [[balu-serpro-subscription-gap]]).
+
 ## Diferenças-chave vs. PGDAS-D (não confundir)
 1. **Anual**, não mensal. Prazo **31/05** (não dia 20).
 2. **Sem `indicadorTransmissao`** → **sem dry-run**; transmissão sempre real.
