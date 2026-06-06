@@ -13,6 +13,7 @@ import CompetenciaAtualCard from './CompetenciaAtualCard';
 import HistoricoGuias, { type GuiaRow } from './HistoricoGuias';
 import ConsultarSerproButton from './ConsultarSerproButton';
 import DeclaracoesSection, { type DeclaracaoRow } from './DeclaracoesSection';
+import DeclaracoesMeiSection from './DeclaracoesMeiSection';
 
 export type ApuracaoRow = {
   id: string;
@@ -135,9 +136,10 @@ export default async function ImpostosPage() {
           {isMei && (
             <section className="mb-8">
               <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações</h2>
-              <p className="text-sm text-muted-foreground rounded-md border border-border bg-surface px-4 py-3">
-                DASN-SIMEI (declaração anual do MEI) em breve.
-              </p>
+              <DeclaracoesMeiSection
+                declaracoes={declaracoesRows.filter((d) => d.tipo === 'DASN-SIMEI')}
+                anoCalendario={Number(competenciaAtual.slice(0, 4)) - 1}
+              />
             </section>
           )}
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDasnSimei } from './serpro-dasn-simei-parse';
+import { parseDasnSimei, parseDasnSimeiLista } from './serpro-dasn-simei-parse';
 
 // FIXTURE MODELADA PELA DOC (DASN-SIMEI não está no Trial — 101507; ver investigação).
 // Confirmar nomes de campos contra envelope REAL no 1º e-CNPJ MEI.
@@ -57,5 +57,28 @@ describe('parseDasnSimei', () => {
 
   it('lança quando `dados` é string inválida', () => {
     expect(() => parseDasnSimei({ dados: '{nao-json' })).toThrow(/formato inválido/);
+  });
+});
+
+describe('parseDasnSimeiLista (CONSULTIMADECREC152 → array)', () => {
+  it('mapeia cada declaração do array', () => {
+    const env = {
+      status: '200',
+      mensagens: [],
+      dados: JSON.stringify([
+        { ...base },
+        { ...base, idDeclaracao: '00000000202000001', anoCalendario: '2020', codigoTipoDeclaracao: 2 },
+      ]),
+    };
+    const lista = parseDasnSimeiLista(env);
+    expect(lista).toHaveLength(2);
+    expect(lista[0].numeroDeclaracao).toBe('00000000202100001');
+    expect(lista[1].numeroDeclaracao).toBe('00000000202000001');
+    expect(lista[1].tipoDeclaracao).toBe(2);
+  });
+
+  it('dados vazio/ausente → lista vazia (não lança)', () => {
+    expect(parseDasnSimeiLista({ status: '200', dados: JSON.stringify([]) })).toEqual([]);
+    expect(parseDasnSimeiLista({ status: '200' })).toEqual([]);
   });
 });

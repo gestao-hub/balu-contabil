@@ -7,6 +7,7 @@ import { type AnexoSimples, tipoFromCode } from '@/lib/fiscal/regime';
 import type { ResultadoApuracao } from '@/lib/fiscal/apuracao-types';
 import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
 import { consultarDeclaracoesSimples } from '@/lib/fiscal/serpro-consulta';
+import { consultarDasnSimei } from '@/lib/fiscal/serpro-dasn-simei';
 import { gerarDasSimples } from '@/lib/fiscal/serpro-das-simples';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
 import { lerReceitasParaApuracao } from '@/lib/fiscal/receitas-source';
@@ -286,6 +287,59 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
 
   revalidatePath('/impostos');
   return { ok: true, count: r.situacoes.length };
+}
+
+/**
+ * Consulta na SERPRO (DASN-SIMEI / CONSULTIMADECREC152) as declarações anuais já transmitidas do MEI
+ * e faz upsert em declaracoes_fiscais (tipo 'DASN-SIMEI', competência = ano). Só MEI. Read-only na SERPRO.
+ * Obs.: a transmissão da DASN-SIMEI ainda não está disponível na API SERPRO; aqui é só histórico/consulta.
+ */
+export async function consultarDasnSimeiAction(ano?: number): Promise<ConsultaDasResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Não autenticado.' };
+
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+
+  const { data: fiscal } = await supabase
+    .from('empresas_fiscais')
+    .select('Code_regime_tributario')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+  if (!fiscal) return { ok: false, error: 'Empresa fiscal não configurada.' };
+  if ((fiscal.Code_regime_tributario ?? '') !== '4') {
+    return { ok: false, error: 'A consulta da DASN-SIMEI cobre só MEI.' };
+  }
+
+  // Ano-calendário declarado: por padrão o ano anterior (a DASN-SIMEI é do exercício passado).
+  const year = ano ?? Number(competenciaReferenciaBrt(new Date()).slice(0, 4)) - 1;
+
+  const r = await consultarDasnSimei(supabase, companyId, year);
+  if (!r.ok) return r;
+
+  const decls = r.declaracoes
+    .filter((d) => d.numeroDeclaracao)
+    .map((d) => ({
+      company_id: companyId,
+      owner_user_id: user.id,
+      competencia_referencia: String(year),
+      tipo: 'DASN-SIMEI',
+      numero_declaracao: d.numeroDeclaracao,
+      data_transmissao: d.dataTransmissao,
+      status: 'transmitida',
+      updated_at: new Date().toISOString(),
+    }));
+  if (decls.length > 0) {
+    const { error } = await supabase
+      .from('declaracoes_fiscais')
+      .upsert(decls, { onConflict: 'company_id,competencia_referencia,tipo' });
+    if (error) return { ok: false, error: `Falha ao salvar as declarações: ${error.message}` };
+  }
+
+  revalidatePath('/impostos');
+  return { ok: true, count: r.declaracoes.length };
 }
 
 export type GerarDasSimplesResult =

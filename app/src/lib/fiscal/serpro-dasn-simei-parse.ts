@@ -6,13 +6,18 @@
 // vêm da doc oficial, NÃO de um envelope real. Os PDFs aninhados (recibo/DARF) ficam como
 // follow-up — extrair quando houver resposta real. Ver docs/investigations/DASN-SIMEI.md.
 
-export type DasnSimeiResult = {
+/** Campos por declaração (compartilhados entre entrega e consulta). */
+export type DasnSimeiDeclaracao = {
   numeroDeclaracao: string | null; // idDeclaracao
   dataTransmissao: string | null; // ISO
   tipoDeclaracao: number | null; // codigoTipoDeclaracao (1=Original, 2=Retificadora)
   nomeEmpresarial: string | null;
   temExcesso: boolean; // excessoReceitaBruta presente → há DAS de excesso
   temMaed: boolean; // multaAtrasoEntrega presente → multa por atraso na entrega
+};
+
+/** Resultado da ENTREGA (TRANSDECLARACAO151): 1 declaração + mensagens do envelope. */
+export type DasnSimeiResult = DasnSimeiDeclaracao & {
   desenquadramento: boolean; // Aviso-DASNSIMEI-10008 (receita acima do teto MEI)
   mensagens: string[]; // "codigo: texto" das mensagens da SERPRO
 };
@@ -24,10 +29,20 @@ function isoFromData(s: unknown): string | null {
   return s; // não perde o dado em formato desconhecido
 }
 
-export function parseDasnSimei(envelope: unknown): DasnSimeiResult {
-  const env = (envelope ?? {}) as { dados?: unknown; mensagens?: unknown };
+function parseItem(decl: Record<string, unknown> | undefined): DasnSimeiDeclaracao {
+  const d = decl ?? {};
+  return {
+    numeroDeclaracao: typeof d.idDeclaracao === 'string' ? d.idDeclaracao : null,
+    dataTransmissao: isoFromData(d.dataTransmissao),
+    tipoDeclaracao: typeof d.codigoTipoDeclaracao === 'number' ? d.codigoTipoDeclaracao : null,
+    nomeEmpresarial: typeof d.nomeEmpresarial === 'string' ? d.nomeEmpresarial : null,
+    temExcesso: d.excessoReceitaBruta != null,
+    temMaed: d.multaAtrasoEntrega != null,
+  };
+}
 
-  const mensagens = Array.isArray(env.mensagens)
+function lerMensagens(env: { mensagens?: unknown }): string[] {
+  return Array.isArray(env.mensagens)
     ? env.mensagens
         .map((m) => {
           const o = (m ?? {}) as { codigo?: unknown; texto?: unknown };
@@ -35,8 +50,11 @@ export function parseDasnSimei(envelope: unknown): DasnSimeiResult {
         })
         .filter(Boolean)
     : [];
-  const desenquadramento = mensagens.some((m) => m.includes('10008'));
+}
 
+/** Parseia o `dados` (STRING JSON ou objeto) p/ array de declarações. Lança em string inválida. */
+function lerDados(envelope: unknown): unknown[] {
+  const env = (envelope ?? {}) as { dados?: unknown };
   let dados: unknown = env.dados;
   if (typeof dados === 'string') {
     try {
@@ -45,17 +63,22 @@ export function parseDasnSimei(envelope: unknown): DasnSimeiResult {
       throw new Error('DASN-SIMEI: `dados` em formato inválido.');
     }
   }
-  const decl = (Array.isArray(dados) ? dados[0] : dados) as Record<string, unknown> | undefined;
-  const d = decl ?? {};
+  if (dados == null) return [];
+  return Array.isArray(dados) ? dados : [dados];
+}
 
+/** ENTREGA (TRANSDECLARACAO151): 1ª declaração + mensagens/desenquadramento do envelope. */
+export function parseDasnSimei(envelope: unknown): DasnSimeiResult {
+  const mensagens = lerMensagens((envelope ?? {}) as { mensagens?: unknown });
+  const [first] = lerDados(envelope);
   return {
-    numeroDeclaracao: typeof d.idDeclaracao === 'string' ? d.idDeclaracao : null,
-    dataTransmissao: isoFromData(d.dataTransmissao),
-    tipoDeclaracao: typeof d.codigoTipoDeclaracao === 'number' ? d.codigoTipoDeclaracao : null,
-    nomeEmpresarial: typeof d.nomeEmpresarial === 'string' ? d.nomeEmpresarial : null,
-    temExcesso: d.excessoReceitaBruta != null,
-    temMaed: d.multaAtrasoEntrega != null,
-    desenquadramento,
+    ...parseItem(first as Record<string, unknown> | undefined),
+    desenquadramento: mensagens.some((m) => m.includes('10008')),
     mensagens,
   };
+}
+
+/** CONSULTA (CONSULTIMADECREC152): array de declarações transmitidas. */
+export function parseDasnSimeiLista(envelope: unknown): DasnSimeiDeclaracao[] {
+  return lerDados(envelope).map((d) => parseItem(d as Record<string, unknown> | undefined));
 }
