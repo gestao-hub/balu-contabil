@@ -6,9 +6,19 @@
 **Padrão de referência:** fluxo SERPRO procurador da PGDAS-D ([Fase 2](2026-06-06-pgdasd-transmissao-fase1-design.md)
 + `serpro-pgdasd.ts` / `serpro-consulta.ts`).
 
+## ⚠️ Status / bloqueio externo (2026-06-06)
+A doc oficial marca **`TRANSDECLARACAO151` (entregar) como "AINDA NÃO DISPONÍVEL PARA CONTRATAÇÃO E PODE
+SOFRER ALTERAÇÕES"** — e o serviço dá 101507 no Trial. Ou seja: **não dá pra transmitir a DASN-SIMEI hoje**
+(nem em produção), e o **payload pode mudar**. Consequência para esta spec:
+- **Camada pura (builder/receita/parser) — FEITA** (commit `a0531f1`): investimento baixo, isolado; se o
+  payload mudar quando a SERPRO liberar, o ajuste é pontual.
+- **Camada impura + persistência + UI de transmissão — NÃO começar** até a SERPRO liberar o serviço
+  (evita construir contra um contrato instável). `CONSULTIMADECREC152` (consulta) não tem o aviso → a
+  parte de **consulta/histórico** pode ir antes, se quisermos.
+
 ## Escopo
 
-**MVP = transmitir a declaração anual (`TRANSDECLARACAO151`) + consultar (`CONSULTIMADECREC152`)**, com
+**MVP (quando liberar) = transmitir a declaração anual (`TRANSDECLARACAO151`) + consultar (`CONSULTIMADECREC152`)**, com
 gate de confirmação e persistência em `declaracoes_fiscais`. **DAS de excesso (`GERARDASEXCESSO153`)
 fica fora** (a SERPRO marca "ainda não disponível para contratação") — só detectamos/avisamos o excesso.
 

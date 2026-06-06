@@ -19,9 +19,16 @@ a única declaração é esta, anual. **Prazo: até 31 de maio** do ano seguinte
 
 | idServico | Serviço | Função |
 |---|---|---|
-| `TRANSDECLARACAO151` | Entregar Declaração | Transmite a declaração anual (Original ou Retificadora) |
-| `CONSULTIMADECREC152` | Consultar Declaração | Última declaração/recibo do ano-calendário |
+| `TRANSDECLARACAO151` | Entregar Declaração | Transmite a declaração anual (Original ou Retificadora) ⚠️ **ainda não disponível p/ contratação — pode sofrer alterações** |
+| `CONSULTIMADECREC152` | Consultar Declaração | Última declaração/recibo do ano-calendário (sem aviso de indisponibilidade) |
 | `GERARDASEXCESSO153` | Emitir DAS de Excesso | DAS do excesso quando a receita passou do teto MEI ⚠️ **ainda não disponível p/ contratação** |
+
+> 🚧 **DISPONIBILIDADE (doc oficial, verificado 2026-06-06):** a página do `TRANSDECLARACAO151` traz
+> *"ATENÇÃO: A FUNCIONALIDADE AINDA NÃO ESTÁ DISPONÍVEL PARA CONTRATAÇÃO E PODE SOFRER ALTERAÇÕES"*. Logo o
+> **serviço que efetivamente transmite a DASN-SIMEI é pré-lançamento** — não dá pra entregar em produção
+> hoje (nem no Trial, que dá 101507), e o **payload pode mudar**. Só `CONSULTIMADECREC152` (consulta) não
+> tem esse aviso. **Implicação:** a transmissão do P1.2 depende da SERPRO liberar o serviço; a camada pura
+> que montamos (builder/parser) é investimento baixo e pode precisar de ajuste quando sair da pré-fase.
 
 > ⚠️ **Sem `indicadorTransmissao`.** Diferente da PGDAS-D, o `TRANSDECLARACAO151` **não tem dry-run** — a
 > transmissão é sempre real. Não dá pra pré-visualizar contra a SERPRO; o gate de confirmação tem que se
