@@ -9,12 +9,19 @@
 ## ⚠️ Status / bloqueio externo (2026-06-06)
 A doc oficial marca **`TRANSDECLARACAO151` (entregar) como "AINDA NÃO DISPONÍVEL PARA CONTRATAÇÃO E PODE
 SOFRER ALTERAÇÕES"** — e o serviço dá 101507 no Trial. Ou seja: **não dá pra transmitir a DASN-SIMEI hoje**
-(nem em produção), e o **payload pode mudar**. Consequência para esta spec:
-- **Camada pura (builder/receita/parser) — FEITA** (commit `a0531f1`): investimento baixo, isolado; se o
-  payload mudar quando a SERPRO liberar, o ajuste é pontual.
-- **Camada impura + persistência + UI de transmissão — NÃO começar** até a SERPRO liberar o serviço
-  (evita construir contra um contrato instável). `CONSULTIMADECREC152` (consulta) não tem o aviso → a
-  parte de **consulta/histórico** pode ir antes, se quisermos.
+(nem em produção), e o **payload pode mudar**.
+
+**Implementado nesta sessão:**
+- ✅ **Camada pura** (builder `montarDasnSimei` + `somarReceitaAnualMei` + parser `parseDasnSimei`/`parseDasnSimeiLista`) — TDD (commits `a0531f1` + `1a091a9`).
+- ✅ **Consulta/histórico** (`CONSULTIMADECREC152` — sem o aviso de indisponibilidade): `consultarDasnSimei`
+  + `consultarDasnSimeiAction` + seção MEi no `/impostos` (commit `1a091a9`). ⚠️ não testável ao vivo
+  (DASN fora do Trial; precisa de procurador + e-CNPJ MEI real).
+- ✅ **Fallback manual** (2): card + link pro portal oficial `dasnsimei.app` enquanto a transmissão não sai.
+
+**Pendente (bloqueado na SERPRO):**
+- 🚧 **Transmissão** (`TRANSDECLARACAO151`) + persistência da entrega + UI de transmissão — **NÃO começar**
+  até a SERPRO liberar o serviço (evita construir contra contrato instável). A camada pura já está pronta;
+  faltará só a parte impura (`transmitirDasnSimei`) + gate de sign-off + PDFs (recibo/DARF) no parser.
 
 ## Escopo
 
