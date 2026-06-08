@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import ItensField, { type LinhaItem } from '../_components/ItensField';
-import { emitirNfceAction, type ProdutoOption } from '../../actions';
+import ItensField, { type LinhaItem } from './ItensField';
+import { emitirNfceAction, type ProdutoOption } from '../actions';
 
 const FORMAS = [
   { v: '01', label: 'Dinheiro' },

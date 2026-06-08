@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import ClienteCombobox, { type ClienteOption } from '../ClienteCombobox';
-import ItensField, { type LinhaItem } from '../_components/ItensField';
-import { emitirNfeAction, type ProdutoOption } from '../../actions';
+import ClienteCombobox, { type ClienteOption } from './ClienteCombobox';
+import ItensField, { type LinhaItem } from './ItensField';
+import { emitirNfeAction, type ProdutoOption } from '../actions';
 
 export default function NfeForm({ clientes, produtos }: { clientes: ClienteOption[]; produtos: ProdutoOption[] }) {
   const router = useRouter();

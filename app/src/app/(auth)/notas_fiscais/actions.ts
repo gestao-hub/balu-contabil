@@ -19,7 +19,7 @@ import { extrairCamposNota } from '@/lib/fiscal/nfse-callback';
 import type { RegimeCode } from '@/lib/fiscal/regime';
 import { obterPreviewImposto } from '@/lib/fiscal/preview-imposto';
 import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
-import type { ClienteOption } from './emissao/ClienteCombobox';
+import type { ClienteOption } from './_nova-nota/ClienteCombobox';
 
 export type NotasFiltros = {
   start: string | null;

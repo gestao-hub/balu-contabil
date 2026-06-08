@@ -3,7 +3,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
-import ClienteCombobox, { type ClienteOption } from '../emissao/ClienteCombobox';
+import ClienteCombobox, { type ClienteOption } from './ClienteCombobox';
 import { lancarNotaManualAction, type NotaManualItem } from '../actions';
 import { brl } from '@/lib/fiscal/guia';
 
