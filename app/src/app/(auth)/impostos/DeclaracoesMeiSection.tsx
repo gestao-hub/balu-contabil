@@ -37,7 +37,7 @@ export default function DeclaracoesMeiSection({
                 href={PORTAL_DASNSIMEI}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
               >
                 <ExternalLink className="size-4" />
                 Declarar no portal da Receita
