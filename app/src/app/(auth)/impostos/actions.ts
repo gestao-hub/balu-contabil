@@ -8,6 +8,7 @@ import type { ResultadoApuracao } from '@/lib/fiscal/apuracao-types';
 import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
 import { consultarDeclaracoesSimples } from '@/lib/fiscal/serpro-consulta';
 import { consultarPagamentosDas } from '@/lib/fiscal/serpro-pagamentos';
+import type { PagamentoDas } from '@/lib/fiscal/serpro-pagamentos-parse';
 import { consultarDasnSimei } from '@/lib/fiscal/serpro-dasn-simei';
 import { gerarDasSimples } from '@/lib/fiscal/serpro-das-simples';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
@@ -221,6 +222,15 @@ export async function gerarDasMeiAction(competencia: string): Promise<GerarDasRe
 export type ConsultaDasResult = { ok: true; count: number } | { ok: false; error: string };
 
 /**
+ * Normaliza um número de DAS para casamento: só dígitos, sem zeros à esquerda.
+ * O CONSDECLARACAO13 traz "07202610733758790" e o PAGAMENTOS71 "7202610733758790" —
+ * mesmo documento, só diferindo no zero inicial.
+ */
+function normalizarNumeroDas(v: string | null | undefined): string {
+  return String(v ?? '').replace(/\D+/g, '').replace(/^0+/, '');
+}
+
+/**
  * Consulta na SERPRO (PGDAS-D / CONSDECLARACAO13) as declarações/DAS do ano-calendário atual
  * e faz upsert da SITUAÇÃO em guias_fiscais. Só Simples. Read-only na SERPRO (não emite/declara).
  */
@@ -248,51 +258,54 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
   const r = await consultarDeclaracoesSimples(supabase, companyId, year);
   if (!r.ok) return r;
 
-  const rows = r.situacoes.map((s) => ({
-    company_id: companyId,
-    owner_user_id: user.id,
-    competencia_referencia: s.competencia,
-    competencia_mes: Number(s.competencia.slice(4, 6)),
-    competencia_ano: Number(s.competencia.slice(0, 4)),
-    numero_das: s.numeroDas,
-    status: s.status,
-    origem: 'serpro',
-    updated_at: new Date().toISOString(),
-    deleted_at: null,
-  }));
+  // Busca os DAS pagos (PAGTOWEB / PAGAMENTOS71) e indexa por número de documento.
+  // Não-fatal: se falhar, seguimos só com a situação do CONSDECLARACAO13.
+  const pagtos = await consultarPagamentosDas(supabase, companyId, year);
+  const pagPorDocumento = new Map<string, PagamentoDas>();
+  if (pagtos.ok) {
+    for (const p of pagtos.pagamentos) {
+      const chave = normalizarNumeroDas(p.numeroDocumento);
+      if (chave) pagPorDocumento.set(chave, p);
+    }
+  }
+
+  // Uma linha por competência (situação do CONSDECLARACAO13), enriquecida com os valores
+  // do DAS pago CASADO PELO NÚMERO DO DOCUMENTO — não por competência. Assim a mesma
+  // competência não colide no upsert, e DAS que não são a declarada (ex.: parcelamento,
+  // que não aparece no CONSDECLARACAO13) são naturalmente ignorados.
+  const rows = r.situacoes.map((s) => {
+    const pag = s.numeroDas ? pagPorDocumento.get(normalizarNumeroDas(s.numeroDas)) : undefined;
+    return {
+      company_id: companyId,
+      owner_user_id: user.id,
+      competencia_referencia: s.competencia,
+      competencia_mes: Number(s.competencia.slice(4, 6)),
+      competencia_ano: Number(s.competencia.slice(0, 4)),
+      numero_das: s.numeroDas,
+      status: pag ? 'paga' : s.status,
+      origem: 'serpro',
+      // Só grava os valores quando há DAS pago casado; senão preserva o que já está na guia
+      // (no upsert do PostgREST, colunas ausentes do payload não entram no SET).
+      ...(pag
+        ? {
+            valor_total: pag.valorTotal,
+            valor_principal: pag.valorPrincipal,
+            valor_multa: pag.valorMulta,
+            valor_juros: pag.valorJuros,
+            data_vencimento: pag.dataVencimento,
+            data_pagamento: pag.dataPagamento,
+          }
+        : {}),
+      updated_at: new Date().toISOString(),
+      deleted_at: null,
+    };
+  });
 
   if (rows.length > 0) {
     const { error } = await supabase
       .from('guias_fiscais')
       .upsert(rows, { onConflict: 'company_id,competencia_referencia' });
     if (error) return { ok: false, error: `Falha ao salvar a listagem: ${error.message}` };
-  }
-
-  // Enriquece com valores reais dos DAS pagos (PAGTOWEB / PAGAMENTOS71).
-  // Não-fatal: se falhar, o índice do CONSDECLARACAO13 já foi salvo acima.
-  const pagtos = await consultarPagamentosDas(supabase, companyId, year);
-  if (pagtos.ok && pagtos.pagamentos.length > 0) {
-    const pagRows = pagtos.pagamentos.map((p) => ({
-      company_id: companyId,
-      owner_user_id: user.id,
-      competencia_referencia: p.competencia,
-      competencia_mes: Number(p.competencia.slice(4, 6)),
-      competencia_ano: Number(p.competencia.slice(0, 4)),
-      numero_das: p.numeroDocumento,
-      valor_total: p.valorTotal,
-      valor_principal: p.valorPrincipal,
-      valor_multa: p.valorMulta,
-      valor_juros: p.valorJuros,
-      data_vencimento: p.dataVencimento,
-      data_pagamento: p.dataPagamento,
-      status: 'paga',
-      origem: 'serpro',
-      updated_at: new Date().toISOString(),
-      deleted_at: null,
-    }));
-    await supabase
-      .from('guias_fiscais')
-      .upsert(pagRows, { onConflict: 'company_id,competencia_referencia' });
   }
 
   // Declarações (numeroDeclaracao/dataTransmissao) vão p/ a tabela própria — separadas do DAS.
