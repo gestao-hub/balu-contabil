@@ -55,6 +55,12 @@ export function brl(n: number | null | undefined): string {
 /** Formata uma data ISO ou Date pt-BR (DD/MM/YYYY). */
 export function dataBR(iso: string | Date | null | undefined): string {
   if (!iso) return '—';
+  // Data sem hora ("YYYY-MM-DD"): formata direto, sem passar por Date/fuso — senão
+  // vira meia-noite UTC e desloca pra BRT (−3h), caindo no dia anterior (off-by-one).
+  if (typeof iso === 'string') {
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  }
   const d = typeof iso === 'string' ? new Date(iso) : iso;
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
