@@ -39,25 +39,19 @@ export default function EmitirNotaDialog({ open, onClose }: { open: boolean; onC
     if (!open && d.open) d.close();
   }, [open]);
 
-  // Ao abrir: reseta e carrega os tipos habilitados; se só 1, pula pro form.
+  // Ao abrir: reseta e carrega os tipos habilitados. Mostramos SEMPRE os 3 cards;
+  // os não habilitados ficam desativados (+ guard no servidor em prepararEmissaoAction).
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setTipo(null); setPreparo(null); setBloqueio(null); setTipos(null);
     setCarregando(true);
     listarTiposEmissaoAction().then((t) => {
-      if (cancelled) return; // dialog fechou antes da resposta — não dispara preparo
+      if (cancelled) return; // dialog fechou antes da resposta
       setTipos(t);
-      const habilitados = (['nfse', 'nfe', 'nfce'] as Tipo[]).filter((k) => t[k]);
-      if (habilitados.length === 1) {
-        void escolher(habilitados[0]!);
-      } else {
-        setCarregando(false);
-      }
+      setCarregando(false);
     });
     return () => { cancelled = true; };
-    // escolher não muda entre renders; só depende de `open`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   async function escolher(t: Tipo) {
