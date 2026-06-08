@@ -6,7 +6,7 @@
 // States Bubble: `open_` (bool), `selecionado_` (text) — substituídos por
 // usePathname() para o item ativo e useState para o toggle aberto/fechado.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -55,6 +55,17 @@ export default function MenuLateral({
   const isDev = process.env.NODE_ENV !== 'production';
 
   const currentCompany = companies.find((c) => c.id === currentCompanyId);
+
+  // Fecha o seletor de empresa ao clicar fora (agora que ele flutua sobre o menu).
+  const companyMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!companyMenuOpen) return;
+    function onDoc(e: MouseEvent) {
+      if (companyMenuRef.current && !companyMenuRef.current.contains(e.target as Node)) setCompanyMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [companyMenuOpen]);
   const items = NAV.filter((i) => !i.roles || i.roles.includes(userRole));
 
   async function changeCompany(companyId: string) {
@@ -120,7 +131,7 @@ export default function MenuLateral({
           <>
             <p className="truncate text-sm font-semibold text-foreground">{userName}</p>
             <p className="text-xs text-muted-foreground">{ROLE_LABEL[userRole] ?? userRole}</p>
-            <div className="mt-3">
+            <div ref={companyMenuRef} className="relative mt-3">
               <button
                 type="button"
                 onClick={() => setCompanyMenuOpen((v) => !v)}
@@ -134,7 +145,7 @@ export default function MenuLateral({
                 <ChevronDown className={`size-3.5 transition-transform ${companyMenuOpen ? 'rotate-180' : ''}`} />
               </button>
               {companyMenuOpen && (
-                <ul className="mt-1 max-h-60 overflow-auto rounded-md border border-border bg-surface-2 shadow-sm">
+                <ul className="absolute left-0 right-0 top-full z-30 mt-1 max-h-60 overflow-auto rounded-md border border-border bg-surface-2 shadow-lg">
                   {companies.map((c) => (
                     <li key={c.id}>
                       <button
