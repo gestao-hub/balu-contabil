@@ -1,14 +1,12 @@
 'use client';
 // @custom — Emissão multi-tipo: form NF-e (modelo 55). Client component.
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import ClienteCombobox, { type ClienteOption } from './ClienteCombobox';
 import ItensField, { type LinhaItem } from './ItensField';
 import { emitirNfeAction, type ProdutoOption } from '../actions';
 
-export default function NfeForm({ clientes, produtos }: { clientes: ClienteOption[]; produtos: ProdutoOption[] }) {
-  const router = useRouter();
+export default function NfeForm({ clientes, produtos, onSuccess }: { clientes: ClienteOption[]; produtos: ProdutoOption[]; onSuccess: () => void }) {
   const [clienteId, setClienteId] = useState('');
   const [natureza, setNatureza] = useState('Venda de mercadoria');
   const [itens, setItens] = useState<LinhaItem[]>([]);
@@ -27,7 +25,7 @@ export default function NfeForm({ clientes, produtos }: { clientes: ClienteOptio
         itens: itens.map(({ _key, ...rest }) => rest),
       });
       if (!r.ok) { setErro(r.error); return; }
-      router.push('/notas_fiscais');
+      onSuccess();
     } finally {
       setEnviando(false);
     }

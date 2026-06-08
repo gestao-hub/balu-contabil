@@ -5,7 +5,6 @@
 // filtros da tela (período/tipo/status) + filtro de texto em memória.
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { assertTipoDoc, validarJustificativa, cancelamentoSoPortal, type TipoDoc } from '@/lib/fiscal/notas-tipo';
@@ -391,27 +390,6 @@ export async function atualizarStatusNotaAction(
   revalidatePath(`/notas_fiscais/${id}`);
   revalidatePath('/notas_fiscais');
   return { ok: true, status: newStatus };
-}
-
-/**
- * Versão server-action friendly (form action). Lê o FormData, chama
- * `emitirNotaAction` e redireciona em sucesso. Em erro, retorna pro form
- * com a mensagem via search param `?error=`.
- */
-export async function emitirNotaFormAction(formData: FormData): Promise<void> {
-  const input: EmitirNotaInput = {
-    clienteId: String(formData.get('clienteId') ?? ''),
-    codigoTributacao: String(formData.get('codigoTributacao') ?? ''),
-    descricao: String(formData.get('descricao') ?? ''),
-    valorReais: Number(formData.get('valorReais') ?? 0),
-    aliquotaIssPercentual: Number(formData.get('aliquotaIssPercentual') ?? 0),
-    cnae: String(formData.get('cnae') ?? '') || null,
-  };
-  const r = await emitirNotaAction(input);
-  if (!r.ok) {
-    redirect(`/notas_fiscais/emissao/nfse?error=${encodeURIComponent(r.error)}`);
-  }
-  redirect(`/notas_fiscais/${r.notaId}`);
 }
 
 export async function cancelarNotaAction(

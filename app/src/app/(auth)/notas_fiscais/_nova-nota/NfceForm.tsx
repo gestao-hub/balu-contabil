@@ -1,7 +1,6 @@
 'use client';
 // @custom — Emissão multi-tipo: form NFC-e (modelo 65). Consumidor final.
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import ItensField, { type LinhaItem } from './ItensField';
 import { emitirNfceAction, type ProdutoOption } from '../actions';
@@ -13,8 +12,7 @@ const FORMAS = [
   { v: '17', label: 'PIX' },
 ];
 
-export default function NfceForm({ produtos }: { produtos: ProdutoOption[] }) {
-  const router = useRouter();
+export default function NfceForm({ produtos, onSuccess }: { produtos: ProdutoOption[]; onSuccess: () => void }) {
   const [itens, setItens] = useState<LinhaItem[]>([]);
   const [formaPgto, setFormaPgto] = useState('01');
   const [cpf, setCpf] = useState('');
@@ -34,7 +32,7 @@ export default function NfceForm({ produtos }: { produtos: ProdutoOption[] }) {
         consumidorCpf: cpf.replace(/\D+/g, '') || null,
       });
       if (!r.ok) { setErro(r.error); return; }
-      router.push('/notas_fiscais');
+      onSuccess();
     } finally {
       setEnviando(false);
     }

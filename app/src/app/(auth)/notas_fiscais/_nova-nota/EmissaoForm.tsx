@@ -1,10 +1,7 @@
 'use client';
-// @custom — PR 2.1 — Form de emissão de NFS-e. Client component.
-// Não usamos useActionState porque a action redireciona em sucesso (server-side).
-// Validação client-side via Zod; submit chama emitirNotaFormAction.
+// @custom — Form de emissão de NFS-e (dentro do modal). Chama emitirNotaAction direto.
 import { useState } from 'react';
 import { z } from 'zod';
-import { useFormStatus } from 'react-dom';
 import { Loader2 } from 'lucide-react';
 import ClienteCombobox, { type ClienteOption } from './ClienteCombobox';
 import {
@@ -12,7 +9,7 @@ import {
   CODIGO_OUTRO_SENTINEL,
   isCodigoTributacaoValido,
 } from '@/lib/fiscal/codigos-tributacao';
-import { emitirNotaFormAction, type CnaeOption } from '../actions';
+import { emitirNotaAction, type CnaeOption } from '../actions';
 import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
 
 const Schema = z.object({
@@ -27,10 +24,12 @@ export default function EmissaoForm({
   clientes,
   previewImposto,
   cnaes,
+  onSuccess,
 }: {
   clientes: ClienteOption[];
   previewImposto: PreviewImposto;
   cnaes: CnaeOption[];
+  onSuccess: () => void;
 }) {
   const [clienteId, setClienteId] = useState<string>('');
   const [cnae, setCnae] = useState<string>(cnaes.length === 1 ? cnaes[0]!.codigo : '');
@@ -40,10 +39,11 @@ export default function EmissaoForm({
   const [valorTexto, setValorTexto] = useState<string>('');
   const [aliquotaTexto, setAliquotaTexto] = useState<string>('5');
   const [clientErr, setClientErr] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     if (cnaes.length > 1 && !cnae) {
-      e.preventDefault();
       setClientErr('Selecione a atividade (CNAE) da nota.');
       return;
     }
@@ -58,26 +58,36 @@ export default function EmissaoForm({
       aliquotaIssPercentual: aliquota,
     });
     if (!parsed.success) {
-      e.preventDefault();
       setClientErr(parsed.error.issues[0]?.message ?? 'Dados inválidos.');
       return;
     }
     if (codigoBase === CODIGO_OUTRO_SENTINEL && !isCodigoTributacaoValido(codigoOutro)) {
-      e.preventDefault();
       setClientErr('Código personalizado deve ter 6 dígitos numéricos.');
       return;
     }
     setClientErr(null);
-    // Sobrescreve os hidden inputs com os valores normalizados.
-    const fd = new FormData(e.currentTarget);
-    fd.set('codigoTributacao', codigoFinal);
-    fd.set('valorReais', String(valor));
-    fd.set('aliquotaIssPercentual', String(aliquota));
-    // FormData reusada pela action automaticamente.
+    setEnviando(true);
+    try {
+      const r = await emitirNotaAction({
+        clienteId,
+        codigoTributacao: codigoFinal,
+        descricao,
+        valorReais: valor,
+        aliquotaIssPercentual: aliquota,
+        cnae: cnae || null,
+      });
+      if (!r.ok) {
+        setClientErr(r.error);
+        return;
+      }
+      onSuccess();
+    } finally {
+      setEnviando(false);
+    }
   }
 
   return (
-    <form action={emitirNotaFormAction} onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {/* Cliente */}
       <div>
         <label className="block text-sm font-medium text-muted-foreground-2 mb-1">Cliente (tomador)</label>
@@ -208,21 +218,20 @@ export default function EmissaoForm({
         <p className="text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">{clientErr}</p>
       )}
 
-      <SubmitButton disabled={!clienteId} />
+      <SubmitButton disabled={!clienteId} enviando={enviando} />
     </form>
   );
 }
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
-  const { pending } = useFormStatus();
+function SubmitButton({ disabled, enviando }: { disabled: boolean; enviando: boolean }) {
   return (
     <button
       type="submit"
-      disabled={pending || disabled}
+      disabled={enviando || disabled}
       className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 transition"
     >
-      {pending && <Loader2 className="size-4 animate-spin" />}
-      {pending ? 'Emitindo…' : 'Emitir nota'}
+      {enviando && <Loader2 className="size-4 animate-spin" />}
+      {enviando ? 'Emitindo…' : 'Emitir nota'}
     </button>
   );
 }

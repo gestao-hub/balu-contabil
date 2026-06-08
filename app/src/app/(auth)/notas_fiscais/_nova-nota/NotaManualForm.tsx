@@ -1,6 +1,5 @@
 'use client';
 import { useMemo, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import ClienteCombobox, { type ClienteOption } from './ClienteCombobox';
@@ -14,8 +13,7 @@ const TIPOS = [
   { v: 'NFCe', label: 'NFC-e (consumidor)' },
 ] as const;
 
-export default function NotaManualForm({ clientes }: { clientes: ClienteOption[] }) {
-  const router = useRouter();
+export default function NotaManualForm({ clientes, onSuccess }: { clientes: ClienteOption[]; onSuccess: () => void }) {
   const toast = useToast();
   const [pending, startTransition] = useTransition();
 
@@ -49,8 +47,7 @@ export default function NotaManualForm({ clientes }: { clientes: ClienteOption[]
       });
       if (r.ok) {
         toast('success', 'Nota lançada.');
-        router.push('/notas_fiscais');
-        router.refresh();
+        onSuccess();
       } else {
         toast('error', r.error);
       }
