@@ -240,3 +240,35 @@ Passa a controlar o estado dos **dois** modais:
 - Suporte a produção (continua homologação).
 - Deep-link pra abrir um modal já num tipo (ex.: `?emitir=nfse`).
 - Multi-step extra (revisão/confirmação antes de emitir) — form único por tipo basta.
+
+---
+
+## Atualizações pós-merge (as-built — 2026-06-08)
+
+Durante/depois da implementação alguns pontos do design acima evoluíram (pedidos do usuário na
+mesma sessão). Estado final na `main`:
+
+1. **Nota manual também virou multi-step.** Não é mais form único com campo "Tipo": tem o mesmo
+   chooser de 3 cards → form, igual à emissão (simetria).
+2. **Manual reusa os MESMOS forms da emissão** via prop `modo: 'emissao' | 'manual'` —
+   `EmissaoForm`/`NfeForm`/`NfceForm` servem os dois fluxos. Em manual adicionam **Número** +
+   **Data de emissão**, escondem a prévia de imposto e gravam via `lancarNotaManualAction`. O
+   `NotaManualForm.tsx` foi **removido**. Assim o form manual é idêntico ao da emissão por tipo.
+3. **`lancarNotaManualAction`** virou união discriminada por tipo (NFSe: cliente/cnae/codigoTributacao/
+   descricao/valor/aliquota; NFe: cliente/natureza/itens; NFCe: itens/pagamentos/cpf) — calcula
+   `valor_total`, grava `cnae` (NFS-e) e `numero_nf`, valida ownership do cliente.
+   **`prepararNotaManualAction(tipo)`** carrega dados por tipo (clientes/cnaes/produtos) **sem** os
+   guards de emissão (município etc. não importam num registro manual).
+4. **Chooser sempre mostra os 3 cards** (removido o auto-pular quando só 1 habilitado): os não
+   habilitados ficam desativados. Vale p/ emissão **e** manual (manual usa a mesma trava
+   `listarTiposEmissaoAction`). Ver memória `balu-emissao-sempre-3-tipos`.
+5. **Dropdown "Nova nota" foi pro header** da página de notas (saiu da fileira de filtros, que
+   quebrava a linha).
+6. **Botão de submit alinhado à direita** (`flex justify-end`) nos 3 forms.
+7. **Data de emissão em `dd-mm-aaaa`** no modo manual via componente `DataEmissaoBR` (exibe BR,
+   mantém ISO `YYYY-MM-DD` internamente p/ a action).
+8. **`ClienteCombobox`**: dropdown passou a flutuar (`absolute top-full z-30`) + fecha ao clicar
+   fora (era inline, empurrava o layout).
+9. Fora do escopo do modal, no mesmo passe: botões `bg-primary` trocaram `text-primary-foreground`
+   (token inexistente → texto ilegível no light) por `text-white`; o seletor de empresa na sidebar
+   (`MenuLateral`) também passou a flutuar.
