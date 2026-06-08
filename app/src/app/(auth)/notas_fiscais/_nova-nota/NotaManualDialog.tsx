@@ -1,17 +1,19 @@
 'use client';
 // @custom — Modal de lançamento manual de NF (escolhe tipo → form). Sem Focus.
+// Usa a MESMA trava de habilitação da emissão real (listarTiposEmissaoAction):
+// só os tipos que a empresa pode emitir ficam clicáveis; o resto desativado.
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, ArrowLeft, FileText, Package, ShoppingCart, Loader2 } from 'lucide-react';
-import { prepararNotaManualAction } from '../actions';
+import { prepararNotaManualAction, listarTiposEmissaoAction, type TiposHabilitados } from '../actions';
 import type { ClienteOption } from './ClienteCombobox';
 import NotaManualForm from './NotaManualForm';
 
 type Tipo = 'NFSe' | 'NFe' | 'NFCe';
-const CARDS: { key: Tipo; titulo: string; sub: string; Icon: typeof FileText }[] = [
-  { key: 'NFSe', titulo: 'NFS-e', sub: 'Serviço', Icon: FileText },
-  { key: 'NFe', titulo: 'NF-e', sub: 'Produto (modelo 55)', Icon: Package },
-  { key: 'NFCe', titulo: 'NFC-e', sub: 'Consumidor (modelo 65)', Icon: ShoppingCart },
+const CARDS: { key: Tipo; flag: keyof TiposHabilitados; titulo: string; sub: string; Icon: typeof FileText }[] = [
+  { key: 'NFSe', flag: 'nfse', titulo: 'NFS-e', sub: 'Serviço', Icon: FileText },
+  { key: 'NFe', flag: 'nfe', titulo: 'NF-e', sub: 'Produto (modelo 55)', Icon: Package },
+  { key: 'NFCe', flag: 'nfce', titulo: 'NFC-e', sub: 'Consumidor (modelo 65)', Icon: ShoppingCart },
 ];
 const LABEL: Record<Tipo, string> = { NFSe: 'NFS-e', NFe: 'NF-e', NFCe: 'NFC-e' };
 
@@ -19,6 +21,7 @@ export default function NotaManualDialog({ open, onClose }: { open: boolean; onC
   const dialogRef = useRef<HTMLDialogElement>(null);
   const router = useRouter();
   const [clientes, setClientes] = useState<ClienteOption[] | null>(null);
+  const [tipos, setTipos] = useState<TiposHabilitados | null>(null);
   const [tipo, setTipo] = useState<Tipo | null>(null);
 
   useEffect(() => {
@@ -28,20 +31,27 @@ export default function NotaManualDialog({ open, onClose }: { open: boolean; onC
     if (!open && d.open) d.close();
   }, [open]);
 
-  // Ao abrir: reseta o passo e carrega os clientes (lançamento manual não tem
-  // travas de habilitação — os 3 tipos ficam sempre disponíveis).
+  // Ao abrir: reseta o passo e carrega clientes + tipos habilitados (mesma trava
+  // da emissão real — só os tipos que a empresa pode emitir ficam clicáveis).
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setClientes(null);
+    setTipos(null);
     setTipo(null);
-    prepararNotaManualAction().then((r) => { if (!cancelled) setClientes(r.clientes); });
+    Promise.all([prepararNotaManualAction(), listarTiposEmissaoAction()]).then(([nm, t]) => {
+      if (cancelled) return;
+      setClientes(nm.clientes);
+      setTipos(t);
+    });
     return () => { cancelled = true; };
   }, [open]);
 
   function sucesso() { onClose(); router.refresh(); }
 
   if (!open) return null;
+
+  const carregando = clientes === null || tipos === null;
 
   return (
     <dialog
@@ -70,19 +80,27 @@ export default function NotaManualDialog({ open, onClose }: { open: boolean; onC
         </header>
 
         <div className="px-6 py-5">
-          {clientes === null ? (
+          {carregando ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
           ) : !tipo ? (
             <>
               <p className="text-sm text-muted-foreground mb-4">Escolha o tipo de documento.</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {CARDS.map(({ key, titulo, sub, Icon }) => (
+                {CARDS.map(({ key, flag, titulo, sub, Icon }) => tipos[flag] ? (
                   <button key={key} type="button" onClick={() => setTipo(key)}
                     className="rounded-xl border border-border bg-surface-2 p-5 hover:border-primary hover:shadow-sm transition flex flex-col gap-2 text-left">
                     <span className="text-primary"><Icon className="size-6" /></span>
                     <span className="font-medium text-foreground">{titulo}</span>
                     <span className="text-xs text-muted-foreground">{sub}</span>
                   </button>
+                ) : (
+                  <div key={key} aria-disabled
+                    className="rounded-xl border border-border bg-surface p-5 opacity-50 cursor-not-allowed flex flex-col gap-2"
+                    title="Empresa não habilitada para este tipo">
+                    <span className="text-muted-foreground"><Icon className="size-6" /></span>
+                    <span className="font-medium text-muted-foreground">{titulo}</span>
+                    <span className="text-xs text-muted-foreground">{sub} · não habilitado</span>
+                  </div>
                 ))}
               </div>
             </>
