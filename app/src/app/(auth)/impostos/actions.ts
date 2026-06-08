@@ -7,6 +7,7 @@ import { type AnexoSimples, tipoFromCode } from '@/lib/fiscal/regime';
 import type { ResultadoApuracao } from '@/lib/fiscal/apuracao-types';
 import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
 import { consultarDeclaracoesSimples } from '@/lib/fiscal/serpro-consulta';
+import { consultarPagamentosDas } from '@/lib/fiscal/serpro-pagamentos';
 import { consultarDasnSimei } from '@/lib/fiscal/serpro-dasn-simei';
 import { gerarDasSimples } from '@/lib/fiscal/serpro-das-simples';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
@@ -265,6 +266,33 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
       .from('guias_fiscais')
       .upsert(rows, { onConflict: 'company_id,competencia_referencia' });
     if (error) return { ok: false, error: `Falha ao salvar a listagem: ${error.message}` };
+  }
+
+  // Enriquece com valores reais dos DAS pagos (PAGTOWEB / PAGAMENTOS71).
+  // Não-fatal: se falhar, o índice do CONSDECLARACAO13 já foi salvo acima.
+  const pagtos = await consultarPagamentosDas(supabase, companyId, year);
+  if (pagtos.ok && pagtos.pagamentos.length > 0) {
+    const pagRows = pagtos.pagamentos.map((p) => ({
+      company_id: companyId,
+      owner_user_id: user.id,
+      competencia_referencia: p.competencia,
+      competencia_mes: Number(p.competencia.slice(4, 6)),
+      competencia_ano: Number(p.competencia.slice(0, 4)),
+      numero_das: p.numeroDocumento,
+      valor_total: p.valorTotal,
+      valor_principal: p.valorPrincipal,
+      valor_multa: p.valorMulta,
+      valor_juros: p.valorJuros,
+      data_vencimento: p.dataVencimento,
+      data_pagamento: p.dataPagamento,
+      status: 'paga',
+      origem: 'serpro',
+      updated_at: new Date().toISOString(),
+      deleted_at: null,
+    }));
+    await supabase
+      .from('guias_fiscais')
+      .upsert(pagRows, { onConflict: 'company_id,competencia_referencia' });
   }
 
   // Declarações (numeroDeclaracao/dataTransmissao) vão p/ a tabela própria — separadas do DAS.

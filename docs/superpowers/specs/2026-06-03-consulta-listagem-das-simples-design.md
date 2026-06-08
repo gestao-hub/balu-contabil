@@ -159,7 +159,77 @@ Sem teste de rede (a chamada real fica nos scripts de spike).
 
 ## Fora de escopo (YAGNI)
 
-- Valores/vencimento/PDF das DAS (vêm na feature de emissão / obter declaração).
+- PDF das DAS (vêm na feature de emissão / obter declaração).
 - MEI (PGMEI).
 - Seleção de ano (fixo: ano-calendário atual).
 - Reescrita do `gerarDasMeiAction` e drop das colunas órfãs `certificado_*` (feature de emissão).
+
+---
+
+## Adição — PAGTOWEB / PAGAMENTOS71 (2026-06-08)
+
+### Problema
+
+O `CONSDECLARACAO13` é um índice de situação e **não traz valores (R$)** nem datas reais de vencimento/pagamento.
+A tabela de histórico de guias exibia "—" nos campos de valor para DAS que não foram emitidos pela Balu.
+
+### Solução implementada
+
+Após o upsert do CONSDECLARACAO13, a `consultarDeclaracoesAction` chama adicionalmente o serviço
+`PAGTOWEB / PAGAMENTOS71` — que retorna os documentos de arrecadação **efetivamente pagos**, com
+valores e datas completos — e faz um segundo upsert enriquecendo as linhas já existentes.
+
+**Endpoint:** `idSistema: PAGTOWEB`, `idServico: PAGAMENTOS71`
+**Filtro:** `codigoTipoDocumentoLista: ['9']` (código 9 = DAS) + `intervaloDataArrecadacao` para o ano-calendário do request.
+**Paginação:** `primeiroDaPagina: 0`, `tamanhoDaPagina: 100` (suficiente p/ 12 meses/ano).
+
+### Fluxo ampliado
+
+```
+consultarDeclaracoesAction(ano?)
+  1–7.  [igual ao spec original — CONSDECLARACAO13 + upsert de situação]
+  8.  consultarPagamentosDas(supabase, companyId, year)
+        → PAGTOWEB/PAGAMENTOS71 com codigoTipoDocumentoLista=['9'] + intervaloDataArrecadacao
+        → parsePagamentosDas(resp) → PagamentoDas[]
+  9.  upsert em guias_fiscais (onConflict: company_id,competencia_referencia)
+        campos novos: valor_total, valor_principal, valor_multa, valor_juros,
+                      data_vencimento, data_pagamento, status='paga'
+  10. [revalidatePath('/impostos') — igual]
+```
+
+Passo 8-9 é **não-fatal**: se o PAGTOWEB falhar, o upsert do CONSDECLARACAO13 já foi salvo e
+a action retorna `ok: true` normalmente.
+
+### Shape da resposta PAGAMENTOS71
+
+`dados` é um array JSON de `DocumentoArrecadacaoIC`:
+
+```ts
+{
+  numeroDocumento: string;         // numero_das
+  tipo: { codigo: "9"; ... };
+  periodoApuracao: string;         // "2022-03-01T00:00:00-03:00" → competencia "202203"
+  dataArrecadacao: string;         // "2022-04-20T..." → data_pagamento (data contábil)
+  dataVencimento: string;          // "2022-04-20T..." → data_vencimento
+  valorTotal: number;
+  valorPrincipal: number;
+  valorMulta: number | null;
+  valorJuros: number | null;
+  valorSaldoTotal: 0;              // = 0 confirma DAS pago
+  desmembramentos: [...];          // detalhamento por receita — não persistido
+}
+```
+
+Observações confirmadas com dados reais (AL PISCINAS, rodada 2026-06-08):
+- `periodoApuracao` usa o **último dia do mês** no dia (`2016-05-31`) ou o primeiro (`2022-03-01`) — ambos normalizam para o mesmo YYYYMM.
+- Endpoint só retorna documentos **já pagos** (sem DAS em aberto).
+- Input incorreto (`dataInicial`/`dataFinal` direto, sem `intervaloDataArrecadacao`) → SERPRO retorna 400 "Parâmetro de entrada dataInicial inválido".
+
+### Arquivos novos
+
+| Arquivo | Papel |
+|---|---|
+| `lib/fiscal/serpro-pagamentos-parse.ts` | Parser puro: `parsePagamentosDas(resp) → PagamentoDas[]` |
+| `lib/fiscal/serpro-pagamentos.ts` | `consultarPagamentosDas(supabase, companyId, ano)` — orquestra auth + PAGTOWEB call |
+
+`actions.ts` importa `consultarPagamentosDas` e executa o passo 8-9.

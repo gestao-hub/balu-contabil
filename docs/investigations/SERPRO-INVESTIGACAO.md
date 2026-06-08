@@ -335,6 +335,72 @@ cuja consumer key está no `.env.local` (28 chars), se o produto **Integra Conta
 
 ---
 
+---
+
+## 10. PAGTOWEB / PAGAMENTOS71 — DAS pagos com valores (investigado 2026-06-08)
+
+### O que é
+
+Serviço do **Integra-Pagamento** (produto separado do Integra-Contador, mas usando o mesmo
+mecanismo de envelope + procurador). Retorna documentos de arrecadação **efetivamente pagos**,
+incluindo **valores (R$)** e datas reais — o que o `CONSDECLARACAO13` não traz.
+
+- `idSistema: PAGTOWEB` · `idServico: PAGAMENTOS71`
+- Chamado via `/integra-contador/v1/Consultar` (mesma rota que PGDASD e PGMEI)
+- Requer o mesmo `autenticar_procurador_token` (fluxo procurador já implementado)
+
+### Dados de entrada
+
+```json
+{
+  "codigoTipoDocumentoLista": ["9"],
+  "intervaloDataArrecadacao": { "dataInicial": "YYYY-01-01", "dataFinal": "YYYY-12-31" },
+  "primeiroDaPagina": 0,
+  "tamanhoDaPagina": 100
+}
+```
+
+⚠️ **`dataInicial`/`dataFinal` NÃO vão direto no objeto** — devem estar dentro de
+`intervaloDataArrecadacao`. Passá-los direto causa 400 "Parâmetro de entrada dataInicial inválido".
+
+Código 9 = DAS (Documento de Arrecadação do Simples Nacional). Inclui DAS-MEI e DAS do Simples.
+
+### Shape da resposta (`dados` = array JSON de `DocumentoArrecadacaoIC`)
+
+```ts
+{
+  numeroDocumento: string;       // número do DAS (17 dígitos)
+  tipo: { codigo: "9"; descricao: string; descricaoAbreviada: string };
+  periodoApuracao: string;       // "2022-03-01T00:00:00-03:00" → competência YYYYMM
+  dataArrecadacao: string;       // data contábil do pagamento (= data_pagamento)
+  dataVencimento: string;        // data de vencimento original
+  receitaPrincipal: { codigo; descricao; extensaoReceita };
+  referencia: string | null;
+  valorTotal: number;
+  valorPrincipal: number;
+  valorMulta: number | null;
+  valorJuros: number | null;
+  valorSaldoTotal: 0;            // sempre 0 → confirma pago
+  valorSaldoPrincipal: 0;
+  desmembramentos: DesmembramentoIC[];  // detalhamento por receita; não persistido
+}
+```
+
+**Observações confirmadas com AL PISCINAS (rodada 2026-06-08, produção):**
+- `periodoApuracao` pode ser primeiro ou último dia do mês — parser extrai apenas YYYYMM.
+- `dataArrecadacao` = data contábil do banco (pode ser D+1 do pagamento físico).
+- `valorSaldoTotal` = 0 em todos os registros retornados (endpoint filtra só pagos).
+- AL PISCINAS retornou registros desde 2016 sem filtro de data.
+- Com filtro por ano (intervaloDataArrecadacao), retorna apenas os pagos naquele ano-calendário.
+
+### Integração implementada
+
+Ver `lib/fiscal/serpro-pagamentos.ts` + `serpro-pagamentos-parse.ts`.
+Integrado em `consultarDeclaracoesAction` (step 8-9) conforme spec
+`docs/superpowers/specs/2026-06-03-consulta-listagem-das-simples-design.md § Adição PAGTOWEB`.
+
+---
+
 ## Changelog
 - **2026-05-30 (rodada 1)** — Criação. Smoke (403 900908), tabela Serviços×Procuração (DAS-MEI sem
   procuração; Simples exige 00146), mapeamento código↔doc, origem Bubble/n8n do `TERCEIROS`.
