@@ -262,14 +262,17 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
   if (!r.ok) return r;
 
   // Busca os DAS pagos (PAGTOWEB / PAGAMENTOS71) e indexa por número de documento.
-  // Não-fatal: se falhar, seguimos só com a situação do CONSDECLARACAO13.
+  // FATAL: se falhar, não salvamos nem marcamos nada. Senão o sync fecharia com os meses
+  // pagos em branco e — sem botão de re-consulta — o usuário ficaria preso com dados furados.
+  // Melhor falhar aqui (gate permanece) e deixar o usuário/cron tentar de novo.
   const pagtos = await consultarPagamentosDas(supabase, companyId, year);
+  if (!pagtos.ok) {
+    return { ok: false, error: 'A SERPRO está instável agora (consulta de pagamentos falhou). Tente atualizar de novo em instantes.' };
+  }
   const pagPorDocumento = new Map<string, PagamentoDas>();
-  if (pagtos.ok) {
-    for (const p of pagtos.pagamentos) {
-      const chave = normalizarNumeroDas(p.numeroDocumento);
-      if (chave) pagPorDocumento.set(chave, p);
-    }
+  for (const p of pagtos.pagamentos) {
+    const chave = normalizarNumeroDas(p.numeroDocumento);
+    if (chave) pagPorDocumento.set(chave, p);
   }
 
   // Uma linha por competência (situação do CONSDECLARACAO13), enriquecida em 2 fontes:
