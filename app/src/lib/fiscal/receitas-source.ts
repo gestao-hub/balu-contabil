@@ -21,7 +21,9 @@ export async function lerReceitasParaApuracao(
     .from('notas_fiscais')
     .select('data_emissao, valor_total, status, tipo_documento, cnae')
     .eq('company_id', companyId)
-    .eq('status', 'ativa')
+    // 'ativa' = emissão real autorizada; 'lancada' = lançamento manual (NF emitida fora).
+    // Ambas são receita válida → entram na base de imposto.
+    .in('status', ['ativa', 'lancada'])
     .in('tipo_documento', ['NFSe', 'NFe', 'NFCe'])
     .gte('data_emissao', inicioIso);
 

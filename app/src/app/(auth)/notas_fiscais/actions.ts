@@ -431,11 +431,25 @@ export async function cancelarNotaAction(
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
-    .select('id, tipo_documento, referencia, status')
+    .select('id, tipo_documento, referencia, status, origem')
     .eq('id', id)
     .eq('company_id', companyId)
     .maybeSingle();
   if (!nota) return { ok: false, error: 'Nota não encontrada.' };
+
+  // Nota manual (lançamento): não tem documento na Focus → cancela só no banco, sem chamar a API.
+  if (nota.origem === 'manual') {
+    if (nota.status === 'cancelada') return { ok: false, error: 'Esta nota já está cancelada.' };
+    const { error: cancErr } = await supabase
+      .from('notas_fiscais')
+      .update({ status: 'cancelada' })
+      .eq('id', id).eq('company_id', companyId);
+    if (cancErr) return { ok: false, error: cancErr.message };
+    revalidatePath('/notas_fiscais');
+    revalidatePath(`/notas_fiscais/${id}`);
+    return { ok: true };
+  }
+
   if (nota.status !== 'ativa') return { ok: false, error: 'Só notas ativas podem ser canceladas.' };
 
   // Cancelamento exige o token da EMPRESA (igual emissão).
@@ -790,4 +804,55 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
   }
   revalidatePath('/notas_fiscais');
   return { ok: true, notaId };
+}
+
+export type NotaManualItem = { descricao: string; valor: number };
+export type NotaManualInput = {
+  tipo: 'NFSe' | 'NFe' | 'NFCe';
+  clienteId: string | null;
+  numero: string;
+  dataEmissao: string;          // 'YYYY-MM-DD'
+  itens: NotaManualItem[];
+};
+export type LancarNotaManualResult = { ok: true; id: string } | { ok: false; error: string };
+
+/**
+ * Registra uma NF já emitida fora (lançamento manual) — NÃO chama a Focus.
+ * Marca origem='manual', status='lancada'. Itens/número vão no payload_focusnfe (jsonb).
+ */
+export async function lancarNotaManualAction(input: NotaManualInput): Promise<LancarNotaManualResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  if (!['NFSe', 'NFe', 'NFCe'].includes(input.tipo)) return { ok: false, error: 'Tipo inválido.' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dataEmissao)) return { ok: false, error: 'Data de emissão inválida.' };
+  const itens = (input.itens ?? []).filter((i) => i.descricao.trim() && Number.isFinite(i.valor) && i.valor > 0);
+  if (itens.length === 0) return { ok: false, error: 'Inclua ao menos um item com descrição e valor.' };
+  const valorTotal = itens.reduce((s, i) => s + i.valor, 0);
+
+  const { data, error } = await supabase
+    .from('notas_fiscais')
+    .insert({
+      company_id: companyId,
+      cliente_id: input.clienteId,
+      tipo_documento: input.tipo,
+      referencia: `man_${globalThis.crypto.randomUUID()}`,
+      data_emissao: new Date(`${input.dataEmissao}T12:00:00-03:00`).toISOString(),
+      valor_total: valorTotal,
+      status: 'lancada',
+      origem: 'manual',
+      payload_focusnfe: { manual: true, numero: input.numero, itens },
+    })
+    .select('id')
+    .single();
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/notas_fiscais');
+  return { ok: true, id: data.id as string };
 }

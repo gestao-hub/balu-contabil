@@ -4,6 +4,7 @@ export type Filtros = {
   q: string;
   tipo: string;     // 'todos' default
   status: string;   // 'todos' default
+  origem: string;   // 'todos' default
   start: string | null;
   end: string | null;
   page: number;     // 1 default
@@ -17,6 +18,7 @@ export function parseFiltrosFromParams(sp: ParamsLike): Filtros {
   const q = sp.get('q') ?? '';
   const tipo = sp.get('tipo') ?? 'todos';
   const status = sp.get('status') ?? 'todos';
+  const origem = sp.get('origem') ?? 'todos';
 
   let start: string | null;
   let end: string | null;
@@ -37,7 +39,7 @@ export function parseFiltrosFromParams(sp: ParamsLike): Filtros {
   const pageRaw = Number.parseInt(sp.get('page') ?? '1', 10);
   const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
 
-  return { q, tipo, status, start, end, page };
+  return { q, tipo, status, origem, start, end, page };
 }
 
 export function filtrosToQueryString(f: Filtros): string {
@@ -45,6 +47,7 @@ export function filtrosToQueryString(f: Filtros): string {
   if (f.q) sp.set('q', f.q);
   if (f.tipo !== 'todos') sp.set('tipo', f.tipo);
   if (f.status !== 'todos') sp.set('status', f.status);
+  if (f.origem !== 'todos') sp.set('origem', f.origem);
   // O mês vigente é o default (parse cai nele sem params), então o omitimos pra não
   // "congelar" o mês na URL (bookmark/voltar depois de virar o mês traria o mês velho).
   const ehMesVigente = f.start === primeiroDiaMesISO() && f.end === ultimoDiaMesISO();

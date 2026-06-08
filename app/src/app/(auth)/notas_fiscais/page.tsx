@@ -24,7 +24,7 @@ export default async function NotasFiscaisPage() {
     if (companyId) {
       const { data } = await supabase
         .from('notas_fiscais')
-        .select('id, tipo_documento, referencia, data_emissao, valor_total, status, cliente_id, payload_focusnfe')
+        .select('id, tipo_documento, referencia, data_emissao, valor_total, status, origem, cliente_id, payload_focusnfe')
         .eq('company_id', companyId)
         .order('data_emissao', { ascending: false, nullsFirst: false })
         .limit(2000);

@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<string, { txt: string; cls: string }> = {
   pendente: { txt: 'Pendente', cls: 'bg-alert/10 text-alert' },
   cancelada: { txt: 'Cancelada', cls: 'bg-surface-2 text-muted-foreground-2' },
   erro: { txt: 'Erro', cls: 'bg-destructive/10 text-destructive' },
+  lancada: { txt: 'Lançada', cls: 'bg-primary/10 text-primary' },
 };
 
 
@@ -185,7 +186,7 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
         >
           <Download className="size-4" /> Baixar PDF
         </a>
-        <CancelarButton id={id} ativa={status === 'ativa'} soPortal={cancelSoPortal} />
+        <CancelarButton id={id} ativa={status === 'ativa' || status === 'lancada'} soPortal={status === 'lancada' ? false : cancelSoPortal} />
       </div>
     </main>
   );

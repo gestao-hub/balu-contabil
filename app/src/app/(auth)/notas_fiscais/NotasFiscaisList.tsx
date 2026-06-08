@@ -8,11 +8,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { parseFiltrosFromParams, filtrosToQueryString } from './notas-filtros';
-import { Search, Download, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import { useToast } from '@/components/Toaster';
 import { exportNotasCsvAction } from './actions';
 import AtualizarStatusIcon from './AtualizarStatusIcon';
+import NovaNotaDropdown from './NovaNotaDropdown';
 
 // Tabela real `notas_fiscais` é minimalista: o nome do cliente é derivado de
 // payload_focusnfe.destinatario (não há FK cliente_id). `referencia` é o identificador.
@@ -23,6 +24,7 @@ export type NotaListRow = {
   data_emissao: string;
   valor_total: number;
   status: string;
+  origem: string;
   cliente_nome: string | null;
 };
 
@@ -36,6 +38,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   pendente: { label: 'Pendente', cls: 'bg-alert/10 text-alert' },
   erro: { label: 'Erro', cls: 'bg-destructive/10 text-destructive' },
   cancelada: { label: 'Cancelada', cls: 'bg-surface-2 text-muted-foreground-2' },
+  lancada: { label: 'Lançada', cls: 'bg-primary/10 text-primary' },
 };
 
 function fmtData(iso: string | null): string {
@@ -52,6 +55,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
   const [periodo, setPeriodo] = useState<PeriodoRange>({ start: inicial.start, end: inicial.end });
   const [tipo, setTipo] = useState<string>(inicial.tipo);
   const [status, setStatus] = useState<string>(inicial.status);
+  const [origem, setOrigem] = useState<string>(inicial.origem);
   const [pagina, setPagina] = useState(inicial.page);
   const [exporting, setExporting] = useState(false);
   const POR_PAGINA = 100;
@@ -64,15 +68,16 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
       primeiroSync.current = false;
       return;
     }
-    const qs = filtrosToQueryString({ q: query, tipo, status, start: periodo.start, end: periodo.end, page: pagina });
+    const qs = filtrosToQueryString({ q: query, tipo, status, origem, start: periodo.start, end: periodo.end, page: pagina });
     router.replace(qs ? `/notas_fiscais?${qs}` : '/notas_fiscais', { scroll: false });
-  }, [query, tipo, status, periodo, pagina, router]);
+  }, [query, tipo, status, origem, periodo, pagina, router]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return initial.filter((n) => {
       if (tipo !== 'todos' && n.tipo_documento !== tipo) return false;
       if (status !== 'todos' && n.status !== status) return false;
+      if (origem !== 'todos' && n.origem !== origem) return false;
       if (periodo.start || periodo.end) {
         const d = n.data_emissao?.slice(0, 10) ?? null;
         if (!d) return false;
@@ -85,7 +90,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
       }
       return true;
     });
-  }, [initial, query, tipo, status, periodo]);
+  }, [initial, query, tipo, status, origem, periodo]);
 
   const totalPaginas = Math.max(1, Math.ceil(filtered.length / POR_PAGINA));
   const paginaAtual = Math.min(pagina, totalPaginas);
@@ -179,6 +184,18 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             <option value="pendente">Pendente</option>
             <option value="erro">Erro</option>
             <option value="cancelada">Cancelada</option>
+            <option value="lancada">Lançada</option>
+          </select>
+
+          <select
+            value={origem}
+            onChange={(e) => { setOrigem(e.target.value); setPagina(1); }}
+            aria-label="Filtrar por origem"
+            className="rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:border-primary focus:outline-none"
+          >
+            <option value="todos">Todas as origens</option>
+            <option value="emissao">Emitidas</option>
+            <option value="manual">Manuais</option>
           </select>
 
           <FilterPeriodo initial={periodo} onChange={(p) => { setPeriodo(p); setPagina(1); }} />
@@ -193,13 +210,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             {exporting ? 'Exportando…' : 'Exportar CSV'}
           </button>
 
-          <Link
-            href="/notas_fiscais/emissao"
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-          >
-            <FileText className="size-4" />
-            Emitir nova
-          </Link>
+          <NovaNotaDropdown />
         </div>
       </div>
 
@@ -222,7 +233,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                   {initial.length === 0
-                    ? 'Nenhuma nota emitida ainda.'
+                    ? 'Nenhuma nota registrada ainda.'
                     : 'Nenhuma nota encontrada para os filtros.'}
                 </td>
               </tr>
@@ -253,6 +264,11 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
                         >
                           {st?.label ?? n.status ?? '—'}
                         </span>
+                        {n.origem === 'manual' && (
+                          <span className="inline-flex rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                            Manual
+                          </span>
+                        )}
                         {n.status === 'pendente' && (
                           <AtualizarStatusIcon notaId={n.id} />
                         )}
