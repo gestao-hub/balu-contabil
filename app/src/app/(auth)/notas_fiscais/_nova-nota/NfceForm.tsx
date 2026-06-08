@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import ItensField, { type LinhaItem } from './ItensField';
+import DataEmissaoBR from './DataEmissaoBR';
 import { emitirNfceAction, lancarNotaManualAction, type ProdutoOption } from '../actions';
 
 const FORMAS = [
@@ -64,8 +65,7 @@ export default function NfceForm({
           </div>
           <div>
             <label htmlFor="nfce-data" className="block text-sm font-medium text-muted-foreground-2 mb-1">Data de emissão</label>
-            <input id="nfce-data" type="date" value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+            <DataEmissaoBR id="nfce-data" value={dataEmissao} onChange={setDataEmissao} />
           </div>
         </div>
       )}
