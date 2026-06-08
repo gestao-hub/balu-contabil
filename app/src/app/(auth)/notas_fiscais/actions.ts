@@ -836,9 +836,20 @@ export async function lancarNotaManualAction(input: NotaManualInput): Promise<La
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dataEmissao)) return { ok: false, error: 'Data de emissão inválida.' };
 
+  // Valida ownership do cliente (mesma garantia das actions de emissão): impede
+  // associar a nota a um cliente de outra empresa via chamada direta da action.
+  const clienteId = 'clienteId' in input ? input.clienteId : null;
+  if (clienteId) {
+    const { data: cli } = await supabase
+      .from('clientes').select('id')
+      .eq('id', clienteId).eq('company_id', companyId).is('deleted_at', null).maybeSingle();
+    if (!cli) return { ok: false, error: 'Cliente não encontrado.' };
+  }
+
   const base = {
     company_id: companyId,
     referencia: `man_${globalThis.crypto.randomUUID()}`,
+    numero_nf: input.numero.trim() || null,
     data_emissao: new Date(`${input.dataEmissao}T12:00:00-03:00`).toISOString(),
     status: 'lancada' as const,
     origem: 'manual' as const,
