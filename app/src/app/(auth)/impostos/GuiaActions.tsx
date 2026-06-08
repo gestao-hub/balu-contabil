@@ -1,29 +1,18 @@
 'use client';
-// @custom — PR 3.1 — Ações de uma guia: Marcar paga, Baixar PDF, Copiar linha
-// digitável. Client island reusada pelo CompetenciaAtualCard e HistoricoGuias.
-import { useState, useTransition } from 'react';
-import { Check, Copy, Download, Loader2 } from 'lucide-react';
+// @custom — Ações de uma guia: Copiar linha digitável + Baixar PDF.
+// "Marcar paga" removido — o status real de pagamento vem da SERPRO via cron,
+// não por marcação manual do usuário. Client island reusada por
+// CompetenciaAtualCard e HistoricoGuias.
+import { useState } from 'react';
+import { Check, Copy, Download } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
-import { marcarGuiaPagaAction } from './actions';
 import type { GuiaRow } from './HistoricoGuias';
 
 type Variant = 'primary' | 'inline';
 
 export default function GuiaActions({ guia, variant = 'inline' }: { guia: GuiaRow; variant?: Variant }) {
   const toast = useToast();
-  const [pending, startTransition] = useTransition();
   const [copied, setCopied] = useState(false);
-
-  const ehPaga = (guia.status ?? '').toLowerCase() === 'paga';
-
-  function handleMarcarPaga() {
-    if (pending || ehPaga) return;
-    startTransition(async () => {
-      const r = await marcarGuiaPagaAction(guia.id);
-      if (r.ok) toast('success', 'Guia marcada como paga.');
-      else toast('error', r.error);
-    });
-  }
 
   async function handleCopiar() {
     if (!guia.linhaDigitavel) {
@@ -50,22 +39,6 @@ export default function GuiaActions({ guia, variant = 'inline' }: { guia: GuiaRo
 
   return (
     <>
-      {!ehPaga && (
-        <button
-          type="button"
-          onClick={handleMarcarPaga}
-          disabled={pending}
-          className={`${baseCls} ${
-            variant === 'primary'
-              ? 'bg-primary text-white hover:opacity-90 disabled:opacity-50'
-              : 'text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50'
-          }`}
-        >
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-          {pending ? 'Marcando…' : 'Marcar paga'}
-        </button>
-      )}
-
       <button
         type="button"
         onClick={handleCopiar}

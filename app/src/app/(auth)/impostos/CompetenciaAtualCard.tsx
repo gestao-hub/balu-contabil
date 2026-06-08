@@ -8,8 +8,6 @@ import { fatorRAplicavel } from '@/lib/fiscal/regime';
 import type { ApuracaoRow } from './page';
 import type { GuiaRow } from './HistoricoGuias';
 import GuiaActions from './GuiaActions';
-import GerarDasButton from './GerarDasButton';
-import GerarDasSimplesButton from './GerarDasSimplesButton';
 import PreviewDeclaracaoButton from './PreviewDeclaracaoButton';
 
 type Props = {
@@ -20,9 +18,9 @@ type Props = {
   isSimples: boolean;
 };
 
-export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMei, isSimples }: Props) {
+export default function CompetenciaAtualCard({ apuracao, guia, competencia, isSimples }: Props) {
   if (!apuracao && !guia) {
-    return <EmptyCompetencia competencia={competencia} isMei={isMei} isSimples={isSimples} />;
+    return <EmptyCompetencia competencia={competencia} />;
   }
 
   const badge = guia ? statusGuiaBadge(guia.status) : null;
@@ -97,10 +95,6 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMe
 
         <div className="sm:w-56 flex flex-col gap-2 shrink-0">
           {guia && <GuiaActions guia={guia} variant="primary" />}
-          {isSimples && (guia?.status ?? '').toLowerCase() !== 'paga' && (
-            <GerarDasSimplesButton competencia={competencia} variant="primary" />
-          )}
-          {!guia && isMei && <GerarDasButton competencia={competencia} />}
         </div>
       </div>
     </div>
@@ -116,7 +110,7 @@ function Linha({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function EmptyCompetencia({ competencia, isMei, isSimples }: { competencia: string; isMei: boolean; isSimples: boolean }) {
+function EmptyCompetencia({ competencia }: { competencia: string }) {
   return (
     <div className="rounded-xl border-2 border-dashed border-border bg-surface p-8 text-center">
       <div className="inline-flex items-center justify-center size-12 rounded-full bg-primary/10 mb-3">
@@ -133,16 +127,6 @@ function EmptyCompetencia({ competencia, isMei, isSimples }: { competencia: stri
         <FileDown className="size-4" />
         Calcular agora
       </Link>
-      {isMei && (
-        <div className="mt-3">
-          <GerarDasButton competencia={competencia} />
-        </div>
-      )}
-      {isSimples && (
-        <div className="mt-3">
-          <GerarDasSimplesButton competencia={competencia} variant="primary" />
-        </div>
-      )}
     </div>
   );
 }

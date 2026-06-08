@@ -11,7 +11,6 @@ import { competenciaReferenciaBrt, competenciaLabel } from '@/lib/fiscal/guia';
 import { tipoFromCode } from '@/lib/fiscal/regime';
 import CompetenciaAtualCard from './CompetenciaAtualCard';
 import HistoricoGuias, { type GuiaRow } from './HistoricoGuias';
-import ConsultarSerproButton from './ConsultarSerproButton';
 import DeclaracoesSection, { type DeclaracaoRow } from './DeclaracoesSection';
 import DeclaracoesMeiSection from './DeclaracoesMeiSection';
 import GateInicialSerpro from './GateInicialSerpro';
@@ -153,11 +152,8 @@ export default async function ImpostosPage() {
               )}
 
               <section>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="text-xs uppercase tracking-wide text-muted-foreground">Histórico de guias</h2>
-                  {isSimples && <ConsultarSerproButton />}
-                </div>
-                <HistoricoGuias initial={historico} isSimples={isSimples} />
+                <h2 className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Histórico de guias</h2>
+                <HistoricoGuias initial={historico} />
               </section>
             </>
           )}
