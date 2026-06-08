@@ -4,6 +4,7 @@ import NotasFiscaisList, { type NotaListRow } from './NotasFiscaisList';
 import { calcularLimiteEmissao, type LimiteEmissao } from '@/lib/fiscal/limite-emissao';
 import { somarEmitidoNoAno } from '@/lib/fiscal/emitido-ano';
 import LimiteEmissaoBanner from './LimiteEmissaoBanner';
+import NovaNotaDropdown from './NovaNotaDropdown';
 
 export default async function NotasFiscaisPage() {
   const supabase = await createServerClient();
@@ -74,11 +75,14 @@ export default async function NotasFiscaisPage() {
 
   return (
     <main className="p-6">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">Notas fiscais</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Histórico das notas emitidas pela empresa selecionada.
-        </p>
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Notas fiscais</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Histórico das notas emitidas pela empresa selecionada.
+          </p>
+        </div>
+        <NovaNotaDropdown />
       </header>
 
       <LimiteEmissaoBanner limite={limite} />

@@ -1,10 +1,9 @@
 'use client';
-// @custom — PR 2.1 — Form de emissão de NFS-e. Client component.
-// Não usamos useActionState porque a action redireciona em sucesso (server-side).
-// Validação client-side via Zod; submit chama emitirNotaFormAction.
+// @custom — Form de NFS-e. Serve emissão real (emitirNotaAction) e lançamento
+// manual (lancarNotaManualAction) via prop `modo`; campos idênticos, manual
+// adiciona Número + Data e não chama a Focus.
 import { useState } from 'react';
 import { z } from 'zod';
-import { useFormStatus } from 'react-dom';
 import { Loader2 } from 'lucide-react';
 import ClienteCombobox, { type ClienteOption } from './ClienteCombobox';
 import {
@@ -12,7 +11,7 @@ import {
   CODIGO_OUTRO_SENTINEL,
   isCodigoTributacaoValido,
 } from '@/lib/fiscal/codigos-tributacao';
-import { emitirNotaFormAction, type CnaeOption } from '../actions';
+import { emitirNotaAction, lancarNotaManualAction, type CnaeOption } from '../actions';
 import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
 
 const Schema = z.object({
@@ -23,15 +22,22 @@ const Schema = z.object({
   aliquotaIssPercentual: z.number().min(0, 'Alíquota inválida.').max(100, 'Alíquota inválida.'),
 });
 
+const hojeBrt = () => new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+
 export default function EmissaoForm({
   clientes,
   previewImposto,
   cnaes,
+  onSuccess,
+  modo = 'emissao',
 }: {
   clientes: ClienteOption[];
-  previewImposto: PreviewImposto;
+  previewImposto?: PreviewImposto;
   cnaes: CnaeOption[];
+  onSuccess: () => void;
+  modo?: 'emissao' | 'manual';
 }) {
+  const manual = modo === 'manual';
   const [clienteId, setClienteId] = useState<string>('');
   const [cnae, setCnae] = useState<string>(cnaes.length === 1 ? cnaes[0]!.codigo : '');
   const [codigoBase, setCodigoBase] = useState<string>(CODIGOS_TRIBUTACAO_FREQUENTES[0]!.codigo);
@@ -39,11 +45,14 @@ export default function EmissaoForm({
   const [descricao, setDescricao] = useState<string>('');
   const [valorTexto, setValorTexto] = useState<string>('');
   const [aliquotaTexto, setAliquotaTexto] = useState<string>('5');
+  const [numero, setNumero] = useState<string>('');
+  const [dataEmissao, setDataEmissao] = useState<string>(hojeBrt);
   const [clientErr, setClientErr] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     if (cnaes.length > 1 && !cnae) {
-      e.preventDefault();
       setClientErr('Selecione a atividade (CNAE) da nota.');
       return;
     }
@@ -58,32 +67,79 @@ export default function EmissaoForm({
       aliquotaIssPercentual: aliquota,
     });
     if (!parsed.success) {
-      e.preventDefault();
       setClientErr(parsed.error.issues[0]?.message ?? 'Dados inválidos.');
       return;
     }
     if (codigoBase === CODIGO_OUTRO_SENTINEL && !isCodigoTributacaoValido(codigoOutro)) {
-      e.preventDefault();
       setClientErr('Código personalizado deve ter 6 dígitos numéricos.');
       return;
     }
     setClientErr(null);
-    // Sobrescreve os hidden inputs com os valores normalizados.
-    const fd = new FormData(e.currentTarget);
-    fd.set('codigoTributacao', codigoFinal);
-    fd.set('valorReais', String(valor));
-    fd.set('aliquotaIssPercentual', String(aliquota));
-    // FormData reusada pela action automaticamente.
+    setEnviando(true);
+    try {
+      const r = manual
+        ? await lancarNotaManualAction({
+            tipo: 'NFSe',
+            clienteId,
+            numero: numero.trim(),
+            dataEmissao,
+            cnae: cnae || null,
+            codigoTributacao: codigoFinal,
+            descricao,
+            valorReais: valor,
+            aliquotaIssPercentual: aliquota,
+          })
+        : await emitirNotaAction({
+            clienteId,
+            codigoTributacao: codigoFinal,
+            descricao,
+            valorReais: valor,
+            aliquotaIssPercentual: aliquota,
+            cnae: cnae || null,
+          });
+      if (!r.ok) {
+        setClientErr(r.error);
+        return;
+      }
+      onSuccess();
+    } finally {
+      setEnviando(false);
+    }
   }
 
   return (
-    <form action={emitirNotaFormAction} onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {/* Cliente */}
       <div>
         <label className="block text-sm font-medium text-muted-foreground-2 mb-1">Cliente (tomador)</label>
         <ClienteCombobox clientes={clientes} value={clienteId} onChange={setClienteId} />
-        <input type="hidden" name="clienteId" value={clienteId} />
       </div>
+
+      {/* Número + Data — só no lançamento manual (a emissão real gera) */}
+      {manual && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="numero" className="block text-sm font-medium text-muted-foreground-2 mb-1">Número da nota</label>
+            <input
+              id="numero"
+              value={numero}
+              onChange={(e) => setNumero(e.target.value)}
+              placeholder="Ex.: 1234"
+              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <div>
+            <label htmlFor="dataEmissao" className="block text-sm font-medium text-muted-foreground-2 mb-1">Data de emissão</label>
+            <input
+              id="dataEmissao"
+              type="date"
+              value={dataEmissao}
+              onChange={(e) => setDataEmissao(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Código de tributação */}
       <div>
@@ -107,7 +163,6 @@ export default function EmissaoForm({
             className="mt-2 w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm font-mono"
           />
         )}
-        <input type="hidden" name="codigoTributacao" value={codigoBase === CODIGO_OUTRO_SENTINEL ? codigoOutro : codigoBase} />
       </div>
 
       {cnaes.length > 0 && (
@@ -132,7 +187,6 @@ export default function EmissaoForm({
               ))}
             </select>
           )}
-          <input type="hidden" name="cnae" value={cnae} />
         </div>
       )}
 
@@ -141,7 +195,6 @@ export default function EmissaoForm({
         <label htmlFor="descricao" className="block text-sm font-medium text-muted-foreground-2 mb-1">Descrição do serviço</label>
         <textarea
           id="descricao"
-          name="descricao"
           value={descricao}
           onChange={(e) => setDescricao(e.target.value)}
           required
@@ -161,7 +214,6 @@ export default function EmissaoForm({
           <input
             type="text"
             inputMode="decimal"
-            name="valorReais"
             value={valorTexto}
             onChange={(e) => setValorTexto(maskMoney(e.target.value))}
             placeholder="0,00"
@@ -174,7 +226,6 @@ export default function EmissaoForm({
           <input
             type="text"
             inputMode="decimal"
-            name="aliquotaIssPercentual"
             value={aliquotaTexto}
             onChange={(e) => setAliquotaTexto(e.target.value.replace(/[^\d.,]/g, ''))}
             placeholder="5,00"
@@ -184,7 +235,8 @@ export default function EmissaoForm({
         </div>
       </div>
 
-      {previewImposto.tipo === 'simples' && (() => {
+      {/* Prévia de imposto — só na emissão real */}
+      {!manual && previewImposto?.tipo === 'simples' && (() => {
         const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
         const valor = parseDecimal(valorTexto) || 0;
         const imposto = valor * previewImposto.aliquota;
@@ -195,7 +247,7 @@ export default function EmissaoForm({
           </p>
         );
       })()}
-      {previewImposto.tipo === 'mei' && (() => {
+      {!manual && previewImposto?.tipo === 'mei' && (() => {
         const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
         return (
           <p className="text-sm text-muted-foreground bg-surface-2 border border-border rounded-md px-3 py-2">
@@ -208,21 +260,24 @@ export default function EmissaoForm({
         <p className="text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">{clientErr}</p>
       )}
 
-      <SubmitButton disabled={!clienteId} />
+      <div className="flex justify-end">
+        <SubmitButton disabled={!clienteId} enviando={enviando} manual={manual} />
+      </div>
     </form>
   );
 }
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
-  const { pending } = useFormStatus();
+function SubmitButton({ disabled, enviando, manual }: { disabled: boolean; enviando: boolean; manual: boolean }) {
+  const ocupado = manual ? 'Lançando…' : 'Emitindo…';
+  const ocioso = manual ? 'Lançar nota' : 'Emitir nota';
   return (
     <button
       type="submit"
-      disabled={pending || disabled}
+      disabled={enviando || disabled}
       className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 transition"
     >
-      {pending && <Loader2 className="size-4 animate-spin" />}
-      {pending ? 'Emitindo…' : 'Emitir nota'}
+      {enviando && <Loader2 className="size-4 animate-spin" />}
+      {enviando ? ocupado : ocioso}
     </button>
   );
 }

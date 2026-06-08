@@ -4,7 +4,7 @@
 // [×] remove o item DA NOTA (não exclui o produto).
 import { useState } from 'react';
 import { Trash2, Plus } from 'lucide-react';
-import { criarProdutoAction, type ProdutoOption } from '../../actions';
+import { criarProdutoAction, type ProdutoOption } from '../actions';
 import type { NfeItem } from '@/lib/fiscal/nfe-payload';
 
 export type LinhaItem = NfeItem & { _key: string };

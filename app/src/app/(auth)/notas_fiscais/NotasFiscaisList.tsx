@@ -13,7 +13,6 @@ import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import { useToast } from '@/components/Toaster';
 import { exportNotasCsvAction } from './actions';
 import AtualizarStatusIcon from './AtualizarStatusIcon';
-import NovaNotaDropdown from './NovaNotaDropdown';
 
 // Tabela real `notas_fiscais` é minimalista: o nome do cliente é derivado de
 // payload_focusnfe.destinatario (não há FK cliente_id). `referencia` é o identificador.
@@ -209,8 +208,6 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
             <Download className="size-4" />
             {exporting ? 'Exportando…' : 'Exportar CSV'}
           </button>
-
-          <NovaNotaDropdown />
         </div>
       </div>
 

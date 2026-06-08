@@ -5,7 +5,6 @@
 // filtros da tela (período/tipo/status) + filtro de texto em memória.
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { assertTipoDoc, validarJustificativa, cancelamentoSoPortal, type TipoDoc } from '@/lib/fiscal/notas-tipo';
@@ -17,6 +16,9 @@ import { traduzirErroFocus } from '@/lib/fiscal/focus-erro';
 import { mapStatusFocus } from '@/lib/fiscal/focus-status';
 import { extrairCamposNota } from '@/lib/fiscal/nfse-callback';
 import type { RegimeCode } from '@/lib/fiscal/regime';
+import { obterPreviewImposto } from '@/lib/fiscal/preview-imposto';
+import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
+import type { ClienteOption } from './_nova-nota/ClienteCombobox';
 
 export type NotasFiltros = {
   start: string | null;
@@ -388,27 +390,6 @@ export async function atualizarStatusNotaAction(
   revalidatePath(`/notas_fiscais/${id}`);
   revalidatePath('/notas_fiscais');
   return { ok: true, status: newStatus };
-}
-
-/**
- * Versão server-action friendly (form action). Lê o FormData, chama
- * `emitirNotaAction` e redireciona em sucesso. Em erro, retorna pro form
- * com a mensagem via search param `?error=`.
- */
-export async function emitirNotaFormAction(formData: FormData): Promise<void> {
-  const input: EmitirNotaInput = {
-    clienteId: String(formData.get('clienteId') ?? ''),
-    codigoTributacao: String(formData.get('codigoTributacao') ?? ''),
-    descricao: String(formData.get('descricao') ?? ''),
-    valorReais: Number(formData.get('valorReais') ?? 0),
-    aliquotaIssPercentual: Number(formData.get('aliquotaIssPercentual') ?? 0),
-    cnae: String(formData.get('cnae') ?? '') || null,
-  };
-  const r = await emitirNotaAction(input);
-  if (!r.ok) {
-    redirect(`/notas_fiscais/emissao/nfse?error=${encodeURIComponent(r.error)}`);
-  }
-  redirect(`/notas_fiscais/${r.notaId}`);
 }
 
 export async function cancelarNotaAction(
@@ -806,19 +787,42 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
   return { ok: true, notaId };
 }
 
-export type NotaManualItem = { descricao: string; valor: number };
-export type NotaManualInput = {
-  tipo: 'NFSe' | 'NFe' | 'NFCe';
-  clienteId: string | null;
-  numero: string;
-  dataEmissao: string;          // 'YYYY-MM-DD'
-  itens: NotaManualItem[];
-};
+// Lançamento manual: por tipo, os campos espelham o form de emissão correspondente
+// (+ numero/dataEmissao próprios do manual). NÃO chama a Focus.
+export type NotaManualInput =
+  | {
+      tipo: 'NFSe';
+      clienteId: string | null;
+      numero: string;
+      dataEmissao: string; // 'YYYY-MM-DD'
+      cnae: string | null;
+      codigoTributacao: string;
+      descricao: string;
+      valorReais: number;
+      aliquotaIssPercentual: number;
+    }
+  | {
+      tipo: 'NFe';
+      clienteId: string | null;
+      numero: string;
+      dataEmissao: string;
+      naturezaOperacao: string;
+      itens: NfeItem[];
+    }
+  | {
+      tipo: 'NFCe';
+      numero: string;
+      dataEmissao: string;
+      itens: NfeItem[];
+      pagamentos: NfceFormaPagamento[];
+      consumidorCpf: string | null;
+    };
 export type LancarNotaManualResult = { ok: true; id: string } | { ok: false; error: string };
 
 /**
  * Registra uma NF já emitida fora (lançamento manual) — NÃO chama a Focus.
- * Marca origem='manual', status='lancada'. Itens/número vão no payload_focusnfe (jsonb).
+ * Marca origem='manual', status='lancada'. O detalhe por tipo vai no
+ * payload_focusnfe (jsonb); valor_total/cnae alimentam a base de imposto.
  */
 export async function lancarNotaManualAction(input: NotaManualInput): Promise<LancarNotaManualResult> {
   const supabase = await createServerClient();
@@ -830,29 +834,212 @@ export async function lancarNotaManualAction(input: NotaManualInput): Promise<La
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
-  if (!['NFSe', 'NFe', 'NFCe'].includes(input.tipo)) return { ok: false, error: 'Tipo inválido.' };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dataEmissao)) return { ok: false, error: 'Data de emissão inválida.' };
-  const itens = (input.itens ?? []).filter((i) => i.descricao.trim() && Number.isFinite(i.valor) && i.valor > 0);
-  if (itens.length === 0) return { ok: false, error: 'Inclua ao menos um item com descrição e valor.' };
-  const valorTotal = itens.reduce((s, i) => s + i.valor, 0);
 
-  const { data, error } = await supabase
-    .from('notas_fiscais')
-    .insert({
-      company_id: companyId,
+  // Valida ownership do cliente (mesma garantia das actions de emissão): impede
+  // associar a nota a um cliente de outra empresa via chamada direta da action.
+  const clienteId = 'clienteId' in input ? input.clienteId : null;
+  if (clienteId) {
+    const { data: cli } = await supabase
+      .from('clientes').select('id')
+      .eq('id', clienteId).eq('company_id', companyId).is('deleted_at', null).maybeSingle();
+    if (!cli) return { ok: false, error: 'Cliente não encontrado.' };
+  }
+
+  const base = {
+    company_id: companyId,
+    referencia: `man_${globalThis.crypto.randomUUID()}`,
+    numero_nf: input.numero.trim() || null,
+    data_emissao: new Date(`${input.dataEmissao}T12:00:00-03:00`).toISOString(),
+    status: 'lancada' as const,
+    origem: 'manual' as const,
+  };
+
+  let row: Record<string, unknown>;
+  if (input.tipo === 'NFSe') {
+    const valor = Math.round((input.valorReais || 0) * 100) / 100;
+    if (!(valor > 0)) return { ok: false, error: 'Informe o valor do serviço.' };
+    if (!input.descricao.trim()) return { ok: false, error: 'Informe a descrição do serviço.' };
+    row = {
+      ...base,
+      tipo_documento: 'NFSe',
       cliente_id: input.clienteId,
-      tipo_documento: input.tipo,
-      referencia: `man_${globalThis.crypto.randomUUID()}`,
-      data_emissao: new Date(`${input.dataEmissao}T12:00:00-03:00`).toISOString(),
-      valor_total: valorTotal,
-      status: 'lancada',
-      origem: 'manual',
-      payload_focusnfe: { manual: true, numero: input.numero, itens },
-    })
-    .select('id')
-    .single();
+      valor_total: valor,
+      cnae: input.cnae ? String(input.cnae).replace(/\D+/g, '') || null : null,
+      payload_focusnfe: {
+        manual: true,
+        numero: input.numero,
+        codigoTributacao: input.codigoTributacao,
+        descricao: input.descricao,
+        aliquotaIssPercentual: input.aliquotaIssPercentual,
+      },
+    };
+  } else if (input.tipo === 'NFe') {
+    const total = input.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+    if (!(total > 0)) return { ok: false, error: 'Adicione ao menos um item com valor.' };
+    row = {
+      ...base,
+      tipo_documento: 'NFe',
+      cliente_id: input.clienteId,
+      valor_total: Math.round(total * 100) / 100,
+      payload_focusnfe: { manual: true, numero: input.numero, naturezaOperacao: input.naturezaOperacao, itens: input.itens },
+    };
+  } else {
+    const total = input.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+    if (!(total > 0)) return { ok: false, error: 'Adicione ao menos um item com valor.' };
+    row = {
+      ...base,
+      tipo_documento: 'NFCe',
+      cliente_id: null,
+      valor_total: Math.round(total * 100) / 100,
+      payload_focusnfe: { manual: true, numero: input.numero, itens: input.itens, pagamentos: input.pagamentos, consumidorCpf: input.consumidorCpf },
+    };
+  }
 
+  const { data, error } = await supabase.from('notas_fiscais').insert(row).select('id').single();
   if (error) return { ok: false, error: error.message };
   revalidatePath('/notas_fiscais');
   return { ok: true, id: data.id as string };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Criação de nota via modal: tipos habilitados + preparo (guards de UX).
+// As actions de gravação (emitirNotaAction etc.) seguem sendo a fonte de
+// verdade; estas só decidem bloquear o form ou liberá-lo com os dados.
+// ───────────────────────────────────────────────────────────────────────────
+
+async function lerClientesAtivos(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  companyId: string,
+): Promise<ClienteOption[]> {
+  const { data } = await supabase
+    .from('clientes')
+    .select('id, razao_social, document, person_type')
+    .eq('company_id', companyId).eq('status', 'active').is('deleted_at', null)
+    .order('razao_social', { ascending: true }).limit(500);
+  return (data ?? []).map((c) => ({
+    id: c.id as string,
+    razao_social: (c.razao_social as string | null) ?? '—',
+    document: (c.document as string | null) ?? '',
+    person_type: (c.person_type as string | null) ?? 'PJ',
+  }));
+}
+
+export type TiposHabilitados = { nfse: boolean; nfe: boolean; nfce: boolean };
+
+export async function listarTiposEmissaoAction(): Promise<TiposHabilitados> {
+  const off = { nfse: false, nfe: false, nfce: false };
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return off;
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return off;
+  const { data: fiscal } = await supabase
+    .from('empresas_fiscais')
+    .select('focus_habilita_nfse, focus_habilita_nfsen_homologacao, focus_habilita_nfe, focus_habilita_nfce, empresa_fiscal_ativada')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+  const ativa = fiscal?.empresa_fiscal_ativada === true;
+  return {
+    nfse: ativa && (fiscal?.focus_habilita_nfse === true || fiscal?.focus_habilita_nfsen_homologacao === true),
+    nfe: ativa && fiscal?.focus_habilita_nfe === true,
+    nfce: ativa && fiscal?.focus_habilita_nfce === true,
+  };
+}
+
+export type Bloqueio = { titulo: string; mensagem: string; href?: string; labelLink?: string };
+export type DadosNfse = { razaoSocial: string; clientes: ClienteOption[]; previewImposto: PreviewImposto; cnaes: CnaeOption[] };
+export type DadosNfe = { clientes: ClienteOption[]; produtos: ProdutoOption[] };
+export type DadosNfce = { produtos: ProdutoOption[] };
+export type PreparoEmissao =
+  | { ok: true; tipo: 'nfse'; dados: DadosNfse }
+  | { ok: true; tipo: 'nfe'; dados: DadosNfe }
+  | { ok: true; tipo: 'nfce'; dados: DadosNfce }
+  | { ok: false; bloqueio: Bloqueio };
+
+export async function prepararEmissaoAction(tipo: 'nfse' | 'nfe' | 'nfce'): Promise<PreparoEmissao> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, bloqueio: { titulo: 'Sessão expirada', mensagem: 'Entre novamente para emitir.' } };
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, bloqueio: { titulo: 'Nenhuma empresa selecionada', mensagem: 'Cadastre ou escolha uma empresa antes de emitir notas.' } };
+
+  if (tipo === 'nfse') {
+    const [{ data: company }, { data: fiscal }] = await Promise.all([
+      supabase.from('companies').select('razao_social, codigo_municipio').eq('id', companyId).single(),
+      supabase.from('empresas_fiscais').select('Code_regime_tributario').eq('empresa_id', companyId).is('deleted_at', null).maybeSingle(),
+    ]);
+    if (!company) return { ok: false, bloqueio: { titulo: 'Empresa não encontrada', mensagem: 'A empresa selecionada não existe.' } };
+    if (!fiscal) return { ok: false, bloqueio: { titulo: 'Cadastro fiscal incompleto', mensagem: 'Configure o regime tributário e ative a empresa fiscal antes de emitir.', href: '/configuracoes?tab=regime', labelLink: 'Ir para Regime tributário' } };
+    const codigoMunicipio = (company.codigo_municipio as string | null) ?? null;
+    if (!codigoMunicipio) return { ok: false, bloqueio: { titulo: 'Município sem código IBGE', mensagem: 'A NFS-e Nacional exige o código IBGE do município do prestador. Edite os dados da empresa.', href: '/configuracoes?tab=dados', labelLink: 'Ir para Dados da empresa' } };
+    const { data: muni } = await supabase.from('municipios_nfse').select('status_nfse').eq('codigo_ibge', codigoMunicipio).maybeSingle();
+    if (muni && muni.status_nfse !== 'ativo') {
+      const statusLabel: Record<string, string> = {
+        fora_do_ar: 'O servidor da Focus para este município está temporariamente fora do ar.',
+        pausado: 'A emissão NFS-e para este município está pausada na Focus.',
+        em_implementacao: 'Este município está sendo implementado na Focus. Aguarde.',
+        em_reimplementacao: 'Este município está em reimplementação na Focus. Aguarde.',
+        inativo: 'A NFS-e para este município foi desativada na Focus.',
+        nao_implementado: 'Este município não é suportado pela Focus para NFS-e.',
+      };
+      return { ok: false, bloqueio: { titulo: 'NFS-e indisponível para este município', mensagem: statusLabel[muni.status_nfse ?? ''] ?? `Status Focus: ${muni.status_nfse}` } };
+    }
+    const [clientes, previewImposto, cnaes] = await Promise.all([
+      lerClientesAtivos(supabase, companyId),
+      obterPreviewImposto(supabase, companyId),
+      listarCnaesEmpresaAction(),
+    ]);
+    return { ok: true, tipo: 'nfse', dados: { razaoSocial: (company.razao_social as string | null) ?? '—', clientes, previewImposto, cnaes } };
+  }
+
+  // nfe / nfce — guards de ativação + habilitação
+  const { data: fiscal } = await supabase
+    .from('empresas_fiscais')
+    .select('empresa_fiscal_ativada, focus_habilita_nfe, focus_habilita_nfce')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+  if (!fiscal || fiscal.empresa_fiscal_ativada !== true) {
+    return { ok: false, bloqueio: { titulo: 'Empresa fiscal não ativada', mensagem: 'Ative a empresa fiscal antes de emitir.', href: '/configuracoes?tab=fiscal', labelLink: 'Ir para Fiscal' } };
+  }
+  if (tipo === 'nfe') {
+    if (fiscal.focus_habilita_nfe !== true) return { ok: false, bloqueio: { titulo: 'NF-e não habilitada', mensagem: 'Esta empresa não está habilitada para emitir NF-e.' } };
+    const [clientes, produtos] = await Promise.all([lerClientesAtivos(supabase, companyId), listarProdutosAction()]);
+    return { ok: true, tipo: 'nfe', dados: { clientes, produtos } };
+  }
+  // nfce
+  if (fiscal.focus_habilita_nfce !== true) return { ok: false, bloqueio: { titulo: 'NFC-e não habilitada', mensagem: 'Esta empresa não está habilitada para emitir NFC-e.' } };
+  const produtos = await listarProdutosAction();
+  return { ok: true, tipo: 'nfce', dados: { produtos } };
+}
+
+// Dados por tipo p/ o form manual (mesmos do form de emissão, SEM os guards de
+// emissão — disponibilidade de município etc. não importam num registro manual).
+export type PreparoNotaManual =
+  | { tipo: 'NFSe'; clientes: ClienteOption[]; cnaes: CnaeOption[] }
+  | { tipo: 'NFe'; clientes: ClienteOption[]; produtos: ProdutoOption[] }
+  | { tipo: 'NFCe'; produtos: ProdutoOption[] };
+
+export async function prepararNotaManualAction(tipo: 'NFSe' | 'NFe' | 'NFCe'): Promise<PreparoNotaManual> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  let companyId: string | null = null;
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles').select('current_company').eq('user_id', user.id).single();
+    companyId = (profile?.current_company ?? null) as string | null;
+  }
+  const clientesP = companyId ? lerClientesAtivos(supabase, companyId) : Promise.resolve<ClienteOption[]>([]);
+
+  if (tipo === 'NFSe') {
+    const [clientes, cnaes] = await Promise.all([clientesP, listarCnaesEmpresaAction()]);
+    return { tipo: 'NFSe', clientes, cnaes };
+  }
+  if (tipo === 'NFe') {
+    const [clientes, produtos] = await Promise.all([clientesP, listarProdutosAction()]);
+    return { tipo: 'NFe', clientes, produtos };
+  }
+  return { tipo: 'NFCe', produtos: await listarProdutosAction() };
 }

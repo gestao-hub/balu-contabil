@@ -97,7 +97,7 @@ export default async function DashboardPage() {
           Icon={FileText}
           value={ultima && ultima.valor_total != null ? brl.format(ultima.valor_total) : 'Nenhuma'}
           subtitle={ultima ? `Em ${fmtData(ultima.data_emissao)}` : 'Você ainda não emitiu notas'}
-          action={{ label: 'Emitir nova', href: '/notas_fiscais/emissao' }}
+          action={{ label: 'Emitir nova', href: '/notas_fiscais' }}
         />
         <DashboardCard
           title="Notas no mês"
