@@ -1,19 +1,21 @@
-// @custom — PR 3.1 — Dashboard de Impostos.
-// Server Component: carrega apuração + guia da competência atual + histórico.
-// Empty states em 3 níveis:
-//   - sem empresa selecionada → CTA "Selecionar empresa"
-//   - empresa sem regime fiscal configurado → CTA "Configure o regime"
-//   - sem apuração/guia na competência atual → CTA "Calcular agora"
+// @custom — Dashboard de Impostos.
+// Server Component. Simples: prévia do mês corrente + fila de obrigações (a_declarar/a_pagar/vencida)
+// + histórico das pagas. MEI: card da competência atual + declarações (DASN-SIMEI) + histórico.
+// Gate inicial SERPRO manda enquanto a empresa Simples não fez o 1º sync.
 import Link from 'next/link';
 import { Receipt } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 import { competenciaReferenciaBrt, competenciaLabel } from '@/lib/fiscal/guia';
 import { tipoFromCode } from '@/lib/fiscal/regime';
-import CompetenciaAtualCard from './CompetenciaAtualCard';
+import { derivarObrigacoes, competenciasEsperadasDoAno } from '@/lib/fiscal/obrigacoes';
 import HistoricoGuias, { type GuiaRow } from './HistoricoGuias';
-import DeclaracoesSection, { type DeclaracaoRow } from './DeclaracoesSection';
+import { type DeclaracaoRow } from './DeclaracoesSection';
 import DeclaracoesMeiSection from './DeclaracoesMeiSection';
 import GateInicialSerpro from './GateInicialSerpro';
+import PreviaMesCorrente from './PreviaMesCorrente';
+import FilaObrigacoes from './FilaObrigacoes';
+import CompetenciaAtualCardMei from './CompetenciaAtualCardMei';
+import { toApuracaoRowDetalhe, toGuiaRowDetalhe } from './mappers';
 
 export type ApuracaoRow = {
   id: string;
@@ -80,9 +82,10 @@ export default async function ImpostosPage() {
 
   const apuracaoAtual = (apuracoes ?? []).find((a) => a.competencia_referencia === competenciaAtual) ?? null;
   const guiaAtual = (guias ?? []).find((g) => g.competencia_referencia === competenciaAtual) ?? null;
-  const historico: GuiaRow[] = (guias ?? [])
+  // Histórico do MEI: todas as guias exceto a competência atual.
+  const historicoMei: GuiaRow[] = (guias ?? [])
     .filter((g) => g.competencia_referencia !== competenciaAtual)
-    .map(toGuiaRow);
+    .map(toGuiaRowDetalhe);
 
   const declaracoesRows: DeclaracaoRow[] = (declaracoes ?? []).map((d) => ({
     id: d.id as string,
@@ -94,12 +97,46 @@ export default async function ImpostosPage() {
   }));
 
   const empresaNome = (company?.nome as string) ?? (company?.razao_social as string) ?? '—';
-  const isMei = (fiscal?.Code_regime_tributario ?? null) === '4';
   const isSimples = tipoFromCode((fiscal?.Code_regime_tributario ?? '') as string) === 'simples';
   // Gate só para Simples Nacional de fato (codes 1/2). tipoFromCode mapeia code 3
   // (Lucro Real/Presumido) como 'simples', mas Regime Normal não consulta PGDAS-D na SERPRO.
   const regimeCode = (fiscal?.Code_regime_tributario ?? '') as string;
   const mostrarGate = (regimeCode === '1' || regimeCode === '2') && !(fiscal?.sincronizacao_inicial_serpro_at);
+
+  // Obrigações derivadas (Simples): situação por competência a partir das tabelas atuais.
+  const obrigacoes = isSimples
+    ? derivarObrigacoes({
+        hoje: new Date(),
+        competenciasEsperadas: competenciasEsperadasDoAno(new Date()),
+        declaracoes: declaracoesRows
+          .filter((d) => d.tipo === 'PGDAS-D')
+          .map((d) => ({ competencia: d.competencia, numeroDeclaracao: d.numeroDeclaracao, dataTransmissao: d.dataTransmissao })),
+        guias: (guias ?? []).map((g) => {
+          const row = toGuiaRowDetalhe(g);
+          return {
+            competencia: row.competencia ?? '',
+            numeroDas: row.numero,
+            valor: row.valor,
+            vencimento: row.vencimento,
+            pagamento: row.pagamento,
+            status: row.status,
+            pdfUrl: row.pdfUrl,
+          };
+        }),
+        apuracoes: (apuracoes ?? []).map((a) => ({
+          competencia: (a.competencia_referencia as string) ?? '',
+          estimativa: a.valor_imposto != null ? Number(a.valor_imposto) : null,
+        })),
+      })
+    : [];
+
+  const obrigacoesAtencao = obrigacoes.filter((o) => o.estado !== 'paga');
+  const pagasHistorico: GuiaRow[] = obrigacoes
+    .filter((o) => o.estado === 'paga')
+    .map((o) => (guias ?? []).find((g) => (g.competencia_referencia as string) === o.competencia))
+    .filter((g): g is NonNullable<typeof g> => !!g)
+    .map(toGuiaRowDetalhe);
+  const estimativaMesCorrente = apuracaoAtual?.valor_imposto != null ? Number(apuracaoAtual.valor_imposto) : null;
 
   return (
     <Page>
@@ -119,45 +156,45 @@ export default async function ImpostosPage() {
       {!fiscal && <BloqueioFiscal />}
 
       {fiscal && (
-        <>
-          {mostrarGate ? (
-            <GateInicialSerpro />
-          ) : (
-            <>
-              <section className="mb-8">
-                <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Competência atual</h2>
-                <CompetenciaAtualCard
-                  apuracao={apuracaoAtual ? toApuracaoRow(apuracaoAtual) : null}
-                  guia={guiaAtual ? toGuiaRow(guiaAtual) : null}
-                  competencia={competenciaAtual}
-                  isMei={isMei}
-                  isSimples={isSimples}
-                />
-              </section>
-
-              {isSimples && (
-                <section className="mb-8">
-                  <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações (PGDAS-D)</h2>
-                  <DeclaracoesSection declaracoes={declaracoesRows} />
-                </section>
-              )}
-              {isMei && (
-                <section className="mb-8">
-                  <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações</h2>
-                  <DeclaracoesMeiSection
-                    declaracoes={declaracoesRows.filter((d) => d.tipo === 'DASN-SIMEI')}
-                    anoCalendario={Number(competenciaAtual.slice(0, 4)) - 1}
-                  />
-                </section>
-              )}
-
-              <section>
-                <h2 className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Histórico de guias</h2>
-                <HistoricoGuias initial={historico} />
-              </section>
-            </>
-          )}
-        </>
+        mostrarGate ? (
+          <GateInicialSerpro />
+        ) : isSimples ? (
+          <>
+            <section className="mb-6">
+              <PreviaMesCorrente competencia={competenciaAtual} estimativa={estimativaMesCorrente} />
+            </section>
+            <section className="mb-8">
+              <h2 className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Precisa de atenção</h2>
+              <FilaObrigacoes obrigacoes={obrigacoesAtencao} />
+            </section>
+            <section>
+              <h2 className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Histórico</h2>
+              <HistoricoGuias initial={pagasHistorico} />
+            </section>
+          </>
+        ) : (
+          <>
+            <section className="mb-8">
+              <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Competência atual</h2>
+              <CompetenciaAtualCardMei
+                apuracao={apuracaoAtual ? toApuracaoRowDetalhe(apuracaoAtual) : null}
+                guia={guiaAtual ? toGuiaRowDetalhe(guiaAtual) : null}
+                competencia={competenciaAtual}
+              />
+            </section>
+            <section className="mb-8">
+              <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações</h2>
+              <DeclaracoesMeiSection
+                declaracoes={declaracoesRows.filter((d) => d.tipo === 'DASN-SIMEI')}
+                anoCalendario={Number(competenciaAtual.slice(0, 4)) - 1}
+              />
+            </section>
+            <section>
+              <h2 className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Histórico de guias</h2>
+              <HistoricoGuias initial={historicoMei} />
+            </section>
+          </>
+        )
       )}
     </Page>
   );
@@ -201,41 +238,4 @@ function BloqueioFiscal() {
       </div>
     </div>
   );
-}
-
-function numero(v: unknown): number | null {
-  if (v == null) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function toApuracaoRow(a: Record<string, unknown>): ApuracaoRow {
-  return {
-    id: a.id as string,
-    competencia_referencia: (a.competencia_referencia as string) ?? '',
-    anexo_simples: (a.anexo_simples as string | null) ?? null,
-    aliquota_efetiva: numero(a.aliquota_efetiva),
-    rbt12: numero(a.rbt12),
-    receita_mes: numero(a.receita_mes),
-    valor_imposto: numero(a.valor_imposto),
-    status: (a.status as string | null) ?? null,
-    payload_calculo: (a.payload_calculo as Record<string, unknown> | null) ?? null,
-  };
-}
-
-function toGuiaRow(g: Record<string, unknown>): GuiaRow {
-  return {
-    id: g.id as string,
-    competencia: (g.competencia_referencia as string) ?? null,
-    vencimento: (g.data_vencimento as string) ?? null,
-    pagamento: (g.data_pagamento as string) ?? null,
-    valor: numero(g.valor_total) ?? numero(g.valor_principal),
-    principal: numero(g.valor_principal),
-    multa: numero(g.valor_multa),
-    juros: numero(g.valor_juros),
-    status: (g.status as string) ?? null,
-    pdfUrl: ((g.url_pdf as string) ?? (g.url_guia as string)) ?? null,
-    linhaDigitavel: (g.linha_digitavel as string) ?? null,
-    numero: ((g.numero_das as string) ?? (g.numero_guia as string)) ?? null,
-  };
 }
