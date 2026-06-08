@@ -97,7 +97,10 @@ export default async function ImpostosPage() {
   const empresaNome = (company?.nome as string) ?? (company?.razao_social as string) ?? '—';
   const isMei = (fiscal?.Code_regime_tributario ?? null) === '4';
   const isSimples = tipoFromCode((fiscal?.Code_regime_tributario ?? '') as string) === 'simples';
-  const mostrarGate = isSimples && !(fiscal?.sincronizacao_inicial_serpro_at);
+  // Gate só para Simples Nacional de fato (codes 1/2). tipoFromCode mapeia code 3
+  // (Lucro Real/Presumido) como 'simples', mas Regime Normal não consulta PGDAS-D na SERPRO.
+  const regimeCode = (fiscal?.Code_regime_tributario ?? '') as string;
+  const mostrarGate = (regimeCode === '1' || regimeCode === '2') && !(fiscal?.sincronizacao_inicial_serpro_at);
 
   return (
     <Page>

@@ -249,7 +249,10 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
     .select('Code_regime_tributario')
     .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
   if (!fiscal) return { ok: false, error: 'Empresa fiscal não configurada.' };
-  if (tipoFromCode((fiscal.Code_regime_tributario ?? '') as string) !== 'simples') {
+  // PGDAS-D só Simples (codes 1/2). tipoFromCode mapeia code 3 (Lucro Real/Presumido) como 'simples'
+  // → checar os códigos explicitamente para não consultar SERPRO p/ Regime Normal.
+  const regimeCode = (fiscal.Code_regime_tributario ?? '') as string;
+  if (regimeCode !== '1' && regimeCode !== '2') {
     return { ok: false, error: 'A consulta de listagem cobre Simples (PGDAS-D); MEI virá depois.' };
   }
 
@@ -571,5 +574,7 @@ export async function marcarSincronizacaoInicialAction(): Promise<MarcarSincroni
     .is('deleted_at', null);
 
   if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/impostos');
   return { ok: true };
 }
