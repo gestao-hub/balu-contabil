@@ -190,16 +190,23 @@ consultarDeclaracoesAction(ano?)
   1–5.  [igual ao spec original — CONSDECLARACAO13 → situacoes]
   6.  consultarPagamentosDas(supabase, companyId, year)
         → PAGTOWEB/PAGAMENTOS71 com codigoTipoDocumentoLista=['9'] + intervaloDataArrecadacao
-        → parsePagamentosDas(resp) → PagamentoDas[]
-        → indexa por normalizarNumeroDas(numeroDocumento)   // só dígitos, sem zeros à esquerda
-  7.  UM upsert em guias_fiscais (onConflict: company_id,competencia_referencia):
-        uma linha por competência (situacao), enriquecida com o DAS pago CASADO PELO
-        numero_das (situacao.numeroDas ↔ pagamento.numeroDocumento). Campos de valor só
-        entram no payload quando há match (senão preserva o que já existe na guia).
-        CHECA o erro do upsert.
+        → FATAL: se falhar (ex.: 500 do PAGTOWEB), retorna ok:false ANTES de salvar/marcar
+        → parsePagamentosDas(resp) → indexa por normalizarNumeroDas(numeroDocumento)
+  7.  para cada situacao: monta a linha da guia, enriquecida em DUAS fontes:
+        - PAGA  → casa o DAS pago pelo numero_das (situacao.numeroDas ↔ pagamento.numeroDocumento)
+        - EM ABERTO (declarada e não paga) → GERARDAS12 (gerarDasSimples): valor + vencimento +
+          PDF (parser lê dados[0].detalhamentoDas; ver SERPRO-INVESTIGACAO §11). Gateado por
+          numeroDeclaracao + status != paga.
+        UM upsert (onConflict: company_id,competencia_referencia); valores só no payload quando há
+        dado (senão preserva). CHECA o erro do upsert.
   8.  upsert declaracoes_fiscais [igual]
   9.  revalidatePath('/impostos')
 ```
+
+> **PAGAMENTOS71 fatal (2026-06-08):** sem o botão "Consultar na SERPRO" (removido p/ reduzir consumo),
+> um 500 transitório do PAGTOWEB deixaria os meses pagos em branco com o sync marcado como concluído e
+> sem como re-sincronizar. Por isso a falha do PAGAMENTOS71 aborta a action **antes** de gravar — o gate
+> permanece e o usuário/cron tenta de novo.
 
 **Por que casar por documento, e não por competência (a v1 estava errada).** O PAGAMENTOS71
 pode devolver **2+ DAS na mesma competência** — tipicamente a **DAS regular do mês** mais uma

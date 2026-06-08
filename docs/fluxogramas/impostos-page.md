@@ -1,68 +1,71 @@
 # Fluxo: Página /impostos
 
+> Redesenho 2026-06-08: a /impostos (Simples) virou **fila de obrigações por estado** + **detalhe
+> por competência**. Botões que disparam SERPRO por clique foram removidos (consumo cobrado) — o
+> único sync é o gate inicial; refresh recorrente vira cron. Ver
+> `docs/superpowers/specs/2026-06-08-impostos-fila-obrigacoes-design.md`.
+
 ```mermaid
 flowchart LR
-    A(["Acessa /impostos"]) --> B["Server: carrega\nregime, apurações,\nguias, declarações"]
-
+    A(["Acessa /impostos"]) --> B["Server: regime, apurações,\nguias, declarações"]
     B --> C{"Regime\nconfigurado?"}
-    C -->|não| D(["BloqueioFiscal\nCTA: configurar regime"])
+    C -->|não| D(["BloqueioFiscal"])
 
-    C -->|MEI| MEI["CompetenciaAtualCard\n+ DeclaracoesMeiSection\n+ HistoricoGuias"]
-    C -->|Simples| GATE{"Já sincronizou?\nsincronizacao_inicial_serpro_at"}
-    GATE -->|não| GI["GateInicialSerpro\nTraga seu histórico agora\n+ botão Atualizar"]
-    GI -->|Atualizar| GIA["consultarDeclaracoesAction\n+ marcarSincronizacaoInicialAction\n→ router.refresh()"]
-    GIA --> SN
-    GATE -->|sim| SN["CompetenciaAtualCard\n+ DeclaracoesSection\n+ HistoricoGuias\n+ ConsultarSerproButton"]
+    C -->|Simples| GATE{"Já sincronizou?\nsincronizacao_inicial_serpro_at\n(codes 1/2)"}
+    GATE -->|não| GI["GateInicialSerpro\n'Traga seu histórico' + Atualizar"]
+    GI -->|Atualizar| SYNC["consultarDeclaracoesAction\nCONSDECLARACAO13 (situação)\n+ PAGAMENTOS71 (pagos, FATAL)\n+ GERARDAS12 (DAS em aberto)"]
+    SYNC -->|ok| MARK["marca flag + revela página"]
+    SYNC -->|falha SERPRO| GI
+    MARK --> SN
+    GATE -->|sim| SN
 
-    MEI --> E{"Tem apuração\nou guia?"}
-    E -->|não| F["EmptyState\nCalcular agora / Gerar DAS"]
-    E -->|sim| G["Exibe valor, alíquota,\nvencimento, status"]
+    SN["SIMPLES (pós-sync)"] --> P1["Prévia do mês corrente\n(estimativa local)"]
+    SN --> P2["Fila 'Precisa de atenção'\nderivarObrigacoes + ordenarFila"]
+    SN --> P3["Histórico (só pagas)\nHistoricoGuias"]
 
-    F -->|Calcular agora| H["/impostos/novo\niniciarApuracaoAction"]
-    F -->|Gerar DAS direto| I["GerarDasButton\nSERPRO PGMEI"]
-    I -->|ok| J["upsert guias_fiscais\nrevalida página"]
+    P2 --> F1["a_declarar\nTransmitir PGDAS-D"]
+    P2 --> F2["a_pagar / vencida\nBaixar DAS"]
+    F1 --> DET
+    F2 --> DET
+    P3 -->|linha| DET
 
-    G --> K{"Status guia?"}
-    K -->|paga| L["GuiaActions\ncopiar linha / PDF"]
-    K -->|gerada/pendente| M["GerarDasButton\nSERPRO PGMEI"]
-    M -->|ok| J
+    C -->|MEI| MEI["CompetenciaAtualCardMei\n+ DeclaracoesMeiSection\n+ Histórico de guias"]
 
-    MEI --> N["ConsultarDasnSimeiButton\nSERPRO DASN-SIMEI"]
-    N -->|ok| O["upsert declaracoes_fiscais\nrevalida página"]
-
-    SN --> P{"Tem apuração\nou guia?"}
-    P -->|não| Q["EmptyState\nCalcular agora / Gerar DAS Simples"]
-    P -->|sim| R["Exibe valor, anexo,\nRBT12, alíquota, vencimento"]
-
-    Q -->|Calcular agora| H
-    Q -->|Gerar DAS Simples| S["GerarDasSimplesButton\nSERPRO GERARDAS12"]
-    S -->|ok| T["upsert guias_fiscais\nrevalida página"]
-
-    R --> U{"Status guia?"}
-    U -->|paga| L
-    U -->|não paga| S
-
-    R --> V["PreviewDeclaracaoButton\nPGDAS-D dry-run\nindicadorTransmissao=false"]
-    V -->|ok| W["Exibe valores devidos\nsem transmitir"]
-
-    SN --> X["ConsultarSerproButton\nCONSDECLARACAO13\n+ PAGAMENTOS71"]
-    X -->|ok| Y["upsert guias_fiscais\n+ declaracoes_fiscais\nrevalida página"]
+    DET(["/impostos/[competencia]"]) --> S1["Apuração (estimativa)\n+ botão Apurar/Recalcular\n(se não transmitida)"]
+    DET --> S2["Declaração (PGDAS-D)\nnº/data OU Transmitir (dry-run)"]
+    DET --> S3["DAS\nvalores + Baixar PDF\n(nasce após declaração)"]
 ```
+
+## Estados da fila (helper `lib/fiscal/obrigacoes.ts`)
+
+| Estado | Quando | Ação |
+|---|---|---|
+| `a_declarar` | mês fechado e sem declaração (ex.: maio) | Transmitir PGDAS-D (dry-run até a Fase 2) |
+| `a_pagar` | declarada, não paga, vencimento ≥ hoje | Baixar DAS (PDF no detalhe) |
+| `vencida` | não paga, vencimento < hoje | Baixar DAS (PDF no detalhe) |
+| `paga` | status paga / `data_pagamento` | vai pro Histórico (não na fila) |
+
+Mês corrente fica **fora da fila** (não fechou) → só na prévia. O detalhe do mês corrente mostra só Apuração.
 
 ## Arquivos envolvidos
 
 | Arquivo | Papel |
 |---|---|
-| `app/(auth)/impostos/page.tsx` | Server component — carrega regime, apurações, guias, declarações; gate inicial (Simples sem sync) |
-| `app/(auth)/impostos/GateInicialSerpro.tsx` | Card de primeiro sync (Simples sem `sincronizacao_inicial_serpro_at`) — "Atualizar" |
-| `app/(auth)/impostos/actions.ts` | Todas as server actions; `consultarDeclaracoesAction` enriquece guia casando `numero_das` (PAGAMENTOS71); `marcarSincronizacaoInicialAction` |
-| `app/(auth)/impostos/CompetenciaAtualCard.tsx` | Card do mês atual com empty state e botões de ação |
-| `app/(auth)/impostos/GerarDasButton.tsx` | Gera DAS MEI via SERPRO PGMEI |
-| `app/(auth)/impostos/GerarDasSimplesButton.tsx` | Gera DAS Simples via SERPRO GERARDAS12 |
-| `app/(auth)/impostos/PreviewDeclaracaoButton.tsx` | Dry-run PGDAS-D (indicadorTransmissao=false) |
-| `app/(auth)/impostos/ConsultarSerproButton.tsx` | Consulta CONSDECLARACAO13 + PAGAMENTOS71 |
-| `app/(auth)/impostos/ConsultarDasnSimeiButton.tsx` | Consulta DASN-SIMEI (histórico MEI) |
-| `app/(auth)/impostos/GuiaActions.tsx` | Copiar linha digitável / abrir PDF |
-| `app/(auth)/impostos/HistoricoGuias.tsx` | Tabela de guias anteriores; linha expansível com detalhe do DAS (Documento/Principal/Multa/Juros/Pago em) |
-| `app/(auth)/impostos/DeclaracoesSection.tsx` | Tabela PGDAS-D (Simples) |
-| `app/(auth)/impostos/DeclaracoesMeiSection.tsx` | Tabela DASN-SIMEI (MEI) |
+| `app/(auth)/impostos/page.tsx` | Server — carrega dados, deriva obrigações (Simples), separa atenção × paga; gate; branch Simples/MEI |
+| `app/(auth)/impostos/GateInicialSerpro.tsx` | Card do 1º sync (Simples sem `sincronizacao_inicial_serpro_at`) |
+| `app/(auth)/impostos/actions.ts` | `consultarDeclaracoesAction` (CONSDECLARACAO13 + PAGAMENTOS71 fatal + GERARDAS12, casa por numero_das); `marcarSincronizacaoInicialAction`; `iniciarApuracaoAction` |
+| `lib/fiscal/obrigacoes.ts` | helper puro: `derivarObrigacoes`, `ordenarFila`, `competenciasEsperadasDoAno` |
+| `app/(auth)/impostos/PreviaMesCorrente.tsx` | prévia discreta do mês corrente |
+| `app/(auth)/impostos/FilaObrigacoes.tsx` + `ObrigacaoItem.tsx` | fila de obrigações em atenção |
+| `app/(auth)/impostos/HistoricoGuias.tsx` | tabela das pagas (linha expansível com detalhe do DAS) |
+| `app/(auth)/impostos/[competencia]/page.tsx` | detalhe por competência |
+| `app/(auth)/impostos/SecaoApuracao.tsx` | apuração + botão Apurar/Recalcular (não transmitidas) |
+| `app/(auth)/impostos/SecaoDeclaracao.tsx` | declaração ou Transmitir (dry-run) |
+| `app/(auth)/impostos/SecaoDas.tsx` | DAS + Baixar PDF (`GuiaActions`) |
+| `app/(auth)/impostos/ApurarButton.tsx` | client: `iniciarApuracaoAction('commit')` — cálculo interno, idempotente |
+| `app/(auth)/impostos/CompetenciaAtualCardMei.tsx` | card da competência atual (MEI) |
+| `app/(auth)/impostos/mappers.ts` | linhas do banco → row types (compartilhado page/detalhe) |
+
+> Removidos no redesenho: `CompetenciaAtualCard`, `GerarDasButton`, `GerarDasSimplesButton`,
+> `ConsultarSerproButton` (e o "Marcar paga"/"Copiar linha" do `GuiaActions`). `DeclaracoesSection`
+> ficou órfão (só o tipo `DeclaracaoRow` é usado).

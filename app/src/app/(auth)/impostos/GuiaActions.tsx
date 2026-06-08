@@ -1,99 +1,32 @@
 'use client';
-// @custom — PR 3.1 — Ações de uma guia: Marcar paga, Baixar PDF, Copiar linha
-// digitável. Client island reusada pelo CompetenciaAtualCard e HistoricoGuias.
-import { useState, useTransition } from 'react';
-import { Check, Copy, Download, Loader2 } from 'lucide-react';
-import { useToast } from '@/components/Toaster';
-import { marcarGuiaPagaAction } from './actions';
+// @custom — Ação de uma guia: Baixar PDF.
+// "Copiar linha" e "Marcar paga" removidos — a SERPRO (GERARDAS12) não devolve linha
+// digitável (só o PDF) e o status real de pagamento vem da SERPRO via sync/cron.
+// Client island reusada por CompetenciaAtualCard e HistoricoGuias.
+import { Download } from 'lucide-react';
 import type { GuiaRow } from './HistoricoGuias';
 
 type Variant = 'primary' | 'inline';
 
 export default function GuiaActions({ guia, variant = 'inline' }: { guia: GuiaRow; variant?: Variant }) {
-  const toast = useToast();
-  const [pending, startTransition] = useTransition();
-  const [copied, setCopied] = useState(false);
-
-  const ehPaga = (guia.status ?? '').toLowerCase() === 'paga';
-
-  function handleMarcarPaga() {
-    if (pending || ehPaga) return;
-    startTransition(async () => {
-      const r = await marcarGuiaPagaAction(guia.id);
-      if (r.ok) toast('success', 'Guia marcada como paga.');
-      else toast('error', r.error);
-    });
-  }
-
-  async function handleCopiar() {
-    if (!guia.linhaDigitavel) {
-      toast('warning', 'Esta guia não tem linha digitável.');
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(guia.linhaDigitavel);
-      setCopied(true);
-      toast('success', 'Linha digitável copiada.');
-      setTimeout(() => setCopied(false), 2500);
-    } catch {
-      toast('error', 'Não consegui copiar — tente selecionar manualmente.');
-    }
-  }
-
   const isPdfDataUri = (guia.pdfUrl ?? '').startsWith('data:application/pdf;base64,');
   const safePdfUrl =
     isPdfDataUri || /^https?:\/\//i.test(guia.pdfUrl ?? '') ? guia.pdfUrl : null;
 
+  if (!safePdfUrl) return null;
+
   const baseCls = variant === 'primary'
-    ? 'w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition'
-    : 'inline-flex items-center justify-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium transition';
+    ? 'w-full inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground-2 transition hover:bg-surface-2'
+    : 'inline-flex items-center justify-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground-2 transition hover:bg-surface-2';
 
   return (
-    <>
-      {!ehPaga && (
-        <button
-          type="button"
-          onClick={handleMarcarPaga}
-          disabled={pending}
-          className={`${baseCls} ${
-            variant === 'primary'
-              ? 'bg-primary text-white hover:opacity-90 disabled:opacity-50'
-              : 'text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50'
-          }`}
-        >
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-          {pending ? 'Marcando…' : 'Marcar paga'}
-        </button>
-      )}
-
-      <button
-        type="button"
-        onClick={handleCopiar}
-        disabled={!guia.linhaDigitavel}
-        className={`${baseCls} ${
-          variant === 'primary'
-            ? 'border border-border text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-40'
-            : 'text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-40'
-        }`}
-      >
-        {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-        {copied ? 'Copiado!' : 'Copiar linha'}
-      </button>
-
-      {safePdfUrl && (
-        <a
-          href={safePdfUrl}
-          {...(isPdfDataUri ? { download: 'das.pdf' } : { target: '_blank', rel: 'noopener noreferrer' })}
-          className={`${baseCls} ${
-            variant === 'primary'
-              ? 'border border-border text-muted-foreground-2 hover:bg-surface-2'
-              : 'text-muted-foreground-2 hover:bg-surface-2'
-          }`}
-        >
-          <Download className="size-4" />
-          Baixar PDF
-        </a>
-      )}
-    </>
+    <a
+      href={safePdfUrl}
+      {...(isPdfDataUri ? { download: 'das.pdf' } : { target: '_blank', rel: 'noopener noreferrer' })}
+      className={baseCls}
+    >
+      <Download className="size-4" />
+      Baixar PDF
+    </a>
   );
 }

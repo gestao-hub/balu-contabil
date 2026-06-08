@@ -1,6 +1,6 @@
-// @custom — PR 3.1 — Card da competência atual.
-// Server Component. Renderiza apuração + guia do mês corrente, OU CTA
-// "Calcular agora" quando nenhum dos dois existe.
+// @custom — Card da competência atual (MEI). Versão MEI-only do antigo CompetenciaAtualCard:
+// sem PreviewDeclaracaoButton (PGDAS-D é Simples) e sem props de regime. O Simples passou a
+// usar a fila de obrigações (FilaObrigacoes) + detalhe por competência.
 import Link from 'next/link';
 import { Calculator, FileDown, Receipt } from 'lucide-react';
 import { brl, dataBR, statusGuiaBadge, competenciaLabel } from '@/lib/fiscal/guia';
@@ -8,29 +8,19 @@ import { fatorRAplicavel } from '@/lib/fiscal/regime';
 import type { ApuracaoRow } from './page';
 import type { GuiaRow } from './HistoricoGuias';
 import GuiaActions from './GuiaActions';
-import GerarDasButton from './GerarDasButton';
-import GerarDasSimplesButton from './GerarDasSimplesButton';
-import PreviewDeclaracaoButton from './PreviewDeclaracaoButton';
 
 type Props = {
   apuracao: ApuracaoRow | null;
   guia: GuiaRow | null;
   competencia: string;
-  isMei: boolean;
-  isSimples: boolean;
 };
 
-export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMei, isSimples }: Props) {
+export default function CompetenciaAtualCardMei({ apuracao, guia, competencia }: Props) {
   if (!apuracao && !guia) {
-    return <EmptyCompetencia competencia={competencia} isMei={isMei} isSimples={isSimples} />;
+    return <EmptyCompetencia competencia={competencia} />;
   }
 
   const badge = guia ? statusGuiaBadge(guia.status) : null;
-
-  const payload = (apuracao?.payload_calculo ?? null) as
-    | { segregado?: boolean; porAnexo?: Array<{ anexo: string; receita: number; aliquotaEfetiva: number; valor: number }> }
-    | null;
-  const porAnexo = payload?.segregado && Array.isArray(payload.porAnexo) ? payload.porAnexo : null;
 
   return (
     <div className="rounded-xl border border-border bg-surface p-6">
@@ -59,9 +49,6 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMe
             {apuracao?.receita_mes != null && (
               <Linha label="Receita do mês">{brl(apuracao.receita_mes)}</Linha>
             )}
-            {apuracao?.rbt12 != null && (
-              <Linha label="RBT12">{brl(apuracao.rbt12)}</Linha>
-            )}
             {apuracao?.aliquota_efetiva != null && (
               <Linha label="Alíquota efetiva">{(apuracao.aliquota_efetiva * 100).toFixed(2)}%</Linha>
             )}
@@ -75,32 +62,10 @@ export default function CompetenciaAtualCard({ apuracao, guia, competencia, isMe
               <Linha label="Número">{guia.numero}</Linha>
             )}
           </dl>
-
-          {porAnexo && (
-            <div className="mt-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Por anexo</p>
-              <div className="rounded-md border border-border divide-y divide-border text-sm">
-                {porAnexo.map((p) => (
-                  <div key={p.anexo} className="flex items-center justify-between px-3 py-2">
-                    <span className="text-muted-foreground-2">{p.anexo}</span>
-                    <span className="tabular-nums">
-                      {brl(p.receita)} · {(p.aliquotaEfetiva * 100).toFixed(2)}% · <strong className="text-foreground">{brl(p.valor)}</strong>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {isSimples && <PreviewDeclaracaoButton competencia={competencia} />}
         </div>
 
         <div className="sm:w-56 flex flex-col gap-2 shrink-0">
           {guia && <GuiaActions guia={guia} variant="primary" />}
-          {isSimples && (guia?.status ?? '').toLowerCase() !== 'paga' && (
-            <GerarDasSimplesButton competencia={competencia} variant="primary" />
-          )}
-          {!guia && isMei && <GerarDasButton competencia={competencia} />}
         </div>
       </div>
     </div>
@@ -116,7 +81,7 @@ function Linha({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function EmptyCompetencia({ competencia, isMei, isSimples }: { competencia: string; isMei: boolean; isSimples: boolean }) {
+function EmptyCompetencia({ competencia }: { competencia: string }) {
   return (
     <div className="rounded-xl border-2 border-dashed border-border bg-surface p-8 text-center">
       <div className="inline-flex items-center justify-center size-12 rounded-full bg-primary/10 mb-3">
@@ -133,16 +98,6 @@ function EmptyCompetencia({ competencia, isMei, isSimples }: { competencia: stri
         <FileDown className="size-4" />
         Calcular agora
       </Link>
-      {isMei && (
-        <div className="mt-3">
-          <GerarDasButton competencia={competencia} />
-        </div>
-      )}
-      {isSimples && (
-        <div className="mt-3">
-          <GerarDasSimplesButton competencia={competencia} variant="primary" />
-        </div>
-      )}
     </div>
   );
 }

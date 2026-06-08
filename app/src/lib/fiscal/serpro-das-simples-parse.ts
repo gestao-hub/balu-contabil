@@ -49,11 +49,13 @@ export function parseDasSimples(resp: unknown): DasSimplesResult {
     }
   }
   const first = Array.isArray(dados) ? dados[0] : dados;
-  const obj = (first ?? {}) as { detalhamento?: unknown; pdf?: unknown };
-  const det = Array.isArray(obj.detalhamento) ? obj.detalhamento[0] : undefined;
-  if (!det) {
-    console.warn('[parseDasSimples] resposta com valor sem `detalhamento` — estrutura inesperada:', JSON.stringify(dados).slice(0, 500));
-    throw new Error('Resposta do DAS (Simples) sem detalhamento — estrutura inesperada (ver log).');
+  const obj = (first ?? {}) as { detalhamentoDas?: unknown; pdf?: unknown };
+  // Estrutura REAL do GERARDAS12 (confirmada AL PISCINAS 202604, 2026-06-08):
+  // dados[0].detalhamentoDas (OBJETO), pdf em dados[0].pdf, sem codigoDeBarras (só o PDF).
+  const det = obj.detalhamentoDas;
+  if (!det || typeof det !== 'object') {
+    console.warn('[parseDasSimples] resposta com valor sem `detalhamentoDas` — estrutura inesperada:', JSON.stringify(dados).slice(0, 500));
+    throw new Error('Resposta do DAS (Simples) sem detalhamentoDas — estrutura inesperada (ver log).');
   }
 
   const d = det as {

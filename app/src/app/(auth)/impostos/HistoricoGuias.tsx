@@ -6,7 +6,6 @@ import { useMemo, useState, Fragment } from 'react';
 import { Archive, ChevronDown, ChevronRight } from 'lucide-react';
 import { brl, dataBR, competenciaLabel, statusGuiaBadge, isGuiaVencida } from '@/lib/fiscal/guia';
 import GuiaActions from './GuiaActions';
-import GerarDasSimplesButton from './GerarDasSimplesButton';
 
 export type GuiaRow = {
   id: string;
@@ -23,7 +22,7 @@ export type GuiaRow = {
   numero: string | null;
 };
 
-export default function HistoricoGuias({ initial, isSimples = false }: { initial: GuiaRow[]; isSimples?: boolean }) {
+export default function HistoricoGuias({ initial }: { initial: GuiaRow[] }) {
   // Linha expansível: revela o detalhamento que o PAGAMENTOS71 traz (principal/multa/juros/pagamento).
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const toggle = (id: string) => setExpandedId((cur) => (cur === id ? null : id));
@@ -98,9 +97,6 @@ export default function HistoricoGuias({ initial, isSimples = false }: { initial
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
-                      {isSimples && g.statusVisual !== 'paga' && g.competencia && (
-                        <GerarDasSimplesButton competencia={g.competencia} variant="inline" />
-                      )}
                       <GuiaActions guia={g} variant="inline" />
                     </div>
                   </td>

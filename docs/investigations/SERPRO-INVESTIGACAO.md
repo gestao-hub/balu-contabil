@@ -419,6 +419,39 @@ exibindo o dia anterior (`2026-03-20` → `19/03`). Corrigido para formatar data
 
 ---
 
+## 11. PGDASD / GERARDAS12 — DAS em aberto (estrutura real, 2026-06-08)
+
+O PAGAMENTOS71 só lista DAS **pagos**. Para a DAS **em aberto** (declarada, não paga), o valor +
+vencimento + PDF vêm do **PGDASD / GERARDAS12** (`gerarDasSimples`). O `consultarDeclaracoesAction`
+chama GERARDAS12 para cada competência **declarada e não paga** (gate: `numeroDeclaracao` + status != paga).
+
+**Estrutura REAL da resposta (confirmada AL PISCINAS 202604):** o parser (`serpro-das-simples-parse.ts`)
+supunha `dados[0].detalhamento[]` (array, modelado no MEI) e **nunca tinha sido validado com um DAS
+real com valor** — só o caso "nada devido". A resposta real é:
+
+```ts
+dados[0] = {
+  pdf: "<base64>",                 // PDF da guia (ÚNICA forma de pagar — não vem linha digitável)
+  cnpjCompleto: "...",
+  detalhamentoDas: {               // OBJETO, não array
+    periodoApuracao: "202604",
+    numeroDocumento: "07202615945594406",
+    dataVencimento: "20260520",    // YYYYMMDD
+    valores: { principal, multa, juros, total },
+    composicao: [...]              // por receita
+  }
+}
+```
+
+Observações:
+- **Sem `codigoDeBarras`/linha digitável** — só o PDF. (Por isso o botão "Copiar linha" foi removido.)
+- ⚠️ **GERARDAS12 gera um `numeroDocumento` NOVO a cada chamada** (re-emite a guia; valor é o mesmo).
+  No cron, isso muda o `numero_das` da DAS em aberto a cada rodada — re-emitir só quando não há número salvo.
+- CONSDECLARACAO13 e GERARDAS12 (PGDASD) **funcionam mesmo com o PAGAMENTOS71 (PAGTOWEB) em 500** —
+  a falha do PAGTOWEB é isolada no backend de pagamentos, não na auth/procuração.
+
+---
+
 ## Changelog
 - **2026-05-30 (rodada 1)** — Criação. Smoke (403 900908), tabela Serviços×Procuração (DAS-MEI sem
   procuração; Simples exige 00146), mapeamento código↔doc, origem Bubble/n8n do `TERCEIROS`.
@@ -476,3 +509,12 @@ exibindo o dia anterior (`2026-03-20` → `19/03`). Corrigido para formatar data
   do CONSDECLARACAO13 (parcelamento ignorado de graça). Bug de fuso no `dataBR` (data sem hora → dia
   anterior) corrigido com teste. Entregue junto do **gate inicial SERPRO** + **linha expansível** no
   histórico de guias (branch `feat/gate-inicial-serpro`).
+- **2026-06-08 (rodada 9)** — ✅ **GERARDAS12 (DAS em aberto) + redução de consumo + redesenho.** (branch
+  `feat/remove-serpro-buttons`) (1) Sync passou a buscar a **DAS em aberto** via GERARDAS12 — e o parser
+  `serpro-das-simples-parse.ts` foi corrigido p/ a estrutura REAL (`dados[0].detalhamentoDas` objeto,
+  PDF em `dados[0].pdf`, sem linha digitável; gera doc novo a cada chamada) — ver §11. (2) **Botões que
+  disparam SERPRO por clique removidos** (consumo cobrado): Gerar DAS / Consultar na SERPRO / Marcar paga /
+  Copiar linha; só o **gate** sincroniza, recorrente vira **cron**. (3) A falha do **PAGAMENTOS71 é FATAL**
+  no sync (não salva/marca parcial). (4) **PAGTOWEB caiu com 500** ("Erro ao acionar serviço") por horas —
+  infra da SERPRO; CONSDECLARACAO13/GERARDAS12 seguiram OK. (5) `/impostos` redesenhado como **fila de
+  obrigações + detalhe por competência** (ver `2026-06-08-impostos-fila-obrigacoes-design.md`).
