@@ -17,6 +17,9 @@ import { traduzirErroFocus } from '@/lib/fiscal/focus-erro';
 import { mapStatusFocus } from '@/lib/fiscal/focus-status';
 import { extrairCamposNota } from '@/lib/fiscal/nfse-callback';
 import type { RegimeCode } from '@/lib/fiscal/regime';
+import { obterPreviewImposto } from '@/lib/fiscal/preview-imposto';
+import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
+import type { ClienteOption } from './emissao/ClienteCombobox';
 
 export type NotasFiltros = {
   start: string | null;
@@ -855,4 +858,128 @@ export async function lancarNotaManualAction(input: NotaManualInput): Promise<La
   if (error) return { ok: false, error: error.message };
   revalidatePath('/notas_fiscais');
   return { ok: true, id: data.id as string };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Criação de nota via modal: tipos habilitados + preparo (guards de UX).
+// As actions de gravação (emitirNotaAction etc.) seguem sendo a fonte de
+// verdade; estas só decidem bloquear o form ou liberá-lo com os dados.
+// ───────────────────────────────────────────────────────────────────────────
+
+async function lerClientesAtivos(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  companyId: string,
+): Promise<ClienteOption[]> {
+  const { data } = await supabase
+    .from('clientes')
+    .select('id, razao_social, document, person_type')
+    .eq('company_id', companyId).eq('status', 'active').is('deleted_at', null)
+    .order('razao_social', { ascending: true }).limit(500);
+  return (data ?? []).map((c) => ({
+    id: c.id as string,
+    razao_social: (c.razao_social as string | null) ?? '—',
+    document: (c.document as string | null) ?? '',
+    person_type: (c.person_type as string | null) ?? 'PJ',
+  }));
+}
+
+export type TiposHabilitados = { nfse: boolean; nfe: boolean; nfce: boolean };
+
+export async function listarTiposEmissaoAction(): Promise<TiposHabilitados> {
+  const off = { nfse: false, nfe: false, nfce: false };
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return off;
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return off;
+  const { data: fiscal } = await supabase
+    .from('empresas_fiscais')
+    .select('focus_habilita_nfse, focus_habilita_nfsen_homologacao, focus_habilita_nfe, focus_habilita_nfce, empresa_fiscal_ativada')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+  const ativa = fiscal?.empresa_fiscal_ativada === true;
+  return {
+    nfse: ativa && (fiscal?.focus_habilita_nfse === true || fiscal?.focus_habilita_nfsen_homologacao === true),
+    nfe: ativa && fiscal?.focus_habilita_nfe === true,
+    nfce: ativa && fiscal?.focus_habilita_nfce === true,
+  };
+}
+
+export type Bloqueio = { titulo: string; mensagem: string; href?: string; labelLink?: string };
+export type DadosNfse = { razaoSocial: string; clientes: ClienteOption[]; previewImposto: PreviewImposto; cnaes: CnaeOption[] };
+export type DadosNfe = { clientes: ClienteOption[]; produtos: ProdutoOption[] };
+export type DadosNfce = { produtos: ProdutoOption[] };
+export type PreparoEmissao =
+  | { ok: true; tipo: 'nfse'; dados: DadosNfse }
+  | { ok: true; tipo: 'nfe'; dados: DadosNfe }
+  | { ok: true; tipo: 'nfce'; dados: DadosNfce }
+  | { ok: false; bloqueio: Bloqueio };
+
+export async function prepararEmissaoAction(tipo: 'nfse' | 'nfe' | 'nfce'): Promise<PreparoEmissao> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, bloqueio: { titulo: 'Sessão expirada', mensagem: 'Entre novamente para emitir.' } };
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, bloqueio: { titulo: 'Nenhuma empresa selecionada', mensagem: 'Cadastre ou escolha uma empresa antes de emitir notas.' } };
+
+  if (tipo === 'nfse') {
+    const [{ data: company }, { data: fiscal }] = await Promise.all([
+      supabase.from('companies').select('razao_social, codigo_municipio').eq('id', companyId).single(),
+      supabase.from('empresas_fiscais').select('Code_regime_tributario').eq('empresa_id', companyId).is('deleted_at', null).maybeSingle(),
+    ]);
+    if (!company) return { ok: false, bloqueio: { titulo: 'Empresa não encontrada', mensagem: 'A empresa selecionada não existe.' } };
+    if (!fiscal) return { ok: false, bloqueio: { titulo: 'Cadastro fiscal incompleto', mensagem: 'Configure o regime tributário e ative a empresa fiscal antes de emitir.', href: '/configuracoes?tab=regime', labelLink: 'Ir para Regime tributário' } };
+    const codigoMunicipio = (company.codigo_municipio as string | null) ?? null;
+    if (!codigoMunicipio) return { ok: false, bloqueio: { titulo: 'Município sem código IBGE', mensagem: 'A NFS-e Nacional exige o código IBGE do município do prestador. Edite os dados da empresa.', href: '/configuracoes?tab=dados', labelLink: 'Ir para Dados da empresa' } };
+    const { data: muni } = await supabase.from('municipios_nfse').select('status_nfse').eq('codigo_ibge', codigoMunicipio).maybeSingle();
+    if (muni && muni.status_nfse !== 'ativo') {
+      const statusLabel: Record<string, string> = {
+        fora_do_ar: 'O servidor da Focus para este município está temporariamente fora do ar.',
+        pausado: 'A emissão NFS-e para este município está pausada na Focus.',
+        em_implementacao: 'Este município está sendo implementado na Focus. Aguarde.',
+        em_reimplementacao: 'Este município está em reimplementação na Focus. Aguarde.',
+        inativo: 'A NFS-e para este município foi desativada na Focus.',
+        nao_implementado: 'Este município não é suportado pela Focus para NFS-e.',
+      };
+      return { ok: false, bloqueio: { titulo: 'NFS-e indisponível para este município', mensagem: statusLabel[muni.status_nfse ?? ''] ?? `Status Focus: ${muni.status_nfse}` } };
+    }
+    const [clientes, previewImposto, cnaes] = await Promise.all([
+      lerClientesAtivos(supabase, companyId),
+      obterPreviewImposto(supabase, companyId),
+      listarCnaesEmpresaAction(),
+    ]);
+    return { ok: true, tipo: 'nfse', dados: { razaoSocial: (company.razao_social as string | null) ?? '—', clientes, previewImposto, cnaes } };
+  }
+
+  // nfe / nfce — guards de ativação + habilitação
+  const { data: fiscal } = await supabase
+    .from('empresas_fiscais')
+    .select('empresa_fiscal_ativada, focus_habilita_nfe, focus_habilita_nfce')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
+  if (!fiscal || fiscal.empresa_fiscal_ativada !== true) {
+    return { ok: false, bloqueio: { titulo: 'Empresa fiscal não ativada', mensagem: 'Ative a empresa fiscal antes de emitir.', href: '/configuracoes?tab=fiscal', labelLink: 'Ir para Fiscal' } };
+  }
+  if (tipo === 'nfe') {
+    if (fiscal.focus_habilita_nfe !== true) return { ok: false, bloqueio: { titulo: 'NF-e não habilitada', mensagem: 'Esta empresa não está habilitada para emitir NF-e.' } };
+    const [clientes, produtos] = await Promise.all([lerClientesAtivos(supabase, companyId), listarProdutosAction()]);
+    return { ok: true, tipo: 'nfe', dados: { clientes, produtos } };
+  }
+  // nfce
+  if (fiscal.focus_habilita_nfce !== true) return { ok: false, bloqueio: { titulo: 'NFC-e não habilitada', mensagem: 'Esta empresa não está habilitada para emitir NFC-e.' } };
+  const produtos = await listarProdutosAction();
+  return { ok: true, tipo: 'nfce', dados: { produtos } };
+}
+
+export async function prepararNotaManualAction(): Promise<{ clientes: ClienteOption[] }> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { clientes: [] };
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { clientes: [] };
+  return { clientes: await lerClientesAtivos(supabase, companyId) };
 }
