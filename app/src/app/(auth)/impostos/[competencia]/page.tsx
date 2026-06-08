@@ -67,7 +67,9 @@ export default async function CompetenciaDetalhe({ params }: { params: Promise<{
         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.label}</span>
       </header>
 
-      <Secao titulo="Apuração (estimativa)"><SecaoApuracao apuracao={apuracao} /></Secao>
+      <Secao titulo="Apuração (estimativa)">
+        <SecaoApuracao apuracao={apuracao} competencia={competencia} podeApurar={!obrigacao.declarada} />
+      </Secao>
       {/* Mês corrente é prévia: ainda não fechou → só apuração (sem declaração/DAS). */}
       {competencia !== competenciaReferenciaBrt(new Date()) && (
         <>
