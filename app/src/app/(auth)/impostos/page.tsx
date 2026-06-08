@@ -14,6 +14,7 @@ import HistoricoGuias, { type GuiaRow } from './HistoricoGuias';
 import ConsultarSerproButton from './ConsultarSerproButton';
 import DeclaracoesSection, { type DeclaracaoRow } from './DeclaracoesSection';
 import DeclaracoesMeiSection from './DeclaracoesMeiSection';
+import GateInicialSerpro from './GateInicialSerpro';
 
 export type ApuracaoRow = {
   id: string;
@@ -52,7 +53,7 @@ export default async function ImpostosPage() {
   const [{ data: company }, { data: fiscal }, { data: apuracoes }, { data: guias }, { data: declaracoes }] = await Promise.all([
     supabase.from('companies').select('razao_social, nome').eq('id', companyId).single(),
     supabase.from('empresas_fiscais')
-      .select('Code_regime_tributario, anexo_simples')
+      .select('Code_regime_tributario, anexo_simples, sincronizacao_inicial_serpro_at')
       .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle(),
     supabase.from('apuracoes_fiscais')
       .select('id, competencia_referencia, anexo_simples, aliquota_efetiva, rbt12, receita_mes, valor_imposto, status, payload_calculo')
@@ -96,6 +97,10 @@ export default async function ImpostosPage() {
   const empresaNome = (company?.nome as string) ?? (company?.razao_social as string) ?? '—';
   const isMei = (fiscal?.Code_regime_tributario ?? null) === '4';
   const isSimples = tipoFromCode((fiscal?.Code_regime_tributario ?? '') as string) === 'simples';
+  // Gate só para Simples Nacional de fato (codes 1/2). tipoFromCode mapeia code 3
+  // (Lucro Real/Presumido) como 'simples', mas Regime Normal não consulta PGDAS-D na SERPRO.
+  const regimeCode = (fiscal?.Code_regime_tributario ?? '') as string;
+  const mostrarGate = (regimeCode === '1' || regimeCode === '2') && !(fiscal?.sincronizacao_inicial_serpro_at);
 
   return (
     <Page>
@@ -116,40 +121,46 @@ export default async function ImpostosPage() {
 
       {fiscal && (
         <>
-          <section className="mb-8">
-            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Competência atual</h2>
-            <CompetenciaAtualCard
-              apuracao={apuracaoAtual ? toApuracaoRow(apuracaoAtual) : null}
-              guia={guiaAtual ? toGuiaRow(guiaAtual) : null}
-              competencia={competenciaAtual}
-              isMei={isMei}
-              isSimples={isSimples}
-            />
-          </section>
+          {mostrarGate ? (
+            <GateInicialSerpro />
+          ) : (
+            <>
+              <section className="mb-8">
+                <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Competência atual</h2>
+                <CompetenciaAtualCard
+                  apuracao={apuracaoAtual ? toApuracaoRow(apuracaoAtual) : null}
+                  guia={guiaAtual ? toGuiaRow(guiaAtual) : null}
+                  competencia={competenciaAtual}
+                  isMei={isMei}
+                  isSimples={isSimples}
+                />
+              </section>
 
-          {isSimples && (
-            <section className="mb-8">
-              <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações (PGDAS-D)</h2>
-              <DeclaracoesSection declaracoes={declaracoesRows} />
-            </section>
-          )}
-          {isMei && (
-            <section className="mb-8">
-              <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações</h2>
-              <DeclaracoesMeiSection
-                declaracoes={declaracoesRows.filter((d) => d.tipo === 'DASN-SIMEI')}
-                anoCalendario={Number(competenciaAtual.slice(0, 4)) - 1}
-              />
-            </section>
-          )}
+              {isSimples && (
+                <section className="mb-8">
+                  <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações (PGDAS-D)</h2>
+                  <DeclaracoesSection declaracoes={declaracoesRows} />
+                </section>
+              )}
+              {isMei && (
+                <section className="mb-8">
+                  <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações</h2>
+                  <DeclaracoesMeiSection
+                    declaracoes={declaracoesRows.filter((d) => d.tipo === 'DASN-SIMEI')}
+                    anoCalendario={Number(competenciaAtual.slice(0, 4)) - 1}
+                  />
+                </section>
+              )}
 
-          <section>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-xs uppercase tracking-wide text-muted-foreground">Histórico de guias</h2>
-              {isSimples && <ConsultarSerproButton />}
-            </div>
-            <HistoricoGuias initial={historico} isSimples={isSimples} />
-          </section>
+              <section>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-xs uppercase tracking-wide text-muted-foreground">Histórico de guias</h2>
+                  {isSimples && <ConsultarSerproButton />}
+                </div>
+                <HistoricoGuias initial={historico} isSimples={isSimples} />
+              </section>
+            </>
+          )}
         </>
       )}
     </Page>
@@ -223,6 +234,9 @@ function toGuiaRow(g: Record<string, unknown>): GuiaRow {
     vencimento: (g.data_vencimento as string) ?? null,
     pagamento: (g.data_pagamento as string) ?? null,
     valor: numero(g.valor_total) ?? numero(g.valor_principal),
+    principal: numero(g.valor_principal),
+    multa: numero(g.valor_multa),
+    juros: numero(g.valor_juros),
     status: (g.status as string) ?? null,
     pdfUrl: ((g.url_pdf as string) ?? (g.url_guia as string)) ?? null,
     linhaDigitavel: (g.linha_digitavel as string) ?? null,

@@ -129,3 +129,40 @@ Clica "Atualizar"
 - MEI (sem endpoint equivalente ao CONSDECLARACAO13; PAGAMENTOS71 MEI fica para depois)
 - Sincronização de anos anteriores (a action já consulta o ano corrente; expansão futura)
 - Reset do flag (admin/debug; desnecessário para v1)
+
+---
+
+## Status de implementação (2026-06-08) — FEITO
+
+Branch `feat/gate-inicial-serpro`. Migration `0026` aplicada no banco. Validado ponta a ponta
+no navegador com a AL PISCINAS (Simples).
+
+### O que foi entregue além do gate
+
+**Linha expansível no histórico de guias.** Decidido durante a validação: o histórico passou
+a ter linhas expansíveis (chevron) que revelam o detalhamento do DAS pago trazido pelo
+PAGAMENTOS71 — **Documento · Principal · Multa · Juros · Pago em**. A tabela principal segue
+enxuta (Competência · Vencimento · Valor · Status · Ações). Só a competência corrente fica fora
+do histórico (já aparece no card de Competência atual). Período do sync: **só ano vigente**
+(decisão explícita; multi-ano fica para depois).
+
+- `HistoricoGuias.tsx`: estado `expandedId` (uma linha aberta por vez); chevron só aparece
+  quando a guia tem detalhe (`principal/multa/juros/pagamento/numero`); `<tr>` extra com
+  `colSpan` renderiza o painel `dl`.
+- `page.tsx` → `toGuiaRow`: passou a mapear `valor_principal/valor_multa/valor_juros` (a query
+  já trazia esses campos; não chegavam à UI).
+
+### Dois bugs corrigidos no caminho (código pré-existente do fluxo)
+
+1. **Enriquecimento PAGAMENTOS71 não gravava valores** (`consultarDeclaracoesAction`). O upsert
+   dos pagamentos casava **por competência** e quebrava quando o PAGAMENTOS71 trazia 2+ DAS no
+   mesmo mês (ex.: a DAS regular **+** uma parcela de parcelamento) → colisão `ON CONFLICT`
+   (`cannot affect row a second time`) que falhava o lote inteiro, com o erro **engolido**
+   (upsert sem checagem). **Fix:** indexar os DAS pagos por **número de documento** e casar com
+   o `numero_das` que o CONSDECLARACAO13 já trouxe — 1 linha por competência, sem colisão; o
+   parcelamento (que não aparece no CONSDECLARACAO13) é naturalmente ignorado. Passou a checar o
+   erro do upsert. (Detalhes em `2026-06-03-consulta-listagem-das-simples-design.md` e
+   `SERPRO-INVESTIGACAO.md`.)
+2. **Datas off-by-one** (`dataBR` em `lib/fiscal/guia.ts`). Uma data sem hora (`2026-03-20`) virava
+   meia-noite UTC e, formatada em BRT (−3h), caía no dia anterior (19/03). **Fix:** datas
+   `YYYY-MM-DD` são formatadas direto, sem passar por `Date`/fuso. +teste TDD.

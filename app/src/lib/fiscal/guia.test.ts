@@ -68,6 +68,10 @@ describe('dataBR', () => {
     // 28-05-2026 15:00 UTC = 12:00 BRT = mesmo dia
     expect(dataBR('2026-05-28T15:00:00Z')).toBe('28/05/2026');
   });
+  it('data sem hora (YYYY-MM-DD) não desloca fuso', () => {
+    // "2026-03-20" deve render 20/03, não 19/03 (off-by-one por interpretar como meia-noite UTC).
+    expect(dataBR('2026-03-20')).toBe('20/03/2026');
+  });
   it('null → traço', () => {
     expect(dataBR(null)).toBe('—');
     expect(dataBR(undefined)).toBe('—');
