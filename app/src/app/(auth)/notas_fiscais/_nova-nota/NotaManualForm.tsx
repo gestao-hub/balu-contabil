@@ -7,17 +7,11 @@ import { lancarNotaManualAction, type NotaManualItem } from '../actions';
 import { brl } from '@/lib/fiscal/guia';
 
 type LinhaItem = NotaManualItem & { _key: string };
-const TIPOS = [
-  { v: 'NFSe', label: 'NFS-e (serviço)' },
-  { v: 'NFe', label: 'NF-e (produto)' },
-  { v: 'NFCe', label: 'NFC-e (consumidor)' },
-] as const;
 
-export default function NotaManualForm({ clientes, onSuccess }: { clientes: ClienteOption[]; onSuccess: () => void }) {
+export default function NotaManualForm({ tipo, clientes, onSuccess }: { tipo: 'NFSe' | 'NFe' | 'NFCe'; clientes: ClienteOption[]; onSuccess: () => void }) {
   const toast = useToast();
   const [pending, startTransition] = useTransition();
 
-  const [tipo, setTipo] = useState<'NFSe' | 'NFe' | 'NFCe'>('NFSe');
   const [clienteId, setClienteId] = useState('');
   const [numero, setNumero] = useState('');
   const [dataEmissao, setDataEmissao] = useState(() => new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10));
@@ -57,12 +51,6 @@ export default function NotaManualForm({ clientes, onSuccess }: { clientes: Clie
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Campo label="Tipo">
-          <select value={tipo} onChange={(e) => setTipo(e.target.value as typeof tipo)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-            {TIPOS.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
-          </select>
-        </Campo>
         <Campo label="Cliente">
           <ClienteCombobox clientes={clientes} value={clienteId} onChange={setClienteId} />
         </Campo>
