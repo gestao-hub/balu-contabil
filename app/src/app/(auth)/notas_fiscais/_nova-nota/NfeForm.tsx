@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import ClienteCombobox, { type ClienteOption } from './ClienteCombobox';
 import ItensField, { type LinhaItem } from './ItensField';
+import DataEmissaoBR from './DataEmissaoBR';
 import { emitirNfeAction, lancarNotaManualAction, type ProdutoOption } from '../actions';
 
 const hojeBrt = () => new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
@@ -62,8 +63,7 @@ export default function NfeForm({
           </div>
           <div>
             <label htmlFor="nfe-data" className="block text-sm font-medium text-muted-foreground-2 mb-1">Data de emissão</label>
-            <input id="nfe-data" type="date" value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+            <DataEmissaoBR id="nfe-data" value={dataEmissao} onChange={setDataEmissao} />
           </div>
         </div>
       )}
