@@ -1,7 +1,7 @@
 'use client';
 // @custom — PR 2.1 — Combobox simples pra escolher cliente (tomador).
 // Filtra client-side (até 500 clientes — limite no SSR). Sem dep externa.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 
 export type ClienteOption = {
@@ -27,6 +27,16 @@ function maskDoc(doc: string): string {
 export default function ClienteCombobox({ clientes, value, onChange }: Props) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Fecha o dropdown ao clicar fora (necessário porque agora ele flutua sobre o layout).
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -69,7 +79,7 @@ export default function ClienteCombobox({ clientes, value, onChange }: Props) {
   }
 
   return (
-    <div className="space-y-1">
+    <div ref={rootRef} className="relative">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <input
@@ -82,7 +92,7 @@ export default function ClienteCombobox({ clientes, value, onChange }: Props) {
         />
       </div>
       {open && (
-        <ul className="max-h-64 overflow-y-auto rounded-lg border border-border bg-surface divide-y divide-border">
+        <ul className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg divide-y divide-border">
           {filtered.length === 0 && (
             <li className="px-3 py-2 text-sm text-muted-foreground">Nenhum cliente encontrado.</li>
           )}
