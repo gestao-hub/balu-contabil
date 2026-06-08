@@ -28,7 +28,7 @@ export default function ObrigacaoItem({ o }: { o: ObrigacaoFiscal }) {
           </span>
         </div>
         <p className="mt-0.5 text-sm text-muted-foreground-2 tabular-nums">
-          {valor}{o.vencimento ? ` · vence ${dataBR(o.vencimento)}` : ''}
+          {valor}{o.vencimento ? ` · ${o.estado === 'vencida' ? 'venceu' : 'vence'} ${dataBR(o.vencimento)}` : ''}
         </p>
       </div>
       <span className="shrink-0 text-sm font-medium text-primary">{acaoLabel}</span>

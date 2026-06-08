@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
-import { competenciaLabel } from '@/lib/fiscal/guia';
+import { competenciaLabel, competenciaReferenciaBrt } from '@/lib/fiscal/guia';
 import { derivarObrigacoes } from '@/lib/fiscal/obrigacoes';
 import SecaoApuracao from '../SecaoApuracao';
 import SecaoDeclaracao from '../SecaoDeclaracao';
@@ -68,8 +68,13 @@ export default async function CompetenciaDetalhe({ params }: { params: Promise<{
       </header>
 
       <Secao titulo="Apuração (estimativa)"><SecaoApuracao apuracao={apuracao} /></Secao>
-      <Secao titulo="Declaração (PGDAS-D)"><SecaoDeclaracao o={obrigacao} /></Secao>
-      <Secao titulo="DAS"><SecaoDas guia={guia} /></Secao>
+      {/* Mês corrente é prévia: ainda não fechou → só apuração (sem declaração/DAS). */}
+      {competencia !== competenciaReferenciaBrt(new Date()) && (
+        <>
+          <Secao titulo="Declaração (PGDAS-D)"><SecaoDeclaracao o={obrigacao} /></Secao>
+          <Secao titulo="DAS"><SecaoDas guia={guia} /></Secao>
+        </>
+      )}
     </main>
   );
 }

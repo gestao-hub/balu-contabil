@@ -85,6 +85,16 @@ describe('derivarObrigacoes — regra de estado', () => {
     const r = rodar({ apuracoes: [{ competencia: '202605', estimativa: 1910.5 }] });
     expect(r.find((o) => o.competencia === '202605')?.estimativaLocal).toBe(1910.5);
   });
+
+  it('união defensiva: guia fora das esperadas (ex.: mês corrente) é incluída — a page.tsx a filtra', () => {
+    // 202606 (mês corrente) não está em ESPERADAS, mas a guia o traz via união defensiva.
+    // Documenta o contrato: filtrar o mês corrente é responsabilidade da page.tsx, não do helper.
+    const r = rodar({
+      guias: [{ competencia: '202606', numeroDas: 'X', valor: 100, vencimento: '2026-07-20', pagamento: null, status: 'gerada', pdfUrl: null }],
+    });
+    expect(r.some((o) => o.competencia === '202606')).toBe(true);
+    expect(r).toHaveLength(6);
+  });
 });
 
 describe('ordenarFila', () => {

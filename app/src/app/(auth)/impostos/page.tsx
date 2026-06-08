@@ -108,10 +108,14 @@ export default async function ImpostosPage() {
     ? derivarObrigacoes({
         hoje: new Date(),
         competenciasEsperadas: competenciasEsperadasDoAno(new Date()),
+        // Mês corrente fica fora da fila (não fechou) — vai pra prévia. Filtramos antes de derivar
+        // porque o helper inclui defensivamente qualquer competência com declaração/guia.
         declaracoes: declaracoesRows
-          .filter((d) => d.tipo === 'PGDAS-D')
+          .filter((d) => d.tipo === 'PGDAS-D' && d.competencia !== competenciaAtual)
           .map((d) => ({ competencia: d.competencia, numeroDeclaracao: d.numeroDeclaracao, dataTransmissao: d.dataTransmissao })),
-        guias: (guias ?? []).map((g) => {
+        guias: (guias ?? [])
+          .filter((g) => (g.competencia_referencia as string) !== competenciaAtual)
+          .map((g) => {
           const row = toGuiaRowDetalhe(g);
           return {
             competencia: row.competencia ?? '',
