@@ -529,3 +529,34 @@ export async function previewDeclaracaoAction(competencia: string): Promise<Prev
   }
   return transmitirPgdasd(supabase, companyId, competencia, { indicadorTransmissao: false });
 }
+
+export type MarcarSincronizacaoResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Marca a primeira sincronização com a SERPRO.
+ * Separada da consultarDeclaracoesAction para não acoplar o conceito
+ * "primeira vez" ao fluxo de consulta recorrente.
+ * Idempotente: uma segunda chamada apenas atualiza o timestamp.
+ */
+export async function marcarSincronizacaoInicialAction(): Promise<MarcarSincronizacaoResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('current_company')
+    .eq('user_id', user.id)
+    .single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  const { error } = await supabase
+    .from('empresas_fiscais')
+    .update({ sincronizacao_inicial_serpro_at: new Date().toISOString() })
+    .eq('empresa_id', companyId)
+    .is('deleted_at', null);
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
