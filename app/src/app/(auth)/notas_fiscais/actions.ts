@@ -431,11 +431,25 @@ export async function cancelarNotaAction(
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
-    .select('id, tipo_documento, referencia, status')
+    .select('id, tipo_documento, referencia, status, origem')
     .eq('id', id)
     .eq('company_id', companyId)
     .maybeSingle();
   if (!nota) return { ok: false, error: 'Nota não encontrada.' };
+
+  // Nota manual (lançamento): não tem documento na Focus → cancela só no banco, sem chamar a API.
+  if (nota.origem === 'manual') {
+    if (nota.status === 'cancelada') return { ok: false, error: 'Esta nota já está cancelada.' };
+    const { error: cancErr } = await supabase
+      .from('notas_fiscais')
+      .update({ status: 'cancelada' })
+      .eq('id', id).eq('company_id', companyId);
+    if (cancErr) return { ok: false, error: cancErr.message };
+    revalidatePath('/notas_fiscais');
+    revalidatePath(`/notas_fiscais/${id}`);
+    return { ok: true };
+  }
+
   if (nota.status !== 'ativa') return { ok: false, error: 'Só notas ativas podem ser canceladas.' };
 
   // Cancelamento exige o token da EMPRESA (igual emissão).

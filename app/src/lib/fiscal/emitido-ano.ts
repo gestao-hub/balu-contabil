@@ -16,7 +16,8 @@ export async function somarEmitidoNoAno(
     .from('notas_fiscais')
     .select('valor_total')
     .eq('company_id', companyId)
-    .eq('status', 'ativa')
+    // 'ativa' (emissão) + 'lancada' (lançamento manual) = receita real → conta no limite.
+    .in('status', ['ativa', 'lancada'])
     .in('tipo_documento', TIPOS)
     .gte('data_emissao', inicio)
     .lt('data_emissao', fim);

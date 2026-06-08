@@ -233,7 +233,7 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                   {initial.length === 0
-                    ? 'Nenhuma nota emitida ainda.'
+                    ? 'Nenhuma nota registrada ainda.'
                     : 'Nenhuma nota encontrada para os filtros.'}
                 </td>
               </tr>
