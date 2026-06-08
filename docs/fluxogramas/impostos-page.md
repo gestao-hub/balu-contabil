@@ -8,7 +8,11 @@ flowchart LR
     C -->|não| D(["BloqueioFiscal\nCTA: configurar regime"])
 
     C -->|MEI| MEI["CompetenciaAtualCard\n+ DeclaracoesMeiSection\n+ HistoricoGuias"]
-    C -->|Simples| SN["CompetenciaAtualCard\n+ DeclaracoesSection\n+ HistoricoGuias\n+ ConsultarSerproButton"]
+    C -->|Simples| GATE{"Já sincronizou?\nsincronizacao_inicial_serpro_at"}
+    GATE -->|não| GI["GateInicialSerpro\nTraga seu histórico agora\n+ botão Atualizar"]
+    GI -->|Atualizar| GIA["consultarDeclaracoesAction\n+ marcarSincronizacaoInicialAction\n→ router.refresh()"]
+    GIA --> SN
+    GATE -->|sim| SN["CompetenciaAtualCard\n+ DeclaracoesSection\n+ HistoricoGuias\n+ ConsultarSerproButton"]
 
     MEI --> E{"Tem apuração\nou guia?"}
     E -->|não| F["EmptyState\nCalcular agora / Gerar DAS"]
@@ -49,8 +53,9 @@ flowchart LR
 
 | Arquivo | Papel |
 |---|---|
-| `app/(auth)/impostos/page.tsx` | Server component — carrega regime, apurações, guias, declarações |
-| `app/(auth)/impostos/actions.ts` | Todas as server actions da página |
+| `app/(auth)/impostos/page.tsx` | Server component — carrega regime, apurações, guias, declarações; gate inicial (Simples sem sync) |
+| `app/(auth)/impostos/GateInicialSerpro.tsx` | Card de primeiro sync (Simples sem `sincronizacao_inicial_serpro_at`) — "Atualizar" |
+| `app/(auth)/impostos/actions.ts` | Todas as server actions; `consultarDeclaracoesAction` enriquece guia casando `numero_das` (PAGAMENTOS71); `marcarSincronizacaoInicialAction` |
 | `app/(auth)/impostos/CompetenciaAtualCard.tsx` | Card do mês atual com empty state e botões de ação |
 | `app/(auth)/impostos/GerarDasButton.tsx` | Gera DAS MEI via SERPRO PGMEI |
 | `app/(auth)/impostos/GerarDasSimplesButton.tsx` | Gera DAS Simples via SERPRO GERARDAS12 |
@@ -58,6 +63,6 @@ flowchart LR
 | `app/(auth)/impostos/ConsultarSerproButton.tsx` | Consulta CONSDECLARACAO13 + PAGAMENTOS71 |
 | `app/(auth)/impostos/ConsultarDasnSimeiButton.tsx` | Consulta DASN-SIMEI (histórico MEI) |
 | `app/(auth)/impostos/GuiaActions.tsx` | Copiar linha digitável / abrir PDF |
-| `app/(auth)/impostos/HistoricoGuias.tsx` | Tabela de guias anteriores |
+| `app/(auth)/impostos/HistoricoGuias.tsx` | Tabela de guias anteriores; linha expansível com detalhe do DAS (Documento/Principal/Multa/Juros/Pago em) |
 | `app/(auth)/impostos/DeclaracoesSection.tsx` | Tabela PGDAS-D (Simples) |
 | `app/(auth)/impostos/DeclaracoesMeiSection.tsx` | Tabela DASN-SIMEI (MEI) |

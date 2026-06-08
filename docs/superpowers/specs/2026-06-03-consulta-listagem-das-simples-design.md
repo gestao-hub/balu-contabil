@@ -183,22 +183,39 @@ valores e datas completos — e faz um segundo upsert enriquecendo as linhas já
 **Filtro:** `codigoTipoDocumentoLista: ['9']` (código 9 = DAS) + `intervaloDataArrecadacao` para o ano-calendário do request.
 **Paginação:** `primeiroDaPagina: 0`, `tamanhoDaPagina: 100` (suficiente p/ 12 meses/ano).
 
-### Fluxo ampliado
+### Fluxo ampliado (revisado em 2026-06-08 — match por número de documento)
 
 ```
 consultarDeclaracoesAction(ano?)
-  1–7.  [igual ao spec original — CONSDECLARACAO13 + upsert de situação]
-  8.  consultarPagamentosDas(supabase, companyId, year)
+  1–5.  [igual ao spec original — CONSDECLARACAO13 → situacoes]
+  6.  consultarPagamentosDas(supabase, companyId, year)
         → PAGTOWEB/PAGAMENTOS71 com codigoTipoDocumentoLista=['9'] + intervaloDataArrecadacao
         → parsePagamentosDas(resp) → PagamentoDas[]
-  9.  upsert em guias_fiscais (onConflict: company_id,competencia_referencia)
-        campos novos: valor_total, valor_principal, valor_multa, valor_juros,
-                      data_vencimento, data_pagamento, status='paga'
-  10. [revalidatePath('/impostos') — igual]
+        → indexa por normalizarNumeroDas(numeroDocumento)   // só dígitos, sem zeros à esquerda
+  7.  UM upsert em guias_fiscais (onConflict: company_id,competencia_referencia):
+        uma linha por competência (situacao), enriquecida com o DAS pago CASADO PELO
+        numero_das (situacao.numeroDas ↔ pagamento.numeroDocumento). Campos de valor só
+        entram no payload quando há match (senão preserva o que já existe na guia).
+        CHECA o erro do upsert.
+  8.  upsert declaracoes_fiscais [igual]
+  9.  revalidatePath('/impostos')
 ```
 
-Passo 8-9 é **não-fatal**: se o PAGTOWEB falhar, o upsert do CONSDECLARACAO13 já foi salvo e
-a action retorna `ok: true` normalmente.
+**Por que casar por documento, e não por competência (a v1 estava errada).** O PAGAMENTOS71
+pode devolver **2+ DAS na mesma competência** — tipicamente a **DAS regular do mês** mais uma
+**parcela de parcelamento** (ambas `tipo.codigo='9'`, `receitaPrincipal=3333`, indistinguíveis
+por tipo). Fazer `upsert(...onConflict: competencia_referencia)` com duas linhas da mesma
+competência viola a regra do Postgres (`ON CONFLICT DO UPDATE cannot affect row a second time`,
+SQLSTATE 21000) e **falha o lote inteiro**. Na v1 esse erro ainda era **engolido** (upsert sem
+checagem), então nenhum valor era gravado.
+
+A correção casa cada pagamento ao `numero_das` que o **CONSDECLARACAO13 já trouxe** para aquela
+competência. Isso (a) elimina a colisão — uma linha por competência; (b) ignora o parcelamento
+de graça — parcelas não constam no CONSDECLARACAO13, logo não casam com nenhuma guia; (c) é
+exato, não heurístico. Validado na AL PISCINAS: os `numero_das` (`07202…`) batem byte-a-byte
+(fora o zero à esquerda) com os `numeroDocumento` da "DAS regular" do PAGAMENTOS71.
+
+Passo 6 (PAGAMENTOS71) é **não-fatal**: se falhar, seguimos só com a situação do CONSDECLARACAO13.
 
 ### Shape da resposta PAGAMENTOS71
 
@@ -221,9 +238,19 @@ a action retorna `ok: true` normalmente.
 ```
 
 Observações confirmadas com dados reais (AL PISCINAS, rodada 2026-06-08):
-- `periodoApuracao` usa o **último dia do mês** no dia (`2016-05-31`) ou o primeiro (`2022-03-01`) — ambos normalizam para o mesmo YYYYMM.
 - Endpoint só retorna documentos **já pagos** (sem DAS em aberto).
 - Input incorreto (`dataInicial`/`dataFinal` direto, sem `intervaloDataArrecadacao`) → SERPRO retorna 400 "Parâmetro de entrada dataInicial inválido".
+- **`periodoApuracao` NÃO é confiável como competência.** Há duas famílias de documento:
+  - **DAS regular da competência:** `periodoApuracao` no **dia 01** do mês, vencimento ~dia 20
+    do mês seguinte, `valorPrincipal == valorTotal` (sem multa/juros se em dia). É o que casa
+    com o `numero_das` do CONSDECLARACAO13.
+  - **Parcela de parcelamento:** `periodoApuracao` no **último dia** do mês, principal fixo
+    (~R$1.915) + multa + juros SELIC crescente, `valorSaldoTotal` às vezes ≠ 0. Mesmo `tipo`
+    código 9 — só dá pra distinguir pelo padrão (ou, na prática, por não constar no CONSDECLARACAO13).
+  → Por isso o enriquecimento casa por **número de documento**, não por `periodoApuracao`/competência.
+- **Datas sem hora.** `dataVencimento`/`dataArrecadacao` viram `data_vencimento`/`data_pagamento`
+  como `YYYY-MM-DD`. O `dataBR` foi corrigido para formatar data sem hora **sem deslocar fuso**
+  (antes `2026-03-20` virava `19/03` por interpretar como meia-noite UTC e converter para BRT).
 
 ### Arquivos novos
 
@@ -232,4 +259,5 @@ Observações confirmadas com dados reais (AL PISCINAS, rodada 2026-06-08):
 | `lib/fiscal/serpro-pagamentos-parse.ts` | Parser puro: `parsePagamentosDas(resp) → PagamentoDas[]` |
 | `lib/fiscal/serpro-pagamentos.ts` | `consultarPagamentosDas(supabase, companyId, ano)` — orquestra auth + PAGTOWEB call |
 
-`actions.ts` importa `consultarPagamentosDas` e executa o passo 8-9.
+`actions.ts` importa `consultarPagamentosDas` + o tipo `PagamentoDas`, indexa os pagamentos por
+`normalizarNumeroDas(numeroDocumento)` e enriquece as situações casando pelo `numero_das` (passo 6-7).

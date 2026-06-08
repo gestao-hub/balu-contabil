@@ -387,17 +387,35 @@ Código 9 = DAS (Documento de Arrecadação do Simples Nacional). Inclui DAS-MEI
 ```
 
 **Observações confirmadas com AL PISCINAS (rodada 2026-06-08, produção):**
-- `periodoApuracao` pode ser primeiro ou último dia do mês — parser extrai apenas YYYYMM.
 - `dataArrecadacao` = data contábil do banco (pode ser D+1 do pagamento físico).
-- `valorSaldoTotal` = 0 em todos os registros retornados (endpoint filtra só pagos).
+- `valorSaldoTotal` = 0 na DAS regular paga; pode ser ≠ 0 em parcela de parcelamento.
 - AL PISCINAS retornou registros desde 2016 sem filtro de data.
 - Com filtro por ano (intervaloDataArrecadacao), retorna apenas os pagos naquele ano-calendário.
 
+**⚠️ Duas famílias de documento na mesma competência (descoberta 2026-06-08).** Ao filtrar 2026,
+a AL PISCINAS retornou **2 DAS por mês** — ambos `tipo.codigo='9'`, `receitaPrincipal.codigo='3333'`,
+indistinguíveis pelo `tipo`:
+
+| Família | `periodoApuracao` | Vencimento | Valor | Multa/Juros | O que é |
+|---|---|---|---|---|---|
+| **DAS regular** | dia **01** do mês | ~dia 20 do mês seguinte | principal = total | zero (se em dia) | DAS da competência declarada (PGDAS-D) |
+| **Parcelamento** | **último dia** do mês | fim do próprio mês | principal fixo ~R$1.915 | multa + juros SELIC crescente | parcela mensal de débito antigo |
+
+→ **`periodoApuracao` NÃO serve como chave de competência** (as duas famílias colidem no mesmo
+YYYYMM). O número da DAS regular **bate byte-a-byte** (fora o zero à esquerda) com o `numeroDas`
+que o **CONSDECLARACAO13** já traz; o parcelamento **não aparece** no CONSDECLARACAO13.
+
 ### Integração implementada
 
-Ver `lib/fiscal/serpro-pagamentos.ts` + `serpro-pagamentos-parse.ts`.
-Integrado em `consultarDeclaracoesAction` (step 8-9) conforme spec
-`docs/superpowers/specs/2026-06-03-consulta-listagem-das-simples-design.md § Adição PAGTOWEB`.
+Ver `lib/fiscal/serpro-pagamentos.ts` + `serpro-pagamentos-parse.ts`. Integrado em
+`consultarDeclaracoesAction`: os pagamentos são indexados por **número de documento**
+(`normalizarNumeroDas`) e casados ao `numero_das` da situação do CONSDECLARACAO13 — **não por
+competência** (senão 2 DAS/mês colidem no upsert `ON CONFLICT` e o lote inteiro falha). Spec:
+`docs/superpowers/specs/2026-06-03-consulta-listagem-das-simples-design.md § Fluxo ampliado (revisado)`.
+
+**Bug de fuso correlato (corrigido):** `data_vencimento`/`data_pagamento` vêm como `YYYY-MM-DD`;
+o `dataBR` (`lib/fiscal/guia.ts`) formatava isso como meia-noite UTC e deslocava p/ BRT (−3h),
+exibindo o dia anterior (`2026-03-20` → `19/03`). Corrigido para formatar data sem hora sem fuso.
 
 ---
 
@@ -450,3 +468,11 @@ Integrado em `consultarDeclaracoesAction` (step 8-9) conforme spec
   contratante FIXO + Termo (ou procuração eCAC) por cliente. Spike: `app/scripts/test-serpro-procurador-al-piscinas.mjs`
   e `…-consulta-prod-al-piscinas.mjs`. **Falta:** virar feature (redesenhar `serpro-auth.ts`/`serpro.ts`
   + cachear token por cliente + onboarding do cert do contratante).
+- **2026-06-08 (rodada 8)** — ✅ **PAGTOWEB/PAGAMENTOS71 validado em produção + correção do enriquecimento.**
+  Filtrando 2026 da AL PISCINAS: 200 com 10 documentos. Descoberta-chave: **2 famílias de DAS por
+  competência** (DAS regular `periodoApuracao` dia 01 × parcelamento `periodoApuracao` último dia),
+  ambas tipo 9 — ver §10. O enriquecimento que casava **por competência** quebrava (colisão
+  `ON CONFLICT`, erro engolido) → reescrito para casar **por número de documento** contra o `numero_das`
+  do CONSDECLARACAO13 (parcelamento ignorado de graça). Bug de fuso no `dataBR` (data sem hora → dia
+  anterior) corrigido com teste. Entregue junto do **gate inicial SERPRO** + **linha expansível** no
+  histórico de guias (branch `feat/gate-inicial-serpro`).
