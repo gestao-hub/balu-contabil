@@ -4,35 +4,35 @@
 flowchart TD
     A([Usuário acessa /cadastro]) --> B[Preenche nome, tipo de conta,\ne-mail, senha + aceita termos]
     B --> C{Validação\nclient + server}
-    C -- erro --> B
-    C -- ok --> D[supabase.auth.signUp\nsalva metadata: nome, tipo, data termos\ntrigger DB cria role_types]
+    C -->|erro| B
+    C -->|ok| D[supabase.auth.signUp\nsalva metadata: nome, tipo, data termos\ntrigger DB cria role_types]
 
     D --> E{Confirm email\nativado no projeto?}
-    E -- SIM --> F[/cadastro/confirme-email\nTela 'verifique seu e-mail']
+    E -->|SIM| F[cadastro/confirme-email\nTela: verifique seu e-mail]
     F --> G[Usuário clica no link\ndo e-mail]
-    G --> H[/auth/confirm\nverifyOtp → cria sessão]
-    E -- NÃO --> I[Sessão criada direto]
+    G --> H[auth/confirm\nverifyOtp → cria sessão]
+    E -->|NÃO| I[Sessão criada direto]
 
     H --> J
     I --> J
 
     J[Redireciona para /] --> K{Auth layout gate\nverifica sessão e empresa}
-    K -- sem sessão --> L([/login])
-    K -- sem empresa\ncurrent_company vazio --> M[/onboarding\nVamos começar]
+    K -->|sem sessão| L([/login])
+    K -->|sem empresa| M[/onboarding\nVamos começar]
 
     M --> N{Como quer\nadicionar a empresa?}
-    N -- Já tenho CNPJ --> O[Abre CreateCompanyDialog]
-    N -- Quero abrir empresa --> P[/onboarding/abertura\nFluxo de abertura]
+    N -->|Já tenho CNPJ| O[Abre CreateCompanyDialog]
+    N -->|Quero abrir empresa| P[onboarding/abertura\nFluxo de abertura]
 
     O --> Q[Etapa 1: digita CNPJ\nbusca na Focus API\nautofill razão social,\nendereço, CNAE, regime]
     Q --> R[Etapa 2: revisa/edita\ndados da empresa]
     R --> S[Etapa 3: confirma\nregime tributário\nMEI / Simples / etc.]
     S --> T[createCompanyAction\ninsert companies\nupsert profiles.current_company\ninsert empresas_fiscais]
     T --> U{Salvou ok?}
-    U -- erro --> S
-    U -- ok --> V[router.push /]
+    U -->|erro| S
+    U -->|ok| V[router.push /]
     V --> W{Auth layout\nverifica novamente}
-    W -- current_company preenchido --> X([App normal — dashboard])
+    W -->|current_company preenchido| X([App normal — dashboard])
 ```
 
 ## Arquivos envolvidos
