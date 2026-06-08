@@ -200,3 +200,24 @@ Navegação: itens da fila e linhas do histórico linkam pra cá; "‹ Voltar a 
 - **Campo de início de atividade** — v1 enumera de janeiro do ano-calendário; restringir quando o
   campo existir.
 - **Multi-ano** — a fila/histórico cobrem o ano-calendário corrente (igual ao sync).
+
+---
+
+## Status de implementação (2026-06-08) — FEITO
+
+Branch `feat/remove-serpro-buttons`. Implementado via subagent-driven (plano
+`docs/superpowers/plans/2026-06-08-impostos-fila-obrigacoes.md`), validado na UI com a AL PISCINAS
+(dados reais seedados). `tsc` limpo, helper com 11 testes.
+
+**Code review aplicado:** (1) mês corrente filtrado das guias/declarações antes de derivar (não vaza
+pra fila via união defensiva); (2) detalhe do mês corrente mostra só Apuração; (3) item vencido diz
+"venceu" (não "vence"); (4) teste da união defensiva.
+
+**Adição — botão Apurar/Recalcular (`ApurarButton`):** a seção Apuração ganhou um botão para meses
+**não transmitidos** (`a_declarar`, incl. mês corrente) que roda `iniciarApuracaoAction('commit')` —
+cálculo interno das notas, **idempotente, sem SERPRO** (pode apurar quantas vezes quiser). Label
+"Apurar" quando não há apuração, "Recalcular apuração" quando já existe.
+
+**Fora deste spec mas no mesmo branch (contexto):** remoção dos botões que disparam SERPRO por clique
+(Gerar DAS / Consultar na SERPRO / Marcar paga / Copiar linha) e o sync trazendo a DAS em aberto via
+GERARDAS12 — ver `2026-06-03-consulta-listagem-das-simples-design.md` e `SERPRO-INVESTIGACAO.md`.
