@@ -272,37 +272,67 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
     }
   }
 
-  // Uma linha por competência (situação do CONSDECLARACAO13), enriquecida com os valores
-  // do DAS pago CASADO PELO NÚMERO DO DOCUMENTO — não por competência. Assim a mesma
-  // competência não colide no upsert, e DAS que não são a declarada (ex.: parcelamento,
-  // que não aparece no CONSDECLARACAO13) são naturalmente ignorados.
-  const rows = r.situacoes.map((s) => {
-    const pag = s.numeroDas ? pagPorDocumento.get(normalizarNumeroDas(s.numeroDas)) : undefined;
-    return {
+  // Uma linha por competência (situação do CONSDECLARACAO13), enriquecida em 2 fontes:
+  //  - PAGA: casa o DAS pago do PAGAMENTOS71 pelo NÚMERO DO DOCUMENTO (não por competência —
+  //    senão 2 DAS/mês, ex. parcelamento, colidem no upsert; e parcelamento, ausente no
+  //    CONSDECLARACAO13, é ignorado de graça).
+  //  - EM ABERTO (declarada e não paga): GERARDAS12 traz valor + vencimento + linha digitável + PDF.
+  //    É 1 chamada SERPRO por competência em aberto → só roda nas declaradas não pagas.
+  const rows: Record<string, unknown>[] = [];
+  for (const s of r.situacoes) {
+    const base = {
       company_id: companyId,
       owner_user_id: user.id,
       competencia_referencia: s.competencia,
       competencia_mes: Number(s.competencia.slice(4, 6)),
       competencia_ano: Number(s.competencia.slice(0, 4)),
       numero_das: s.numeroDas,
-      status: pag ? 'paga' : s.status,
       origem: 'serpro',
-      // Só grava os valores quando há DAS pago casado; senão preserva o que já está na guia
-      // (no upsert do PostgREST, colunas ausentes do payload não entram no SET).
-      ...(pag
-        ? {
-            valor_total: pag.valorTotal,
-            valor_principal: pag.valorPrincipal,
-            valor_multa: pag.valorMulta,
-            valor_juros: pag.valorJuros,
-            data_vencimento: pag.dataVencimento,
-            data_pagamento: pag.dataPagamento,
-          }
-        : {}),
       updated_at: new Date().toISOString(),
       deleted_at: null,
     };
-  });
+
+    const pag = s.numeroDas ? pagPorDocumento.get(normalizarNumeroDas(s.numeroDas)) : undefined;
+    if (pag) {
+      rows.push({
+        ...base,
+        status: 'paga',
+        valor_total: pag.valorTotal,
+        valor_principal: pag.valorPrincipal,
+        valor_multa: pag.valorMulta,
+        valor_juros: pag.valorJuros,
+        data_vencimento: pag.dataVencimento,
+        data_pagamento: pag.dataPagamento,
+      });
+      continue;
+    }
+
+    // DAS em aberto: competência declarada e não paga → GERARDAS12 (não-fatal por competência).
+    if (s.numeroDeclaracao && s.status !== 'paga') {
+      const das = await gerarDasSimples(supabase, companyId, s.competencia);
+      if (das.ok && !das.result.semValor) {
+        const d = das.result;
+        rows.push({
+          ...base,
+          numero_das: d.numeroDas ?? s.numeroDas,
+          status: 'gerada',
+          valor_total: d.valores.total,
+          valor_principal: d.valores.principal,
+          valor_multa: d.valores.multa,
+          valor_juros: d.valores.juros,
+          data_vencimento: d.dataVencimento,
+          linha_digitavel: d.codigoDeBarras.join(' '),
+          codigo_barras: d.codigoDeBarras.join(''),
+          url_pdf: d.pdfBase64 ? `data:application/pdf;base64,${d.pdfBase64}` : null,
+        });
+        continue;
+      }
+      // semValor (nada devido) ou erro → cai pro base (preserva o que já está na guia).
+    }
+
+    // Só situação: sem valores no payload → o upsert preserva o que já estava gravado.
+    rows.push({ ...base, status: s.status });
+  }
 
   if (rows.length > 0) {
     const { error } = await supabase
