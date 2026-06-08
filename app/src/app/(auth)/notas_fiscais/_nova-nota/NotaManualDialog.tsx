@@ -1,4 +1,5 @@
 'use client';
+// @custom — Modal de lançamento manual de NF (registro de nota emitida fora).
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Loader2 } from 'lucide-react';

@@ -1,4 +1,5 @@
 'use client';
+// @custom — Modal multi-step de emissão de NF (escolhe tipo → form do tipo).
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, ArrowLeft, FileText, Package, ShoppingCart, Loader2 } from 'lucide-react';
@@ -41,9 +42,11 @@ export default function EmitirNotaDialog({ open, onClose }: { open: boolean; onC
   // Ao abrir: reseta e carrega os tipos habilitados; se só 1, pula pro form.
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     setTipo(null); setPreparo(null); setBloqueio(null); setTipos(null);
     setCarregando(true);
     listarTiposEmissaoAction().then((t) => {
+      if (cancelled) return; // dialog fechou antes da resposta — não dispara preparo
       setTipos(t);
       const habilitados = (['nfse', 'nfe', 'nfce'] as Tipo[]).filter((k) => t[k]);
       if (habilitados.length === 1) {
@@ -52,6 +55,7 @@ export default function EmitirNotaDialog({ open, onClose }: { open: boolean; onC
         setCarregando(false);
       }
     });
+    return () => { cancelled = true; };
     // escolher não muda entre renders; só depende de `open`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);

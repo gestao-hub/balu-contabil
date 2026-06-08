@@ -1,4 +1,5 @@
 'use client';
+// @custom — Dropdown "Nova nota": abre o modal de emissão ou o de nota manual.
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, FilePlus, FileText } from 'lucide-react';
 import EmitirNotaDialog from './_nova-nota/EmitirNotaDialog';
