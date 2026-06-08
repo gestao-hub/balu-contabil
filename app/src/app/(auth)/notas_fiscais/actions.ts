@@ -787,19 +787,42 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
   return { ok: true, notaId };
 }
 
-export type NotaManualItem = { descricao: string; valor: number };
-export type NotaManualInput = {
-  tipo: 'NFSe' | 'NFe' | 'NFCe';
-  clienteId: string | null;
-  numero: string;
-  dataEmissao: string;          // 'YYYY-MM-DD'
-  itens: NotaManualItem[];
-};
+// Lançamento manual: por tipo, os campos espelham o form de emissão correspondente
+// (+ numero/dataEmissao próprios do manual). NÃO chama a Focus.
+export type NotaManualInput =
+  | {
+      tipo: 'NFSe';
+      clienteId: string | null;
+      numero: string;
+      dataEmissao: string; // 'YYYY-MM-DD'
+      cnae: string | null;
+      codigoTributacao: string;
+      descricao: string;
+      valorReais: number;
+      aliquotaIssPercentual: number;
+    }
+  | {
+      tipo: 'NFe';
+      clienteId: string | null;
+      numero: string;
+      dataEmissao: string;
+      naturezaOperacao: string;
+      itens: NfeItem[];
+    }
+  | {
+      tipo: 'NFCe';
+      numero: string;
+      dataEmissao: string;
+      itens: NfeItem[];
+      pagamentos: NfceFormaPagamento[];
+      consumidorCpf: string | null;
+    };
 export type LancarNotaManualResult = { ok: true; id: string } | { ok: false; error: string };
 
 /**
  * Registra uma NF já emitida fora (lançamento manual) — NÃO chama a Focus.
- * Marca origem='manual', status='lancada'. Itens/número vão no payload_focusnfe (jsonb).
+ * Marca origem='manual', status='lancada'. O detalhe por tipo vai no
+ * payload_focusnfe (jsonb); valor_total/cnae alimentam a base de imposto.
  */
 export async function lancarNotaManualAction(input: NotaManualInput): Promise<LancarNotaManualResult> {
   const supabase = await createServerClient();
@@ -811,28 +834,58 @@ export async function lancarNotaManualAction(input: NotaManualInput): Promise<La
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
-  if (!['NFSe', 'NFe', 'NFCe'].includes(input.tipo)) return { ok: false, error: 'Tipo inválido.' };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dataEmissao)) return { ok: false, error: 'Data de emissão inválida.' };
-  const itens = (input.itens ?? []).filter((i) => i.descricao.trim() && Number.isFinite(i.valor) && i.valor > 0);
-  if (itens.length === 0) return { ok: false, error: 'Inclua ao menos um item com descrição e valor.' };
-  const valorTotal = itens.reduce((s, i) => s + i.valor, 0);
 
-  const { data, error } = await supabase
-    .from('notas_fiscais')
-    .insert({
-      company_id: companyId,
+  const base = {
+    company_id: companyId,
+    referencia: `man_${globalThis.crypto.randomUUID()}`,
+    data_emissao: new Date(`${input.dataEmissao}T12:00:00-03:00`).toISOString(),
+    status: 'lancada' as const,
+    origem: 'manual' as const,
+  };
+
+  let row: Record<string, unknown>;
+  if (input.tipo === 'NFSe') {
+    const valor = Math.round((input.valorReais || 0) * 100) / 100;
+    if (!(valor > 0)) return { ok: false, error: 'Informe o valor do serviço.' };
+    if (!input.descricao.trim()) return { ok: false, error: 'Informe a descrição do serviço.' };
+    row = {
+      ...base,
+      tipo_documento: 'NFSe',
       cliente_id: input.clienteId,
-      tipo_documento: input.tipo,
-      referencia: `man_${globalThis.crypto.randomUUID()}`,
-      data_emissao: new Date(`${input.dataEmissao}T12:00:00-03:00`).toISOString(),
-      valor_total: valorTotal,
-      status: 'lancada',
-      origem: 'manual',
-      payload_focusnfe: { manual: true, numero: input.numero, itens },
-    })
-    .select('id')
-    .single();
+      valor_total: valor,
+      cnae: input.cnae ? String(input.cnae).replace(/\D+/g, '') || null : null,
+      payload_focusnfe: {
+        manual: true,
+        numero: input.numero,
+        codigoTributacao: input.codigoTributacao,
+        descricao: input.descricao,
+        aliquotaIssPercentual: input.aliquotaIssPercentual,
+      },
+    };
+  } else if (input.tipo === 'NFe') {
+    const total = input.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+    if (!(total > 0)) return { ok: false, error: 'Adicione ao menos um item com valor.' };
+    row = {
+      ...base,
+      tipo_documento: 'NFe',
+      cliente_id: input.clienteId,
+      valor_total: Math.round(total * 100) / 100,
+      payload_focusnfe: { manual: true, numero: input.numero, naturezaOperacao: input.naturezaOperacao, itens: input.itens },
+    };
+  } else {
+    const total = input.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+    if (!(total > 0)) return { ok: false, error: 'Adicione ao menos um item com valor.' };
+    row = {
+      ...base,
+      tipo_documento: 'NFCe',
+      cliente_id: null,
+      valor_total: Math.round(total * 100) / 100,
+      payload_focusnfe: { manual: true, numero: input.numero, itens: input.itens, pagamentos: input.pagamentos, consumidorCpf: input.consumidorCpf },
+    };
+  }
 
+  const { data, error } = await supabase.from('notas_fiscais').insert(row).select('id').single();
   if (error) return { ok: false, error: error.message };
   revalidatePath('/notas_fiscais');
   return { ok: true, id: data.id as string };
@@ -951,13 +1004,31 @@ export async function prepararEmissaoAction(tipo: 'nfse' | 'nfe' | 'nfce'): Prom
   return { ok: true, tipo: 'nfce', dados: { produtos } };
 }
 
-export async function prepararNotaManualAction(): Promise<{ clientes: ClienteOption[] }> {
+// Dados por tipo p/ o form manual (mesmos do form de emissão, SEM os guards de
+// emissão — disponibilidade de município etc. não importam num registro manual).
+export type PreparoNotaManual =
+  | { tipo: 'NFSe'; clientes: ClienteOption[]; cnaes: CnaeOption[] }
+  | { tipo: 'NFe'; clientes: ClienteOption[]; produtos: ProdutoOption[] }
+  | { tipo: 'NFCe'; produtos: ProdutoOption[] };
+
+export async function prepararNotaManualAction(tipo: 'NFSe' | 'NFe' | 'NFCe'): Promise<PreparoNotaManual> {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { clientes: [] };
-  const { data: profile } = await supabase
-    .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { clientes: [] };
-  return { clientes: await lerClientesAtivos(supabase, companyId) };
+  let companyId: string | null = null;
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles').select('current_company').eq('user_id', user.id).single();
+    companyId = (profile?.current_company ?? null) as string | null;
+  }
+  const clientesP = companyId ? lerClientesAtivos(supabase, companyId) : Promise.resolve<ClienteOption[]>([]);
+
+  if (tipo === 'NFSe') {
+    const [clientes, cnaes] = await Promise.all([clientesP, listarCnaesEmpresaAction()]);
+    return { tipo: 'NFSe', clientes, cnaes };
+  }
+  if (tipo === 'NFe') {
+    const [clientes, produtos] = await Promise.all([clientesP, listarProdutosAction()]);
+    return { tipo: 'NFe', clientes, produtos };
+  }
+  return { tipo: 'NFCe', produtos: await listarProdutosAction() };
 }

@@ -1,5 +1,7 @@
 'use client';
-// @custom — Form de emissão de NFS-e (dentro do modal). Chama emitirNotaAction direto.
+// @custom — Form de NFS-e. Serve emissão real (emitirNotaAction) e lançamento
+// manual (lancarNotaManualAction) via prop `modo`; campos idênticos, manual
+// adiciona Número + Data e não chama a Focus.
 import { useState } from 'react';
 import { z } from 'zod';
 import { Loader2 } from 'lucide-react';
@@ -9,7 +11,7 @@ import {
   CODIGO_OUTRO_SENTINEL,
   isCodigoTributacaoValido,
 } from '@/lib/fiscal/codigos-tributacao';
-import { emitirNotaAction, type CnaeOption } from '../actions';
+import { emitirNotaAction, lancarNotaManualAction, type CnaeOption } from '../actions';
 import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
 
 const Schema = z.object({
@@ -20,17 +22,22 @@ const Schema = z.object({
   aliquotaIssPercentual: z.number().min(0, 'Alíquota inválida.').max(100, 'Alíquota inválida.'),
 });
 
+const hojeBrt = () => new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+
 export default function EmissaoForm({
   clientes,
   previewImposto,
   cnaes,
   onSuccess,
+  modo = 'emissao',
 }: {
   clientes: ClienteOption[];
-  previewImposto: PreviewImposto;
+  previewImposto?: PreviewImposto;
   cnaes: CnaeOption[];
   onSuccess: () => void;
+  modo?: 'emissao' | 'manual';
 }) {
+  const manual = modo === 'manual';
   const [clienteId, setClienteId] = useState<string>('');
   const [cnae, setCnae] = useState<string>(cnaes.length === 1 ? cnaes[0]!.codigo : '');
   const [codigoBase, setCodigoBase] = useState<string>(CODIGOS_TRIBUTACAO_FREQUENTES[0]!.codigo);
@@ -38,6 +45,8 @@ export default function EmissaoForm({
   const [descricao, setDescricao] = useState<string>('');
   const [valorTexto, setValorTexto] = useState<string>('');
   const [aliquotaTexto, setAliquotaTexto] = useState<string>('5');
+  const [numero, setNumero] = useState<string>('');
+  const [dataEmissao, setDataEmissao] = useState<string>(hojeBrt);
   const [clientErr, setClientErr] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -68,14 +77,26 @@ export default function EmissaoForm({
     setClientErr(null);
     setEnviando(true);
     try {
-      const r = await emitirNotaAction({
-        clienteId,
-        codigoTributacao: codigoFinal,
-        descricao,
-        valorReais: valor,
-        aliquotaIssPercentual: aliquota,
-        cnae: cnae || null,
-      });
+      const r = manual
+        ? await lancarNotaManualAction({
+            tipo: 'NFSe',
+            clienteId,
+            numero: numero.trim(),
+            dataEmissao,
+            cnae: cnae || null,
+            codigoTributacao: codigoFinal,
+            descricao,
+            valorReais: valor,
+            aliquotaIssPercentual: aliquota,
+          })
+        : await emitirNotaAction({
+            clienteId,
+            codigoTributacao: codigoFinal,
+            descricao,
+            valorReais: valor,
+            aliquotaIssPercentual: aliquota,
+            cnae: cnae || null,
+          });
       if (!r.ok) {
         setClientErr(r.error);
         return;
@@ -92,8 +113,33 @@ export default function EmissaoForm({
       <div>
         <label className="block text-sm font-medium text-muted-foreground-2 mb-1">Cliente (tomador)</label>
         <ClienteCombobox clientes={clientes} value={clienteId} onChange={setClienteId} />
-        <input type="hidden" name="clienteId" value={clienteId} />
       </div>
+
+      {/* Número + Data — só no lançamento manual (a emissão real gera) */}
+      {manual && (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="numero" className="block text-sm font-medium text-muted-foreground-2 mb-1">Número da nota</label>
+            <input
+              id="numero"
+              value={numero}
+              onChange={(e) => setNumero(e.target.value)}
+              placeholder="Ex.: 1234"
+              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <div>
+            <label htmlFor="dataEmissao" className="block text-sm font-medium text-muted-foreground-2 mb-1">Data de emissão</label>
+            <input
+              id="dataEmissao"
+              type="date"
+              value={dataEmissao}
+              onChange={(e) => setDataEmissao(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Código de tributação */}
       <div>
@@ -117,7 +163,6 @@ export default function EmissaoForm({
             className="mt-2 w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm font-mono"
           />
         )}
-        <input type="hidden" name="codigoTributacao" value={codigoBase === CODIGO_OUTRO_SENTINEL ? codigoOutro : codigoBase} />
       </div>
 
       {cnaes.length > 0 && (
@@ -142,7 +187,6 @@ export default function EmissaoForm({
               ))}
             </select>
           )}
-          <input type="hidden" name="cnae" value={cnae} />
         </div>
       )}
 
@@ -151,7 +195,6 @@ export default function EmissaoForm({
         <label htmlFor="descricao" className="block text-sm font-medium text-muted-foreground-2 mb-1">Descrição do serviço</label>
         <textarea
           id="descricao"
-          name="descricao"
           value={descricao}
           onChange={(e) => setDescricao(e.target.value)}
           required
@@ -171,7 +214,6 @@ export default function EmissaoForm({
           <input
             type="text"
             inputMode="decimal"
-            name="valorReais"
             value={valorTexto}
             onChange={(e) => setValorTexto(maskMoney(e.target.value))}
             placeholder="0,00"
@@ -184,7 +226,6 @@ export default function EmissaoForm({
           <input
             type="text"
             inputMode="decimal"
-            name="aliquotaIssPercentual"
             value={aliquotaTexto}
             onChange={(e) => setAliquotaTexto(e.target.value.replace(/[^\d.,]/g, ''))}
             placeholder="5,00"
@@ -194,7 +235,8 @@ export default function EmissaoForm({
         </div>
       </div>
 
-      {previewImposto.tipo === 'simples' && (() => {
+      {/* Prévia de imposto — só na emissão real */}
+      {!manual && previewImposto?.tipo === 'simples' && (() => {
         const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
         const valor = parseDecimal(valorTexto) || 0;
         const imposto = valor * previewImposto.aliquota;
@@ -205,7 +247,7 @@ export default function EmissaoForm({
           </p>
         );
       })()}
-      {previewImposto.tipo === 'mei' && (() => {
+      {!manual && previewImposto?.tipo === 'mei' && (() => {
         const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
         return (
           <p className="text-sm text-muted-foreground bg-surface-2 border border-border rounded-md px-3 py-2">
@@ -218,12 +260,16 @@ export default function EmissaoForm({
         <p className="text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">{clientErr}</p>
       )}
 
-      <SubmitButton disabled={!clienteId} enviando={enviando} />
+      <div className="flex justify-end">
+        <SubmitButton disabled={!clienteId} enviando={enviando} manual={manual} />
+      </div>
     </form>
   );
 }
 
-function SubmitButton({ disabled, enviando }: { disabled: boolean; enviando: boolean }) {
+function SubmitButton({ disabled, enviando, manual }: { disabled: boolean; enviando: boolean; manual: boolean }) {
+  const ocupado = manual ? 'Lançando…' : 'Emitindo…';
+  const ocioso = manual ? 'Lançar nota' : 'Emitir nota';
   return (
     <button
       type="submit"
@@ -231,7 +277,7 @@ function SubmitButton({ disabled, enviando }: { disabled: boolean; enviando: boo
       className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 transition"
     >
       {enviando && <Loader2 className="size-4 animate-spin" />}
-      {enviando ? 'Emitindo…' : 'Emitir nota'}
+      {enviando ? ocupado : ocioso}
     </button>
   );
 }
