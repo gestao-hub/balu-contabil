@@ -10,6 +10,8 @@ import {
   isMei, anexoFromFaixa, faixaFromAnexo, fatorRAplicavel, type RegimeCode, type AtividadeMei,
 } from '@/lib/fiscal/regime';
 import { upsertEmpresaFiscalAction } from './actions';
+import { formatCnae } from '@/lib/format/masks';
+import type { CnaeSecundario } from '@/lib/fiscal/company-cnaes';
 
 type Initial = {
   Code_regime_tributario?: string | null;
@@ -19,7 +21,13 @@ type Initial = {
   atividade_mei?: string | null;
 };
 
-export default function RegimeTributarioForm({ initial }: { initial: Initial | null }) {
+export default function RegimeTributarioForm({
+  initial,
+  cnaesSecundarios = [],
+}: {
+  initial: Initial | null;
+  cnaesSecundarios?: CnaeSecundario[];
+}) {
   const toast = useToast();
   const [code, setCode] = useState<string>(initial?.Code_regime_tributario ?? '');
   const [faixa, setFaixa] = useState<string>(faixaFromAnexo(initial?.anexo_simples ?? null) ?? '');
@@ -56,7 +64,7 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
         Code_regime_tributario: code as RegimeCode,
         anexo_simples: mei ? null : anexo,
         usa_fator_r: mostraFatorR ? fatorR : false,
-        cnae_principal: cnae.trim() || null,
+        cnae_principal: cnae.replace(/\D+/g, '') || null,
         atividade_mei: mei ? ((atividadeMei as AtividadeMei) || null) : null,
       });
       if (!r.ok) { toast('error', r.error); return; }
@@ -136,13 +144,43 @@ export default function RegimeTributarioForm({ initial }: { initial: Initial | n
         <span className="text-xs font-medium text-muted-foreground-2">CNAE principal</span>
         <input
           type="text"
-          value={cnae}
-          onChange={(e) => setCnae(e.target.value)}
+          value={formatCnae(cnae)}
+          onChange={(e) => setCnae(formatCnae(e.target.value))}
           placeholder="0000-0/00"
           disabled={locked}
           className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
         />
       </label>
+
+      {/* CNAEs secundários — read-only (vêm do sync da Receita no cadastro); nunca editáveis aqui. */}
+      <div className="col-span-2 flex flex-col gap-1.5 text-sm">
+        <span className="text-xs font-medium text-muted-foreground-2">CNAEs secundários</span>
+        {cnaesSecundarios.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhum CNAE secundário registrado.</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {cnaesSecundarios.map((c) => (
+              <li
+                key={c.codigo}
+                className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2"
+              >
+                <span className="min-w-0 truncate text-muted-foreground-2">
+                  <span className="font-medium text-foreground">{formatCnae(c.codigo)}</span>
+                  {c.descricao ? <span className="text-muted-foreground"> — {c.descricao}</span> : null}
+                </span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    c.anexoLabel ? 'bg-surface text-muted-foreground-2' : 'bg-alert/10 text-alert'
+                  }`}
+                >
+                  {c.anexoLabel ?? 'a curar'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <span className="text-xs text-muted-foreground">Vêm da Receita (consulta do CNPJ) e não são editáveis aqui.</span>
+      </div>
 
       <div className="col-span-2 mt-2 flex justify-end gap-2">
         {editing ? (

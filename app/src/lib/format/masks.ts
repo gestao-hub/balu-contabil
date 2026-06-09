@@ -27,6 +27,14 @@ export function formatCpf(value: string): string {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
+/** "4299501" → "4299-5/01" (subclasse CNAE, 7 dígitos). Tolera parcial ou já mascarado. */
+export function formatCnae(value: string): string {
+  const d = value.replace(/\D/g, '').slice(0, 7);
+  if (d.length <= 4) return d;
+  if (d.length <= 5) return `${d.slice(0, 4)}-${d.slice(4)}`;
+  return `${d.slice(0, 4)}-${d.slice(4, 5)}/${d.slice(5)}`;
+}
+
 /**
  * Máscara de telefone: detecta fixo (10 dígitos) ou celular (11 dígitos).
  * Fixo:   "3544443333"  → "(35)4444-3333"

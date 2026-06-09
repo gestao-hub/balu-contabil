@@ -12,6 +12,7 @@ import SaudeEmpresaTab from './SaudeEmpresaTab';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import type { SaudeState } from '@/lib/fiscal/saude-empresa';
 import { getAberturaByCompany } from '@/lib/abertura/queries';
+import { listarCnaesSecundariosEmpresa, type CnaeSecundario } from '@/lib/fiscal/company-cnaes';
 import AberturaInfoView from './AberturaInfoView';
 
 const TABS = [
@@ -83,6 +84,12 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         {abertura ? <AberturaInfoView abertura={abertura} /> : <p className="text-sm text-muted-foreground">Solicitação não encontrada.</p>}
       </main>
     );
+  }
+
+  // CNAEs secundários (read-only) p/ a aba Regime tributário — já vêm do sync no cadastro.
+  let cnaesSecundarios: CnaeSecundario[] = [];
+  if (active === 'regime' && company) {
+    cnaesSecundarios = await listarCnaesSecundariosEmpresa(supabase, company.id as string);
   }
 
   const needsMunicipio = (active === 'fiscal' || active === 'diagnostico') && !!company;
@@ -220,6 +227,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
               cnae_principal?: string | null;
             } | null
           }
+          cnaesSecundarios={cnaesSecundarios}
         />
       ) : active === 'fiscal' ? (
         <EmissaoFiscalTab
