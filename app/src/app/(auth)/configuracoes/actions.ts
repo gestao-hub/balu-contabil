@@ -15,6 +15,7 @@ import { encryptBlob } from '@/lib/crypto/envelope';
 import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
 import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
 import { camposOficiaisDaReceita } from '@/lib/fiscal/campos-empresa';
+import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 
 type ActionResult = { ok: true; warning?: string } | { ok: false; error: string };
 
@@ -401,6 +402,16 @@ export async function atualizarDadosReceitaAction(id: string): Promise<Atualizar
   };
   const res = await updateCompanyAction(id, { ...atual, ...patch });
   if (!res.ok) return res;
+
+  // Re-sincroniza os CNAEs (principal + secundários) da BrasilAPI. É o caminho de
+  // recuperação quando a sync na criação falhou (BrasilAPI fora/limitando) e deixou
+  // os secundários sem popular. Best-effort: não lança, não bloqueia a atualização.
+  await sincronizarCnaesEmpresa(supabase, {
+    companyId: id,
+    ownerUserId: user.id,
+    cnpj,
+    cnaePrincipalFallback: r.data.cnae_principal ?? null,
+  });
 
   return { ok: true, atualizados: patch };
 }
