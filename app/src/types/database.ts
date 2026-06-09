@@ -1,5 +1,5 @@
 // @custom — espelha o BANCO REAL (pg_dump de llykzqnugdpojwnlontj, PostgreSQL 17.6).
-// Fonte da verdade = banco, não os migrations. Ver DB-DIVERGENCIA.md na raiz do repo.
+// Snapshot do schema vivo em docs/reference/db_atual.sql (regerar junto ao alterar o banco).
 // Quando o Supabase CLI estiver disponível, preferir:
 //   npx supabase gen types typescript --project-id llykzqnugdpojwnlontj > src/types/database.ts
 //
