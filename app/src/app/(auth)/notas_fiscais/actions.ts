@@ -124,7 +124,7 @@ export async function exportNotasCsvAction(filtros: NotasFiltros): Promise<Expor
  * PR 2.1 — Emite uma NFS-e (NFSe Nacional) via Focus.
  *
  * Fluxo:
- *   1. Valida user/empresa/empresa_fiscal_ativada/cert.
+ *   1. Valida user/empresa/cadastro Focus/status do município.
  *   2. Resolve tomador (cliente do banco).
  *   3. Monta payload via `buildNfsePayload` (pure helper, testado).
  *   4. Insere `notas_fiscais` `status='pendente'` (com `referencia` única).
@@ -617,10 +617,9 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('Code_regime_tributario, empresa_fiscal_ativada, focus_habilita_nfe')
+    .select('Code_regime_tributario, focus_habilita_nfe')
     .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
   if (!fiscal) return { ok: false, error: 'Configure o regime tributário antes de emitir.' };
-  if (fiscal.empresa_fiscal_ativada !== true) return { ok: false, error: 'Ative a empresa fiscal antes de emitir.' };
   if (fiscal.focus_habilita_nfe !== true) return { ok: false, error: 'Empresa não habilitada para emitir NF-e.' };
 
   const { data: cliente } = await supabase
@@ -735,10 +734,9 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('Code_regime_tributario, empresa_fiscal_ativada, focus_habilita_nfce')
+    .select('Code_regime_tributario, focus_habilita_nfce')
     .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
   if (!fiscal) return { ok: false, error: 'Configure o regime tributário antes de emitir.' };
-  if (fiscal.empresa_fiscal_ativada !== true) return { ok: false, error: 'Ative a empresa fiscal antes de emitir.' };
   if (fiscal.focus_habilita_nfce !== true) return { ok: false, error: 'Empresa não habilitada para emitir NFC-e.' };
 
   let payload;
@@ -936,15 +934,19 @@ export async function listarTiposEmissaoAction(): Promise<TiposHabilitados> {
     .from('profiles').select('current_company').eq('user_id', user.id).single();
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return off;
+  // A verdade da habilitação é o que a Focus realmente habilitou (focus_habilita_*),
+  // sincronizado em snapshotFocusEmpresa. O antigo gate `empresa_fiscal_ativada` foi
+  // removido: era um toggle sem nenhum caminho no app que o setasse `true`, então
+  // travava TODA empresa no chooser mesmo com a Focus já habilitando. O validador real
+  // de NFS-e já o havia abandonado (usa status do município) — alinhamos o resto aqui.
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('focus_habilita_nfse, focus_habilita_nfsen_homologacao, focus_habilita_nfe, focus_habilita_nfce, empresa_fiscal_ativada')
+    .select('focus_habilita_nfse, focus_habilita_nfsen_homologacao, focus_habilita_nfe, focus_habilita_nfce')
     .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
-  const ativa = fiscal?.empresa_fiscal_ativada === true;
   return {
-    nfse: ativa && (fiscal?.focus_habilita_nfse === true || fiscal?.focus_habilita_nfsen_homologacao === true),
-    nfe: ativa && fiscal?.focus_habilita_nfe === true,
-    nfce: ativa && fiscal?.focus_habilita_nfce === true,
+    nfse: fiscal?.focus_habilita_nfse === true || fiscal?.focus_habilita_nfsen_homologacao === true,
+    nfe: fiscal?.focus_habilita_nfe === true,
+    nfce: fiscal?.focus_habilita_nfce === true,
   };
 }
 
@@ -996,13 +998,13 @@ export async function prepararEmissaoAction(tipo: 'nfse' | 'nfe' | 'nfce'): Prom
     return { ok: true, tipo: 'nfse', dados: { razaoSocial: (company.razao_social as string | null) ?? '—', clientes, previewImposto, cnaes } };
   }
 
-  // nfe / nfce — guards de ativação + habilitação
+  // nfe / nfce — habilitação real vinda da Focus (focus_habilita_*).
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('empresa_fiscal_ativada, focus_habilita_nfe, focus_habilita_nfce')
+    .select('focus_habilita_nfe, focus_habilita_nfce')
     .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
-  if (!fiscal || fiscal.empresa_fiscal_ativada !== true) {
-    return { ok: false, bloqueio: { titulo: 'Empresa fiscal não ativada', mensagem: 'Ative a empresa fiscal antes de emitir.', href: '/configuracoes?tab=fiscal', labelLink: 'Ir para Fiscal' } };
+  if (!fiscal) {
+    return { ok: false, bloqueio: { titulo: 'Cadastro fiscal incompleto', mensagem: 'Configure o regime tributário antes de emitir.', href: '/configuracoes?tab=regime', labelLink: 'Ir para Regime tributário' } };
   }
   if (tipo === 'nfe') {
     if (fiscal.focus_habilita_nfe !== true) return { ok: false, bloqueio: { titulo: 'NF-e não habilitada', mensagem: 'Esta empresa não está habilitada para emitir NF-e.' } };
