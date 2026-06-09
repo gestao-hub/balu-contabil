@@ -1,9 +1,9 @@
 # Templates de e-mail (Supabase Auth)
 
-Templates HTML da marca Balu para os e-mails de autenticação. Tema claro, header em
-HTML/CSS puro (sem imagem hospedada), table-based + CSS inline (Gmail/Outlook/Apple Mail).
-Cores do manual de marca: Azul Profundo `#0D3558`, Azul Principal `#1882C8`, acento
-`#5DC0F0`/`#2ECF8A`.
+Templates HTML da marca Balu. Tema claro, header com o símbolo da marca (PNG hospedado em
+Storage público — `brand/balu-symbol-white.png`; SVG não renderiza em e-mail), table-based +
+CSS inline (Gmail/Outlook/Apple Mail). Cores do manual de marca: Azul Profundo `#0D3558`,
+Azul Principal `#1882C8`, acento `#5DC0F0`/`#2ECF8A`, alerta `#E05252`.
 
 ## Arquivos × template do Supabase
 
@@ -12,6 +12,17 @@ Cores do manual de marca: Azul Profundo `#0D3558`, Azul Principal `#1882C8`, ace
 | `confirm-signup.html` | **Confirm signup** | `Confirme seu e-mail — Balu` | `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/` |
 | `reset-password.html` | **Reset password** | `Redefina sua senha — Balu` | `{{ .ConfirmationURL }}` |
 | `change-email.html` | **Change Email Address** | `Confirme seu novo e-mail — Balu` | `{{ .ConfirmationURL }}` (mostra `{{ .NewEmail }}`) |
+
+## Informativos de segurança (enviados pelo app — NÃO são templates do Supabase Auth)
+
+Avisos pós-mudança, sem link de ação obrigatória, só com o caminho "não foi você?". O Supabase
+Auth **não** dispara estes automaticamente — o app os envia (transacional via Resend/SES, ou um
+**Send Email Hook**) depois da troca. Os placeholders são ilustrativos (ajuste ao seu sender).
+
+| Arquivo | Quando | Assunto sugerido | Observações |
+|---|---|---|---|
+| `email-alterado.html` | após trocar o e-mail | `Seu e-mail foi alterado · Balu` | enviar ao e-mail **antigo**; mostra `{{ .NewEmail }}`; botão "Falar com o suporte" (`mailto:` placeholder) |
+| `senha-alterada.html` | após trocar a senha | `Sua senha foi alterada · Balu` | botão "Redefinir senha" → `{{ .SiteURL }}/reset_pw` |
 
 ## Como instalar
 

@@ -1,4 +1,6 @@
-<!-- Assunto (alternativo): Confirme a alteração de e-mail · Balu -->
+<!-- Assunto (alternativo): Confirmação: e-mail da conta alterado · Balu -->
+<!-- Informativo (NÃO é template do Supabase Auth): enviado pelo app após a troca de e-mail.
+     Envie para o e-mail ANTIGO. Placeholders são ilustrativos (ajuste ao seu sender). -->
 <!DOCTYPE html>
 <html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -7,7 +9,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="color-scheme" content="light">
   <meta name="supported-color-schemes" content="light">
-  <title>Confirmar novo e-mail</title>
+  <title>Seu e-mail foi alterado</title>
   <!--[if mso]>
   <style>table,td,th{font-family:Arial,Helvetica,sans-serif !important;}</style>
   <![endif]-->
@@ -24,7 +26,7 @@
 </head>
 <body style="margin:0;padding:0;background:#eaf1f7;">
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#eaf1f7;opacity:0;">
-    Confirme o novo e-mail da sua conta Balu.&#8204;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
+    O e-mail de acesso da sua conta Balu foi alterado.&#8204;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
   </div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eaf1f7;">
@@ -43,13 +45,13 @@
 
           <tr>
             <td style="background:#ffffff;border-left:1px solid #e2ebf2;border-right:1px solid #e2ebf2;padding:40px 40px 8px;" class="px">
-              <h1 class="h1" style="margin:0 0 14px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:27px;line-height:1.2;font-weight:800;letter-spacing:-0.4px;color:#0d3558;">Confirmar novo e-mail</h1>
+              <h1 class="h1" style="margin:0 0 14px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:27px;line-height:1.2;font-weight:800;letter-spacing:-0.4px;color:#0d3558;">Seu e-mail foi alterado</h1>
               <p style="margin:0 0 20px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;color:#41535f;">
-                Você pediu para alterar o e-mail da sua conta <strong style="color:#0d3558;">Balu</strong> para o endereço abaixo. Confirme para concluir a troca.
+                O e-mail de acesso da sua conta <strong style="color:#0d3558;">Balu</strong> foi alterado para o endereço abaixo. A partir de agora, é com ele que você entra na plataforma.
               </p>
 
               <!-- chip do novo e-mail -->
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;">
                 <tr>
                   <td style="background:#eef6fc;border:1px solid #d0e9f7;border-radius:10px;padding:12px 18px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:700;color:#0d3558;">
                     {{ .NewEmail }}
@@ -57,43 +59,32 @@
                 </tr>
               </table>
 
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 26px;">
+              <p style="margin:0 0 22px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#41535f;">
+                Se foi você quem fez essa alteração, está tudo certo — não precisa fazer nada.
+              </p>
+
+              <!-- callout de segurança "não foi você?" -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px;">
                 <tr>
-                  <td align="center" bgcolor="#1882c8" style="border-radius:12px;background-color:#1882c8;background-image:linear-gradient(135deg,#1882c8 0%,#0d3558 100%);">
-                    <!--[if mso]>
-                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ .ConfirmationURL }}" style="height:50px;v-text-anchor:middle;width:260px;" arcsize="24%" stroke="f" fillcolor="#1882c8">
-                    <w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:16px;font-weight:bold;">Confirmar novo e-mail</center>
-                    </v:roundrect>
-                    <![endif]-->
-                    <!--[if !mso]><!-- -->
-                    <a class="btn" href="{{ .ConfirmationURL }}"
-                       style="display:inline-block;padding:15px 34px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;font-weight:700;line-height:1;color:#ffffff;text-decoration:none;border-radius:12px;">
-                      Confirmar novo e-mail
+                  <td style="background:#fdf1f1;border:1px solid #f3d6d6;border-left:4px solid #e05252;border-radius:10px;padding:16px 18px;">
+                    <p style="margin:0 0 12px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;color:#8f3a3a;">
+                      <strong>Não reconhece esta mudança?</strong> Sua conta pode ter sido acessada por outra pessoa. Fale com o suporte o quanto antes.
+                    </p>
+                    <a class="btn" href="mailto:suporte@balu.com.br?subject=Alteração%20de%20e-mail%20não%20reconhecida"
+                       style="display:inline-block;padding:11px 22px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;line-height:1;color:#ffffff;text-decoration:none;background-color:#e05252;border-radius:10px;">
+                      Falar com o suporte
                     </a>
-                    <!--<![endif]-->
                   </td>
                 </tr>
               </table>
 
-              <div style="height:1px;background:#eef3f8;line-height:1px;font-size:0;margin:0 0 18px;">&nbsp;</div>
-
-              <p style="margin:0 0 8px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#7e98ac;">
-                Se o botão não funcionar, copie e cole este link no navegador:
-              </p>
-              <p style="margin:0 0 22px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;word-break:break-all;">
-                <a href="{{ .ConfirmationURL }}" style="color:#1882c8;text-decoration:underline;">{{ .ConfirmationURL }}</a>
-              </p>
-
-              <p style="margin:0 0 4px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#7e98ac;">
-                Se não foi você que pediu esta alteração, ignore este e-mail — nada será alterado.
-              </p>
             </td>
           </tr>
 
           <tr>
             <td style="background:#ffffff;border:1px solid #e2ebf2;border-top:0;border-radius:0 0 18px 18px;padding:26px 40px 30px;text-align:center;" class="px">
               <p style="margin:0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;font-weight:700;color:#0d3558;">Balu</p>
-              <p style="margin:4px 0 0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#9fb3c2;">E-mail automático — não é necessário responder.</p>
+              <p style="margin:4px 0 0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#9fb3c2;">E-mail automático de segurança — não é necessário responder.</p>
             </td>
           </tr>
 
