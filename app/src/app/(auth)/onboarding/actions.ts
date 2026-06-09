@@ -13,6 +13,7 @@ import { syncEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
 import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
+import { ibgePorCep } from '@/lib/fiscal/ibge-por-cep';
 
 export async function lookupCnpjAction(cnpj: string) {
   return lookupCnpj(cnpj);
@@ -24,6 +25,7 @@ export type CepLookup = {
   bairro?: string;
   municipio?: string;
   uf?: string;
+  ibge?: string; // código IBGE 7 díg → companies.codigo_municipio (exigido pela NFS-e)
 };
 
 type ActionResult<T> = ({ ok: true } & T) | { ok: false; error: string };
@@ -48,12 +50,14 @@ export async function lookupCepAction(cep: string): Promise<ActionResult<{ data:
     if (!res.ok) return { ok: false, error: `ViaCEP retornou ${res.status}.` };
     const json = (await res.json()) as Record<string, unknown>;
     if (json['erro']) return { ok: false, error: 'CEP não encontrado.' };
+    const ibge = stringOrUndef(json['ibge'])?.replace(/\D+/g, '');
     const data: CepLookup = {
       logradouro:  stringOrUndef(json['logradouro']),
       complemento: stringOrUndef(json['complemento']),
       bairro:      stringOrUndef(json['bairro']),
       municipio:   stringOrUndef(json['localidade']),
       uf:          stringOrUndef(json['uf']),
+      ibge:        ibge && ibge.length === 7 ? ibge : undefined,
     };
     return { ok: true, data };
   } catch (e) {
@@ -75,8 +79,17 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
   // separa antes do insert pra não tentar gravar coluna inexistente.
   const { Code_regime_tributario, cnae_principal, ...companyFields } = parsed.data;
 
+  // codigo_municipio (IBGE) não vem da Focus (/v2/cnpjs) e o autofill por CNPJ deixa
+  // o campo vazio — sem ele a NFS-e trava ("Município sem código IBGE"). Resolve pelo
+  // CEP (ViaCEP) quando vier vazio. Best-effort: se não resolver, segue como antes.
+  let codigoMunicipio = companyFields.codigo_municipio?.trim() || '';
+  if (!codigoMunicipio && companyFields.cep) {
+    codigoMunicipio = (await ibgePorCep(companyFields.cep)) ?? '';
+  }
+
   const payload = {
     ...companyFields,
+    codigo_municipio: codigoMunicipio || null,
     user_id: user.id,
     nome: companyFields.nome?.trim() || companyFields.razao_social,
   };

@@ -73,6 +73,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
         bairro: r.data.bairro ?? prev.bairro,
         municipio: r.data.municipio ?? prev.municipio,
         uf: r.data.uf ?? prev.uf,
+        codigo_municipio: r.data.ibge ?? prev.codigo_municipio,
       }));
       toast('success', 'Endereço preenchido.');
     } finally {

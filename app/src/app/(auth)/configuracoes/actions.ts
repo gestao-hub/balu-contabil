@@ -16,6 +16,7 @@ import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
 import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
 import { camposOficiaisDaReceita } from '@/lib/fiscal/campos-empresa';
 import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
+import { ibgePorCep } from '@/lib/fiscal/ibge-por-cep';
 
 type ActionResult = { ok: true; warning?: string } | { ok: false; error: string };
 
@@ -376,6 +377,15 @@ export async function atualizarDadosReceitaAction(id: string): Promise<Atualizar
   if (!r.ok) return { ok: false, error: r.error };
 
   const patch = camposOficiaisDaReceita(r.data);
+
+  // codigo_municipio (IBGE) não vem da Receita/Focus — resolve pelo CEP quando a empresa
+  // ainda não tiver (caso da AL PISCINAS, cadastrada por autofill de CNPJ). Sem ele a
+  // NFS-e trava em "Município sem código IBGE".
+  if (!((company.codigo_municipio as string | null) ?? '')) {
+    const ibge = await ibgePorCep((company.cep as string | null) ?? '');
+    if (ibge) patch.codigo_municipio = ibge;
+  }
+
   if (Object.keys(patch).length === 0) {
     return { ok: false, error: 'A Receita não retornou dados para atualizar.' };
   }

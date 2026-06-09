@@ -97,6 +97,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
         bairro: r.data.bairro ?? prev.bairro,
         municipio: r.data.municipio ?? prev.municipio,
         uf: r.data.uf ?? prev.uf,
+        codigo_municipio: r.data.ibge ?? prev.codigo_municipio,
       }));
       toast('success', 'Endereço preenchido.');
     } finally {
