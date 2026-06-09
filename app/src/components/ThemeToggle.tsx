@@ -12,7 +12,10 @@ export default function ThemeToggle({ open }: { open: boolean }) {
   useEffect(() => setMounted(true), []);
 
   const isDark = resolvedTheme === 'dark';
-  const label = isDark ? 'Modo claro' : 'Modo escuro';
+  // `resolvedTheme` não existe no SSR (server renderiza "Modo escuro", cliente "Modo claro"),
+  // então aria-label/title precisam da MESMA guarda `mounted` do ícone/texto — senão o
+  // mismatch aborta a hidratação e deixa os botões da página sem handler até re-hidratar.
+  const label = mounted ? (isDark ? 'Modo claro' : 'Modo escuro') : 'Alternar tema';
 
   return (
     <button

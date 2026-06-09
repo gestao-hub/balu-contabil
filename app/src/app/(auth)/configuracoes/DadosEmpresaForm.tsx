@@ -3,7 +3,7 @@
 // Abre em modo leitura (campos bloqueados + botão "Editar"); ao editar, o footer vira
 // "Salvar" + "Cancelar". Cancelar reverte aos valores salvos; salvar re-bloqueia.
 // CNPJ permanece sempre bloqueado.
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { Loader2, Save, Pencil, MapPin, RefreshCw, Building2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { CompanySchema, type CompanyInput } from '@/types/zod';
@@ -201,9 +201,13 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
           )}
         </div>
       )}
+      {/* Fragments com `key` distinto por modo: sem isso, o React reusa o MESMO nó
+          <button> da posição 2 (Editar→Salvar) e só troca o type "button"→"submit".
+          Como a troca acontece dentro do onClick do próprio clique, o browser executa
+          a ação default contra o botão já "submit" e SUBMETE o form (salva direto). */}
       <div className="col-span-2 mt-3 flex justify-end gap-2">
         {editing ? (
-          <>
+          <Fragment key="acoes-edicao">
             <button type="button" onClick={handleCancel} disabled={busy}
               className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50">
               Cancelar
@@ -213,9 +217,9 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
               {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
               Salvar
             </button>
-          </>
+          </Fragment>
         ) : (
-          <>
+          <Fragment key="acoes-leitura">
             <button type="button" onClick={handleAtualizarReceita} disabled={busyReceita}
               className="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50">
               {busyReceita ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
@@ -226,7 +230,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
               <Pencil className="size-4" />
               Editar
             </button>
-          </>
+          </Fragment>
         )}
       </div>
     </form>
