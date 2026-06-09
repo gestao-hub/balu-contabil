@@ -272,3 +272,14 @@ mesma sessão). Estado final na `main`:
 9. Fora do escopo do modal, no mesmo passe: botões `bg-primary` trocaram `text-primary-foreground`
    (token inexistente → texto ilegível no light) por `text-white`; o seletor de empresa na sidebar
    (`MenuLateral`) também passou a flutuar.
+
+## Adendo as-built (2026-06-09)
+
+Ao testar emissão na AL PISCINAS o chooser travava todos os 3 tipos. Causa: o gate
+`empresa_fiscal_ativada === true` em `listarTiposEmissaoAction` (e nos validadores NF-e/NFC-e e no
+`prepararEmissaoAction`) era **órfão** — nenhum código no app setava a coluna `true`, então toda
+empresa nascia bloqueada mesmo com a Focus habilitando. Removido o gate; habilitação passou a ser
+só `focus_habilita_*`. A coluna não foi dropada (ainda é kill-switch no payload da Focus,
+`!== false`). Em paralelo: `focus_habilita_nfe/nfce` passaram a ser populados pelo
+`snapshotFocusEmpresa`, e a NFS-e ganhou resolução de `codigo_municipio` (IBGE) via CEP. Ver
+memórias `balu-emissao-habilitacao-gating` e `balu-codigo-municipio-via-cep`.

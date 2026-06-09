@@ -58,3 +58,14 @@ mexer no principal salvo ou no fluxo de emissão.
 AL PISCINAS (`41a9c2a4…`) tem 5 secundários salvos (4322301, 4744005, 4744003, 4789005,
 4120400) — confere a renderização da lista + anexos no navegador; confirma a máscara no
 input do principal (`4299-5/01`).
+
+## Adendo as-built (2026-06-09)
+
+A população dos secundários estava **silenciosamente falhando** na criação: o `fetch` do Node
+(undici) ia sem `User-Agent` e a BrasilAPI respondia **403**, então `consultarCnpjBrasilApi`
+retornava null e gravava só o principal com `fonte='focus'` (curl funcionava por mandar o próprio
+UA, o que mascarava). Correções:
+- `brasilapi.ts`: adiciona `User-Agent` + retry/backoff (429/5xx/timeout; 403 = definitivo).
+- `atualizarDadosReceitaAction` ("Atualizar da Receita") re-roda `sincronizarCnaesEmpresa` —
+  caminho de recuperação para empresas cujo sync de criação falhou. Verificado na AL PISCINAS
+  (5 secundários gravados com `fonte='brasilapi'`).
