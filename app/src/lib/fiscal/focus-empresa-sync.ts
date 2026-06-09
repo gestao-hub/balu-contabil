@@ -142,6 +142,10 @@ async function snapshotFocusEmpresa(
         focus_habilita_nfse: snap.habilita_nfse ?? null,
         focus_habilita_nfsen_producao: snap.habilita_nfsen_producao ?? null,
         focus_habilita_nfsen_homologacao: snap.habilita_nfsen_homologacao ?? null,
+        // NOT NULL default false → usa `?? false` (não null). Só vira true quando a
+        // empresa está de fato registrada p/ NF-e/NFC-e na Focus (cert A1 + setup SEFAZ).
+        focus_habilita_nfe: snap.habilita_nfe ?? false,
+        focus_habilita_nfce: snap.habilita_nfce ?? false,
         focus_sync_em: now,
       })
       .eq('empresa_id', companyId);
