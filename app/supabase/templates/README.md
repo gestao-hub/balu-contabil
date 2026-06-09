@@ -21,7 +21,7 @@ Auth **não** dispara estes automaticamente — o app os envia (transacional via
 
 | Arquivo | Quando | Assunto sugerido | Observações |
 |---|---|---|---|
-| `email-alterado.html` | após trocar o e-mail | `Seu e-mail foi alterado · Balu` | enviar ao e-mail **antigo**; mostra `{{ .NewEmail }}`; botão "Falar com o suporte" (`mailto:` placeholder) |
+| `email-alterado.html` | após trocar o e-mail | `Seu e-mail foi alterado · Balu` | enviar ao e-mail **antigo**; mostra `{{ .Email }}`; botão "Falar com o suporte" (`mailto:` placeholder) |
 | `senha-alterada.html` | após trocar a senha | `Sua senha foi alterada · Balu` | botão "Redefinir senha" → `{{ .SiteURL }}/reset_pw` |
 
 ## Como instalar
