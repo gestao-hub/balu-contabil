@@ -2,12 +2,20 @@
 // src/app/(onboarding)/onboarding/page.tsx
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { LogOut } from 'lucide-react';
 import Logo from '@/components/Logo';
 import CreateCompanyDialog from '@/components/CreateCompanyDialog';
+import { createBrowserClient } from '@/lib/supabase/browser';
 
 export default function OnboardingPage() {
   const router = useRouter();
   const [showExisting, setShowExisting] = useState(false);
+
+  async function signOut() {
+    const supabase = createBrowserClient();
+    await supabase.auth.signOut();
+    router.replace('/login');
+  }
 
   return (
     <div className="w-full max-w-xl">
@@ -34,6 +42,17 @@ export default function OnboardingPage() {
         >
           <h2 className="font-medium text-foreground mb-1">Quero abrir uma empresa</h2>
           <p className="text-sm text-muted-foreground">Ainda não tenho CNPJ. Solicitar a abertura.</p>
+        </button>
+      </div>
+
+      <div className="mt-8 flex justify-center">
+        <button
+          type="button"
+          onClick={signOut}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition"
+        >
+          <LogOut className="size-4" />
+          Sair
         </button>
       </div>
 
