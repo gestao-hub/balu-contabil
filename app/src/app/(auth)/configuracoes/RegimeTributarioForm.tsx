@@ -77,7 +77,7 @@ export default function RegimeTributarioForm({
 
   return (
     <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-2xl">
-      <label className="col-span-2 flex flex-col gap-1 text-sm">
+      <label className="sm:col-span-2 flex flex-col gap-1 text-sm">
         <span className="text-xs font-medium text-muted-foreground-2">Regime tributário</span>
         <select
           value={code}
@@ -93,7 +93,7 @@ export default function RegimeTributarioForm({
       </label>
 
       {!mei && (
-        <label className="col-span-2 flex flex-col gap-1 text-sm">
+        <label className="sm:col-span-2 flex flex-col gap-1 text-sm">
           <span className="text-xs font-medium text-muted-foreground-2">Faixa de atividade econômica</span>
           <select
             value={faixa}
@@ -110,7 +110,7 @@ export default function RegimeTributarioForm({
       )}
 
       {mei && (
-        <label className="col-span-2 flex flex-col gap-1 text-sm">
+        <label className="sm:col-span-2 flex flex-col gap-1 text-sm">
           <span className="text-xs font-medium text-muted-foreground-2">Atividade do MEI</span>
           <select
             value={atividadeMei}
@@ -128,7 +128,7 @@ export default function RegimeTributarioForm({
       )}
 
       {mostraFatorR && (
-        <label className="col-span-2 flex items-center gap-2 text-sm">
+        <label className="sm:col-span-2 flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={fatorR}
@@ -140,7 +140,7 @@ export default function RegimeTributarioForm({
         </label>
       )}
 
-      <label className="col-span-2 flex flex-col gap-1 text-sm">
+      <label className="sm:col-span-2 flex flex-col gap-1 text-sm">
         <span className="text-xs font-medium text-muted-foreground-2">CNAE principal</span>
         <input
           type="text"
@@ -153,7 +153,7 @@ export default function RegimeTributarioForm({
       </label>
 
       {/* CNAEs secundários — read-only (vêm do sync da Receita no cadastro); nunca editáveis aqui. */}
-      <div className="col-span-2 flex flex-col gap-1.5 text-sm">
+      <div className="sm:col-span-2 flex flex-col gap-1.5 text-sm">
         <span className="text-xs font-medium text-muted-foreground-2">CNAEs secundários</span>
         {cnaesSecundarios.length === 0 ? (
           <p className="text-xs text-muted-foreground">Nenhum CNAE secundário registrado.</p>
@@ -182,7 +182,7 @@ export default function RegimeTributarioForm({
         <span className="text-xs text-muted-foreground">Vêm da Receita (consulta do CNPJ) e não são editáveis aqui.</span>
       </div>
 
-      <div className="col-span-2 mt-2 flex justify-end gap-2">
+      <div className="sm:col-span-2 mt-2 flex justify-end gap-2">
         {editing ? (
           <>
             <button

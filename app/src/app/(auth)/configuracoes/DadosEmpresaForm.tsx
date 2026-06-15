@@ -107,8 +107,8 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-3xl">
-      <Field label="Razão social" value={form.razao_social ?? ''} onChange={(v) => set('razao_social', v)} disabled={lockedOficial} oficial className="col-span-2" />
-      <Field label="Nome fantasia" value={form.nome ?? ''} onChange={(v) => set('nome', v)} disabled={locked} className="col-span-2" />
+      <Field label="Razão social" value={form.razao_social ?? ''} onChange={(v) => set('razao_social', v)} disabled={lockedOficial} oficial className="sm:col-span-2" />
+      <Field label="Nome fantasia" value={form.nome ?? ''} onChange={(v) => set('nome', v)} disabled={locked} className="sm:col-span-2" />
       {/* CNPJ é sempre read-only: onChange no-op para o estado nunca receber o valor mascarado (mantém 14 dígitos). */}
       <Field label="CNPJ" value={formatCnpj(form.cnpj ?? '')} onChange={() => {}} disabled />
       <Field label="Inscrição estadual" value={form.inscricao_estadual ?? ''} onChange={(v) => set('inscricao_estadual', v)} disabled={locked} />
@@ -138,7 +138,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
           </button>
         </div>
       </label>
-      <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} disabled={lockedOficial} required oficial className="col-span-2" />
+      <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} disabled={lockedOficial} required oficial className="sm:col-span-2" />
       <div className="flex flex-col gap-1 text-sm">
         <span className="text-xs font-medium text-muted-foreground-2">
           Número{!form.sem_numero && <span className="text-destructive"> *</span>}
@@ -192,7 +192,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
       <Field label="E-mail" type="email" value={form.email ?? ''} onChange={(v) => set('email', v)} disabled={locked} />
 
       {editing && (
-        <div className="col-span-2 -mb-1 text-xs">
+        <div className="sm:col-span-2 -mb-1 text-xs">
           {overrideOficial ? (
             <p className="text-alert">Edição manual dos dados da Receita ativa — estes dados devem refletir a Receita; altere lá primeiro.</p>
           ) : (
@@ -206,7 +206,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
           <button> da posição 2 (Editar→Salvar) e só troca o type "button"→"submit".
           Como a troca acontece dentro do onClick do próprio clique, o browser executa
           a ação default contra o botão já "submit" e SUBMETE o form (salva direto). */}
-      <div className="col-span-2 mt-3 flex justify-end gap-2">
+      <div className="sm:col-span-2 mt-3 flex justify-end gap-2">
         {editing ? (
           <Fragment key="acoes-edicao">
             <button type="button" onClick={handleCancel} disabled={busy}

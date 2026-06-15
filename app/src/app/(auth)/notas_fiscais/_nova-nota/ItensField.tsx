@@ -93,12 +93,12 @@ export default function ItensField({
 
       {novo && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 rounded-lg border border-border p-3 bg-surface-2">
-          <input placeholder="Descrição" value={d} onChange={(e) => setD(e.target.value)} className="col-span-2 rounded border border-border bg-surface px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+          <input placeholder="Descrição" value={d} onChange={(e) => setD(e.target.value)} className="sm:col-span-2 rounded border border-border bg-surface px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
           <input placeholder="NCM (8 díg)" value={ncm} onChange={(e) => setNcm(e.target.value.replace(/\D+/g, '').slice(0, 8))} className="rounded border border-border bg-surface px-2 py-1 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary" />
           <input placeholder="CFOP (4 díg)" value={cfop} onChange={(e) => setCfop(e.target.value.replace(/\D+/g, '').slice(0, 4))} className="rounded border border-border bg-surface px-2 py-1 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary" />
           <input placeholder="Unidade" value={un} onChange={(e) => setUn(e.target.value)} className="rounded border border-border bg-surface px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
           <input placeholder="Valor unit. (R$)" value={vlr} onChange={(e) => setVlr(e.target.value.replace(/[^\d.,]/g, ''))} className="rounded border border-border bg-surface px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
-          <button type="button" onClick={criarEAdicionar} disabled={salvando} className="col-span-2 rounded bg-primary px-3 py-1.5 text-sm text-white disabled:opacity-50">
+          <button type="button" onClick={criarEAdicionar} disabled={salvando} className="sm:col-span-2 rounded bg-primary px-3 py-1.5 text-sm text-white disabled:opacity-50">
             {salvando ? 'Salvando…' : 'Criar e adicionar'}
           </button>
         </div>

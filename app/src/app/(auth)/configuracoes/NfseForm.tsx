@@ -121,7 +121,7 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
             <legend className="text-sm font-semibold text-foreground">Credenciais do município</legend>
             {cred.login && <Field label="Usuário (login)" value={usuario} onChange={setUsuario} disabled={locked} />}
             {cred.login && <Field label="Senha" type="password" value={senha} onChange={setSenha} disabled={locked} />}
-            {cred.token && <Field label="Token" value={token} onChange={setToken} disabled={locked} className="col-span-2" />}
+            {cred.token && <Field label="Token" value={token} onChange={setToken} disabled={locked} className="sm:col-span-2" />}
           </fieldset>
 
           <div className="flex justify-end gap-2">
