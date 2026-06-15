@@ -76,7 +76,7 @@ export default function RegimeTributarioForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4 max-w-2xl">
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-2xl">
       <label className="col-span-2 flex flex-col gap-1 text-sm">
         <span className="text-xs font-medium text-muted-foreground-2">Regime tributário</span>
         <select

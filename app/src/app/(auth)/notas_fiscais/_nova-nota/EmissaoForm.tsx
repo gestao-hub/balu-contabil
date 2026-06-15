@@ -118,7 +118,7 @@ export default function EmissaoForm({
 
       {/* Número + Data — só no lançamento manual (a emissão real gera) */}
       {manual && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="numero" className="block text-sm font-medium text-muted-foreground-2 mb-1">Número da nota</label>
             <input
@@ -203,7 +203,7 @@ export default function EmissaoForm({
       </div>
 
       {/* Valor + Alíquota */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-sm font-medium text-muted-foreground-2 mb-1">Valor do serviço (R$)</label>
           <input

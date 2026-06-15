@@ -117,7 +117,7 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
 
       {(cred.login || cred.token) && (
         <>
-          <fieldset className="grid grid-cols-2 gap-4">
+          <fieldset className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <legend className="text-sm font-semibold text-foreground">Credenciais do município</legend>
             {cred.login && <Field label="Usuário (login)" value={usuario} onChange={setUsuario} disabled={locked} />}
             {cred.login && <Field label="Senha" type="password" value={senha} onChange={setSenha} disabled={locked} />}

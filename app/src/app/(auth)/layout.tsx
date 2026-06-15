@@ -37,7 +37,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         companies={companies ?? []}
         currentCompanyId={profile?.current_company ?? null}
       />
-      <div className="flex-1 overflow-y-auto">{children}</div>
+      <div className="flex-1 overflow-y-auto pt-14 md:pt-0">{children}</div>
     </div>
   );
 }

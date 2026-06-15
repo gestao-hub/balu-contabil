@@ -49,6 +49,7 @@ export default function MenuLateral({
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -105,23 +106,55 @@ export default function MenuLateral({
   }
 
   return (
-    <aside
-      className={`relative flex flex-col border-r border-border bg-surface transition-[width] duration-200 ${
-        open ? 'w-60' : 'w-16'
-      }`}
-    >
-      <button
-        type="button"
-        aria-label={open ? 'Recolher menu' : 'Expandir menu'}
-        onClick={() => setOpen((v) => !v)}
-        className="absolute -right-3 top-4 grid size-6 place-items-center rounded-full border border-border bg-surface-2 text-muted-foreground shadow-sm hover:text-primary"
+    <>
+      {/* Top bar — só em mobile (< md). Abre o drawer. */}
+      <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-2 border-b border-border bg-surface px-3 md:hidden">
+        <button
+          type="button"
+          aria-label="Abrir menu"
+          onClick={() => setMobileOpen(true)}
+          className="grid size-9 place-items-center rounded-md text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground"
+        >
+          <MenuIcon className="size-5" />
+        </button>
+        <Logo size={22} />
+      </header>
+
+      {/* Overlay do drawer (mobile) */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-border bg-surface transition-[width,transform] duration-200 md:static md:z-auto md:translate-x-0 ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${open ? 'md:w-60' : 'md:w-16'}`}
       >
-        {open ? <X className="size-3" /> : <MenuIcon className="size-3" />}
-      </button>
+        {/* Toggle recolher — só desktop (no mobile o drawer é sempre largo) */}
+        <button
+          type="button"
+          aria-label={open ? 'Recolher menu' : 'Expandir menu'}
+          onClick={() => setOpen((v) => !v)}
+          className="absolute -right-3 top-4 hidden size-6 place-items-center rounded-full border border-border bg-surface-2 text-muted-foreground shadow-sm hover:text-primary md:grid"
+        >
+          {open ? <X className="size-3" /> : <MenuIcon className="size-3" />}
+        </button>
 
       {/* Marca */}
-      <div className="flex items-center border-b border-border px-3 py-4">
+      <div className="flex items-center justify-between border-b border-border px-3 py-4">
         {open ? <Logo size={26} /> : <Logo variant="symbol" size={24} />}
+        <button
+          type="button"
+          aria-label="Fechar menu"
+          onClick={() => setMobileOpen(false)}
+          className="grid size-8 place-items-center rounded-md text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground md:hidden"
+        >
+          <X className="size-4" />
+        </button>
       </div>
 
       {/* Cabeçalho com usuário + empresa — só quando expandido.
@@ -185,6 +218,7 @@ export default function MenuLateral({
               <li key={href}>
                 <Link
                   href={href}
+                  onClick={() => setMobileOpen(false)}
                   className={`flex items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors ${
                     active
                       ? 'bg-primary/15 text-primary font-semibold'
@@ -220,6 +254,7 @@ export default function MenuLateral({
           onCreated={() => { setAddOpen(false); router.refresh(); }}
         />
       )}
-    </aside>
+      </aside>
+    </>
   );
 }

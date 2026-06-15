@@ -55,7 +55,7 @@ export default function NfeForm({
       </div>
 
       {manual && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="nfe-numero" className="block text-sm font-medium text-muted-foreground-2 mb-1">Número da nota</label>
             <input id="nfe-numero" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex.: 1234"

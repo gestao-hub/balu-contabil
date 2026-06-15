@@ -57,7 +57,7 @@ export default function NfceForm({
   return (
     <div className="space-y-5">
       {manual && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="nfce-numero" className="block text-sm font-medium text-muted-foreground-2 mb-1">Número da nota</label>
             <input id="nfce-numero" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex.: 1234"
@@ -71,7 +71,7 @@ export default function NfceForm({
       )}
 
       <ItensField produtosIniciais={produtos} tipoNf="nfce" itens={itens} onChange={setItens} />
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="forma-pgto" className="block text-sm font-medium text-muted-foreground-2 mb-1">Forma de pagamento</label>
           <select id="forma-pgto" value={formaPgto} onChange={(e) => setFormaPgto(e.target.value)}

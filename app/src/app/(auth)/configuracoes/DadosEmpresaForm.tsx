@@ -106,7 +106,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 max-w-3xl">
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-3xl">
       <Field label="Razão social" value={form.razao_social ?? ''} onChange={(v) => set('razao_social', v)} disabled={lockedOficial} oficial className="col-span-2" />
       <Field label="Nome fantasia" value={form.nome ?? ''} onChange={(v) => set('nome', v)} disabled={locked} className="col-span-2" />
       {/* CNPJ é sempre read-only: onChange no-op para o estado nunca receber o valor mascarado (mantém 14 dígitos). */}
