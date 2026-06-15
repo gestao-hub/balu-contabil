@@ -37,6 +37,9 @@ docs/n8n/
 node_modules/
 .vite/
 
+# ── PDFs gerados a partir de .md (artefatos — regeráveis) ────
+docs/**/*.pdf
+
 # ── Diversos ─────────────────────────────────────────────────
 *.log
 .DS_Store
