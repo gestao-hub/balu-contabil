@@ -29,6 +29,29 @@
 
 ---
 
+## Mobile / PWA (branch `feat/pwa`, 2026-06-15)
+
+> Cross-cutting. Spec: `docs/superpowers/specs/2026-06-15-mobile-pwa-responsivo-design.md` · PR/checklist: `docs/planning/PR-MOBILE.md`.
+> Decisão: **PWA-first** (reusa 100% da stack), Capacitor só se App/Play Store virar requisito.
+
+| Item | Status | Detalhe |
+|---|---|---|
+| PWA instalável (manifest) | ✅ | `src/app/manifest.ts` (rota nativa), cores da marca, ícones 192/512/maskable/apple-touch |
+| Service worker (Serwist) | ✅ | `src/app/sw.ts` + `withSerwist`; `public/sw.js` no build; off em dev; auto-registro confirmado |
+| Drawer mobile | ✅ | `MenuLateral` off-canvas em `<md` (topbar+hambúrguer+overlay), inline em `md+` |
+| Forms 1 coluna no mobile | ✅ | `grid-cols-1 sm:grid-cols-2` em emissão + configurações; fix da **coluna fantasma** (`col-span-2`→`sm:col-span-2`) |
+| Dialogs 1 coluna | ✅ | `AddEmpresaDialog`, `CreateCompanyDialog` |
+| Validação mobile (Playwright iPhone 13, login real) | ✅ | screenshots + medição de `grid-template-columns` |
+| Verificar SW em produção (`build && start`) | 🆕 | rodar com `next dev` desligado |
+| Tabelas → cards no mobile | 🆕 | opcional; hoje `overflow-x-auto` (aceitável) |
+| Estratégia de cache offline / push | 🆕 | hoje `defaultCache`; push exige iOS 16.4+ |
+| Abrir GitHub PR | 🚫 | depende do remote do repo de produção |
+| Etapa 3 — Capacitor (URL remota) | 🆕 | só se loja virar requisito |
+
+Commits: `e4c41e3` (PWA) · `e4d7dcb` (drawer+forms) · `5f39ca0` (col-span) · `78e7546` (dialogs).
+
+---
+
 ## 1. Matriz por feature da v1
 
 ### §1. Onboarding com IA Educacional
