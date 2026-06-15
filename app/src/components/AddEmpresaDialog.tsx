@@ -58,7 +58,7 @@ export default function AddEmpresaDialog({ open, onClose, onCreated }: Props) {
         {/* Conteúdo com scroll quando necessário */}
         <div className="overflow-y-auto px-6 pb-6">
           {view === 'select' && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => setView('existing')}

@@ -251,12 +251,12 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
         {/* Etapa 3 — Revisão */}
         <section>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">3. Confirme os dados</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Razão social" value={form.razao_social} onChange={(v) => set('razao_social', v)} required className="col-span-2" />
-            <Field label="Nome fantasia" value={form.nome ?? ''} onChange={(v) => set('nome', v)} className="col-span-2" />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Razão social" value={form.razao_social} onChange={(v) => set('razao_social', v)} required className="sm:col-span-2" />
+            <Field label="Nome fantasia" value={form.nome ?? ''} onChange={(v) => set('nome', v)} className="sm:col-span-2" />
             <Field label="Inscrição estadual" value={form.inscricao_estadual ?? ''} onChange={(v) => set('inscricao_estadual', v)} />
             <Field label="Inscrição municipal" value={form.inscricao_municipal ?? ''} onChange={(v) => set('inscricao_municipal', v)} />
-            <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} required className="col-span-2" />
+            <Field label="Logradouro" value={form.logradouro ?? ''} onChange={(v) => set('logradouro', v)} required className="sm:col-span-2" />
             <div className="flex flex-col gap-1 text-sm">
               <span className="text-xs font-medium text-muted-foreground-2">
                 Número{!form.sem_numero && <span className="text-destructive"> *</span>}
@@ -305,7 +305,7 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
               />
             </label>
             <Field label="E-mail" type="email" value={form.email ?? ''} onChange={(v) => set('email', v)} />
-            <label className="col-span-2 flex flex-col gap-1 text-sm">
+            <label className="sm:col-span-2 flex flex-col gap-1 text-sm">
               <span className="text-xs font-medium text-muted-foreground-2">
                 Regime tributário<span className="text-destructive"> *</span>
               </span>
