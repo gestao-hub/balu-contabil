@@ -1,6 +1,6 @@
 // @custom — ToastProvider plugado manualmente.
 import './globals.css';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Outfit, Syne, Nunito } from 'next/font/google';
 import { ToastProvider } from '@/components/Toaster';
 import ThemeProvider from '@/components/ThemeProvider';
@@ -14,6 +14,18 @@ const nunito = Nunito({ subsets: ['latin'], weight: ['800', '900'], variable: '-
 export const metadata: Metadata = {
   title: 'Balu — Gestão Fiscal',
   description: 'Plataforma SaaS de gestão fiscal e contábil',
+  appleWebApp: {
+    capable: true,
+    title: 'Balu',
+    statusBarStyle: 'default',
+  },
+  icons: {
+    apple: '/icons/apple-touch-icon.png',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0D3558',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

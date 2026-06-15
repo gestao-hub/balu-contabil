@@ -16,6 +16,7 @@
     "gen:all": "npm run gen:schema && npm run gen:routes && npm run gen:clients"
   },
   "dependencies": {
+    "@serwist/next": "^9.5.11",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
     "lucide-react": "^0.460.0",
@@ -24,6 +25,7 @@
     "node-forge": "^1.4.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "serwist": "^9.5.11",
     "xml-crypto": "^6.1.2",
     "zod": "^3.23.8"
   },
