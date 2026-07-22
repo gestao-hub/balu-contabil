@@ -55,6 +55,8 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 
 Executar o plano do Bloco A (`docs/superpowers/plans/2026-07-22-bloco-a-multitenant-contador.md`), task por task, em branch `feat/bloco-a-multitenant`. Critério de merge: testes de RLS (Task 20) verdes.
 
+**Retomada:** ao voltar, escolher o modo de execução (ficou pendente): (1) subagent-driven — um subagente por task com revisão entre tasks (recomendado), ou (2) inline em lotes com checkpoints. Começar pela Task 1 (migration 0030).
+
 ## Convenções da sessão
 
 - Rodar ferramentas a partir de `balu/` (raiz do git). Specs/planos via skills brainstorming → writing-plans.
