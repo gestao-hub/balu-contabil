@@ -37,3 +37,27 @@ export function decryptBlob(blob: Buffer): Buffer {
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]);
 }
+
+const PREFIXO = 'enc:v1:';
+
+/** Cifra um campo curto (string) para armazenar em repouso. '' passa direto. */
+export function cifrarCampo(v: string): string {
+  if (!v) return v;
+  const iv = randomBytes(IV_LEN);
+  const c = createCipheriv(ALGO, key(), iv);
+  const enc = Buffer.concat([c.update(v, 'utf8'), c.final()]);
+  const tag = c.getAuthTag();
+  return PREFIXO + Buffer.concat([iv, tag, enc]).toString('base64');
+}
+
+/** Decifra; se não tiver o prefixo (legado em claro), retorna o próprio valor. */
+export function decifrarCampo(v: string | null): string | null {
+  if (v == null || !v.startsWith(PREFIXO)) return v;
+  const buf = Buffer.from(v.slice(PREFIXO.length), 'base64');
+  const iv = buf.subarray(0, IV_LEN);
+  const tag = buf.subarray(IV_LEN, IV_LEN + TAG_LEN);
+  const enc = buf.subarray(IV_LEN + TAG_LEN);
+  const d = createDecipheriv(ALGO, key(), iv);
+  d.setAuthTag(tag);
+  return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
+}

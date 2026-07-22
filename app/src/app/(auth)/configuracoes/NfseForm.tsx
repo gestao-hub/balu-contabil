@@ -19,8 +19,11 @@ export type MunicipioInfo = {
 
 type Initial = {
   nfse_usuario_login?: string | null;
-  nfse_senha_login?: string | null;
-  nfse_token_api?: string | null;
+  // Task 10 — credenciais cifradas em repouso: o server NUNCA manda o valor
+  // pro client, só se já está configurado. Campo vazio no submit = "mantém o
+  // que já está salvo"; só reescreve quando o usuário digita algo novo.
+  nfse_senha_login_configurado?: boolean;
+  nfse_token_api_configurado?: boolean;
   nfse_habilitada?: boolean | null;
   empresa_fiscal_ativada?: boolean | null;
 };
@@ -35,8 +38,10 @@ type Props = {
 export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
   const toast = useToast();
   const [usuario, setUsuario] = useState(initial?.nfse_usuario_login ?? '');
-  const [senha, setSenha] = useState(initial?.nfse_senha_login ?? '');
-  const [token, setToken] = useState(initial?.nfse_token_api ?? '');
+  // Nunca prefilled com o valor real (cifrado em repouso, não trafega pro client) —
+  // começa em branco; placeholder indica "já configurado" via *_configurado.
+  const [senha, setSenha] = useState('');
+  const [token, setToken] = useState('');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -58,8 +63,8 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
 
   function resetFromInitial() {
     setUsuario(initial?.nfse_usuario_login ?? '');
-    setSenha(initial?.nfse_senha_login ?? '');
-    setToken(initial?.nfse_token_api ?? '');
+    setSenha('');
+    setToken('');
   }
 
   function handleCancel() {
@@ -78,8 +83,16 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
       const r = await upsertEmpresaFiscalAction({
         municipio_id: mun.id,
         nfse_usuario_login: cred.login ? (usuario.trim() || null) : null,
-        nfse_senha_login: cred.login ? (senha.trim() || null) : null,
-        nfse_token_api: cred.token ? (token.trim() || null) : null,
+        // Campo vazio (e já configurado) = mantém o valor salvo — omite a chave
+        // pra não sobrescrever a credencial cifrada com null. Só reenvia quando
+        // o usuário digitou um valor novo, ou explicitamente limpa quando o
+        // município deixou de exigir esse tipo de credencial.
+        ...(cred.login
+          ? (senha.trim() ? { nfse_senha_login: senha.trim() } : {})
+          : { nfse_senha_login: null }),
+        ...(cred.token
+          ? (token.trim() ? { nfse_token_api: token.trim() } : {})
+          : { nfse_token_api: null }),
       });
       if (!r.ok) { toast('error', r.error); return; }
       // r.warning vem do best-effort de envio das credenciais pra Focus
@@ -120,8 +133,26 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
           <fieldset className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <legend className="text-sm font-semibold text-foreground">Credenciais do município</legend>
             {cred.login && <Field label="Usuário (login)" value={usuario} onChange={setUsuario} disabled={locked} />}
-            {cred.login && <Field label="Senha" type="password" value={senha} onChange={setSenha} disabled={locked} />}
-            {cred.token && <Field label="Token" value={token} onChange={setToken} disabled={locked} className="sm:col-span-2" />}
+            {cred.login && (
+              <Field
+                label="Senha"
+                type="password"
+                value={senha}
+                onChange={setSenha}
+                disabled={locked}
+                placeholder={initial?.nfse_senha_login_configurado ? '•••••••• (configurado — deixe em branco p/ manter)' : ''}
+              />
+            )}
+            {cred.token && (
+              <Field
+                label="Token"
+                value={token}
+                onChange={setToken}
+                disabled={locked}
+                className="sm:col-span-2"
+                placeholder={initial?.nfse_token_api_configurado ? '•••••••• (configurado — deixe em branco p/ manter)' : ''}
+              />
+            )}
           </fieldset>
 
           <div className="flex justify-end gap-2">
@@ -140,8 +171,8 @@ export default function NfseForm({ initial, municipio, cidade, uf }: Props) {
   );
 }
 
-function Field({ label, value, onChange, type = 'text', disabled = false, className = '' }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string; disabled?: boolean; className?: string;
+function Field({ label, value, onChange, type = 'text', disabled = false, className = '', placeholder = '' }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; disabled?: boolean; className?: string; placeholder?: string;
 }) {
   return (
     <label className={`flex flex-col gap-1 text-sm ${className}`}>
@@ -151,6 +182,7 @@ function Field({ label, value, onChange, type = 'text', disabled = false, classN
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
+        placeholder={placeholder}
         className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
       />
     </label>

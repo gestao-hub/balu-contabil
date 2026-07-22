@@ -239,13 +239,20 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       ) : active === 'regime' ? (
         <RegimeTributarioForm
           key={company.id as string}
+          // Whitelist explícito: empresaFiscal vem de `select('*')` e carrega os
+          // campos de credencial NFS-e cifrados (Task 10) — NUNCA repassar o row
+          // inteiro pra um Client Component (o prop inteiro cruza pro browser no
+          // payload RSC, e o componente não precisa de mais que isso).
           initial={
-            empresaFiscal as {
-              Code_regime_tributario?: string | null;
-              anexo_simples?: string | null;
-              usa_fator_r?: boolean | null;
-              cnae_principal?: string | null;
-            } | null
+            empresaFiscal
+              ? {
+                  Code_regime_tributario: (empresaFiscal.Code_regime_tributario as string | null) ?? null,
+                  anexo_simples: (empresaFiscal.anexo_simples as string | null) ?? null,
+                  usa_fator_r: (empresaFiscal.usa_fator_r as boolean | null) ?? null,
+                  cnae_principal: (empresaFiscal.cnae_principal as string | null) ?? null,
+                  atividade_mei: (empresaFiscal.atividade_mei as string | null) ?? null,
+                }
+              : null
           }
           cnaesSecundarios={cnaesSecundarios}
         />
@@ -255,14 +262,18 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           companyId={company.id as string}
           certEnviadoEm={certEnviadoEm}
           certValidoAte={certValidoAte}
+          // Idem: nunca repassa nfse_senha_login/nfse_token_api (cifrados em
+          // repouso) pro client — só indicadores de "já configurado".
           nfseInitial={
-            empresaFiscal as {
-              nfse_usuario_login?: string | null;
-              nfse_senha_login?: string | null;
-              nfse_token_api?: string | null;
-              nfse_habilitada?: boolean | null;
-              empresa_fiscal_ativada?: boolean | null;
-            } | null
+            empresaFiscal
+              ? {
+                  nfse_usuario_login: (empresaFiscal.nfse_usuario_login as string | null) ?? null,
+                  nfse_senha_login_configurado: !!(empresaFiscal.nfse_senha_login as string | null),
+                  nfse_token_api_configurado: !!(empresaFiscal.nfse_token_api as string | null),
+                  nfse_habilitada: (empresaFiscal.nfse_habilitada as boolean | null) ?? null,
+                  empresa_fiscal_ativada: (empresaFiscal.empresa_fiscal_ativada as boolean | null) ?? null,
+                }
+              : null
           }
           municipio={municipioNfse}
           cidade={(company.municipio as string) ?? ''}

@@ -11,11 +11,12 @@ type Props = {
   // Certificado
   certEnviadoEm: string | null;
   certValidoAte: string | null;
-  // NFS-e (mesmos props do antigo NfseForm)
+  // NFS-e (mesmos props do antigo NfseForm). Credenciais (Task 10 — cifradas em
+  // repouso) NUNCA chegam aqui em texto: só indicadores `*_configurado`.
   nfseInitial: {
     nfse_usuario_login?: string | null;
-    nfse_senha_login?: string | null;
-    nfse_token_api?: string | null;
+    nfse_senha_login_configurado?: boolean;
+    nfse_token_api_configurado?: boolean;
     nfse_habilitada?: boolean | null;
     empresa_fiscal_ativada?: boolean | null;
   } | null;

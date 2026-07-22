@@ -11,7 +11,7 @@ import { isAderenteNfsenNacional } from '@/lib/fiscal/municipios-nfsen-nacional'
 import { uploadCertificado as storageUploadCertificado } from '@/lib/clients/supabase-storage';
 import { validateCertificadoUpload } from '@/lib/fiscal/certificado';
 import { parsePkcs12, type CertMaterial } from '@/lib/fiscal/pkcs12';
-import { encryptBlob } from '@/lib/crypto/envelope';
+import { encryptBlob, cifrarCampo } from '@/lib/crypto/envelope';
 import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
 import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
 import { camposOficiaisDaReceita } from '@/lib/fiscal/campos-empresa';
@@ -19,6 +19,28 @@ import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 import { ibgePorCep } from '@/lib/fiscal/ibge-por-cep';
 
 type ActionResult = { ok: true; warning?: string } | { ok: false; error: string };
+
+// Task 10 — credenciais NFS-e cifradas em repouso (AES-256-GCM, prefixo enc:v1:).
+// Aplica cifrarCampo em qualquer um desses campos presente no patch antes de
+// gravar em `empresas_fiscais`. Strings vazias passam direto (cifrarCampo já
+// trata); valores ausentes (undefined) não entram no objeto e não são tocados.
+const CAMPOS_CREDENCIAL_NFSE = [
+  'nfse_senha_login',
+  'nfse_token_api',
+  'nfse_chave_api',
+  'nfse_frase_secreta',
+  'token_portal',
+  'senha_responsavel',
+] as const;
+
+function cifrarCredenciaisNfse<T extends Record<string, unknown>>(obj: T): T {
+  const out: Record<string, unknown> = { ...obj };
+  for (const campo of CAMPOS_CREDENCIAL_NFSE) {
+    const v = out[campo];
+    if (typeof v === 'string' && v) out[campo] = cifrarCampo(v);
+  }
+  return out as T;
+}
 
 // Campos de `companies` que entram no payload da Focus (buildFocusEmpresaPayload).
 // Editar qualquer um = drift até re-sincronizar. cnpj é imutável na edição.
@@ -100,6 +122,8 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
   }
   // Inclui os campos NFS-e (parsed.data) + normalização de regime por cima.
   const data = { ...parsed.data, ...normalizeRegimePatch(parsed.data) };
+  // Cifra as credenciais NFS-e (Task 10) antes de gravar — nunca em claro no banco.
+  const dataCifrado = cifrarCredenciaisNfse(data);
 
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -128,7 +152,7 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
       data.Code_regime_tributario !== (existing as { Code_regime_tributario?: string | null }).Code_regime_tributario;
     const { error } = await supabase
       .from('empresas_fiscais')
-      .update({ ...data, updated_at: new Date().toISOString() })
+      .update({ ...dataCifrado, updated_at: new Date().toISOString() })
       .eq('empresa_id', companyId)
       .eq('owner_user_id', user.id);
     if (error) return { ok: false, error: error.message };
@@ -142,7 +166,7 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
       .single();
     const { error } = await supabase
       .from('empresas_fiscais')
-      .insert({ ...data, empresa_id: companyId, owner_user_id: user.id, cnpj: company?.cnpj ?? null });
+      .insert({ ...dataCifrado, empresa_id: companyId, owner_user_id: user.id, cnpj: company?.cnpj ?? null });
     if (error) return { ok: false, error: error.message };
   }
 

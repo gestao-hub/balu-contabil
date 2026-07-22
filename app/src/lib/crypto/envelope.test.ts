@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { encryptBlob, decryptBlob } from './envelope';
+import { encryptBlob, decryptBlob, cifrarCampo, decifrarCampo } from './envelope';
 
 const KEY_B64 = Buffer.alloc(32, 7).toString('base64');
 
@@ -35,5 +35,20 @@ describe('envelope AES-256-GCM', () => {
 
   it('lança para blob curto demais (corrompido)', () => {
     expect(() => decryptBlob(Buffer.alloc(10))).toThrow(/curto/);
+  });
+});
+
+describe('cifrarCampo/decifrarCampo', () => {
+  it('round-trip com prefixo enc:v1:', () => {
+    const c = cifrarCampo('senha-secreta');
+    expect(c.startsWith('enc:v1:')).toBe(true);
+    expect(decifrarCampo(c)).toBe('senha-secreta');
+  });
+  it('valor legado em claro passa direto na leitura', () => {
+    expect(decifrarCampo('claro-legado')).toBe('claro-legado');
+  });
+  it('vazio/null: cifrar retorna o mesmo; decifrar idem', () => {
+    expect(cifrarCampo('')).toBe('');
+    expect(decifrarCampo(null)).toBe(null);
   });
 });
