@@ -17,8 +17,13 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
 
   // role_types.type é a fonte canônica; metadata como fallback.
   const rawRole = (roleRow?.type as string | null) ?? (user.user_metadata?.type as string | null) ?? '';
-  const userRole = rawRole.toLowerCase() === 'contador' ? 'contador' : 'empresa';
-  const needsOnboarding = !profile?.current_company;
+  const normalizedRole = rawRole.toLowerCase();
+  const userRole: 'empresa' | 'contador' | 'adminbalu' =
+    normalizedRole === 'contador' ? 'contador' : normalizedRole === 'adminbalu' ? 'adminbalu' : 'empresa';
+  // AdminBalu e contadores recém-cadastrados não têm empresa e não podem ficar
+  // presos em /onboarding — AdminBalu não opera empresas; o contador precisa
+  // chegar em /contador/cadastro (existe desde a Task 10).
+  const needsOnboarding = !profile?.current_company && !['adminbalu', 'contador'].includes(normalizedRole);
   if (needsOnboarding) redirect('/onboarding');
 
   // Layout SaaS: sidebar fixa no viewport, área principal com scroll próprio.

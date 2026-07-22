@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2,
-  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle,
+  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, ShieldCheck,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -20,8 +20,8 @@ import Logo from '@/components/Logo';
 import ThemeToggle from '@/components/ThemeToggle';
 
 // Os values batem com o option set Bubble (lowercase). Para exibição, label é capitalizada.
-type Role = 'empresa' | 'contador';
-const ROLE_LABEL: Record<Role, string> = { empresa: 'Empresa', contador: 'Contador' };
+type Role = 'empresa' | 'contador' | 'adminbalu';
+const ROLE_LABEL: Record<Role, string> = { empresa: 'Empresa', contador: 'Contador', adminbalu: 'Admin Balu' };
 
 export type MenuLateralProps = {
   userName: string;
@@ -40,6 +40,7 @@ const NAV: NavItem[] = [
   { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, roles: ['contador'] },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings },
   { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
+  { href: '/admin/contabilidades',  label: 'Admin',          Icon: ShieldCheck, roles: ['adminbalu'] },
 ];
 
 export default function MenuLateral({
