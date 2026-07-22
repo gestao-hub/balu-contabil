@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { ContabilidadeSchema } from '@/types/zod';
 
 // Padrão local ao arquivo (não cross-import de rota) — segue a convenção
@@ -33,4 +34,15 @@ export async function criarContabilidadeAction(input: unknown): Promise<ActionRe
   if (e2) return { ok: false, error: e2.message };
   revalidatePath('/contador');
   return { ok: true, data: { id: cont.id } };
+}
+
+export async function removerClienteDaCarteiraAction(companyId: string): Promise<ActionResult> {
+  const g = await getContabilidadeCtx();
+  if ('error' in g || !g.contabilidade) return { ok: false, error: 'Sem escritório.' };
+  const admin = createAdminClient();
+  const { error } = await admin.from('companies')
+    .update({ contabilidade_id: null })
+    .eq('id', companyId).eq('contabilidade_id', g.contabilidade.id); // escopado (anti-IDOR)
+  revalidatePath('/contador');
+  return error ? { ok: false, error: error.message } : { ok: true };
 }

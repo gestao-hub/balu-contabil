@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Home, Users, FileText, Calculator, HandCoins, Settings, Building2,
+  Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
   ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, ShieldCheck,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
@@ -28,6 +28,7 @@ export type MenuLateralProps = {
   userRole: Role;
   companies: { id: string; nome: string }[];
   currentCompanyId: string | null;
+  temEscritorio: boolean;
 };
 
 type NavItem = { href: string; label: string; Icon: React.ComponentType<{ className?: string }>; roles?: Role[] };
@@ -37,6 +38,7 @@ const NAV: NavItem[] = [
   { href: '/clientes',              label: 'Clientes',       Icon: Users },
   { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText },
   { href: '/impostos',              label: 'Impostos',       Icon: Calculator },
+  { href: '/contador',              label: 'Escritório',     Icon: Briefcase, roles: ['contador'] },
   { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, roles: ['contador'] },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings },
   { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
@@ -44,7 +46,7 @@ const NAV: NavItem[] = [
 ];
 
 export default function MenuLateral({
-  userName, userRole, companies, currentCompanyId,
+  userName, userRole, companies, currentCompanyId, temEscritorio,
 }: MenuLateralProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -68,7 +70,9 @@ export default function MenuLateral({
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [companyMenuOpen]);
-  const items = NAV.filter((i) => !i.roles || i.roles.includes(userRole));
+  const items = NAV
+    .filter((i) => !i.roles || i.roles.includes(userRole))
+    .filter((i) => i.href !== '/contador' || temEscritorio);
 
   async function changeCompany(companyId: string) {
     if (companyId === currentCompanyId) return;

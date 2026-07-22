@@ -9,10 +9,11 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const [{ data: profile }, { data: companies }, { data: roleRow }] = await Promise.all([
+  const [{ data: profile }, { data: companies }, { data: roleRow }, { data: membro }] = await Promise.all([
     supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle(),
     supabase.from('companies').select('id, nome').eq('user_id', user.id).order('nome'),
     supabase.from('role_types').select('type').eq('user_id', user.id).maybeSingle(),
+    supabase.from('contabilidade_membros').select('contabilidade_id').eq('user_id', user.id).maybeSingle(),
   ]);
 
   // role_types.type é a fonte canônica; metadata como fallback.
@@ -41,6 +42,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         userRole={userRole}
         companies={companies ?? []}
         currentCompanyId={profile?.current_company ?? null}
+        temEscritorio={!!membro}
       />
       <div className="flex-1 overflow-y-auto pt-14 md:pt-0">{children}</div>
     </div>
