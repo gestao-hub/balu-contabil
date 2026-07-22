@@ -10,8 +10,8 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Home, Users, FileText, Calculator, HandCoins, Settings, Building2,
-  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle,
+  Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
+  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, ShieldCheck, MessageCircle,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -20,14 +20,26 @@ import Logo from '@/components/Logo';
 import ThemeToggle from '@/components/ThemeToggle';
 
 // Os values batem com o option set Bubble (lowercase). Para exibição, label é capitalizada.
-type Role = 'empresa' | 'contador';
-const ROLE_LABEL: Record<Role, string> = { empresa: 'Empresa', contador: 'Contador' };
+type Role = 'empresa' | 'contador' | 'adminbalu';
+const ROLE_LABEL: Record<Role, string> = { empresa: 'Empresa', contador: 'Contador', adminbalu: 'Admin Balu' };
+
+// Task 18: co-branding — quando a empresa ativa está vinculada a um escritório
+// APROVADO, a sidebar troca a marca Balu do topo pela do escritório (logo +
+// "oferecido por") e ganha um atalho de Suporte via WhatsApp. Sem escritório
+// vinculado (prop ausente/null), o menu é EXATAMENTE o de hoje.
+export type EscritorioBranding = {
+  nome: string;
+  logoUrl: string | null;
+  whatsapp: string | null;
+};
 
 export type MenuLateralProps = {
   userName: string;
   userRole: Role;
   companies: { id: string; nome: string }[];
   currentCompanyId: string | null;
+  temEscritorio: boolean;
+  escritorio?: EscritorioBranding | null;
 };
 
 type NavItem = { href: string; label: string; Icon: React.ComponentType<{ className?: string }>; roles?: Role[] };
@@ -37,13 +49,17 @@ const NAV: NavItem[] = [
   { href: '/clientes',              label: 'Clientes',       Icon: Users },
   { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText },
   { href: '/impostos',              label: 'Impostos',       Icon: Calculator },
-  { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, roles: ['contador'] },
+  { href: '/contador',              label: 'Escritório',     Icon: Briefcase, roles: ['contador'] },
+  { href: '/contador/equipe',       label: 'Equipe',         Icon: Users, roles: ['contador'] },
+  { href: '/contador/configuracoes', label: 'Config. escritório', Icon: Settings, roles: ['contador'] },
+  { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings },
   { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
+  { href: '/admin/contabilidades',  label: 'Admin',          Icon: ShieldCheck, roles: ['adminbalu'] },
 ];
 
 export default function MenuLateral({
-  userName, userRole, companies, currentCompanyId,
+  userName, userRole, companies, currentCompanyId, temEscritorio, escritorio = null,
 }: MenuLateralProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -67,7 +83,13 @@ export default function MenuLateral({
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [companyMenuOpen]);
-  const items = NAV.filter((i) => !i.roles || i.roles.includes(userRole));
+  const items = NAV
+    .filter((i) => !i.roles || i.roles.includes(userRole))
+    // `/contador` (painel) é o ponto de ENTRADA do contador: sempre visível pro
+    // papel contador — a própria página redireciona pra /contador/cadastro quem
+    // ainda não tem escritório (senão o contador recém-criado fica sem caminho de
+    // UI nenhum). As sub-rotas (equipe, config) só aparecem com escritório pronto.
+    .filter((i) => i.href === '/contador' || !i.href.startsWith('/contador/') || temEscritorio);
 
   async function changeCompany(companyId: string) {
     if (companyId === currentCompanyId) return;
@@ -144,17 +166,34 @@ export default function MenuLateral({
           {open ? <X className="size-3" /> : <MenuIcon className="size-3" />}
         </button>
 
-      {/* Marca */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-4">
-        {open ? <Logo size={26} /> : <Logo variant="symbol" size={24} />}
-        <button
-          type="button"
-          aria-label="Fechar menu"
-          onClick={() => setMobileOpen(false)}
-          className="grid size-8 place-items-center rounded-md text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground md:hidden"
-        >
-          <X className="size-4" />
-        </button>
+      {/* Marca — vira a do escritório quando a empresa ativa está vinculada a um
+          escritório aprovado (co-branding); sem escritório, é sempre a Balu. */}
+      <div className="border-b border-border px-3 py-4">
+        <div className="flex items-center justify-between">
+          {escritorio?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- URL assinada de bucket privado
+            <img
+              src={escritorio.logoUrl}
+              alt={escritorio.nome}
+              className={open ? 'h-7 max-w-[150px] object-contain' : 'size-6 object-contain'}
+            />
+          ) : open ? (
+            <Logo size={26} />
+          ) : (
+            <Logo variant="symbol" size={24} />
+          )}
+          <button
+            type="button"
+            aria-label="Fechar menu"
+            onClick={() => setMobileOpen(false)}
+            className="grid size-8 place-items-center rounded-md text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground md:hidden"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        {open && escritorio && (
+          <p className="mt-1 truncate text-xs text-muted-foreground">oferecido por {escritorio.nome}</p>
+        )}
       </div>
 
       {/* Cabeçalho com usuário + empresa — só quando expandido.
@@ -232,6 +271,17 @@ export default function MenuLateral({
             );
           })}
         </ul>
+        {escritorio?.whatsapp && (
+          <a
+            href={`https://wa.me/${escritorio.whatsapp.replace(/\D/g, '')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 flex items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground"
+          >
+            <MessageCircle className="size-4 shrink-0" />
+            {open && <span className="truncate">Suporte</span>}
+          </a>
+        )}
       </nav>
 
       {/* Sair */}

@@ -2,9 +2,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { useState } from 'react';
 import { signupAction, type SignupState } from './actions';
 import Logo from '@/components/Logo';
 
@@ -54,7 +53,11 @@ export default function CadastroPage() {
           <p className="text-sm text-muted-foreground mt-1">Crie sua conta</p>
         </div>
 
+        <RefEscritorioBanner />
+
         <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
+          <NextField />
+
           <div>
             <label htmlFor="full_name" className="block text-sm font-medium text-muted-foreground-2 mb-1">
               Nome completo
@@ -170,6 +173,55 @@ export default function CadastroPage() {
       </div>
     </main>
   );
+}
+
+// Lê um query param só APÓS o mount: servidor e 1º render do cliente rendem o
+// mesmo (null), eliminando o mismatch de hydration (React #418) que o
+// useSearchParams causava nesta página estática (regressão pega pelo e2e 02-cadastro).
+function useQueryParam(name: string): string | null {
+  const [v, setV] = useState<string | null>(null);
+  useEffect(() => {
+    setV(new URLSearchParams(window.location.search).get(name));
+  }, [name]);
+  return v;
+}
+
+// Passthrough mínimo pro fluxo de convite deslogado: `/cadastro?next=/convite/<token>`
+// (link "Criar conta" da página de convite) — o action lê este campo oculto e, no
+// caminho de auto-confirm (Confirm email OFF), redireciona pra lá em vez de `/`.
+// No caminho de confirmação por e-mail o `next` não é usado (ver comentário em
+// `signupAction`) — o input só fica sem efeito nesse caso, não quebra o fluxo.
+function NextField() {
+  const next = useQueryParam('next');
+  if (!next) return null;
+  return <input type="hidden" name="next" value={next} />;
+}
+
+// Vem de `/r/[token]` (link reutilizável do escritório) ou de um convite dirigido
+// clicado deslogado. `escritorio` = nome pra exibir; `ref_invalido` = token
+// inválido/expirado/revogado — o cadastro segue normalmente, só sem o vínculo.
+function RefEscritorioBanner() {
+  const escritorio = useQueryParam('escritorio');
+  const refInvalido = useQueryParam('ref_invalido') === '1';
+
+  if (escritorio) {
+    return (
+      <p className="mb-4 text-sm text-muted-foreground bg-surface-2 border border-border rounded-md px-3 py-2">
+        Você está entrando pelo escritório <b className="text-foreground">{escritorio}</b>. Depois de criar sua
+        empresa, o escritório poderá <b>visualizar</b> suas notas, impostos e guias — ele não pode emitir nem
+        alterar nada. Você pode desvincular quando quiser em Configurações.
+      </p>
+    );
+  }
+  if (refInvalido) {
+    return (
+      <p className="mb-4 text-xs text-muted-foreground bg-surface-2 border border-border rounded-md px-3 py-2">
+        O link do escritório usado para chegar aqui não é mais válido, mas você pode continuar seu cadastro
+        normalmente.
+      </p>
+    );
+  }
+  return null;
 }
 
 function SubmitButton() {

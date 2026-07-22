@@ -1,1 +1,5 @@
-{}
+{
+  "crons": [
+    { "path": "/api/cron/honorarios-recorrentes", "schedule": "0 9 1 * *" }
+  ]
+}

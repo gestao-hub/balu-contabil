@@ -3,12 +3,14 @@
 
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
+import { safeNext } from '@/lib/format/safe-next';
 
 export type AuthState = { error?: string } | undefined;
 
 export async function loginAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
+  const next = String(formData.get('next') ?? '');
 
   if (!email || !password) {
     return { error: 'Informe e-mail e senha.' };
@@ -21,7 +23,7 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
     return { error: traduzirErroSupabase(error.message) };
   }
 
-  redirect('/');
+  redirect(safeNext(next) ?? '/');
 }
 
 function traduzirErroSupabase(msg: string): string {

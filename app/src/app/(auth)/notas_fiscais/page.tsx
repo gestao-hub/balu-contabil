@@ -2,6 +2,7 @@
 import { createServerClient } from '@/lib/supabase/server';
 import NotasFiscaisList, { type NotaListRow } from './NotasFiscaisList';
 import { calcularLimiteEmissao, type LimiteEmissao } from '@/lib/fiscal/limite-emissao';
+import { getLimitesFiscais } from '@/lib/fiscal/parametros';
 import { somarEmitidoNoAno } from '@/lib/fiscal/emitido-ano';
 import LimiteEmissaoBanner from './LimiteEmissaoBanner';
 import NovaNotaDropdown from './NovaNotaDropdown';
@@ -64,11 +65,15 @@ export default async function NotasFiscaisPage() {
         .is('deleted_at', null)
         .maybeSingle();
       const ano = new Date(Date.now() - 3 * 60 * 60 * 1000).getFullYear(); // BRT
-      const totalAno = await somarEmitidoNoAno(supabase, companyId, ano);
+      const [totalAno, limites] = await Promise.all([
+        somarEmitidoNoAno(supabase, companyId, ano),
+        getLimitesFiscais(supabase),
+      ]);
       limite = calcularLimiteEmissao(
         (fiscal?.Code_regime_tributario as string | null) ?? null,
         totalAno,
         ano,
+        limites,
       );
     }
   }
