@@ -57,18 +57,32 @@ export async function updateSenhaAction(senhaAtual: string, senha: string, confi
   return { ok: true };
 }
 
-/** Exclui permanentemente a conta e todos os dados vinculados (cascade no banco).
- *  Após a exclusão, invalida a sessão e redireciona para /login. */
+/** Encerra a conta do titular sem apagar `auth.users`: as 12 FKs `public.* → auth.users`
+ *  são ON DELETE CASCADE, então deletar o usuário destruiria notas/guias/empresas em
+ *  cascata — inclusive documentos fiscais sob retenção legal. Em vez disso:
+ *  1) anonimiza profiles/companies/clientes via RPC `anonimizar_usuario` (retém fiscal);
+ *  2) neutraliza o email e bane o login no auth;
+ *  3) encerra a sessão e redireciona para /login. */
 export async function deleteAccountAction(): Promise<ContaActionResult> {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
 
   const admin = createAdminClient();
-  const { error } = await admin.auth.admin.deleteUser(user.id);
-  if (error) return { ok: false, error: error.message };
 
-  // Invalida os cookies de sessão antes do redirect.
+  // 1) Anonimiza tabelas de negócio (fiscal retido); NUNCA deletar auth.users (FKs CASCADE).
+  const { error: eAnon } = await admin.rpc('anonimizar_usuario', { p_user_id: user.id });
+  if (eAnon) return { ok: false, error: eAnon.message };
+
+  // 2) Neutraliza identidade e bloqueia login no auth (ban de longa duração).
+  const { error: eUpdate } = await admin.auth.admin.updateUserById(user.id, {
+    email: `deleted+${user.id}@invalid.local`,
+    user_metadata: { full_name: 'Usuário removido' },
+    ban_duration: '876000h',
+  });
+  if (eUpdate) return { ok: false, error: eUpdate.message };
+
+  // 3) Invalida os cookies de sessão antes do redirect.
   await supabase.auth.signOut();
   redirect('/login');
 }

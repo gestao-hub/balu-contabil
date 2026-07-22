@@ -39,8 +39,9 @@ export default function DangerZone({ email }: Props) {
       <div className="max-w-lg rounded-lg border border-destructive/40 bg-destructive/5 p-4">
         <p className="text-sm font-semibold text-destructive mb-1">Zona de risco</p>
         <p className="text-xs text-muted-foreground-2 mb-4">
-          Excluir conta é irreversível. Empresas, notas fiscais, clientes e todos os dados
-          vinculados serão permanentemente excluídos.
+          Sua conta e seus dados pessoais serão removidos e o acesso, encerrado. Documentos
+          fiscais são retidos de forma anonimizada pelo prazo legal (obrigação legal, LGPD art.
+          16, I).
         </p>
         <button
           type="button"
@@ -55,7 +56,7 @@ export default function DangerZone({ email }: Props) {
       <PopupConfirm
         open={open}
         variant="destructive"
-        title="Excluir conta permanentemente"
+        title="Excluir conta"
         description="Esta ação não pode ser desfeita. Digite seu email para confirmar."
         confirmLabel="Excluir conta"
         onConfirm={handleConfirm}
