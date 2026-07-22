@@ -70,14 +70,17 @@ export async function updateClienteAction(id: string, input: ClienteInput): Prom
 
   const ctx = await getContext();
   if ('error' in ctx) return { ok: false, error: ctx.error };
-  const { supabase } = ctx;
+  const { supabase, userId } = ctx;
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('clientes')
     .update({ ...parsed.data, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('owner_user_id', userId)
+    .select('id');
 
   if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) return { ok: false, error: 'Cliente não encontrado.' };
   revalidatePath('/clientes');
   return { ok: true };
 }
@@ -85,14 +88,17 @@ export async function updateClienteAction(id: string, input: ClienteInput): Prom
 export async function softDeleteClienteAction(id: string): Promise<ActionResult> {
   const ctx = await getContext();
   if ('error' in ctx) return { ok: false, error: ctx.error };
-  const { supabase } = ctx;
+  const { supabase, userId } = ctx;
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('clientes')
     .update({ status: 'inactive', deleted_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('owner_user_id', userId)
+    .select('id');
 
   if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) return { ok: false, error: 'Cliente não encontrado.' };
   revalidatePath('/clientes');
   return { ok: true };
 }
