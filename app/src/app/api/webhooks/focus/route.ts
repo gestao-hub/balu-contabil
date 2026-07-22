@@ -5,6 +5,8 @@ import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { mapStatusFocus } from '@/lib/fiscal/focus-status';
 import { extrairCamposNota } from '@/lib/fiscal/nfse-callback';
+import { limitar, ipDe } from '@/lib/security/rate-limit';
+import { segredoOk } from './segredo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -50,8 +52,13 @@ type FocusCallback = {
 };
 
 export async function POST(req: Request) {
-  // TODO: Focus envia assinatura HMAC em algum header? Validar quando documentado.
-  // Por ora confiamos em segredo na URL + IP allowlist no edge.
+  if (!(await limitar(`focus-webhook:${ipDe(req.headers)}`, 300, 60))) {
+    return NextResponse.json({ ok: false, reason: 'rate_limited' }, { status: 200 });
+  }
+  if (!segredoOk(req)) {
+    console.warn('[webhook focus] segredo inválido/ausente');
+    return NextResponse.json({ ok: false, reason: 'unauthorized' }, { status: 200 });
+  }
 
   let body: FocusCallback;
   try {
