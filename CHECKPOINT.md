@@ -1,13 +1,44 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-22
+> **Última atualização:** 2026-07-22 (sessão 2 — execução do Bloco A em andamento)
 
 ---
 
 ## Onde estamos
 
-**Fase:** planejamento do escopo de lançamento concluído → pronto para implementar o **Bloco A**.
+**Fase:** implementação do **Bloco A** em andamento na branch `feat/bloco-a-multitenant` (modo subagent-driven).
+
+**Bloco A — progresso (22/07, sessão 2):**
+- ✅ Tasks 1–5: migrations 0030–0034 escritas, commitadas e **aplicadas no banco real** com verificação (runner node+pg no scratchpad lendo `SUPABASE_PASSWORD` do `app/.env.local` — MCP Supabase rejeitado pelo usuário; ver memória `balu-migrations-e-env`).
+- ✅ Task 6: tipos TS + Zod + helpers dinheiro (`64cc1c7`).
+- ✅ Task 7: `lib/fiscal/semaforo.ts` TDD 10/10 (`ed231ab`).
+- ✅ Task 8: tetos de `parametros_fiscais` com fallback (`d8cd22c`).
+- ✅ Task 9: guards contador + client email (`1d1db91`) — ⚠️ incidente: `.env.example` no disco era cópia do `.env.local` com segredos reais e foi commitado por engano; commit emendado com template sanitizado (sem remote, nada vazou; considerar rotacionar SERVICE_ROLE_KEY por cautela).
+- ✅ Task 10: cadastro contabilidade + aguardando (`9009cef`).
+- ✅ Task 11: admin aprovação + gate do layout isentando `adminbalu`/`contador` do onboarding (`ee9513a`) — emenda ao plano registrada.
+- ✅ Task 12: convites (`73817ab` + fix `01b8695` — revisão pegou open-redirect `\`, HTML injection em e-mails, checagem de dono, `next` no signup; tudo corrigido).
+- ✅ Task 13: painel do contador com semáforo (`672a882`).
+- ✅ Task 14: drill-down read-only com guard extra de escopo (`9f6fe0b`).
+- ✅ Task 15: cliente pelo contador + refactor `posProcessarNovaEmpresa` (`c9a4f2a` + fix normCnpj `37e50bb`).
+- ✅ Task 16: honorários v2 + visão do empresário (`b7ee53a`) — FK do join verificado no banco.
+- ✅ Task 17: equipe (`acb4a03`).
+- ✅ Task 18: white-label + co-branding + desvincular (`65783f5` + menu `29eb854`); bucket `branding` criado no banco.
+- ✅ Task 19: cron honorários recorrentes (`ba51b49`).
+- ✅ Task 20: **testes de RLS 8/8 verdes** (`206c46e`) — o teste pegou recursão infinita (42P17) nas policies da 0030; corrigida pela **migration 0035** (`ae8426f`, helper `minha_contabilidade_membro()` SECURITY DEFINER), aplicada no banco.
+- 🔄 Task 21: E2E da jornada — subagente rodando (walkthrough-contador.spec.ts + verificação final).
+
+**Correções ao plano descobertas na execução:**
+- `arquivos_auxiliares` usa `company_id` (não `unique_id_empresa`) — plano corrigido, 0033 ajustada.
+- Papel `contador` também precisava de isenção no gate `/onboarding` (Task 11 cobriu).
+- Policies da 0030 recursavam (42P17) — 0035 corrige (padrão SECURITY DEFINER).
+
+**Gaps conhecidos (aceitos para o lançamento, revisar depois):**
+- CNAEs de empresa criada pelo contador ficam vazios até o cliente aceitar o convite (`company_cnaes.owner_user_id NOT NULL`) — sem backfill automático no aceite.
+- Convidado NOVO que cria conta pelo botão do convite: `next` só funciona no fluxo auto-confirm; com confirmação por e-mail, ele volta pelo link do convite no e-mail original.
+- Logo antigo fica órfão no bucket ao trocar de extensão (higiene de storage, sem impacto).
+
+**Pendências desta fase:** conceder `AdminBalu` ao usuário do Michel (falta o UUID — Step 4 da Task 11); `docs/reference/db_atual.sql` regenerado nesta sessão (conferir commit); decidir merge da branch após E2E verde.
 
 O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 foi feita a análise cruzada dos documentos de direcionamento (`Direcionamento/`: batimento, comparativo Contabilizei e devolutiva do Michel) contra o código real, e produzidos os documentos abaixo.
 

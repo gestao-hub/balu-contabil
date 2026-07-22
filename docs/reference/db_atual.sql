@@ -1,6 +1,12 @@
 --
 -- PostgreSQL database dump
 --
+-- ATENÇÃO (2026-07-22): este snapshot é ANTERIOR ao Bloco A. Os deltas do
+-- Bloco A estão nas migrations 0030–0035 (app/supabase/migrations/), que foram
+-- aplicadas VERBATIM no banco real em 2026-07-22 com verificação pós-aplicação.
+-- Fonte da verdade do schema = este arquivo + migrations 0030–0035.
+-- (Regenerar via pg_dump quando houver Docker/psql disponível.)
+--
 
 \restrict eHcNHxLmTHueGGvLiqLPcTttVq2bfApkAgAL0xtLEFJt1gbBdLAj2bnfssuXQt4
 
