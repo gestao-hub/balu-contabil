@@ -47,7 +47,11 @@ export async function criarEmpresaClienteAction(input: unknown): Promise<ActionR
   if (!g.contabilidade || g.contabilidade.status !== 'aprovada')
     return { ok: false, error: 'Escritório não aprovado.' };
 
-  const parsed = CompanyCreateSchema.safeParse(input);
+  // Mesmo pré-processamento de CNPJ do createCompanyAction (normCnpj é local porque
+  // onboarding/actions.ts é 'use server' e não pode exportar função síncrona).
+  const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
+  const cnpjNormalizado = String(raw.cnpj ?? '').replace(/\D+/g, '').padStart(14, '0').slice(-14);
+  const parsed = CompanyCreateSchema.safeParse({ ...raw, cnpj: cnpjNormalizado });
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
 
   // Mesma separação de campos que createCompanyAction (onboarding/actions.ts):
