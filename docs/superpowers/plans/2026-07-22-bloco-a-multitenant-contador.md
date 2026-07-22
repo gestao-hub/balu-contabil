@@ -26,7 +26,7 @@
 - `notas_fiscais`: `company_id, tipo_documento ('NFe','NFCe','NFSe'), data_emissao, status, valor_total`
 - `guias_fiscais`: `company_id, competencia_referencia varchar(7), data_vencimento date, data_pagamento date, deleted_at`
 - `declaracoes_fiscais` (0025): `company_id, competencia_referencia text, tipo ('PGDAS-D','DASN-SIMEI'), data_transmissao, status`
-- `arquivos_auxiliares`: `unique_id_empresa` (FK companies), `cert_not_after timestamptz`
+- `arquivos_auxiliares`: `company_id` (FK companies) — CORRIGIDO 22/07: plano original dizia `unique_id_empresa`, banco real usa `company_id`, `cert_not_after timestamptz`
 - `honorarios`: ver emenda 2
 - `clientes`, `company_cnaes`: `company_id`
 
@@ -261,7 +261,7 @@ CREATE POLICY empresas_fiscais_select_contador ON public.empresas_fiscais FOR SE
   USING (empresa_id IN (SELECT id FROM public.companies
                         WHERE contabilidade_id = public.minha_contabilidade()));
 CREATE POLICY arquivos_aux_select_contador ON public.arquivos_auxiliares FOR SELECT
-  USING (unique_id_empresa IN (SELECT id FROM public.companies
+  USING (company_id IN (SELECT id FROM public.companies
                                WHERE contabilidade_id = public.minha_contabilidade()));
 
 -- honorarios v2: membro CRUD no que é do escritório; empresário lê os da própria empresa
@@ -351,7 +351,7 @@ RETURNS TABLE (
     EXISTS (SELECT 1 FROM declaracoes_fiscais d
       WHERE d.company_id = c.id AND d.tipo = 'DASN-SIMEI' AND d.data_transmissao IS NOT NULL
         AND d.competencia_referencia LIKE (extract(year FROM now())::int - 1)::text || '%'),
-    (SELECT max(a.cert_not_after) FROM arquivos_auxiliares a WHERE a.unique_id_empresa = c.id),
+    (SELECT max(a.cert_not_after) FROM arquivos_auxiliares a WHERE a.company_id = c.id),
     COALESCE((SELECT sum(h.valor) FROM honorarios h
       WHERE h.empresa_cliente_id = c.id AND h.contabilidade_id = c.contabilidade_id
         AND h.data_pagamento IS NULL AND h.data_vencimento >= current_date), 0),
@@ -1533,7 +1533,7 @@ git commit -m "feat(cron): geracao mensal idempotente de honorarios recorrentes"
 - contador C1 (user) + `contabilidade` CT1 **aprovada** + membro; contador C2 + CT2 aprovada + membro;
 - empresário E1 (user) + company X `contabilidade_id = CT1`;
 - empresário E2 + company Y solta (`contabilidade_id null`);
-- 1 linha em cada tabela filha de X (via admin): `clientes`, `notas_fiscais`, `guias_fiscais`, `declaracoes_fiscais`, `empresas_fiscais` (`empresa_id`), `arquivos_auxiliares` (`unique_id_empresa`), `honorarios` (contabilidade CT1, empresa_cliente X);
+- 1 linha em cada tabela filha de X (via admin): `clientes`, `notas_fiscais`, `guias_fiscais`, `declaracoes_fiscais`, `empresas_fiscais` (`empresa_id`), `arquivos_auxiliares` (`company_id`), `honorarios` (contabilidade CT1, empresa_cliente X);
 - contador C3 + CT3 **pendente** + membro.
 
 Casos (cada um com login `signInWithPassword` do ator + asserts):
