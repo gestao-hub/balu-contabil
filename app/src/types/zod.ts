@@ -115,6 +115,33 @@ export function isValidCpf(cpf: string): boolean {
   return calc(9) === Number(c[9]) && calc(10) === Number(c[10]);
 }
 
+export const ContabilidadeSchema = z.object({
+  nome: z.string().min(2, 'Informe o nome do escritório.'),
+  cnpj: z.string().refine(isValidCnpj, 'CNPJ inválido.'),
+  crc: z.string().min(3, 'Informe o registro CRC.'),
+  crc_uf: z.string().length(2, 'UF do CRC inválida.'),
+});
+export type ContabilidadeInput = z.infer<typeof ContabilidadeSchema>;
+
+export const ContabilidadeBrandingSchema = z.object({
+  nome: z.string().min(2),
+  whatsapp_suporte: z.string().regex(/^\+?\d{10,15}$/, 'WhatsApp inválido (use DDD+número).').optional().or(z.literal('')),
+  email_remetente_nome: z.string().max(80).optional().or(z.literal('')),
+});
+export type ContabilidadeBrandingInput = z.infer<typeof ContabilidadeBrandingSchema>;
+
+export const HonorarioV2Schema = z.object({
+  empresa_cliente_id: z.string().uuid('Selecione o cliente.'),
+  valor: z.string().regex(/^\d+([.,]\d{1,2})?$/, 'Valor inválido.'),
+  mes_referencia: z.string().regex(/^\d{4}-\d{2}$/, 'Competência inválida.'), // YYYY-MM
+  data_vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  observacao: z.string().max(500).optional().or(z.literal('')),
+  recorrente: z.boolean().default(false),
+  recorrencia_dia: z.coerce.number().int().min(1).max(28).optional(),
+}).refine((h) => !h.recorrente || h.recorrencia_dia != null,
+  { message: 'Informe o dia da recorrência (1–28).' });
+export type HonorarioV2Input = z.infer<typeof HonorarioV2Schema>;
+
 export const AberturaCreateSchema = z.object({
   // required
   titular_nome_completo: z.string().trim().min(1, 'Informe o nome completo do titular.'),

@@ -43,6 +43,7 @@ export type Tables = {
     focus_status: string | null;
     focus_last_check: string | null;
     focus_last_error: string | null;
+    contabilidade_id: string | null;
     created_at: string | null;
     updated_at: string | null;
     deleted_at: string | null;
@@ -267,6 +268,13 @@ export type Tables = {
     data_pagamento: string | null;
     status: string | null;
     observacao: string | null;
+    contabilidade_id: string | null;
+    empresa_cliente_id: string | null;
+    forma_pagamento: string | null;
+    recorrente: boolean;
+    recorrencia_dia: number | null;
+    asaas_charge_id: string | null;
+    asaas_customer_id: string | null;
     created_at: string | null;
     updated_at: string | null;
   };
@@ -360,6 +368,45 @@ export type Tables = {
     encargos: number;
     created_at: string;
     updated_at: string;
+  };
+  contabilidades: {
+    id: string;
+    nome: string;
+    cnpj: string | null;
+    crc: string;
+    crc_uf: string;
+    logo_url: string | null;
+    whatsapp_suporte: string | null;
+    email_remetente_nome: string | null;
+    status: string;
+    aprovada_em: string | null;
+    aprovada_por: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  contabilidade_membros: {
+    contabilidade_id: string;
+    user_id: string;
+    created_at: string;
+  };
+  convites: {
+    id: string;
+    contabilidade_id: string;
+    tipo: string;
+    email: string | null;
+    token: string;
+    company_id: string | null;
+    expira_em: string | null;
+    revogado_em: string | null;
+    usado_em: string | null;
+    usado_por: string | null;
+    created_at: string;
+  };
+  parametros_fiscais: {
+    chave: string;
+    valor: string;
+    vigencia_inicio: string;
+    norma: string | null;
   };
 };
 
