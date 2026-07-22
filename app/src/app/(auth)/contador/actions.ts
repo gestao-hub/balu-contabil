@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
+import { registrarAuditoria } from '@/lib/security/audit';
 import { ContabilidadeSchema, CompanyCreateSchema, ContabilidadeBrandingSchema } from '@/types/zod';
 import { posProcessarNovaEmpresa, resolverCodigoMunicipio } from '@/app/(auth)/onboarding/actions';
 
@@ -86,6 +87,12 @@ export async function removerClienteDaCarteiraAction(companyId: string): Promise
   const { error } = await admin.from('companies')
     .update({ contabilidade_id: null })
     .eq('id', companyId).eq('contabilidade_id', g.contabilidade.id); // escopado (anti-IDOR)
+  if (!error) {
+    await registrarAuditoria({
+      actorUserId: g.userId, acao: 'carteira.remover',
+      alvoTipo: 'company', alvoId: companyId, contabilidadeId: g.contabilidade.id,
+    });
+  }
   revalidatePath('/contador');
   return error ? { ok: false, error: error.message } : { ok: true };
 }
@@ -113,6 +120,11 @@ export async function salvarBrandingAction(input: unknown): Promise<ActionResult
     .eq('id', g.contabilidade.id);
   if (error) return { ok: false, error: error.message };
 
+  await registrarAuditoria({
+    actorUserId: g.userId, acao: 'escritorio.branding',
+    contabilidadeId: g.contabilidade.id,
+  });
+
   revalidatePath('/contador/configuracoes');
   return { ok: true };
 }
@@ -126,6 +138,12 @@ export async function removerMembroAction(userId: string): Promise<ActionResult>
   if ((count ?? 0) <= 1) return { ok: false, error: 'O escritório precisa ter ao menos 1 membro.' };
   const { error } = await admin.from('contabilidade_membros').delete()
     .eq('contabilidade_id', g.contabilidade.id).eq('user_id', userId);
+  if (!error) {
+    await registrarAuditoria({
+      actorUserId: g.userId, acao: 'equipe.remover',
+      alvoTipo: 'user', alvoId: userId, contabilidadeId: g.contabilidade.id,
+    });
+  }
   revalidatePath('/contador/equipe');
   return error ? { ok: false, error: error.message } : { ok: true };
 }

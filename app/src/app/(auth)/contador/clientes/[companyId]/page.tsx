@@ -6,6 +6,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
+import { registrarAuditoria } from '@/lib/security/audit';
 import VisaoCliente from './VisaoCliente';
 
 export default async function ClienteDrillDown(
@@ -23,6 +24,12 @@ export default async function ClienteDrillDown(
   // Guarda de escopo: `companies` também tem policy de SELECT para o dono da empresa —
   // sem isto, uma empresa do próprio contador (fora da carteira) passaria no maybeSingle().
   if (empresa.contabilidade_id !== ctx.contabilidade.id) notFound();
+
+  await registrarAuditoria({
+    actorUserId: ctx.userId, acao: 'cliente.acessar',
+    alvoTipo: 'company', alvoId: companyId, contabilidadeId: ctx.contabilidade.id,
+  });
+
   const [{ data: notas }, { data: guias }, { data: declaracoes }] = await Promise.all([
     supabase.from('notas_fiscais')
       .select('id, tipo_documento, data_emissao, status, valor_total')

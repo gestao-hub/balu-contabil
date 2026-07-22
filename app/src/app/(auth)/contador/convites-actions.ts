@@ -8,6 +8,7 @@ import { getContabilidadeCtx, type ContabilidadeCtx } from '@/lib/contador/guard
 import { sendEmail } from '@/lib/clients/email';
 import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 import { limitar, ipDe } from '@/lib/security/rate-limit';
+import { registrarAuditoria } from '@/lib/security/audit';
 
 // Padrão local ao arquivo (não cross-import de rota) — ver nota em ./actions.ts.
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
@@ -72,6 +73,12 @@ export async function convidarClienteAction(
            impostos e guias — ele <b>não pode</b> emitir nem alterar nada.</p>
            <p><a href="${url}">${url}</a> (válido por 7 dias)</p>`,
   });
+
+  await registrarAuditoria({
+    actorUserId: g.ctx.userId, acao: 'convite.criar',
+    meta: { tipo: 'cliente' }, contabilidadeId: g.ctx.contabilidade!.id,
+  });
+
   return { ok: true, data: { url } };
 }
 
@@ -116,6 +123,12 @@ export async function convidarMembroAction(email: string): Promise<ActionResult<
   const nomeEscritorioHtml = escapeHtml(g.ctx.contabilidade!.nome);
   await sendEmail({ to: email, subject: `Convite para a equipe de ${g.ctx.contabilidade!.nome} no Balu`,
     html: `<p>Você foi convidado(a) para a equipe do escritório <b>${nomeEscritorioHtml}</b>.</p><p><a href="${url}">${url}</a> (7 dias)</p>` });
+
+  await registrarAuditoria({
+    actorUserId: g.ctx.userId, acao: 'convite.criar',
+    meta: { tipo: 'membro' }, contabilidadeId: g.ctx.contabilidade!.id,
+  });
+
   return { ok: true, data: { url } };
 }
 
@@ -142,7 +155,7 @@ export async function aceitarConviteAction(token: string): Promise<ActionResult<
   }
   // se veio company: vira empresa ativa do usuário
   const admin = createAdminClient();
-  const { data: conv } = await admin.from('convites').select('tipo, company_id').eq('token', token).single();
+  const { data: conv } = await admin.from('convites').select('tipo, company_id, contabilidade_id').eq('token', token).single();
   if (conv?.tipo === 'cliente' && conv.company_id) {
     // Quem aceita pode ser um usuário TOTALMENTE NOVO — nunca passou por
     // createCompanyAction, então ainda não tem linha em `profiles` (sem trigger de
@@ -189,5 +202,11 @@ export async function aceitarConviteAction(token: string): Promise<ActionResult<
       });
     }
   }
+
+  await registrarAuditoria({
+    actorUserId: user.id, acao: 'convite.aceitar',
+    contabilidadeId: conv?.contabilidade_id ?? null,
+  });
+
   return { ok: true, data: { companyId: conv?.company_id ?? null } };
 }

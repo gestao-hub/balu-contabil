@@ -5,17 +5,18 @@
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
+import { registrarAuditoria } from '@/lib/security/audit';
 import { HonorarioV2Schema } from '@/types/zod';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
 /** Sessão válida + escritório aprovado, ou o erro pronto pra devolver da action. */
-async function requireEscritorioAprovado(): Promise<{ id: string } | { ok: false; error: string }> {
+async function requireEscritorioAprovado(): Promise<{ id: string; userId: string } | { ok: false; error: string }> {
   const g = await getContabilidadeCtx();
   if ('error' in g) return { ok: false, error: g.error };
   if (!g.contabilidade) return { ok: false, error: 'Você não faz parte de um escritório.' };
   if (g.contabilidade.status !== 'aprovada') return { ok: false, error: 'Escritório não aprovado.' };
-  return { id: g.contabilidade.id };
+  return { id: g.contabilidade.id, userId: g.userId };
 }
 
 /** Data de hoje em YYYY-MM-DD, ajustada para BRT (mesmo ajuste do legado honorarios/actions.ts). */
@@ -59,6 +60,11 @@ export async function createHonorarioV2Action(input: unknown): Promise<ActionRes
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? 'Falha ao criar honorário.' };
 
+  await registrarAuditoria({
+    actorUserId: ctx.userId, acao: 'honorario.criar',
+    alvoTipo: 'honorario', alvoId: data.id, contabilidadeId: ctx.id,
+  });
+
   revalidatePath('/contador/honorarios');
   return { ok: true, data: { id: data.id } };
 }
@@ -97,6 +103,11 @@ export async function updateHonorarioV2Action(id: string, input: unknown): Promi
     .eq('contabilidade_id', ctx.id); // escopado (anti-IDOR)
   if (error) return { ok: false, error: error.message };
 
+  await registrarAuditoria({
+    actorUserId: ctx.userId, acao: 'honorario.editar',
+    alvoTipo: 'honorario', alvoId: id, contabilidadeId: ctx.id,
+  });
+
   revalidatePath('/contador/honorarios');
   return { ok: true };
 }
@@ -118,6 +129,11 @@ export async function marcarPagoV2Action(id: string, forma_pagamento: string): P
     .eq('id', id)
     .eq('contabilidade_id', ctx.id);
   if (error) return { ok: false, error: error.message };
+
+  await registrarAuditoria({
+    actorUserId: ctx.userId, acao: 'honorario.pagar',
+    alvoTipo: 'honorario', alvoId: id, contabilidadeId: ctx.id,
+  });
 
   revalidatePath('/contador/honorarios');
   return { ok: true };
@@ -141,6 +157,11 @@ export async function desmarcarPagoV2Action(id: string): Promise<ActionResult> {
     .eq('contabilidade_id', ctx.id);
   if (error) return { ok: false, error: error.message };
 
+  await registrarAuditoria({
+    actorUserId: ctx.userId, acao: 'honorario.despagar',
+    alvoTipo: 'honorario', alvoId: id, contabilidadeId: ctx.id,
+  });
+
   revalidatePath('/contador/honorarios');
   return { ok: true };
 }
@@ -157,6 +178,11 @@ export async function deleteHonorarioV2Action(id: string): Promise<ActionResult>
     .eq('id', id)
     .eq('contabilidade_id', ctx.id);
   if (error) return { ok: false, error: error.message };
+
+  await registrarAuditoria({
+    actorUserId: ctx.userId, acao: 'honorario.excluir',
+    alvoTipo: 'honorario', alvoId: id, contabilidadeId: ctx.id,
+  });
 
   revalidatePath('/contador/honorarios');
   return { ok: true };

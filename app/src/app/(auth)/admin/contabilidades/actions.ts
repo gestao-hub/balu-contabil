@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/clients/email';
+import { registrarAuditoria } from '@/lib/security/audit';
 
 // Padrão local ao arquivo — segue a convenção dominante do repo: cada
 // `actions.ts` declara seu próprio ActionResult (ver contador/actions.ts,
@@ -32,6 +33,12 @@ export async function decidirContabilidadeAction(
       : { status: 'suspensa' })
     .eq('id', id);
   if (error) return { ok: false, error: error.message };
+
+  await registrarAuditoria({
+    actorUserId: ctx.userId, acao: `contabilidade.${decisao}`,
+    alvoTipo: 'contabilidade', alvoId: id,
+  });
+
   // avisa o(s) membro(s) por e-mail
   const { data: membros } = await admin.from('contabilidade_membros').select('user_id').eq('contabilidade_id', id);
   for (const m of membros ?? []) {
