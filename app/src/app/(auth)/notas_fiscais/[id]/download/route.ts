@@ -13,6 +13,7 @@
 import { createServerClient } from '@/lib/supabase/server';
 import { focus, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { assertTipoDoc } from '@/lib/fiscal/notas-tipo';
+import { urlDownloadPermitida } from '@/lib/security/url-allowlist';
 
 export const runtime = 'nodejs';
 
@@ -65,6 +66,9 @@ export async function GET(
     if (formato === 'xml') {
       // 1) URL salva (NFSe Nacional vem com path relativo; legacy pode vir absoluto)
       if (savedUrl) {
+        if (isAbsoluteUrl(savedUrl) && !urlDownloadPermitida(savedUrl)) {
+          return new Response('origem do arquivo não permitida', { status: 400 });
+        }
         const url = isAbsoluteUrl(savedUrl) ? savedUrl : `${focusBase(ENV)}${savedUrl}`;
         const r = await fetch(url, { headers: { Authorization: basicAuth(focusToken) } });
         if (r.ok) {
@@ -90,6 +94,9 @@ export async function GET(
       // exigir auth. Tentamos sem auth primeiro pra URLs absolutas; com auth
       // pra paths relativos.
       if (isAbsoluteUrl(savedUrl)) {
+        if (!urlDownloadPermitida(savedUrl)) {
+          return new Response('origem do arquivo não permitida', { status: 400 });
+        }
         const r = await fetch(savedUrl);
         if (r.ok) return pdfResponse(await r.arrayBuffer(), ref);
       } else {
