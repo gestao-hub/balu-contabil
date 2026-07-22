@@ -135,7 +135,22 @@ export async function aceitarConviteAction(token: string): Promise<ActionResult<
   const admin = createAdminClient();
   const { data: conv } = await admin.from('convites').select('tipo, company_id').eq('token', token).single();
   if (conv?.tipo === 'cliente' && conv.company_id) {
-    await admin.from('profiles').update({ current_company: conv.company_id }).eq('user_id', user.id);
+    // Quem aceita pode ser um usuário TOTALMENTE NOVO — nunca passou por
+    // createCompanyAction, então ainda não tem linha em `profiles` (sem trigger de
+    // auto-criação no signup, mesma observação de onboarding/actions.ts). Um UPDATE
+    // puro seria no-op nesse caso (current_company nunca é setado → o gate de
+    // /onboarding prende o cliente antes de ele ver a empresa). Upsert por
+    // user_id, mesmo padrão de createCompanyAction.
+    const { data: existingProfile } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (existingProfile) {
+      await admin.from('profiles').update({ current_company: conv.company_id }).eq('user_id', user.id);
+    } else {
+      await admin.from('profiles').insert({ user_id: user.id, current_company: conv.company_id });
+    }
   }
   return { ok: true, data: { companyId: conv?.company_id ?? null } };
 }
