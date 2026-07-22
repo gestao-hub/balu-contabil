@@ -89,3 +89,16 @@ export async function removerClienteDaCarteiraAction(companyId: string): Promise
   revalidatePath('/contador');
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+
+export async function removerMembroAction(userId: string): Promise<ActionResult> {
+  const g = await getContabilidadeCtx();
+  if ('error' in g || !g.contabilidade) return { ok: false, error: 'Sem escritório.' };
+  const admin = createAdminClient();
+  const { count } = await admin.from('contabilidade_membros')
+    .select('*', { count: 'exact', head: true }).eq('contabilidade_id', g.contabilidade.id);
+  if ((count ?? 0) <= 1) return { ok: false, error: 'O escritório precisa ter ao menos 1 membro.' };
+  const { error } = await admin.from('contabilidade_membros').delete()
+    .eq('contabilidade_id', g.contabilidade.id).eq('user_id', userId);
+  revalidatePath('/contador/equipe');
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
