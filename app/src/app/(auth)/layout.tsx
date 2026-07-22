@@ -29,7 +29,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
     supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle(),
     // contabilidade_id junto — evita 1 query extra pra descobrir se a empresa
     // ativa tem escritório (co-branding, Task 18).
-    supabase.from('companies').select('id, nome, contabilidade_id').eq('user_id', user.id).order('nome'),
+    supabase.from('companies').select('id, nome, contabilidade_id').eq('user_id', user.id).is('deleted_at', null).order('nome'),
     supabase.from('role_types').select('type').eq('user_id', user.id).maybeSingle(),
     supabase.from('contabilidade_membros').select('contabilidade_id').eq('user_id', user.id).maybeSingle(),
   ]);

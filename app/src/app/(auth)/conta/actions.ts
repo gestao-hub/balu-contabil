@@ -70,6 +70,26 @@ export async function deleteAccountAction(): Promise<ContaActionResult> {
 
   const admin = createAdminClient();
 
+  // 0) Coleta os caminhos do blob do certificado ANTES de anonimizar (a RPC zera os
+  //    ponteiros). O arquivo em si é removido do Storage no passo 4.
+  const { data: companiesDoTitular } = await admin
+    .from('companies').select('id').eq('user_id', user.id);
+  const companyIds = (companiesDoTitular ?? []).map((c) => c.id as string);
+  let certPaths: string[] = [];
+  if (companyIds.length > 0) {
+    const { data: certs } = await admin
+      .from('arquivos_auxiliares')
+      .select('storage_key, supabase_file_path')
+      .in('company_id', companyIds);
+    certPaths = [
+      ...new Set(
+        (certs ?? [])
+          .flatMap((a) => [a.storage_key as string | null, a.supabase_file_path as string | null])
+          .filter((p): p is string => !!p),
+      ),
+    ];
+  }
+
   // 1) Anonimiza tabelas de negócio (fiscal retido); NUNCA deletar auth.users (FKs CASCADE).
   const { error: eAnon } = await admin.rpc('anonimizar_usuario', { p_user_id: user.id });
   if (eAnon) return { ok: false, error: eAnon.message };
@@ -82,7 +102,17 @@ export async function deleteAccountAction(): Promise<ContaActionResult> {
   });
   if (eUpdate) return { ok: false, error: eUpdate.message };
 
-  // 3) Invalida os cookies de sessão antes do redirect.
+  // 4) Remove o blob cifrado do certificado do Storage (best-effort — não bloqueia
+  //    a exclusão se falhar; os ponteiros no banco já foram zerados).
+  if (certPaths.length > 0) {
+    try {
+      await admin.storage.from('company-certificates').remove(certPaths);
+    } catch (e) {
+      console.warn('[exclusao] falha ao remover certificado do Storage:', e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  // 5) Invalida os cookies de sessão antes do redirect.
   await supabase.auth.signOut();
   redirect('/login');
 }

@@ -13,3 +13,18 @@ export async function documentosPendentes(userId: string): Promise<string[]> {
   const aceitou = new Set((aceites ?? []).map((a) => `${a.tipo}:${a.versao}`));
   return [...vigentes].filter(([tipo, versao]) => !aceitou.has(`${tipo}:${versao}`)).map(([t]) => t);
 }
+
+/** Gate de re-aceite para AÇÕES DE ESCRITA sensíveis (o layout só cobre navegação
+ *  de página; server actions e route handlers não passam pelo layout). Retorna erro
+ *  quando há termos/política novos pendentes. NUNCA usar em ações de direito do titular
+ *  (exportar/excluir dados) — bloquear o exercício de direito LGPD seria o oposto do
+ *  que a lei exige. */
+export async function assertAceitesEmDia(
+  userId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const pend = await documentosPendentes(userId);
+  if (pend.length > 0) {
+    return { ok: false, error: 'Aceite os novos termos e a política de privacidade para continuar.' };
+  }
+  return { ok: true };
+}
