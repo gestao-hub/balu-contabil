@@ -14,6 +14,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { focus, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { assertTipoDoc } from '@/lib/fiscal/notas-tipo';
 import { urlDownloadPermitida } from '@/lib/security/url-allowlist';
+import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
 
 export const runtime = 'nodejs';
 
@@ -42,6 +43,8 @@ export async function GET(
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return new Response('não autenticado', { status: 401 });
+  const gate = await assertAceitesEmDia(user.id);
+  if (!gate.ok) return new Response(gate.error, { status: 403 });
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
   const companyId = (profile?.current_company ?? null) as string | null;

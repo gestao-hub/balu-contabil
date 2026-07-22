@@ -4,6 +4,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
+import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
 import { CompanySchema, type CompanyInput, EmpresaFiscalSchema, type EmpresaFiscalInput } from '@/types/zod';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 import { syncEmpresaNaFocus, atualizarEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
@@ -128,6 +129,8 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const gate = await assertAceitesEmDia(user.id);
+  if (!gate.ok) return { ok: false, error: gate.error };
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -223,6 +226,8 @@ export async function uploadCertificadoAction(
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const gate = await assertAceitesEmDia(user.id);
+  if (!gate.ok) return { ok: false, error: gate.error };
   const { data: profile } = await supabase
     .from('profiles')
     .select('current_company')

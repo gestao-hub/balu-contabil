@@ -6,6 +6,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
+import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
 import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { assertTipoDoc, validarJustificativa, cancelamentoSoPortal, type TipoDoc } from '@/lib/fiscal/notas-tipo';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
@@ -153,6 +154,8 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const gate = await assertAceitesEmDia(user.id);
+  if (!gate.ok) return { ok: false, error: gate.error };
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -402,6 +405,8 @@ export async function cancelarNotaAction(
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const gate = await assertAceitesEmDia(user.id);
+  if (!gate.ok) return { ok: false, error: gate.error };
   const { data: profile } = await supabase
     .from('profiles')
     .select('current_company')
@@ -604,6 +609,8 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const gate = await assertAceitesEmDia(user.id);
+  if (!gate.ok) return { ok: false, error: gate.error };
 
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
@@ -721,6 +728,8 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const gate = await assertAceitesEmDia(user.id);
+  if (!gate.ok) return { ok: false, error: gate.error };
 
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
@@ -826,6 +835,8 @@ export async function lancarNotaManualAction(input: NotaManualInput): Promise<La
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const gate = await assertAceitesEmDia(user.id);
+  if (!gate.ok) return { ok: false, error: gate.error };
 
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
