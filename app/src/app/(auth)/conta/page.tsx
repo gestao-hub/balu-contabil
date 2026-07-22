@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import PerfilForm from './PerfilForm';
 import AlterarSenhaForm from './AlterarSenhaForm';
+import ExportarDadosButton from './ExportarDadosButton';
 import DangerZone from './DangerZone';
 
 const TABS = [
@@ -69,6 +70,7 @@ export default async function ContaPage({ searchParams }: { searchParams: SP }) 
       {active === 'seguranca' && (
         <div className="space-y-8">
           <AlterarSenhaForm />
+          <ExportarDadosButton />
           <DangerZone email={email} />
         </div>
       )}
