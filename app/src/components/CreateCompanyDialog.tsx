@@ -20,6 +20,13 @@ const UF_OPTIONS = [
   'MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
 ] as const;
 
+// Shape compatível com o ActionResult<{id:string}> local de qualquer actions.ts do
+// repo (cada arquivo declara o seu — ver nota em contador/actions.ts). `data` fica
+// opcional aqui de propósito, pra aceitar tanto o formato aninhado (`{ data: {id} }`,
+// usado por contador/actions.ts) quanto ser resiliente ao formato antigo — o dialog
+// confere `r.data?.id` em vez de assumir a chave sempre presente.
+type SubmitResult = { ok: true; data?: { id: string } } | { ok: false; error: string };
+
 type Props = {
   open: boolean;
   /** Quando true, esconde o botão Fechar (uso no onboarding obrigatório). */
@@ -28,7 +35,18 @@ type Props = {
   onCreated?: (id: string) => void;
   /** Quando fornecido, exibe botão "← Seleção" no footer (uso dentro de AddEmpresaDialog). */
   onBack?: () => void;
+  /** Server action usada no submit. Default: createCompanyAction (dono cria a própria
+   *  empresa). O contador injeta `criarEmpresaClienteAction` pra cadastrar em nome do
+   *  cliente (ver contador/clientes/novo/NovoClienteFlow.tsx). */
+  submitAction?: (data: CompanyInput) => Promise<SubmitResult>;
 };
+
+/** Adapta o retorno "achatado" de createCompanyAction ({ok,id}) pro shape aninhado
+ *  ({ok, data:{id}}) que o dialog usa internamente — sem tocar em createCompanyAction. */
+async function defaultSubmitAction(data: CompanyInput): Promise<SubmitResult> {
+  const r = await createCompanyAction(data);
+  return r.ok ? { ok: true, data: { id: r.id } } : r;
+}
 
 type Form = CompanyInput;
 
@@ -52,7 +70,9 @@ const EMPTY: Form = {
   cnae_principal: undefined,
 };
 
-export default function CreateCompanyDialog({ open, forceCreate = false, onClose, onCreated, onBack }: Props) {
+export default function CreateCompanyDialog({
+  open, forceCreate = false, onClose, onCreated, onBack, submitAction = defaultSubmitAction,
+}: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const toast = useToast();
   const titleId = useId(); // id único por instância — evita aria-labelledby duplicado
@@ -155,12 +175,14 @@ export default function CreateCompanyDialog({ open, forceCreate = false, onClose
     }
     setSubmitting(true);
     try {
-      const r = await createCompanyAction(parsed.data);
+      const r = await submitAction(parsed.data);
       if (!r.ok) { toast('error', r.error); return; }
+      const id = r.data?.id;
+      if (!id) { toast('error', 'Resposta inesperada do servidor.'); return; }
       toast('success', 'Empresa criada!');
       // No sucesso, quem fecha é o onCreated do caller (ex.: menu → setAddOpen(false)+refresh).
       // No onboarding (forceCreate, sem onCreated) o popup some via layout após revalidatePath('/').
-      onCreated?.(r.id);
+      onCreated?.(id);
     } finally {
       setSubmitting(false);
     }

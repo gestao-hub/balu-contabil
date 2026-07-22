@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
-import { ContabilidadeSchema } from '@/types/zod';
+import { ContabilidadeSchema, CompanyCreateSchema } from '@/types/zod';
+import { posProcessarNovaEmpresa, resolverCodigoMunicipio } from '@/app/(auth)/onboarding/actions';
 
 // Padrão local ao arquivo (não cross-import de rota) — segue a convenção
 // dominante do repo: cada `actions.ts` declara seu próprio ActionResult
@@ -34,6 +35,44 @@ export async function criarContabilidadeAction(input: unknown): Promise<ActionRe
   if (e2) return { ok: false, error: e2.message };
   revalidatePath('/contador');
   return { ok: true, data: { id: cont.id } };
+}
+
+// Cadastro de empresa CLIENTE pelo escritório (contador cadastra em nome do cliente,
+// antes de ele ter conta no Balu). Nasce sem dono (user_id null) e já vinculada à
+// carteira (contabilidade_id) — o convite dirigido (convidarClienteAction) é quem,
+// mais tarde, transfere a posse pro cliente via aceitar_convite RPC.
+export async function criarEmpresaClienteAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const g = await getContabilidadeCtx();
+  if ('error' in g) return { ok: false, error: g.error };
+  if (!g.contabilidade || g.contabilidade.status !== 'aprovada')
+    return { ok: false, error: 'Escritório não aprovado.' };
+
+  const parsed = CompanyCreateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
+
+  // Mesma separação de campos que createCompanyAction (onboarding/actions.ts):
+  // Code_regime_tributario/cnae_principal moram em empresas_fiscais, não em companies.
+  const { Code_regime_tributario, cnae_principal, ...companyFields } = parsed.data;
+  const codigoMunicipio = await resolverCodigoMunicipio(companyFields.codigo_municipio, companyFields.cep);
+
+  const admin = createAdminClient();
+  const { data: comp, error } = await admin.from('companies')
+    .insert({
+      ...companyFields,
+      codigo_municipio: codigoMunicipio || null,
+      user_id: null,
+      contabilidade_id: g.contabilidade.id,
+      nome: companyFields.nome?.trim() || companyFields.razao_social,
+    })
+    .select('id').single();
+  if (error || !comp) return { ok: false, error: error?.message ?? 'Falha ao criar empresa.' };
+
+  // empresas_fiscais + Focus + CNAEs — mesmo pós-processamento do fluxo do dono.
+  // ownerUserId null: empresa ainda sem dono (ver posProcessarNovaEmpresa).
+  await posProcessarNovaEmpresa(comp.id, parsed.data, null);
+
+  revalidatePath('/contador');
+  return { ok: true, data: { id: comp.id } };
 }
 
 export async function removerClienteDaCarteiraAction(companyId: string): Promise<ActionResult> {
