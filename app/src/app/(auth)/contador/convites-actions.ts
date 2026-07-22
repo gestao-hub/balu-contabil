@@ -12,6 +12,20 @@ export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; er
 const novoToken = () => randomBytes(24).toString('base64url');
 const siteUrl = () => process.env.NEXT_PUBLIC_SITE_URL!;
 
+// `contabilidade.nome` e `company.nome` são dados de usuário (o escritório escolhe
+// o próprio nome; o nome da empresa vem do cadastro) — interpolados crus no HTML
+// do e-mail eles seriam um vetor de phishing/HTML injection sob o domínio de envio
+// do app. A URL do convite é gerada por nós (token nosso + siteUrl() de env), não
+// precisa escapar.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Anotação de retorno explícita: sem ela, o TS infere os dois ramos do union
 // preenchendo as chaves ausentes de um com `?: undefined` do outro (quirk de
 // inferência de retorno multi-`return`), o que faz `'error' in g` não eliminar
@@ -35,6 +49,7 @@ export async function convidarClienteAction(
     .select('id, nome, user_id, contabilidade_id').eq('id', companyId).maybeSingle();
   if (!comp || comp.contabilidade_id !== g.ctx.contabilidade!.id)
     return { ok: false, error: 'Empresa não encontrada na sua carteira.' };
+  if (comp.user_id) return { ok: false, error: 'Esta empresa já tem um responsável no Balu.' };
   const token = novoToken();
   const expira = new Date(Date.now() + 7 * 86_400_000).toISOString();
   const { error } = await admin.from('convites').insert({
@@ -43,11 +58,13 @@ export async function convidarClienteAction(
   });
   if (error) return { ok: false, error: error.message };
   const url = `${siteUrl()}/convite/${token}`;
+  const nomeEscritorioHtml = escapeHtml(g.ctx.contabilidade!.nome);
+  const nomeEmpresaHtml = escapeHtml(comp.nome ?? '');
   await sendEmail({
     to: email,
     fromName: g.ctx.contabilidade!.email_remetente_nome ?? g.ctx.contabilidade!.nome,
     subject: `${g.ctx.contabilidade!.nome} convidou você para o Balu`,
-    html: `<p>O escritório <b>${g.ctx.contabilidade!.nome}</b> cadastrou a empresa <b>${comp.nome ?? ''}</b> no Balu.</p>
+    html: `<p>O escritório <b>${nomeEscritorioHtml}</b> cadastrou a empresa <b>${nomeEmpresaHtml}</b> no Balu.</p>
            <p>Pelo link abaixo você cria seu acesso e assume a empresa. O escritório poderá <b>visualizar</b> suas notas,
            impostos e guias — ele <b>não pode</b> emitir nem alterar nada.</p>
            <p><a href="${url}">${url}</a> (válido por 7 dias)</p>`,
@@ -93,8 +110,9 @@ export async function convidarMembroAction(email: string): Promise<ActionResult<
   });
   if (error) return { ok: false, error: error.message };
   const url = `${siteUrl()}/convite/${token}`;
+  const nomeEscritorioHtml = escapeHtml(g.ctx.contabilidade!.nome);
   await sendEmail({ to: email, subject: `Convite para a equipe de ${g.ctx.contabilidade!.nome} no Balu`,
-    html: `<p>Você foi convidado(a) para a equipe do escritório <b>${g.ctx.contabilidade!.nome}</b>.</p><p><a href="${url}">${url}</a> (7 dias)</p>` });
+    html: `<p>Você foi convidado(a) para a equipe do escritório <b>${nomeEscritorioHtml}</b>.</p><p><a href="${url}">${url}</a> (7 dias)</p>` });
   return { ok: true, data: { url } };
 }
 

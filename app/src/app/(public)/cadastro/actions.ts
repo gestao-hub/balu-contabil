@@ -4,6 +4,7 @@
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import { getSiteUrl } from '@/lib/site-url';
+import { safeNext } from '@/lib/format/safe-next';
 
 export type SignupState = { error?: string } | undefined;
 
@@ -14,6 +15,7 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
   const password_confirm = String(formData.get('password_confirm') ?? '');
   const role_type = String(formData.get('role_type') ?? '').trim();
   const terms = formData.get('terms');
+  const next = String(formData.get('next') ?? '');
 
   if (!full_name || !email || !password) {
     return { error: 'Preencha todos os campos.' };
@@ -57,11 +59,16 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
     return { error: error.message };
   }
 
-  // Auto-confirm (Confirm email OFF): sessão veio no signUp, segue pra home.
+  // Auto-confirm (Confirm email OFF): sessão veio no signUp, segue pra `next`
+  // (ex.: `/convite/<token>` — usuário veio de um convite deslogado) ou pra home.
   if (data.session) {
-    redirect('/');
+    redirect(safeNext(next) ?? '/');
   }
   // Confirm email ON: signUp retorna sem sessão; mostra tela "verifique seu email".
+  // O retorno via link do email já é `next=/` fixo (emailRedirectTo acima) — não
+  // dá pra propagar o `next` do form por esse caminho sem alterar o template do
+  // Supabase, então mantemos o comportamento atual aqui (usuário resolve o
+  // convite manualmente após confirmar, se for o caso).
   redirect(`/cadastro/confirme-email?email=${encodeURIComponent(email)}`);
 }
 

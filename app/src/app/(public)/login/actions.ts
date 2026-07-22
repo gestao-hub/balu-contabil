@@ -3,6 +3,7 @@
 
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
+import { safeNext } from '@/lib/format/safe-next';
 
 export type AuthState = { error?: string } | undefined;
 
@@ -23,13 +24,6 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
   }
 
   redirect(safeNext(next) ?? '/');
-}
-
-// Só aceita path interno (`/algo`) — nunca `//host` ou `http(s)://host`, que um
-// atacante poderia usar em `?next=` pra abrir redirect para fora do domínio.
-function safeNext(next: string): string | null {
-  if (next.startsWith('/') && !next.startsWith('//') && !next.includes('://')) return next;
-  return null;
 }
 
 function traduzirErroSupabase(msg: string): string {

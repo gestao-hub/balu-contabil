@@ -59,6 +59,10 @@ export default function CadastroPage() {
         </Suspense>
 
         <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
+          <Suspense fallback={null}>
+            <NextField />
+          </Suspense>
+
           <div>
             <label htmlFor="full_name" className="block text-sm font-medium text-muted-foreground-2 mb-1">
               Nome completo
@@ -174,6 +178,18 @@ export default function CadastroPage() {
       </div>
     </main>
   );
+}
+
+// Passthrough mínimo pro fluxo de convite deslogado: `/cadastro?next=/convite/<token>`
+// (link "Criar conta" da página de convite) — o action lê este campo oculto e, no
+// caminho de auto-confirm (Confirm email OFF), redireciona pra lá em vez de `/`.
+// No caminho de confirmação por e-mail o `next` não é usado (ver comentário em
+// `signupAction`) — o input só fica sem efeito nesse caso, não quebra o fluxo.
+function NextField() {
+  const sp = useSearchParams();
+  const next = sp.get('next');
+  if (!next) return null;
+  return <input type="hidden" name="next" value={next} />;
 }
 
 // Vem de `/r/[token]` (link reutilizável do escritório) ou de um convite dirigido
