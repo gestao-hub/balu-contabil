@@ -50,6 +50,8 @@ const NAV: NavItem[] = [
   { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText },
   { href: '/impostos',              label: 'Impostos',       Icon: Calculator },
   { href: '/contador',              label: 'Escritório',     Icon: Briefcase, roles: ['contador'] },
+  { href: '/contador/equipe',       label: 'Equipe',         Icon: Users, roles: ['contador'] },
+  { href: '/contador/configuracoes', label: 'Config. escritório', Icon: Settings, roles: ['contador'] },
   { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings },
   { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
@@ -83,7 +85,7 @@ export default function MenuLateral({
   }, [companyMenuOpen]);
   const items = NAV
     .filter((i) => !i.roles || i.roles.includes(userRole))
-    .filter((i) => i.href !== '/contador' || temEscritorio);
+    .filter((i) => !i.href.startsWith('/contador') || temEscritorio);
 
   async function changeCompany(companyId: string) {
     if (companyId === currentCompanyId) return;
