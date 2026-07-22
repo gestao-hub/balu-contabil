@@ -39,7 +39,7 @@ const NAV: NavItem[] = [
   { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText },
   { href: '/impostos',              label: 'Impostos',       Icon: Calculator },
   { href: '/contador',              label: 'Escritório',     Icon: Briefcase, roles: ['contador'] },
-  { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, roles: ['contador'] },
+  { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings },
   { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
   { href: '/admin/contabilidades',  label: 'Admin',          Icon: ShieldCheck, roles: ['adminbalu'] },
