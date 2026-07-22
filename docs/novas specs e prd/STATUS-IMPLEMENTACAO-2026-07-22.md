@@ -59,9 +59,9 @@ Legenda: ✅ implementado · 🟡 parcial · ❌ ausente · 🔒 travado em cred
 
 ## Backlog priorizado (o que falta, por importância)
 
-Ver PRD e spec detalhados em:
-- `docs/product/PRD-Remanescente-Balu.md`
-- `docs/superpowers/specs/2026-07-22-remanescente-design.md`
+Ver PRD e spec detalhados (mesma pasta `docs/novas specs e prd/`):
+- `PRD-Remanescente-Balu.md`
+- `2026-07-22-remanescente-design.md`
 
 **P0 — bloqueadores de lançamento**
 1. **Produção fiscal — emissão real** (Focus produção) 🔒 *credencial Michel*

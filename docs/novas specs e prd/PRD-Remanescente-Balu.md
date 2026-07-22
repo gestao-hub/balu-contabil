@@ -1,8 +1,8 @@
 # PRD — Escopo Remanescente do Balu (pós-Blocos A/E)
 
-> **Data:** 2026-07-22 · **Status:** proposto · **Base:** auditoria `docs/investigations/STATUS-IMPLEMENTACAO-2026-07-22.md`.
+> **Data:** 2026-07-22 · **Status:** proposto · **Base:** auditoria `STATUS-IMPLEMENTACAO-2026-07-22.md` (mesma pasta).
 > Consolida **tudo que ainda não foi implementado**, priorizado por importância para o lançamento. Cada item tem: problema, objetivo, escopo, fora de escopo, dependências (credenciais externas sinalizadas com 🔒), critérios de aceite e base legal.
-> **Spec técnica correspondente:** `docs/superpowers/specs/2026-07-22-remanescente-design.md`.
+> **Spec técnica correspondente:** `2026-07-22-remanescente-design.md` (mesma pasta).
 
 ## Contexto
 

@@ -1,6 +1,6 @@
 # Spec — Escopo Remanescente do Balu: Design Técnico
 
-> **Data:** 2026-07-22 · **Status:** proposto (revisar antes de writing-plans por item) · **PRD:** `docs/product/PRD-Remanescente-Balu.md`.
+> **Data:** 2026-07-22 · **Status:** proposto (revisar antes de writing-plans por item) · **PRD:** `PRD-Remanescente-Balu.md` (mesma pasta).
 > Cobre **tudo que falta**, em ordem de importância. Itens buildáveis agora estão em profundidade de implementação; itens travados em credencial externa (🔒) estão em profundidade de design com a dependência explícita.
 > **Convenção:** cada item vira sua própria spec-detalhada + plano (writing-plans) quando for executado — este documento é o mapa técnico mestre. Não implementar em lote gigante; um bloco por vez, com testes.
 
