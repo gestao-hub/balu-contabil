@@ -4,6 +4,7 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getSiteUrl } from '@/lib/site-url';
 import { safeNext } from '@/lib/format/safe-next';
 import { limitar, ipDe } from '@/lib/security/rate-limit';
@@ -66,6 +67,13 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
     return { error: error.message };
   }
 
+  // Registra o aceite de cada documento (termos/privacidade) atualmente publicado,
+  // na versão vigente no momento do cadastro. Usa admin client pois a sessão pode
+  // ainda não existir (Confirm email ON). Sem docs publicados, não insere nada.
+  if (data.user) {
+    await registrarAceitesIniciais(data.user.id, ip);
+  }
+
   // Auto-confirm (Confirm email OFF): sessão veio no signUp, segue pra `next`
   // (ex.: `/convite/<token>` — usuário veio de um convite deslogado) ou pra home.
   if (data.session) {
@@ -100,4 +108,24 @@ export async function resendConfirmacaoAction(email: string): Promise<{ ok: true
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+/** Grava em `aceites` a versão vigente de cada documento LGPD publicado (termos/
+ *  privacidade) no momento do cadastro. Usa admin client (bypassa RLS) porque no
+ *  fluxo com "Confirm email" ligado ainda não há sessão para o usuário recém-criado.
+ *  Sem documentos publicados, não insere nada (no-op silencioso). */
+async function registrarAceitesIniciais(userId: string, ip: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: docs } = await admin
+    .from('documento_versoes')
+    .select('tipo, versao, publicado_em')
+    .not('publicado_em', 'is', null)
+    .order('publicado_em', { ascending: false });
+
+  const vigentes = new Map<string, string>();
+  for (const d of docs ?? []) if (!vigentes.has(d.tipo)) vigentes.set(d.tipo, d.versao);
+  if (vigentes.size === 0) return;
+
+  const rows = [...vigentes].map(([tipo, versao]) => ({ user_id: userId, tipo, versao, ip }));
+  await admin.from('aceites').insert(rows);
 }

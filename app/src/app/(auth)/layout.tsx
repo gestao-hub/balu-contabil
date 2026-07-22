@@ -1,15 +1,29 @@
 // @custom — bubble-behavior: editado à mão, não regenerar.
-// Auth gate: sem sessão → /login; sem empresa (current_company vazio) → /onboarding.
+// Auth gate: sem sessão → /login; sem empresa (current_company vazio) → /onboarding;
+// documento LGPD pendente de aceite → /aceite (Task 12).
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { signedUrlBranding } from '@/lib/clients/supabase-storage';
+import { documentosPendentes } from '@/lib/lgpd/pendencia-aceite';
 import MenuLateral, { type EscritorioBranding } from '@/components/MenuLateral';
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
+
+  // Gate de re-aceite (LGPD, Task 12): redireciona pra /aceite quando há documento
+  // publicado que o usuário ainda não aceitou na versão vigente. `documentosPendentes`
+  // é um no-op (retorna []) quando não há documentos publicados. O layout não sabe a
+  // rota atual (Server Component), então lê `x-pathname` (setado pelo middleware) pra
+  // não redirecionar quando já está em /aceite — evita loop /aceite → /aceite.
+  const pathname = (await headers()).get('x-pathname') ?? '';
+  if (pathname !== '/aceite') {
+    const pendentes = await documentosPendentes(user.id);
+    if (pendentes.length > 0) redirect('/aceite');
+  }
 
   const [{ data: profile }, { data: companies }, { data: roleRow }, { data: membro }] = await Promise.all([
     supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle(),
