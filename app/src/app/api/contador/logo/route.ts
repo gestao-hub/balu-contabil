@@ -14,20 +14,18 @@ export const dynamic = 'force-dynamic';
 
 const MAX_LOGO_BYTES = 1 * 1024 * 1024; // 1MB
 
-type Sniffed = { ext: 'png' | 'jpg' | 'svg'; contentType: string };
+type Sniffed = { ext: 'png' | 'jpg'; contentType: string };
 
-/** Detecta o formato real pelos bytes iniciais — nunca pelo nome/content-type declarado. */
+/** Detecta o formato real pelos bytes iniciais — nunca pelo nome/content-type declarado.
+ *  SVG é DELIBERADAMENTE recusado: é conteúdo ativo (pode conter <script>) e a URL
+ *  assinada do Storage o serve como image/svg+xml — aberta direto numa aba executaria
+ *  o script. Só raster (PNG/JPG), que <img> e o browser tratam como imagem inerte. */
 function sniffImage(buf: Buffer): Sniffed | null {
   if (buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
     return { ext: 'png', contentType: 'image/png' };
   }
   if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
     return { ext: 'jpg', contentType: 'image/jpeg' };
-  }
-  // SVG é texto — procura a assinatura logo após espaços em branco/BOM iniciais.
-  const head = buf.subarray(0, Math.min(buf.length, 512)).toString('utf8').replace(/^\uFEFF/, '').trimStart();
-  if (/^(<\?xml|<svg)/i.test(head)) {
-    return { ext: 'svg', contentType: 'image/svg+xml' };
   }
   return null;
 }
@@ -66,7 +64,7 @@ export async function POST(req: Request) {
   const sniffed = sniffImage(buf);
   if (!sniffed) {
     return NextResponse.json(
-      { ok: false, error: 'Formato inválido. Envie um PNG, JPG ou SVG.' },
+      { ok: false, error: 'Formato inválido. Envie um PNG ou JPG.' },
       { status: 400 },
     );
   }

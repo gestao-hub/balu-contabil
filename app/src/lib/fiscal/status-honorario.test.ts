@@ -18,4 +18,12 @@ describe('statusHonorario', () => {
     const r = statusHonorario({ data_pagamento: null, data_vencimento: '2026-07-22' }, hoje);
     expect(r).toBe('aberto');
   });
+
+  it('usa data BRT: vencimento hoje às 22h BRT (=01h UTC dia seguinte) ainda é aberto', () => {
+    // Instante 2026-07-23T01:00:00Z = 2026-07-22 22h em BRT. Um honorário vencendo
+    // em 2026-07-22 deve estar ABERTO (dia ainda não acabou no Brasil), não atrasado.
+    const noiteBrt = new Date('2026-07-23T01:00:00Z');
+    const r = statusHonorario({ data_pagamento: null, data_vencimento: '2026-07-22' }, noiteBrt);
+    expect(r).toBe('aberto');
+  });
 });

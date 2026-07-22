@@ -85,7 +85,11 @@ export default function MenuLateral({
   }, [companyMenuOpen]);
   const items = NAV
     .filter((i) => !i.roles || i.roles.includes(userRole))
-    .filter((i) => !i.href.startsWith('/contador') || temEscritorio);
+    // `/contador` (painel) é o ponto de ENTRADA do contador: sempre visível pro
+    // papel contador — a própria página redireciona pra /contador/cadastro quem
+    // ainda não tem escritório (senão o contador recém-criado fica sem caminho de
+    // UI nenhum). As sub-rotas (equipe, config) só aparecem com escritório pronto.
+    .filter((i) => i.href === '/contador' || !i.href.startsWith('/contador/') || temEscritorio);
 
   async function changeCompany(companyId: string) {
     if (companyId === currentCompanyId) return;

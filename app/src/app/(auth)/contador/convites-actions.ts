@@ -5,6 +5,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx, type ContabilidadeCtx } from '@/lib/contador/guards';
 import { sendEmail } from '@/lib/clients/email';
+import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 
 // Padrão local ao arquivo (não cross-import de rota) — ver nota em ./actions.ts.
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
@@ -127,6 +128,8 @@ export async function aceitarConviteAction(token: string): Promise<ActionResult<
       CONVITE_EXPIRADO: 'Convite expirado — peça um novo ao seu contador.',
       CONVITE_USADO: 'Este convite já foi utilizado.', ESCRITORIO_INATIVO: 'O escritório não está ativo.',
       EMPRESA_JA_TEM_DONO: 'Esta empresa já tem um responsável no Balu.',
+      JA_MEMBRO_OUTRO_ESCRITORIO: 'Você já faz parte de outro escritório. Saia dele antes de aceitar este convite.',
+      EMPRESA_FORA_DA_CARTEIRA: 'Esta empresa não está mais vinculada ao escritório. Peça um novo convite.',
     };
     const key = Object.keys(msg).find((k) => error.message.includes(k));
     return { ok: false, error: key ? msg[key] : 'Não foi possível aceitar o convite.' };
@@ -146,10 +149,38 @@ export async function aceitarConviteAction(token: string): Promise<ActionResult<
       .select('id')
       .eq('user_id', user.id)
       .maybeSingle();
-    if (existingProfile) {
-      await admin.from('profiles').update({ current_company: conv.company_id }).eq('user_id', user.id);
-    } else {
-      await admin.from('profiles').insert({ user_id: user.id, current_company: conv.company_id });
+    // Propaga o erro (como createCompanyAction faz): se current_company não gravar,
+    // o cliente cai de volta no gate de /onboarding e o "aceite" foi mentira.
+    const profErr = existingProfile
+      ? (await admin.from('profiles').update({ current_company: conv.company_id }).eq('user_id', user.id)).error
+      : (await admin.from('profiles').insert({ user_id: user.id, current_company: conv.company_id })).error;
+    if (profErr) {
+      return { ok: false, error: 'Vínculo concluído, mas não foi possível abrir a empresa. Recarregue a página.' };
+    }
+
+    // Empresa cadastrada pelo contador nasceu SEM dono, então company_cnaes ficou
+    // vazio (owner_user_id é NOT NULL). Agora que o cliente assumiu a empresa, popula
+    // os CNAEs (base do Fator R / anexo). Best-effort: nunca lança e não bloqueia o aceite.
+    // Sem FK empresas_fiscais→companies no banco, então PostgREST não resolve embed:
+    // duas queries separadas.
+    const { data: emp } = await admin
+      .from('companies')
+      .select('cnpj')
+      .eq('id', conv.company_id)
+      .maybeSingle();
+    if (emp?.cnpj) {
+      const { data: fiscal } = await admin
+        .from('empresas_fiscais')
+        .select('cnae_principal')
+        .eq('empresa_id', conv.company_id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      await sincronizarCnaesEmpresa(admin, {
+        companyId: conv.company_id,
+        ownerUserId: user.id,
+        cnpj: emp.cnpj as string,
+        cnaePrincipalFallback: (fiscal?.cnae_principal as string | null) ?? null,
+      });
     }
   }
   return { ok: true, data: { companyId: conv?.company_id ?? null } };

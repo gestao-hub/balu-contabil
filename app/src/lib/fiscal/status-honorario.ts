@@ -1,5 +1,7 @@
 // Status derivado (nunca confiar na coluna `status` armazenada para exibição —
 // ela pode ficar desatualizada; o vencimento é comparado contra `hoje` em runtime).
+import { ymdBrt } from './tempo-brt';
+
 export type StatusHonorario = 'pago' | 'atrasado' | 'aberto';
 
 export function statusHonorario(
@@ -7,5 +9,7 @@ export function statusHonorario(
   hoje = new Date(),
 ): StatusHonorario {
   if (h.data_pagamento) return 'pago';
-  return h.data_vencimento < hoje.toISOString().slice(0, 10) ? 'atrasado' : 'aberto';
+  // data BRT (não UTC) — senão nas ~3h finais do dia um honorário vencendo "hoje"
+  // aparece como atrasado antes do dia acabar no Brasil.
+  return h.data_vencimento < ymdBrt(hoje) ? 'atrasado' : 'aberto';
 }

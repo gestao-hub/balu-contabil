@@ -6,6 +6,7 @@ import { marcarPagoV2Action, desmarcarPagoV2Action, deleteHonorarioV2Action } fr
 import HonorarioV2FormDialog, { type ClienteOption, type HonorarioV2Row } from './HonorarioV2FormDialog';
 import PopupConfirm from '@/components/PopupConfirm';
 import { statusHonorario, type StatusHonorario } from '@/lib/fiscal/status-honorario';
+import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 import { formatBRL, valorToCentavos } from '@/lib/format/dinheiro';
 
 export type { HonorarioV2Row };
@@ -119,7 +120,7 @@ export default function HonorariosV2List({ initial, clientes }: Props) {
         if (res.ok) {
           toast('success', 'Honorário marcado como pago.');
           setRows(rs => rs.map(r => r.id === confirmRow.id
-            ? { ...r, data_pagamento: new Date().toISOString().slice(0, 10), forma_pagamento: forma }
+            ? { ...r, data_pagamento: ymdBrt(), forma_pagamento: forma }
             : r));
         } else { toast('error', res.error); }
       });

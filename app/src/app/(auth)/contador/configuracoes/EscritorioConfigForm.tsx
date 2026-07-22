@@ -137,7 +137,7 @@ export default function EscritorioConfigForm({ initial, logoUrlInicial, linkInic
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/svg+xml"
+              accept="image/png,image/jpeg"
               className="hidden"
               onChange={handleLogoChange}
             />
@@ -150,7 +150,7 @@ export default function EscritorioConfigForm({ initial, logoUrlInicial, linkInic
               {uploadingLogo ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
               Trocar logo
             </button>
-            <p className="mt-1 text-xs text-muted-foreground">PNG, JPG ou SVG, até 1MB.</p>
+            <p className="mt-1 text-xs text-muted-foreground">PNG ou JPG, até 1MB.</p>
           </div>
         </div>
 

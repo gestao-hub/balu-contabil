@@ -1,5 +1,7 @@
 // src/lib/fiscal/semaforo.ts
 // Única fonte da regra "cliente irregular" (spec Bloco A). Textos em pt simples + norma (didático).
+import { mesBrt } from './tempo-brt';
+
 export type RegimeCode = '1' | '2' | '3' | '4';
 export type FatosCliente = {
   regimeCode: RegimeCode | null;
@@ -32,7 +34,7 @@ export function classificarSemaforo(
     texto: 'A declaração mensal (PGDAS-D) do mês passado ainda não foi transmitida — o prazo é o dia 20.',
     norma: 'Res. CGSN 140/2018, art. 38',
   });
-  const aposPrazoDasn = hoje.getMonth() + 1 > 5; // após 31/05
+  const aposPrazoDasn = mesBrt(hoje) > 5; // após 31/05 (mês em BRT, não UTC/local do server)
   if (isMei && aposPrazoDasn && !f.dasnAnoAnteriorTransmitida) vermelhos.push({
     texto: 'A declaração anual do MEI (DASN-SIMEI) do ano passado não foi entregue — o prazo era 31/05.',
     norma: 'Res. CGSN 140/2018, art. 109',
