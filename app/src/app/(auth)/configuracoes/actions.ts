@@ -350,6 +350,30 @@ export async function syncFocusEmpresaAction(): Promise<{ ok: true } | { ok: fal
 /** @deprecated use syncFocusEmpresaAction. Mantido pra não quebrar callers durante a migração. */
 export const retryFocusEmpresaAction = syncFocusEmpresaAction;
 
+/**
+ * Task 18 — LGPD art. 18: a empresa desvincula seu escritório a qualquer momento.
+ * O escritório deixa de ver os dados imediatamente (RLS de `minha_contabilidade()`
+ * depende de `companies.contabilidade_id`); nada é apagado. Client AUTENTICADO
+ * escopado por dono — mesma policy `companies_update` que updateCompanyAction já usa.
+ */
+export async function desvincularEscritorioAction(companyId: string): Promise<ActionResult> {
+  if (!companyId) return { ok: false, error: 'ID da empresa ausente.' };
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const { error } = await supabase
+    .from('companies')
+    .update({ contabilidade_id: null, updated_at: new Date().toISOString() })
+    .eq('id', companyId)
+    .eq('user_id', user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/configuracoes');
+  return { ok: true };
+}
+
 export type AtualizarReceitaResult =
   | { ok: true; atualizados: Partial<CompanyInput> }
   | { ok: false; error: string };

@@ -74,6 +74,28 @@ export async function downloadCertificado(path: string): Promise<Buffer> {
   return downloadFromBucket(BUCKET, path);
 }
 
+// Task 18: branding do escritório (white-label). Bucket privado, 1 logo por
+// contabilidade — o nome do arquivo é fixo (`logo.<ext>`), então re-upload
+// substitui o anterior (uploadToBucket já faz upsert:true).
+export const BRANDING_BUCKET = 'branding';
+
+/** Sobe (ou substitui) o logo do escritório em `${contabilidadeId}/logo.${ext}`. */
+export async function uploadLogoEscritorio(
+  contabilidadeId: string,
+  file: Buffer,
+  ext: 'png' | 'jpg' | 'svg',
+  contentType: string,
+): Promise<{ path: string }> {
+  const path = `${contabilidadeId}/logo.${ext}`;
+  return uploadToBucket(BRANDING_BUCKET, path, file, contentType);
+}
+
+/** URL assinada (bucket privado) pra exibir o logo do escritório no app do cliente. */
+export async function signedUrlBranding(path: string, expiresInSec = 3600): Promise<string | null> {
+  const { data } = await admin().storage.from(BRANDING_BUCKET).createSignedUrl(path, expiresInSec);
+  return data?.signedUrl ?? null;
+}
+
 /** Sobe um documento de abertura em `${scopeId}/${fileName}` no bucket de abertura. */
 export async function uploadAberturaDoc(
   scopeId: string,

@@ -2,7 +2,9 @@
 // Auth gate: sem sessão → /login; sem empresa (current_company vazio) → /onboarding.
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
-import MenuLateral from '@/components/MenuLateral';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { signedUrlBranding } from '@/lib/clients/supabase-storage';
+import MenuLateral, { type EscritorioBranding } from '@/components/MenuLateral';
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createServerClient();
@@ -11,10 +13,34 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
 
   const [{ data: profile }, { data: companies }, { data: roleRow }, { data: membro }] = await Promise.all([
     supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle(),
-    supabase.from('companies').select('id, nome').eq('user_id', user.id).order('nome'),
+    // contabilidade_id junto — evita 1 query extra pra descobrir se a empresa
+    // ativa tem escritório (co-branding, Task 18).
+    supabase.from('companies').select('id, nome, contabilidade_id').eq('user_id', user.id).order('nome'),
     supabase.from('role_types').select('type').eq('user_id', user.id).maybeSingle(),
     supabase.from('contabilidade_membros').select('contabilidade_id').eq('user_id', user.id).maybeSingle(),
   ]);
+
+  // Co-branding (Task 18): só busca a contabilidade quando a empresa ATIVA tem
+  // contabilidade_id — sem isso, zero query extra (não pesa no caminho comum).
+  // Admin client: empresa não tem RLS de leitura em `contabilidades`.
+  let escritorio: EscritorioBranding | null = null;
+  const currentCompanyContabilidadeId =
+    (companies ?? []).find((c) => c.id === profile?.current_company)?.contabilidade_id ?? null;
+  if (currentCompanyContabilidadeId) {
+    const admin = createAdminClient();
+    const { data: contab } = await admin
+      .from('contabilidades')
+      .select('nome, logo_url, whatsapp_suporte, status')
+      .eq('id', currentCompanyContabilidadeId)
+      .maybeSingle();
+    if (contab?.status === 'aprovada') {
+      escritorio = {
+        nome: contab.nome as string,
+        logoUrl: contab.logo_url ? await signedUrlBranding(contab.logo_url as string) : null,
+        whatsapp: (contab.whatsapp_suporte as string | null) ?? null,
+      };
+    }
+  }
 
   // role_types.type é a fonte canônica; metadata como fallback.
   const rawRole = (roleRow?.type as string | null) ?? (user.user_metadata?.type as string | null) ?? '';
@@ -40,9 +66,10 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
           'Usuário'
         }
         userRole={userRole}
-        companies={companies ?? []}
+        companies={(companies ?? []).map((c) => ({ id: c.id, nome: c.nome }))}
         currentCompanyId={profile?.current_company ?? null}
         temEscritorio={!!membro}
+        escritorio={escritorio}
       />
       <div className="flex-1 overflow-y-auto pt-14 md:pt-0">{children}</div>
     </div>

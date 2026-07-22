@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
-import { ContabilidadeSchema, CompanyCreateSchema } from '@/types/zod';
+import { ContabilidadeSchema, CompanyCreateSchema, ContabilidadeBrandingSchema } from '@/types/zod';
 import { posProcessarNovaEmpresa, resolverCodigoMunicipio } from '@/app/(auth)/onboarding/actions';
 
 // Padrão local ao arquivo (não cross-import de rota) — segue a convenção
@@ -88,6 +88,33 @@ export async function removerClienteDaCarteiraAction(companyId: string): Promise
     .eq('id', companyId).eq('contabilidade_id', g.contabilidade.id); // escopado (anti-IDOR)
   revalidatePath('/contador');
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+// Task 18: branding do escritório (nome exibido, WhatsApp de suporte, nome do
+// remetente de e-mail). Client AUTENTICADO — o GRANT de coluna em 0030 cobre
+// exatamente estes 3 campos; `status` nunca é alcançável por aqui.
+export async function salvarBrandingAction(input: unknown): Promise<ActionResult> {
+  const g = await getContabilidadeCtx();
+  if ('error' in g) return { ok: false, error: g.error };
+  if (!g.contabilidade) return { ok: false, error: 'Você não faz parte de um escritório.' };
+
+  const parsed = ContabilidadeBrandingSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
+
+  // Campos opcionais: string vazia vira null (regex/limite só se aplicam a valor presente).
+  const supabase = await createServerClient();
+  const { error } = await supabase
+    .from('contabilidades')
+    .update({
+      nome: parsed.data.nome,
+      whatsapp_suporte: parsed.data.whatsapp_suporte || null,
+      email_remetente_nome: parsed.data.email_remetente_nome || null,
+    })
+    .eq('id', g.contabilidade.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/contador/configuracoes');
+  return { ok: true };
 }
 
 export async function removerMembroAction(userId: string): Promise<ActionResult> {

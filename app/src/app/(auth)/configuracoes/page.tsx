@@ -14,6 +14,7 @@ import type { SaudeState } from '@/lib/fiscal/saude-empresa';
 import { getAberturaByCompany } from '@/lib/abertura/queries';
 import { listarCnaesSecundariosEmpresa, type CnaeSecundario } from '@/lib/fiscal/company-cnaes';
 import AberturaInfoView from './AberturaInfoView';
+import MeuEscritorioCard from './MeuEscritorioCard';
 
 const TABS = [
   { key: 'dados', label: 'Dados da empresa' },
@@ -90,6 +91,20 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   let cnaesSecundarios: CnaeSecundario[] = [];
   if (active === 'regime' && company) {
     cnaesSecundarios = await listarCnaesSecundariosEmpresa(supabase, company.id as string);
+  }
+
+  // Task 18 — bloco "Meu escritório" (aba Dados): só busca quando a empresa tem
+  // contabilidade_id. Admin client: empresa não tem RLS de leitura em `contabilidades`.
+  let escritorioVinculado: { nome: string } | null = null;
+  const contabilidadeIdVinculada = (company?.contabilidade_id as string | null) ?? null;
+  if (active === 'dados' && contabilidadeIdVinculada) {
+    const admin = createAdminClient();
+    const { data: contab } = await admin
+      .from('contabilidades')
+      .select('nome')
+      .eq('id', contabilidadeIdVinculada)
+      .maybeSingle();
+    escritorioVinculado = contab ? { nome: contab.nome as string } : null;
   }
 
   const needsMunicipio = (active === 'fiscal' || active === 'diagnostico') && !!company;
@@ -195,27 +210,32 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       {!company ? (
         <p className="text-sm text-muted-foreground">Cadastre uma empresa para acessar as configurações.</p>
       ) : active === 'dados' ? (
-        <DadosEmpresaForm
-          key={company.id as string}
-          id={company.id as string}
-          initial={{
-            cnpj: (company.cnpj as string) ?? '',
-            razao_social: (company.razao_social as string) ?? '',
-            nome: (company.nome as string) ?? '',
-            inscricao_estadual: (company.inscricao_estadual as string) ?? '',
-            inscricao_municipal: (company.inscricao_municipal as string) ?? '',
-            codigo_municipio: (company.codigo_municipio as string) ?? '',
-            logradouro: (company.logradouro as string) ?? '',
-            numero: (company.numero as string) ?? '',
-            sem_numero: (company.sem_numero as boolean) ?? false,
-            bairro: (company.bairro as string) ?? '',
-            municipio: (company.municipio as string) ?? '',
-            uf: (company.uf as string) ?? '',
-            cep: (company.cep as string) ?? '',
-            telefone: (company.telefone as string) ?? '',
-            email: (company.email as string) ?? '',
-          }}
-        />
+        <>
+          <DadosEmpresaForm
+            key={company.id as string}
+            id={company.id as string}
+            initial={{
+              cnpj: (company.cnpj as string) ?? '',
+              razao_social: (company.razao_social as string) ?? '',
+              nome: (company.nome as string) ?? '',
+              inscricao_estadual: (company.inscricao_estadual as string) ?? '',
+              inscricao_municipal: (company.inscricao_municipal as string) ?? '',
+              codigo_municipio: (company.codigo_municipio as string) ?? '',
+              logradouro: (company.logradouro as string) ?? '',
+              numero: (company.numero as string) ?? '',
+              sem_numero: (company.sem_numero as boolean) ?? false,
+              bairro: (company.bairro as string) ?? '',
+              municipio: (company.municipio as string) ?? '',
+              uf: (company.uf as string) ?? '',
+              cep: (company.cep as string) ?? '',
+              telefone: (company.telefone as string) ?? '',
+              email: (company.email as string) ?? '',
+            }}
+          />
+          {escritorioVinculado && (
+            <MeuEscritorioCard companyId={company.id as string} nomeEscritorio={escritorioVinculado.nome} />
+          )}
+        </>
       ) : active === 'regime' ? (
         <RegimeTributarioForm
           key={company.id as string}

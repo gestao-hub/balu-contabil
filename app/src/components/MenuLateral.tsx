@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
-  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, ShieldCheck,
+  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, ShieldCheck, MessageCircle,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -23,12 +23,23 @@ import ThemeToggle from '@/components/ThemeToggle';
 type Role = 'empresa' | 'contador' | 'adminbalu';
 const ROLE_LABEL: Record<Role, string> = { empresa: 'Empresa', contador: 'Contador', adminbalu: 'Admin Balu' };
 
+// Task 18: co-branding — quando a empresa ativa está vinculada a um escritório
+// APROVADO, a sidebar troca a marca Balu do topo pela do escritório (logo +
+// "oferecido por") e ganha um atalho de Suporte via WhatsApp. Sem escritório
+// vinculado (prop ausente/null), o menu é EXATAMENTE o de hoje.
+export type EscritorioBranding = {
+  nome: string;
+  logoUrl: string | null;
+  whatsapp: string | null;
+};
+
 export type MenuLateralProps = {
   userName: string;
   userRole: Role;
   companies: { id: string; nome: string }[];
   currentCompanyId: string | null;
   temEscritorio: boolean;
+  escritorio?: EscritorioBranding | null;
 };
 
 type NavItem = { href: string; label: string; Icon: React.ComponentType<{ className?: string }>; roles?: Role[] };
@@ -46,7 +57,7 @@ const NAV: NavItem[] = [
 ];
 
 export default function MenuLateral({
-  userName, userRole, companies, currentCompanyId, temEscritorio,
+  userName, userRole, companies, currentCompanyId, temEscritorio, escritorio = null,
 }: MenuLateralProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -149,17 +160,34 @@ export default function MenuLateral({
           {open ? <X className="size-3" /> : <MenuIcon className="size-3" />}
         </button>
 
-      {/* Marca */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-4">
-        {open ? <Logo size={26} /> : <Logo variant="symbol" size={24} />}
-        <button
-          type="button"
-          aria-label="Fechar menu"
-          onClick={() => setMobileOpen(false)}
-          className="grid size-8 place-items-center rounded-md text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground md:hidden"
-        >
-          <X className="size-4" />
-        </button>
+      {/* Marca — vira a do escritório quando a empresa ativa está vinculada a um
+          escritório aprovado (co-branding); sem escritório, é sempre a Balu. */}
+      <div className="border-b border-border px-3 py-4">
+        <div className="flex items-center justify-between">
+          {escritorio?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- URL assinada de bucket privado
+            <img
+              src={escritorio.logoUrl}
+              alt={escritorio.nome}
+              className={open ? 'h-7 max-w-[150px] object-contain' : 'size-6 object-contain'}
+            />
+          ) : open ? (
+            <Logo size={26} />
+          ) : (
+            <Logo variant="symbol" size={24} />
+          )}
+          <button
+            type="button"
+            aria-label="Fechar menu"
+            onClick={() => setMobileOpen(false)}
+            className="grid size-8 place-items-center rounded-md text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground md:hidden"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        {open && escritorio && (
+          <p className="mt-1 truncate text-xs text-muted-foreground">oferecido por {escritorio.nome}</p>
+        )}
       </div>
 
       {/* Cabeçalho com usuário + empresa — só quando expandido.
@@ -237,6 +265,17 @@ export default function MenuLateral({
             );
           })}
         </ul>
+        {escritorio?.whatsapp && (
+          <a
+            href={`https://wa.me/${escritorio.whatsapp.replace(/\D/g, '')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 flex items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground"
+          >
+            <MessageCircle className="size-4 shrink-0" />
+            {open && <span className="truncate">Suporte</span>}
+          </a>
+        )}
       </nav>
 
       {/* Sair */}
