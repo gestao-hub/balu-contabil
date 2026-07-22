@@ -4,7 +4,7 @@
 import { headers } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
 import { getSiteUrl } from '@/lib/site-url';
-import { limitar, ipDe } from '@/lib/security/rate-limit';
+import { limitar, ipDe, chaveEmail } from '@/lib/security/rate-limit';
 
 export type ResetState = { error?: string; success?: string } | undefined;
 
@@ -17,7 +17,7 @@ export async function requestResetAction(_prev: ResetState, formData: FormData):
   // e-mail existe — mesma postura de neutralidade que o restante deste fluxo já
   // adota (resetPasswordForEmail não revela existência de conta).
   const ip = ipDe(await headers());
-  if (!(await limitar(`reset:${ip}:${email}`, 5, 3600))) {
+  if (!(await limitar(`reset:${ip}:${chaveEmail(email)}`, 5, 3600))) {
     return { success: 'Enviamos um link de redefinição para o seu e-mail.' };
   }
 

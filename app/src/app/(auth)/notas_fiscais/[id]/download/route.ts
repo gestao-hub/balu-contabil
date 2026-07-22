@@ -70,7 +70,9 @@ export async function GET(
           return new Response('origem do arquivo não permitida', { status: 400 });
         }
         const url = isAbsoluteUrl(savedUrl) ? savedUrl : `${focusBase(ENV)}${savedUrl}`;
-        const r = await fetch(url, { headers: { Authorization: basicAuth(focusToken) } });
+        // redirect:'manual' impede que um 3xx de um host allowlisted (ex.: S3/Focus)
+        // saia para um alvo interno, contornando urlDownloadPermitida (anti-SSRF).
+        const r = await fetch(url, { headers: { Authorization: basicAuth(focusToken) }, redirect: 'manual' });
         if (r.ok) {
           const xml = await r.text();
           return xmlResponse(xml, ref);
@@ -97,11 +99,11 @@ export async function GET(
         if (!urlDownloadPermitida(savedUrl)) {
           return new Response('origem do arquivo não permitida', { status: 400 });
         }
-        const r = await fetch(savedUrl);
+        const r = await fetch(savedUrl, { redirect: 'manual' });
         if (r.ok) return pdfResponse(await r.arrayBuffer(), ref);
       } else {
         const url = `${focusBase(ENV)}${savedUrl}`;
-        const r = await fetch(url, { headers: { Authorization: basicAuth(focusToken) } });
+        const r = await fetch(url, { headers: { Authorization: basicAuth(focusToken) }, redirect: 'manual' });
         if (r.ok) return pdfResponse(await r.arrayBuffer(), ref);
       }
     }
