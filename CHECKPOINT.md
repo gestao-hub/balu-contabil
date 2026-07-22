@@ -1,13 +1,17 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-22 (sessão 2 — execução do Bloco A em andamento)
+> **Última atualização:** 2026-07-22 (sessão 2 — Bloco A COMPLETO e mergeado em main)
 
 ---
 
 ## Onde estamos
 
-**Fase:** implementação do **Bloco A** em andamento na branch `feat/bloco-a-multitenant` (modo subagent-driven).
+**Fase:** **Bloco A concluído e mergeado em `main`** (merge `d5e6885`, `--no-ff`). Próximo passo: **Bloco E** (hardening + LGPD) — fluxo /brainstorming → spec → writing-plans → execução.
+
+**Backup/reversão do Bloco A:** tag `pre-preview-bloco-a` (f1c3f21); main pré-merge estava em `78dd189`. Reverter dados do teste: `scratchpad/reverter-preview.sql` + `docs/reference/RESTORE-POINT-preview-2026-07-22.md`.
+
+**Preview Vercel:** NÃO subido (adiado pelo usuário). Não há projeto Vercel do balu em nenhuma scope da CLI logada (luan-4913: times ide-apps, tryia-social). `app/vercel.json` só tem crons — não linka projeto. Ao retomar o preview: precisa definir a conta/scope (tryia-social foi descartada pelo usuário) e as env vars vão do `app/.env.local` (menos SUPABASE_PASSWORD; NEXT_PUBLIC_SITE_URL = URL do preview). O deploy apontará para o Supabase de PRODUÇÃO (único que existe).
 
 **Bloco A — progresso (22/07, sessão 2):**
 - ✅ Tasks 1–5: migrations 0030–0034 escritas, commitadas e **aplicadas no banco real** com verificação (runner node+pg no scratchpad lendo `SUPABASE_PASSWORD` do `app/.env.local` — MCP Supabase rejeitado pelo usuário; ver memória `balu-migrations-e-env`).
@@ -66,7 +70,7 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 
 | Bloco | Spec | Plano | Implementação |
 |---|---|---|---|
-| A — multi-tenant, painel contador, white-label, honorários v2 | ✅ aprovada | ✅ escrito (21 tasks) | ⬜ não iniciada |
+| A — multi-tenant, painel contador, white-label, honorários v2 | ✅ aprovada | ✅ escrito (21 tasks) | ✅ **em main** (0030–0036) |
 | E — hardening + LGPD | ⬜ | ⬜ | ⬜ |
 | D — produção fiscal (Focus prod, PGDAS-D real, DASN assistida, abertura UI) | ⬜ | ⬜ | ⬜ |
 | B — billing Asaas | ⬜ | ⬜ | ⬜ |
