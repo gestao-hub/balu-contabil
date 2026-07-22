@@ -2,9 +2,11 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
 import { getSiteUrl } from '@/lib/site-url';
 import { safeNext } from '@/lib/format/safe-next';
+import { limitar, ipDe } from '@/lib/security/rate-limit';
 
 export type SignupState = { error?: string } | undefined;
 
@@ -32,6 +34,11 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
   // "" = placeholder (não escolhido). Só validamos quando preenchido.
   if (role_type && role_type !== 'Empresa' && role_type !== 'Contador') {
     return { error: 'Tipo de conta inválido.' };
+  }
+
+  const ip = ipDe(await headers());
+  if (!(await limitar(`signup:${ip}`, 5, 3600))) {
+    return { error: 'Muitas tentativas. Tente novamente mais tarde.' };
   }
 
   // O tipo escolhido vai no metadata sob a chave `type`; o trigger no banco lê

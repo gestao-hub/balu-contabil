@@ -1,11 +1,13 @@
 // src/app/(auth)/contador/convites-actions.ts
 'use server';
 import { randomBytes } from 'crypto';
+import { headers } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx, type ContabilidadeCtx } from '@/lib/contador/guards';
 import { sendEmail } from '@/lib/clients/email';
 import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
+import { limitar, ipDe } from '@/lib/security/rate-limit';
 
 // Padrão local ao arquivo (não cross-import de rota) — ver nota em ./actions.ts.
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
@@ -121,6 +123,10 @@ export async function aceitarConviteAction(token: string): Promise<ActionResult<
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Faça login para aceitar o convite.' };
+  const ip = ipDe(await headers());
+  if (!(await limitar(`convite:${ip}`, 20, 3600))) {
+    return { ok: false, error: 'Muitas tentativas. Tente novamente mais tarde.' };
+  }
   const { data, error } = await supabase.rpc('aceitar_convite', { p_token: token });
   if (error) {
     const msg: Record<string, string> = {
