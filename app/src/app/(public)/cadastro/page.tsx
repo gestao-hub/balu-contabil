@@ -2,9 +2,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useActionState, useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { useSearchParams } from 'next/navigation';
 import { signupAction, type SignupState } from './actions';
 import Logo from '@/components/Logo';
 
@@ -54,14 +53,10 @@ export default function CadastroPage() {
           <p className="text-sm text-muted-foreground mt-1">Crie sua conta</p>
         </div>
 
-        <Suspense fallback={null}>
-          <RefEscritorioBanner />
-        </Suspense>
+        <RefEscritorioBanner />
 
         <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
-          <Suspense fallback={null}>
-            <NextField />
-          </Suspense>
+          <NextField />
 
           <div>
             <label htmlFor="full_name" className="block text-sm font-medium text-muted-foreground-2 mb-1">
@@ -180,14 +175,24 @@ export default function CadastroPage() {
   );
 }
 
+// Lê um query param só APÓS o mount: servidor e 1º render do cliente rendem o
+// mesmo (null), eliminando o mismatch de hydration (React #418) que o
+// useSearchParams causava nesta página estática (regressão pega pelo e2e 02-cadastro).
+function useQueryParam(name: string): string | null {
+  const [v, setV] = useState<string | null>(null);
+  useEffect(() => {
+    setV(new URLSearchParams(window.location.search).get(name));
+  }, [name]);
+  return v;
+}
+
 // Passthrough mínimo pro fluxo de convite deslogado: `/cadastro?next=/convite/<token>`
 // (link "Criar conta" da página de convite) — o action lê este campo oculto e, no
 // caminho de auto-confirm (Confirm email OFF), redireciona pra lá em vez de `/`.
 // No caminho de confirmação por e-mail o `next` não é usado (ver comentário em
 // `signupAction`) — o input só fica sem efeito nesse caso, não quebra o fluxo.
 function NextField() {
-  const sp = useSearchParams();
-  const next = sp.get('next');
+  const next = useQueryParam('next');
   if (!next) return null;
   return <input type="hidden" name="next" value={next} />;
 }
@@ -195,11 +200,9 @@ function NextField() {
 // Vem de `/r/[token]` (link reutilizável do escritório) ou de um convite dirigido
 // clicado deslogado. `escritorio` = nome pra exibir; `ref_invalido` = token
 // inválido/expirado/revogado — o cadastro segue normalmente, só sem o vínculo.
-// useSearchParams precisa de Suspense boundary no Next 15.
 function RefEscritorioBanner() {
-  const sp = useSearchParams();
-  const escritorio = sp.get('escritorio');
-  const refInvalido = sp.get('ref_invalido') === '1';
+  const escritorio = useQueryParam('escritorio');
+  const refInvalido = useQueryParam('ref_invalido') === '1';
 
   if (escritorio) {
     return (
