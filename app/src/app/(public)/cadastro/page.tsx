@@ -2,9 +2,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { Suspense, useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { signupAction, type SignupState } from './actions';
 import Logo from '@/components/Logo';
 
@@ -53,6 +53,10 @@ export default function CadastroPage() {
           <Logo size={44} className="mb-3" />
           <p className="text-sm text-muted-foreground mt-1">Crie sua conta</p>
         </div>
+
+        <Suspense fallback={null}>
+          <RefEscritorioBanner />
+        </Suspense>
 
         <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -170,6 +174,35 @@ export default function CadastroPage() {
       </div>
     </main>
   );
+}
+
+// Vem de `/r/[token]` (link reutilizável do escritório) ou de um convite dirigido
+// clicado deslogado. `escritorio` = nome pra exibir; `ref_invalido` = token
+// inválido/expirado/revogado — o cadastro segue normalmente, só sem o vínculo.
+// useSearchParams precisa de Suspense boundary no Next 15.
+function RefEscritorioBanner() {
+  const sp = useSearchParams();
+  const escritorio = sp.get('escritorio');
+  const refInvalido = sp.get('ref_invalido') === '1';
+
+  if (escritorio) {
+    return (
+      <p className="mb-4 text-sm text-muted-foreground bg-surface-2 border border-border rounded-md px-3 py-2">
+        Você está entrando pelo escritório <b className="text-foreground">{escritorio}</b>. Depois de criar sua
+        empresa, o escritório poderá <b>visualizar</b> suas notas, impostos e guias — ele não pode emitir nem
+        alterar nada. Você pode desvincular quando quiser em Configurações.
+      </p>
+    );
+  }
+  if (refInvalido) {
+    return (
+      <p className="mb-4 text-xs text-muted-foreground bg-surface-2 border border-border rounded-md px-3 py-2">
+        O link do escritório usado para chegar aqui não é mais válido, mas você pode continuar seu cadastro
+        normalmente.
+      </p>
+    );
+  }
+  return null;
 }
 
 function SubmitButton() {

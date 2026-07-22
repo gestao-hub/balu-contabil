@@ -7,6 +7,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
 import { CompanyCreateSchema, type CompanyInput } from '@/types/zod';
 import { syncEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
@@ -102,6 +103,23 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
 
   if (error || !row) {
     return { ok: false, error: error?.message ?? 'Falha ao criar empresa.' };
+  }
+
+  // Vem de `/r/[token]` (link reutilizável do escritório): cookie httpOnly com o
+  // token setado na redenção do link. A RPC valida tudo (token, escritório ativo,
+  // empresa sem contabilidade ainda) — falha aqui NÃO derruba a criação da empresa,
+  // ela só fica sem vínculo (usuário pode vincular depois).
+  const cookieStore = await cookies();
+  const refToken = cookieStore.get('balu_ref_convite')?.value;
+  if (refToken) {
+    const { error: vincErr } = await supabase.rpc('vincular_empresa_por_link', {
+      p_token: refToken,
+      p_company_id: row.id,
+    });
+    if (vincErr) {
+      console.warn('[createCompany] vincular_empresa_por_link falhou:', vincErr.message);
+    }
+    cookieStore.delete('balu_ref_convite');
   }
 
   // Vincula a empresa ao perfil e define como atual. Não usamos o RPC

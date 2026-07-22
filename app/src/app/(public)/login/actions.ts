@@ -9,6 +9,7 @@ export type AuthState = { error?: string } | undefined;
 export async function loginAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
+  const next = String(formData.get('next') ?? '');
 
   if (!email || !password) {
     return { error: 'Informe e-mail e senha.' };
@@ -21,7 +22,14 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
     return { error: traduzirErroSupabase(error.message) };
   }
 
-  redirect('/');
+  redirect(safeNext(next) ?? '/');
+}
+
+// Só aceita path interno (`/algo`) — nunca `//host` ou `http(s)://host`, que um
+// atacante poderia usar em `?next=` pra abrir redirect para fora do domínio.
+function safeNext(next: string): string | null {
+  if (next.startsWith('/') && !next.startsWith('//') && !next.includes('://')) return next;
+  return null;
 }
 
 function traduzirErroSupabase(msg: string): string {

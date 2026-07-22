@@ -51,6 +51,7 @@ export default function LoginPage() {
           </div>
 
           <Suspense fallback={null}>
+            <NextField />
             <ErrorBanner stateError={state?.error} />
           </Suspense>
 
@@ -68,6 +69,17 @@ export default function LoginPage() {
       </div>
     </main>
   );
+}
+
+// Passthrough mínimo pro fluxo de convite: `/login?next=/convite/<token>` — o
+// action lê este campo oculto e redireciona pra lá após autenticar (em vez de
+// sempre mandar pra `/`). Vai como hidden input (não searchParam direto na
+// action) porque server actions não recebem a URL da página que as invocou.
+function NextField() {
+  const sp = useSearchParams();
+  const next = sp.get('next');
+  if (!next) return null;
+  return <input type="hidden" name="next" value={next} />;
 }
 
 // useSearchParams precisa de Suspense boundary no Next 15. Isolei o consumer
