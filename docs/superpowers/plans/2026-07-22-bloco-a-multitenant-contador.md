@@ -8,7 +8,7 @@
 
 **Tech Stack:** Next.js 15 App Router (padrões existentes: `createServerClient`/`createAdminClient`, `ActionResult`, Zod em `types/zod.ts`), Supabase Postgres/RLS/Storage, Vitest, Playwright.
 
-**Spec:** `docs/superpowers/specs/2026-07-22-bloco-a-multitenant-contador-design.md`
+**Spec:** `docs/product/2026-07-22-bloco-a-multitenant-contador-design.md`
 
 ## Emendas à spec (descobertas contra o banco REAL — `docs/reference/db_atual.sql`)
 
@@ -41,7 +41,7 @@
 
 ```sql
 -- 0030: tenant do escritório de contabilidade (Bloco A).
--- Spec: docs/superpowers/specs/2026-07-22-bloco-a-multitenant-contador-design.md
+-- Spec: docs/product/2026-07-22-bloco-a-multitenant-contador-design.md
 
 -- Papel de admin do Balu (enum user_types existe fora do repo; trigger 0002 faz cast)
 ALTER TYPE public.user_types ADD VALUE IF NOT EXISTS 'AdminBalu';

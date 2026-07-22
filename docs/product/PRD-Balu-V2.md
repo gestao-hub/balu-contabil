@@ -48,7 +48,7 @@ E (hardening) ─────► D (produção fiscal só depois de RLS/seguran�
 
 ### Bloco A — Multi-tenant do Contador, Painel, White-label, Honorários v2
 
-**Spec:** `2026-07-22-bloco-a-multitenant-contador-design.md` ✅ (aprovada)
+**Spec:** `docs/product/2026-07-22-bloco-a-multitenant-contador-design.md` ✅ (aprovada)
 
 Resumo das decisões: tenant `contabilidades` com aprovação por admin (validação CRC — DL 9.295/46, art. 12); 1 escritório = N usuários iguais (papéis na V2); vínculo por convite dirigido + link do escritório, com aceite informado (LGPD arts. 7º/9º) e desvínculo self-service (art. 18, IX); painel agregado (RPCs) + drill-down somente-leitura garantido por **RLS sem políticas de escrita**; semáforo de irregularidade com 5 critérios fiscais citando a norma; co-branding (logo/nome/WhatsApp do escritório, identidade Balu preservada); honorários com status derivado + recorrência via cron idempotente + ganchos `asaas_*`; tetos fiscais em tabela `parametros_fiscais` (nunca hard-coded).
 
