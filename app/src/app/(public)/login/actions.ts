@@ -2,8 +2,10 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
 import { safeNext } from '@/lib/format/safe-next';
+import { limitar, ipDe } from '@/lib/security/rate-limit';
 
 export type AuthState = { error?: string } | undefined;
 
@@ -14,6 +16,11 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
 
   if (!email || !password) {
     return { error: 'Informe e-mail e senha.' };
+  }
+
+  const ip = ipDe(await headers());
+  if (!(await limitar(`login:${ip}:${email}`, 10, 300))) {
+    return { error: 'Muitas tentativas. Tente novamente em alguns minutos.' };
   }
 
   const supabase = await createServerClient();
