@@ -1,21 +1,13 @@
 // src/app/(auth)/admin/contabilidades/page.tsx
-import { redirect } from 'next/navigation';
-import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAdminBaluPage } from '@/lib/admin/guard';
 import type { Tables } from '@/types/database';
 import AprovacaoList from './AprovacaoList';
 
 export type Contabilidade = Tables['contabilidades'];
 
 export default async function AdminContabilidadesPage() {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
-
-  // role_types.type é a fonte canônica (igual ao layout/honorarios).
-  const { data: roleRow } = await supabase
-    .from('role_types').select('type').eq('user_id', user.id).maybeSingle();
-  if (roleRow?.type !== 'AdminBalu') redirect('/');
+  await requireAdminBaluPage();
 
   // Lista via admin client (bypassa RLS) — pendentes primeiro (fila de espera,
   // mais antigas primeiro), depois as demais por created_at desc.

@@ -1,6 +1,8 @@
 // @custom — bubble-behavior (Day 1 / PR 1.1 — dashboard, V1 §5.1 + §5.2)
+import { redirect } from 'next/navigation';
 import { Wallet, CalendarClock, FileText, Receipt } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
+import { getGateContext } from '@/lib/auth/gate-context';
 import DashboardCard from '@/components/DashboardCard';
 import PendingActionsList from '@/components/PendingActionsList';
 import { getDashboardMetrics, getPendingActions } from '@/lib/dashboard/queries';
@@ -21,22 +23,13 @@ function diasAteVenc(dateOnly: string | null): number | null {
 }
 
 export default async function DashboardPage() {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   // O (auth)/layout já redireciona sem sessão e força onboarding sem empresa.
-  let companyId: string | null = null;
-  if (user) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('current_company')
-      .eq('user_id', user.id)
-      .single();
-    companyId = (profile?.current_company ?? null) as string | null;
-  }
+  // ctx é o mesmo do layout (React cache), sem query extra.
+  const ctx = await getGateContext();
+  // AdminBalu não tem empresa própria — sua home é a Visão geral da plataforma.
+  if (ctx?.normalizedRole === 'adminbalu') redirect('/admin');
 
+  const companyId = ctx?.currentCompany ?? null;
   if (!companyId) {
     return (
       <main className="p-6">
@@ -50,6 +43,7 @@ export default async function DashboardPage() {
     );
   }
 
+  const supabase = await createServerClient();
   const [metrics, pending] = await Promise.all([
     getDashboardMetrics(supabase, companyId),
     getPendingActions(supabase, companyId),

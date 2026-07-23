@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
-  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, ShieldCheck, MessageCircle,
+  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, LayoutDashboard, MessageCircle,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -65,8 +65,13 @@ const NAV: NavItem[] = [
   { href: '/contador/configuracoes', label: 'Config. escritório', Icon: Settings, roles: ['contador'] },
   { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, precisaEmpresa: true },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings, precisaEmpresa: true },
+  // Seção AdminBalu (oversight da plataforma). O admin não tem empresa/escritório
+  // próprios, então não vê os itens tenant acima — estas telas são as dele.
+  { href: '/admin',                 label: 'Visão geral',    Icon: LayoutDashboard, roles: ['adminbalu'] },
+  { href: '/admin/contabilidades',  label: 'Escritórios',    Icon: Building2, roles: ['adminbalu'] },
+  { href: '/admin/empresas',        label: 'Empresas',       Icon: Briefcase, roles: ['adminbalu'] },
+  { href: '/admin/usuarios',        label: 'Usuários',       Icon: Users, roles: ['adminbalu'] },
   { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
-  { href: '/admin/contabilidades',  label: 'Admin',          Icon: ShieldCheck, roles: ['adminbalu'] },
 ];
 
 export default function MenuLateral({
@@ -102,7 +107,9 @@ export default function MenuLateral({
     // UI nenhum). As sub-rotas (equipe, config) só aparecem com escritório pronto.
     .filter((i) => i.href === '/contador' || !i.href.startsWith('/contador/') || temEscritorio)
     // Itens de empresa só com empresa própria (contador/admin sem empresa não os vê).
-    .filter((i) => !i.precisaEmpresa || userRole === 'empresa' || companies.length > 0);
+    .filter((i) => !i.precisaEmpresa || userRole === 'empresa' || companies.length > 0)
+    // Admin usa /admin (Visão geral) como home; o "/" (dashboard de empresa) é beco pra ele.
+    .filter((i) => !(userRole === 'adminbalu' && i.href === '/'));
 
   async function changeCompany(companyId: string) {
     if (companyId === currentCompanyId) return;
