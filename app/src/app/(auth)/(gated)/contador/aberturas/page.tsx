@@ -3,10 +3,11 @@
 // não depende da RLS de leitura. Guard igual às demais telas do contador.
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { FilePlus } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { etapaLabel } from '@/lib/abertura/etapas';
+import AbrirEmpresaButton from './AbrirEmpresaButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,23 +50,26 @@ export default async function ContadorAberturasPage() {
 
   return (
     <main className="p-6">
-      <header className="mb-6">
-        <h1 className="text-2xl font-head font-semibold text-foreground">Aberturas de empresa</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Solicitações da sua carteira ({aberturas.length}). O app coleta os dados; sua equipe conduz a abertura nos órgãos e atualiza o status aqui.
-        </p>
-      </header>
-
-      {aberturas.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-8 text-center">
-          <FilePlus className="mx-auto mb-2 size-6 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            Nenhuma abertura em andamento. Use <b>Adicionar empresa → Quero abrir uma empresa</b> para iniciar uma.
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-head font-semibold text-foreground">Aberturas de empresa</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Solicitações da sua carteira ({aberturas.length}). O app coleta os dados; sua equipe conduz a abertura nos órgãos e atualiza o status aqui.
           </p>
         </div>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[760px] text-sm">
+        <AbrirEmpresaButton />
+      </header>
+
+      {/* Card com as solicitações de abertura. */}
+      <section className="overflow-hidden rounded-xl border border-border bg-surface">
+        {aberturas.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-4 px-6 py-20 text-center">
+            <Building2 className="size-24 text-muted-foreground/25" strokeWidth={1} aria-hidden />
+            <p className="text-sm text-muted-foreground">Ainda não há solicitações de abertura</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-2 text-left text-xs text-muted-foreground">
                 <th className="px-3 py-2 font-medium">Empresa pretendida</th>
@@ -102,8 +106,9 @@ export default async function ContadorAberturasPage() {
               })}
             </tbody>
           </table>
-        </div>
-      )}
+          </div>
+        )}
+      </section>
     </main>
   );
 }
