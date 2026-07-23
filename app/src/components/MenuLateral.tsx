@@ -216,6 +216,11 @@ export default function MenuLateral({
           <>
             <p className="truncate text-sm font-semibold text-foreground">{userName}</p>
             <p className="text-xs text-muted-foreground">{ROLE_LABEL[userRole] ?? userRole}</p>
+            {/* Seletor só com empresas PRÓPRias pra selecionar. O contador/admin
+                sem empresa própria via um "Selecionar empresa" de lista vazia —
+                controle morto que confunde (a carteira de clientes fica no menu
+                Escritório, não aqui). Empresário sempre tem ≥1 → inalterado. */}
+            {companies.length > 0 && (
             <div ref={companyMenuRef} className="relative mt-3">
               <button
                 type="button"
@@ -247,6 +252,7 @@ export default function MenuLateral({
                 </ul>
               )}
             </div>
+            )}
             {(isDev || userRole === 'contador') && (
               <button
                 type="button"
