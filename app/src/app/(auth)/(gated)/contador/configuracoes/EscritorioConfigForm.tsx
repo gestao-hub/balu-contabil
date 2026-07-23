@@ -24,7 +24,7 @@ type Props = {
   linkInicial: string | null;
 };
 
-const MAX_LOGO_BYTES = 1 * 1024 * 1024; // 1MB — mesmo limite do endpoint (checagem antecipada, sem round-trip)
+const MAX_LOGO_BYTES = 4 * 1024 * 1024; // 4MB — mesmo limite do endpoint (checagem antecipada, sem round-trip)
 
 export default function EscritorioConfigForm({ initial, logoUrlInicial, linkInicial }: Props) {
   const router = useRouter();
@@ -67,7 +67,7 @@ export default function EscritorioConfigForm({ initial, logoUrlInicial, linkInic
     e.target.value = ''; // permite re-selecionar o mesmo arquivo depois
     if (!file) return;
     if (file.size > MAX_LOGO_BYTES) {
-      toast('error', 'Arquivo maior que 1MB. Escolha uma imagem menor.');
+      toast('error', 'Arquivo maior que 4MB. Escolha uma imagem menor.');
       return;
     }
     setUploadingLogo(true);
@@ -150,7 +150,7 @@ export default function EscritorioConfigForm({ initial, logoUrlInicial, linkInic
               {uploadingLogo ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
               Trocar logo
             </button>
-            <p className="mt-1 text-xs text-muted-foreground">PNG ou JPG, até 1MB.</p>
+            <p className="mt-1 text-xs text-muted-foreground">PNG ou JPG, até 4MB.</p>
           </div>
         </div>
 

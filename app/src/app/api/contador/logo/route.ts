@@ -12,7 +12,8 @@ import { uploadLogoEscritorio, signedUrlBranding } from '@/lib/clients/supabase-
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const MAX_LOGO_BYTES = 1 * 1024 * 1024; // 1MB
+// 4MB — teto prático: a Vercel rejeita bodies acima de ~4,5MB (413) antes do handler.
+const MAX_LOGO_BYTES = 4 * 1024 * 1024;
 
 type Sniffed = { ext: 'png' | 'jpg'; contentType: string };
 
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
   }
   if (file.size > MAX_LOGO_BYTES) {
     return NextResponse.json(
-      { ok: false, error: 'Arquivo maior que 1MB. Escolha uma imagem menor.' },
+      { ok: false, error: 'Arquivo maior que 4MB. Escolha uma imagem menor.' },
       { status: 413 },
     );
   }
