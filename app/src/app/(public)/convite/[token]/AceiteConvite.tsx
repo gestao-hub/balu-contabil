@@ -4,7 +4,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Logo from '@/components/Logo';
-import { aceitarConviteAction } from '@/app/(auth)/contador/convites-actions';
+import { aceitarConviteAction } from '@/app/(auth)/(gated)/contador/convites-actions';
 
 type Props = {
   token: string;

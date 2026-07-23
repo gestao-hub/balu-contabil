@@ -10,7 +10,7 @@ import type { Tables } from '@/types/database';
 import PopupConfirm from '@/components/PopupConfirm';
 import ClienteFormDialog from '@/components/ClienteFormDialog';
 import { useToast } from '@/components/Toaster';
-import { softDeleteClienteAction } from '@/app/(auth)/clientes/actions';
+import { softDeleteClienteAction } from '@/app/(auth)/(gated)/clientes/actions';
 import type { ClienteInput } from '@/types/zod';
 
 export type Cliente = Tables['clientes'];

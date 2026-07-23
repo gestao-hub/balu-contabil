@@ -1,29 +1,19 @@
 // @custom — bubble-behavior: editado à mão, não regenerar.
-// Auth gate: sem sessão → /login; sem empresa (current_company vazio) → /onboarding;
-// documento LGPD pendente de aceite → /aceite (Task 12).
+// Auth gate: sem sessão → /login. Os gates de aceite LGPD e de onboarding vivem
+// no sub-grupo (gated)/layout.tsx — assim /aceite fica fora deles e não há como
+// formar loop de redirect (antes o gate dependia do header x-pathname setado por
+// middleware, que não chegava nas navegações RSC em produção → loop /aceite→/aceite
+// e tela preta pós-login).
 import { redirect } from 'next/navigation';
-import { headers } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { signedUrlBranding } from '@/lib/clients/supabase-storage';
-import { documentosPendentes } from '@/lib/lgpd/pendencia-aceite';
 import MenuLateral, { type EscritorioBranding } from '@/components/MenuLateral';
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
-
-  // Gate de re-aceite (LGPD, Task 12): redireciona pra /aceite quando há documento
-  // publicado que o usuário ainda não aceitou na versão vigente. `documentosPendentes`
-  // é um no-op (retorna []) quando não há documentos publicados. O layout não sabe a
-  // rota atual (Server Component), então lê `x-pathname` (setado pelo middleware) pra
-  // não redirecionar quando já está em /aceite — evita loop /aceite → /aceite.
-  const pathname = (await headers()).get('x-pathname') ?? '';
-  if (pathname !== '/aceite') {
-    const pendentes = await documentosPendentes(user.id);
-    if (pendentes.length > 0) redirect('/aceite');
-  }
 
   const [{ data: profile }, { data: companies }, { data: roleRow }, { data: membro }] = await Promise.all([
     supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle(),
@@ -61,11 +51,6 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   const normalizedRole = rawRole.toLowerCase();
   const userRole: 'empresa' | 'contador' | 'adminbalu' =
     normalizedRole === 'contador' ? 'contador' : normalizedRole === 'adminbalu' ? 'adminbalu' : 'empresa';
-  // AdminBalu e contadores recém-cadastrados não têm empresa e não podem ficar
-  // presos em /onboarding — AdminBalu não opera empresas; o contador precisa
-  // chegar em /contador/cadastro (existe desde a Task 10).
-  const needsOnboarding = !profile?.current_company && !['adminbalu', 'contador'].includes(normalizedRole);
-  if (needsOnboarding) redirect('/onboarding');
 
   // Layout SaaS: sidebar fixa no viewport, área principal com scroll próprio.
   // `h-screen overflow-hidden` no wrapper trava a página em 100vh; o `<main>`

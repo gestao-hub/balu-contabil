@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X, Search, Loader2 } from 'lucide-react';
 import { ClienteSchema, type ClienteInput } from '@/types/zod';
 import { useToast } from '@/components/Toaster';
-import { createClienteAction, updateClienteAction, lookupCnpjAction } from '@/app/(auth)/clientes/actions';
+import { createClienteAction, updateClienteAction, lookupCnpjAction } from '@/app/(auth)/(gated)/clientes/actions';
 import { lookupCepAction } from '@/app/(auth)/onboarding/actions';
 import { formatCnpj, formatCpf, formatCep, formatTel } from '@/lib/format/masks';
 
