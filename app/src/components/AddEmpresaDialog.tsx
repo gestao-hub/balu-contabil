@@ -7,7 +7,10 @@ import { useState } from 'react';
 import { Building2, FilePlus, X } from 'lucide-react';
 import CreateCompanyDialog from '@/components/CreateCompanyDialog';
 import AberturaWizard from '@/components/abertura/AberturaWizard';
-import { submitAberturaAction } from '@/app/(onboarding)/onboarding/abertura/actions';
+// Abertura disparada pelo escritório: nasce na carteira (contabilidade_id) e sem
+// dono, e NÃO mexe no current_company do contador. (O self-service do empresário
+// em /onboarding/abertura continua usando submitAberturaAction.)
+import { criarAberturaClienteAction } from '@/app/(auth)/(gated)/contador/actions';
 
 type View = 'select' | 'existing' | 'abertura';
 
@@ -84,7 +87,7 @@ export default function AddEmpresaDialog({ open, onClose, onCreated }: Props) {
           {view === 'abertura' && (
             <AberturaWizard
               mode="criar"
-              action={submitAberturaAction}
+              action={criarAberturaClienteAction}
               onBack={() => setView('select')}
               naked
             />

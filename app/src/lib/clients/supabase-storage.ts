@@ -96,6 +96,12 @@ export async function signedUrlBranding(path: string, expiresInSec = 3600): Prom
   return data?.signedUrl ?? null;
 }
 
+/** URL assinada (bucket privado) para o contador baixar um documento de abertura. */
+export async function signedUrlAbertura(path: string, expiresInSec = 3600): Promise<string | null> {
+  const { data } = await admin().storage.from(ABERTURA_BUCKET).createSignedUrl(path, expiresInSec);
+  return data?.signedUrl ?? null;
+}
+
 /** Sobe um documento de abertura em `${scopeId}/${fileName}` no bucket de abertura. */
 export async function uploadAberturaDoc(
   scopeId: string,

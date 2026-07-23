@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
-  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, LayoutDashboard, MessageCircle,
+  ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, LayoutDashboard, FilePlus, MessageCircle,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -60,6 +60,7 @@ const NAV: NavItem[] = [
   { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText, precisaEmpresa: true },
   { href: '/impostos',              label: 'Impostos',       Icon: Calculator, precisaEmpresa: true },
   { href: '/contador',              label: 'Escritório',     Icon: Briefcase, roles: ['contador'] },
+  { href: '/contador/aberturas',    label: 'Aberturas',      Icon: FilePlus, roles: ['contador'] },
   { href: '/contador/honorarios',   label: 'Honorários',     Icon: HandCoins, roles: ['contador'] },
   { href: '/contador/equipe',       label: 'Equipe',         Icon: Users, roles: ['contador'] },
   { href: '/contador/configuracoes', label: 'Config. escritório', Icon: Settings, roles: ['contador'] },
