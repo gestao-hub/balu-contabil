@@ -1,7 +1,6 @@
 // src/app/(auth)/aceite/AceiteClient.tsx
 'use client';
 import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
 import { CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { aceitarDocumentosAction } from './actions';
@@ -16,7 +15,6 @@ export type DocumentoPendente = {
 type Props = { documentos: DocumentoPendente[] };
 
 export default function AceiteClient({ documentos }: Props) {
-  const router = useRouter();
   const toast = useToast();
   const [concordo, setConcordo] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -30,8 +28,10 @@ export default function AceiteClient({ documentos }: Props) {
         return;
       }
       toast('success', 'Aceite registrado.');
-      router.push('/');
-      router.refresh();
+      // Navegação full-page (não SPA): o router cache ainda tem payloads antigos
+      // com redirect pra /aceite; o document request deixa o servidor decidir o
+      // destino certo (dashboard ou /onboarding) já sem a pendência.
+      window.location.assign('/');
     });
   }
 
