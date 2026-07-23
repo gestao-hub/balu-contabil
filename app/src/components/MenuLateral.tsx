@@ -60,6 +60,7 @@ const NAV: NavItem[] = [
   { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText, precisaEmpresa: true },
   { href: '/impostos',              label: 'Impostos',       Icon: Calculator, precisaEmpresa: true },
   { href: '/contador',              label: 'Escritório',     Icon: Briefcase, roles: ['contador'] },
+  { href: '/contador/honorarios',   label: 'Honorários',     Icon: HandCoins, roles: ['contador'] },
   { href: '/contador/equipe',       label: 'Equipe',         Icon: Users, roles: ['contador'] },
   { href: '/contador/configuracoes', label: 'Config. escritório', Icon: Settings, roles: ['contador'] },
   { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, precisaEmpresa: true },
