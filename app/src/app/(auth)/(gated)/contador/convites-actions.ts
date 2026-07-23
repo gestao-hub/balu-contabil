@@ -149,6 +149,7 @@ export async function aceitarConviteAction(token: string): Promise<ActionResult<
       EMPRESA_JA_TEM_DONO: 'Esta empresa já tem um responsável no Balu.',
       JA_MEMBRO_OUTRO_ESCRITORIO: 'Você já faz parte de outro escritório. Saia dele antes de aceitar este convite.',
       EMPRESA_FORA_DA_CARTEIRA: 'Esta empresa não está mais vinculada ao escritório. Peça um novo convite.',
+      EMAIL_NAO_CONFERE: 'Este convite foi enviado para outro e-mail. Entre com a conta que recebeu o convite.',
     };
     const key = Object.keys(msg).find((k) => error.message.includes(k));
     return { ok: false, error: key ? msg[key] : 'Não foi possível aceitar o convite.' };
