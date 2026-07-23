@@ -42,18 +42,28 @@ export type MenuLateralProps = {
   escritorio?: EscritorioBranding | null;
 };
 
-type NavItem = { href: string; label: string; Icon: React.ComponentType<{ className?: string }>; roles?: Role[] };
+type NavItem = {
+  href: string;
+  label: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  roles?: Role[];
+  /** Feature de EMPRESA (usa current_company). Sem empresa, essas telas terminam
+   *  em "Nenhuma empresa selecionada." — pro contador/admin sem empresa própria
+   *  o item é escondido em vez de virar beco (o empresário sem empresa nunca chega
+   *  aqui: o gate de onboarding o intercepta antes). */
+  precisaEmpresa?: boolean;
+};
 
 const NAV: NavItem[] = [
   { href: '/',                      label: 'Início',         Icon: Home },
-  { href: '/clientes',              label: 'Clientes',       Icon: Users },
-  { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText },
-  { href: '/impostos',              label: 'Impostos',       Icon: Calculator },
+  { href: '/clientes',              label: 'Clientes',       Icon: Users, precisaEmpresa: true },
+  { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText, precisaEmpresa: true },
+  { href: '/impostos',              label: 'Impostos',       Icon: Calculator, precisaEmpresa: true },
   { href: '/contador',              label: 'Escritório',     Icon: Briefcase, roles: ['contador'] },
   { href: '/contador/equipe',       label: 'Equipe',         Icon: Users, roles: ['contador'] },
   { href: '/contador/configuracoes', label: 'Config. escritório', Icon: Settings, roles: ['contador'] },
-  { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins },
-  { href: '/configuracoes',         label: 'Configurações',  Icon: Settings },
+  { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, precisaEmpresa: true },
+  { href: '/configuracoes',         label: 'Configurações',  Icon: Settings, precisaEmpresa: true },
   { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
   { href: '/admin/contabilidades',  label: 'Admin',          Icon: ShieldCheck, roles: ['adminbalu'] },
 ];
@@ -89,7 +99,9 @@ export default function MenuLateral({
     // papel contador — a própria página redireciona pra /contador/cadastro quem
     // ainda não tem escritório (senão o contador recém-criado fica sem caminho de
     // UI nenhum). As sub-rotas (equipe, config) só aparecem com escritório pronto.
-    .filter((i) => i.href === '/contador' || !i.href.startsWith('/contador/') || temEscritorio);
+    .filter((i) => i.href === '/contador' || !i.href.startsWith('/contador/') || temEscritorio)
+    // Itens de empresa só com empresa própria (contador/admin sem empresa não os vê).
+    .filter((i) => !i.precisaEmpresa || userRole === 'empresa' || companies.length > 0);
 
   async function changeCompany(companyId: string) {
     if (companyId === currentCompanyId) return;
