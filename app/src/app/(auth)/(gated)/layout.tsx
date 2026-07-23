@@ -6,31 +6,25 @@
 // está fora deste layout. Ordem importa: aceite LGPD antes do onboarding — antes,
 // o gate de onboarding expulsava o usuário de /aceite e ele nunca conseguia aceitar.
 import { redirect } from 'next/navigation';
-import { createServerClient } from '@/lib/supabase/server';
+import { getGateContext } from '@/lib/auth/gate-context';
 import { documentosPendentes } from '@/lib/lgpd/pendencia-aceite';
 
 export default async function GatedLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login'); // (auth)/layout já cobre; guarda extra barata
+  // Mesmo helper memoizado do (auth)/layout: user + role + current_company sem
+  // refazer getUser/profiles/role_types (cache() dedupa dentro do request).
+  const ctx = await getGateContext();
+  if (!ctx) redirect('/login'); // (auth)/layout já cobre; guarda extra barata
+  const { user, currentCompany, normalizedRole } = ctx;
 
   // Gate de re-aceite (LGPD, Task 12): documento publicado sem aceite na versão
   // vigente → /aceite. `documentosPendentes` é no-op ([]) sem docs publicados.
   const pendentes = await documentosPendentes(user.id);
   if (pendentes.length > 0) redirect('/aceite');
 
-  const [{ data: profile }, { data: roleRow }] = await Promise.all([
-    supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle(),
-    supabase.from('role_types').select('type').eq('user_id', user.id).maybeSingle(),
-  ]);
-
   // AdminBalu e contadores recém-cadastrados não têm empresa e não podem ficar
   // presos em /onboarding — AdminBalu não opera empresas; o contador precisa
   // chegar em /contador/cadastro (existe desde a Task 10).
-  const normalizedRole = (
-    (roleRow?.type as string | null) ?? (user.user_metadata?.type as string | null) ?? ''
-  ).toLowerCase();
-  const needsOnboarding = !profile?.current_company && !['adminbalu', 'contador'].includes(normalizedRole);
+  const needsOnboarding = !currentCompany && !['adminbalu', 'contador'].includes(normalizedRole);
   if (needsOnboarding) redirect('/onboarding');
 
   return <>{children}</>;

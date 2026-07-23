@@ -7,20 +7,22 @@
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getGateContext } from '@/lib/auth/gate-context';
 import { signedUrlBranding } from '@/lib/clients/supabase-storage';
 import MenuLateral, { type EscritorioBranding } from '@/components/MenuLateral';
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  // user + role + current_company vêm do helper memoizado por request — o mesmo que
+  // o (gated)/layout usa, então getUser/profiles/role_types rodam uma vez só.
+  const ctx = await getGateContext();
+  if (!ctx) redirect('/login');
+  const { user, currentCompany, normalizedRole } = ctx;
 
-  const [{ data: profile }, { data: companies }, { data: roleRow }, { data: membro }] = await Promise.all([
-    supabase.from('profiles').select('current_company').eq('user_id', user.id).maybeSingle(),
+  const supabase = await createServerClient();
+  const [{ data: companies }, { data: membro }] = await Promise.all([
     // contabilidade_id junto — evita 1 query extra pra descobrir se a empresa
     // ativa tem escritório (co-branding, Task 18).
     supabase.from('companies').select('id, nome, contabilidade_id').eq('user_id', user.id).is('deleted_at', null).order('nome'),
-    supabase.from('role_types').select('type').eq('user_id', user.id).maybeSingle(),
     supabase.from('contabilidade_membros').select('contabilidade_id').eq('user_id', user.id).maybeSingle(),
   ]);
 
@@ -29,7 +31,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   // Admin client: empresa não tem RLS de leitura em `contabilidades`.
   let escritorio: EscritorioBranding | null = null;
   const currentCompanyContabilidadeId =
-    (companies ?? []).find((c) => c.id === profile?.current_company)?.contabilidade_id ?? null;
+    (companies ?? []).find((c) => c.id === currentCompany)?.contabilidade_id ?? null;
   if (currentCompanyContabilidadeId) {
     const admin = createAdminClient();
     const { data: contab } = await admin
@@ -46,9 +48,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
     }
   }
 
-  // role_types.type é a fonte canônica; metadata como fallback.
-  const rawRole = (roleRow?.type as string | null) ?? (user.user_metadata?.type as string | null) ?? '';
-  const normalizedRole = rawRole.toLowerCase();
+  // normalizedRole vem do helper (role_types.type canônico; user_metadata fallback).
   const userRole: 'empresa' | 'contador' | 'adminbalu' =
     normalizedRole === 'contador' ? 'contador' : normalizedRole === 'adminbalu' ? 'adminbalu' : 'empresa';
 
@@ -66,7 +66,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         }
         userRole={userRole}
         companies={(companies ?? []).map((c) => ({ id: c.id, nome: c.nome }))}
-        currentCompanyId={profile?.current_company ?? null}
+        currentCompanyId={currentCompany}
         temEscritorio={!!membro}
         escritorio={escritorio}
       />

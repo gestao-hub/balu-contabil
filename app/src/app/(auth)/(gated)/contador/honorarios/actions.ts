@@ -49,7 +49,7 @@ export async function createHonorarioV2Action(input: unknown): Promise<ActionRes
       empresa_cliente_id: parsed.data.empresa_cliente_id,
       company_id: parsed.data.empresa_cliente_id, // legado: company_id é NOT NULL no schema real
       mes_referencia: `${parsed.data.mes_referencia}-01`,
-      valor: parsed.data.valor.replace(',', '.'),
+      valor: parsed.data.valor, // já normalizado a ponto-decimal por HonorarioV2Schema
       data_vencimento: parsed.data.data_vencimento,
       observacao: parsed.data.observacao || null,
       recorrente: parsed.data.recorrente,
@@ -92,7 +92,7 @@ export async function updateHonorarioV2Action(id: string, input: unknown): Promi
       empresa_cliente_id: parsed.data.empresa_cliente_id,
       company_id: parsed.data.empresa_cliente_id,
       mes_referencia: `${parsed.data.mes_referencia}-01`,
-      valor: parsed.data.valor.replace(',', '.'),
+      valor: parsed.data.valor, // já normalizado a ponto-decimal por HonorarioV2Schema
       data_vencimento: parsed.data.data_vencimento,
       observacao: parsed.data.observacao || null,
       recorrente: parsed.data.recorrente,
