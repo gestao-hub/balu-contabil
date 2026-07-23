@@ -12,3 +12,23 @@ export function centavosToValor(c: number): string {
 export function formatBRL(centavos: number): string {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
+
+// Normaliza entrada monetária livre ("R$ 1.200,50", "1.200", "1200,5") para string
+// decimal canônica com ponto ("1200.50"). Heurística BR: vírgula = decimal e pontos =
+// milhar; sem vírgula, um único ponto só é decimal com 1–2 casas (senão é milhar).
+// Retorna '' quando não sobra dígito — deixando o schema rejeitar como "Valor inválido.".
+export function normalizarValorBRL(entrada: string): string {
+  let s = String(entrada).trim().replace(/[^\d.,-]/g, ''); // tira "R$", espaços, etc.
+  if (!s) return '';
+  const neg = s.startsWith('-');
+  s = s.replace(/-/g, '');
+  if (s.includes(',')) {
+    s = s.replace(/\./g, '').replace(',', '.');            // 1.200,50 → 1200.50
+  } else if ((s.match(/\./g) || []).length > 1) {
+    s = s.replace(/\./g, '');                              // 1.200.000 → 1200000
+  } else if (s.includes('.')) {
+    const frac = s.split('.')[1] ?? '';
+    if (frac.length > 2) s = s.replace('.', '');           // 1.200 (milhar) → 1200
+  }                                                         // 1200.50 fica como está
+  return (neg ? '-' : '') + s;
+}

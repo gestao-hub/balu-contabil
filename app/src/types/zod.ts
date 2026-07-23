@@ -2,6 +2,7 @@
 // Estender conforme as pages forem implementadas.
 import { z } from 'zod';
 import { isValidCnpj } from '@/lib/validators/cnpj';
+import { normalizarValorBRL } from '@/lib/format/dinheiro';
 import { EMPRESA_TIPOS, REGIMES, SEDE_TIPOS } from '@/types/abertura';
 
 export const ClienteSchema = z.object({
@@ -132,7 +133,12 @@ export type ContabilidadeBrandingInput = z.infer<typeof ContabilidadeBrandingSch
 
 export const HonorarioV2Schema = z.object({
   empresa_cliente_id: z.string().uuid('Selecione o cliente.'),
-  valor: z.string().regex(/^\d+([.,]\d{1,2})?$/, 'Valor inválido.'),
+  // Normaliza formatos de moeda reais ("1.200,00", "R$ 1.500", "1200,5") antes de
+  // validar — o usuário digita com separador de milhar e o regex cru rejeitava.
+  valor: z.preprocess(
+    (v) => (typeof v === 'string' ? normalizarValorBRL(v) : v),
+    z.string().regex(/^\d+(\.\d{1,2})?$/, 'Valor inválido.').refine((s) => Number(s) > 0, 'Valor deve ser maior que zero.'),
+  ),
   mes_referencia: z.string().regex(/^\d{4}-\d{2}$/, 'Competência inválida.'), // YYYY-MM
   data_vencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   observacao: z.string().max(500).optional().or(z.literal('')),
