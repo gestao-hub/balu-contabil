@@ -1,13 +1,24 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-22 (sessão 2 — Blocos A e E completos em main)
+> **Última atualização:** 2026-07-22 (sessão 2 — Blocos A e E completos + repo GitHub + deploy Vercel)
 
 ---
 
 ## Onde estamos
 
-**Fase:** **Bloco A e Bloco E concluídos em `main`.** Próximo passo na sequência: **Bloco D** (produção fiscal) — mas depende de credenciais externas do Michel (SERPRO prod, Focus prod, certificados dos pilotos). Fluxo por bloco: /brainstorming → spec → writing-plans → execução.
+**Fase:** **Bloco A e Bloco E concluídos em `main`; código no GitHub e app no ar na Vercel.** Próximo passo de produto: **P0.2 — motor de obrigações/notificações** (buildável já, sem depender do Michel — ver `docs/novas specs e prd/`). Bloco D/B/C dependem de credenciais externas do Michel. Fluxo por bloco: /brainstorming → spec → writing-plans → execução.
+
+## Infraestrutura (GitHub + Vercel) — configurada em 2026-07-22
+
+**GitHub:** repo **`gestao-hub/balu-contabil`** (⚠️ **público**). `main` + tags (`pre-preview-bloco-a`, `pre-bloco-e`) + as 5 branches antigas empurradas. Remote `origin` já configurado; **push autentica como `grupoideapps`** (colaborador, e-mail contato@grupoidecomunicacao.com). Auditoria de segredos feita antes do push: histórico limpo. `main` = `origin/main`.
+
+**Vercel:** projeto **`balu-contabil`** no scope **`gestao-9664s-projects`** (conta do luan@grupoidecomunicacao.com — NÃO usar tryia-social nem a Vercel do grupoideapps). **App no ar: https://balu-contabil.vercel.app** (deploy de produção via CLI, aponta pro **Supabase de PRODUÇÃO**). Config: 11 env vars em prod+preview (Supabase, Focus, SERPRO, CERT_ENC_KEY, CRON_SECRET, FOCUS_WEBHOOK_SECRET, NEXT_PUBLIC_SITE_URL=https://balu-contabil.vercel.app), `rootDirectory=app`, framework nextjs. Deploy manual: `cd app && npx vercel deploy --prod --scope gestao-9664s-projects`. (Domínio `app.balu.com.br` foi configurado e depois **revertido** a pedido do usuário — projeto só tem `balu-contabil.vercel.app`.)
+
+**Pendências de infra (retomar amanhã):**
+1. **Auto-deploy (Git integration):** BLOQUEADO num passo web (GitHub↔Vercel "Login Connection" + instalar o app da Vercel na conta GitHub `gestao-hub`) — não dá por CLI/API (erro "You need to add a Login Connection"). Root Directory/env/framework já prontos; falta só o OAuth no navegador em https://vercel.com/gestao-9664s-projects/balu-contabil/settings/git. Depois disso, cada push na main deploya sozinho.
+2. **Supabase Auth:** adicionar `https://balu-contabil.vercel.app/**` em Authentication → URL Configuration → Redirect URLs (senão cadastro/reset/convite por e-mail não redirecionam).
+3. **Rotação da `SUPABASE_SERVICE_ROLE_KEY`** (recomendação pendente de incidentes anteriores; a chave também está agora nas env vars da Vercel — legítimo, mas se quiser zero risco residual, rotacionar).
 
 **Bloco E — hardening + LGPD (COMPLETO, direto em `main`, sem branch — repo local):** 16 tasks + 2 rodadas de code-review adversarial com fixes verificados no banco vivo.
 - Migrations **0037–0042** aplicadas: rate_limit, audit_log, documento_versoes/aceites, anonimizar_usuario (+ correções), triggers de validação.
