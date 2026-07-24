@@ -51,12 +51,23 @@ export function SinoNotificacoes({ collapsed }: { collapsed: boolean }) {
   // recarrega a lista pra manter o contador em dia sem polling.
   useEffect(() => {
     const supabase = createBrowserClient();
-    const canal = supabase
-      .channel('sino-notificacoes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => carregar())
-      .subscribe();
+    let canal: ReturnType<typeof supabase.channel> | null = null;
+    let ativo = true;
+    (async () => {
+      // Autentica o socket do Realtime com o JWT do usuário ANTES de assinar. Sem
+      // isso a conexão é anon, auth.uid() é null e a RLS (owner_user_id = auth.uid())
+      // descarta TODOS os eventos — o sino só atualizaria ao recarregar a página.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) await supabase.realtime.setAuth(session.access_token);
+      if (!ativo) return;
+      canal = supabase
+        .channel('sino-notificacoes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => carregar())
+        .subscribe();
+    })();
     return () => {
-      supabase.removeChannel(canal);
+      ativo = false;
+      if (canal) supabase.removeChannel(canal);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

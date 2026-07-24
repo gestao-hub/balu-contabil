@@ -38,11 +38,20 @@ export default function AberturaInfoView({ abertura }: { abertura: Record<string
   useEffect(() => {
     if (!aberturaId) return;
     const supabase = createBrowserClient();
-    const canal = supabase
-      .channel(`abertura-${aberturaId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'abertura_empresas', filter: `id=eq.${aberturaId}` }, () => router.refresh())
-      .subscribe();
-    return () => { supabase.removeChannel(canal); };
+    let canal: ReturnType<typeof supabase.channel> | null = null;
+    let ativo = true;
+    (async () => {
+      // Autentica o socket do Realtime com o JWT do usuário ANTES de assinar; sem
+      // isso a conexão é anon e a RLS de abertura_empresas descarta os eventos.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) await supabase.realtime.setAuth(session.access_token);
+      if (!ativo) return;
+      canal = supabase
+        .channel(`abertura-${aberturaId}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'abertura_empresas', filter: `id=eq.${aberturaId}` }, () => router.refresh())
+        .subscribe();
+    })();
+    return () => { ativo = false; if (canal) supabase.removeChannel(canal); };
   }, [aberturaId, router]);
 
   const revisao = (abertura.docs_revisao as Record<string, unknown>) ?? {};
