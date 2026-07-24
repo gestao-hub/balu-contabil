@@ -79,5 +79,5 @@ export default async function ContadorAberturaDetalhePage(
     sede_uf: (row.sede_uf as string | null) ?? null,
   };
 
-  return <DetalheAbertura detalhe={detalhe} docs={docs} alteracoes={alteracoes} />;
+  return <DetalheAbertura detalhe={detalhe} docs={docs} alteracoes={alteracoes} revisao={(row.docs_revisao as Record<string, unknown>) ?? {}} />;
 }

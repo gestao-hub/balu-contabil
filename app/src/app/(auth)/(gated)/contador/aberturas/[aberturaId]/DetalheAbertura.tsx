@@ -4,10 +4,18 @@
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Download, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Download, CheckCircle2, FileText } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { ETAPAS, ETAPA_LABEL, etapaLabel } from '@/lib/abertura/etapas';
-import { avancarProcessoAction, concluirAberturaAction, decidirAlteracaoAction } from '../actions';
+import { estadoDoc, type DocRevisao } from '@/lib/abertura/checklist';
+import { avancarProcessoAction, concluirAberturaAction, decidirAlteracaoAction, revisarDocumentoAction, gerarMinutaAction } from '../actions';
+
+const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
+  aprovado: { label: 'Aprovado', cls: 'bg-success/10 text-success border-success/40' },
+  recusado: { label: 'Recusado', cls: 'bg-destructive/10 text-destructive border-destructive/40' },
+  aguardando_analise: { label: 'Aguardando análise', cls: 'bg-alert/10 text-alert border-alert/40' },
+  pendente_envio: { label: 'Pendente de envio', cls: 'border-border text-muted-foreground' },
+};
 
 export type DocLink = { key: string; label: string; url: string };
 export type AlteracaoItem = {
@@ -39,8 +47,8 @@ function Campo({ label, valor }: { label: string; valor: unknown }) {
   );
 }
 
-export default function DetalheAbertura({ detalhe, docs, alteracoes }: {
-  detalhe: AberturaDetalhe; docs: DocLink[]; alteracoes: AlteracaoItem[];
+export default function DetalheAbertura({ detalhe, docs, alteracoes, revisao }: {
+  detalhe: AberturaDetalhe; docs: DocLink[]; alteracoes: AlteracaoItem[]; revisao: Record<string, unknown>;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -53,6 +61,24 @@ export default function DetalheAbertura({ detalhe, docs, alteracoes }: {
   const [protocolo, setProtocolo] = useState(detalhe.processoProtocolo ?? '');
   const [observacoes, setObservacoes] = useState(detalhe.processoObservacoes ?? '');
   const [cnpj, setCnpj] = useState('');
+  const [obs, setObs] = useState<Record<string, string>>({});
+  const [gerando, setGerando] = useState(false);
+
+  async function baixarMinuta() {
+    setGerando(true);
+    try {
+      const res = await gerarMinutaAction({ aberturaId: detalhe.id });
+      if (!res.ok) { toast('error', res.error); return; }
+      if (!res.data) { toast('error', 'Falha ao gerar minuta.'); return; }
+      const blob = new Blob([res.data.html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = res.data.filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast('success', 'Minuta gerada — abra o arquivo e use "Salvar como PDF".');
+    } finally { setGerando(false); }
+  }
 
   const pendentes = alteracoes.filter((a) => a.status === 'pendente');
 
@@ -114,21 +140,61 @@ export default function DetalheAbertura({ detalhe, docs, alteracoes }: {
         </div>
       </section>
 
+      {/* Minuta */}
+      <section className="mb-8">
+        <h2 className="mb-3 text-sm font-medium text-foreground">Minuta</h2>
+        <button type="button" onClick={baixarMinuta} disabled={gerando}
+          className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:border-primary disabled:opacity-50">
+          <FileText className="size-4 shrink-0 text-primary" /> {gerando ? 'Gerando…' : 'Gerar minuta'}
+        </button>
+      </section>
+
       {/* Documentos */}
       <section className="mb-8">
         <h2 className="mb-3 text-sm font-medium text-foreground">Documentos enviados</h2>
         {docs.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhum documento enviado.</p>
         ) : (
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {docs.map((d) => (
-              <li key={d.key}>
-                <a href={d.url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:border-primary">
-                  <Download className="size-4 shrink-0 text-primary" /> {d.label}
-                </a>
-              </li>
-            ))}
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {docs.map((d) => {
+              const rev = revisao[d.key] as DocRevisao | undefined;
+              const estado = estadoDoc(d.url, rev);
+              const badge = ESTADO_BADGE[estado];
+              return (
+                <li key={d.key} className="space-y-2 rounded-md border border-border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <a href={d.url} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-sm text-foreground hover:text-primary">
+                      <Download className="size-4 shrink-0 text-primary" /> {d.label}
+                    </a>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${badge.cls}`}>{badge.label}</span>
+                  </div>
+                  {estado === 'recusado' && rev?.observacao && (
+                    <p className="text-xs text-destructive">Motivo: {rev.observacao}</p>
+                  )}
+                  {!concluida && (
+                    <div className="space-y-2">
+                      <textarea value={obs[d.key] ?? ''} rows={2}
+                        onChange={(ev) => setObs((o) => ({ ...o, [d.key]: ev.target.value }))}
+                        placeholder="Observação (obrigatória para recusar)"
+                        className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs" />
+                      <div className="flex gap-2">
+                        <button type="button" disabled={pending}
+                          onClick={() => run(() => revisarDocumentoAction({ aberturaId: detalhe.id, docKey: d.key, status: 'aprovado' }), 'Documento aprovado')}
+                          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                          Aprovar
+                        </button>
+                        <button type="button" disabled={pending || !obs[d.key]?.trim()}
+                          onClick={() => run(() => revisarDocumentoAction({ aberturaId: detalhe.id, docKey: d.key, status: 'recusado', observacao: obs[d.key] }), 'Documento recusado')}
+                          className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-surface-2 disabled:opacity-50">
+                          Recusar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
