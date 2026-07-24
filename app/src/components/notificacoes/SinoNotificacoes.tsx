@@ -128,7 +128,7 @@ export function SinoNotificacoes({ collapsed }: { collapsed: boolean }) {
               {itens.map((n) => (
                 <li key={n.id}>
                   <a
-                    href={n.action_href ?? '/notificacoes'}
+                    href={`/notificacoes?sel=${n.id}#n-${n.id}`}
                     className={`flex gap-2 px-3 py-2 hover:bg-surface-3 ${n.lida_em ? 'opacity-60' : ''}`}
                   >
                     <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${SEVERIDADE_DOT[n.severidade]}`} />

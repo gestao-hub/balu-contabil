@@ -35,8 +35,18 @@ async function marcarTodasWrapper(): Promise<void> {
   await marcarTodasLidasAction();
 }
 
-export default async function NotificacoesPage() {
+export default async function NotificacoesPage(
+  { searchParams }: { searchParams: Promise<{ sel?: string }> },
+) {
+  const { sel } = await searchParams;
   const supabase = await createServerClient();
+
+  // Notificação aberta pelo sino (?sel=<id>): marca como lida antes de listar.
+  // A RLS `notifications_update_own` garante que só a própria linha é afetada.
+  if (sel) {
+    await supabase.from('notifications').update({ lida_em: new Date().toISOString() }).eq('id', sel).is('lida_em', null);
+  }
+
   const { data } = await supabase
     .from('notifications')
     .select('id,titulo,corpo,norma,severidade,action_href,lida_em,created_at')
@@ -72,7 +82,7 @@ export default async function NotificacoesPage() {
       ) : (
         <ul className="space-y-2">
           {itens.map((n) => (
-            <li key={n.id} className={`rounded-md border border-border bg-surface p-3 ${n.lida_em ? 'opacity-60' : ''}`}>
+            <li key={n.id} id={`n-${n.id}`} className={`scroll-mt-6 rounded-md border bg-surface p-3 ${sel === n.id ? 'border-primary ring-2 ring-primary/40' : 'border-border'} ${n.lida_em && sel !== n.id ? 'opacity-60' : ''}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 gap-2">
                   <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${SEVERIDADE_DOT[n.severidade]}`} />
