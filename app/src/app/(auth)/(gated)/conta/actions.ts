@@ -1,6 +1,7 @@
 // src/app/(auth)/conta/actions.ts
 'use server';
 import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getSiteUrl } from '@/lib/site-url';
@@ -141,6 +142,7 @@ export async function salvarPreferenciasNotificacaoAction(fd: FormData): Promise
     .from('notification_preferences')
     .upsert(rows, { onConflict: 'owner_user_id,tipo' });
   if (error) return { ok: false, error: error.message };
+  revalidatePath('/conta'); // re-renderiza a aba com os valores salvos (checkbox nao reseta)
   return { ok: true };
 }
 
