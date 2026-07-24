@@ -57,7 +57,9 @@ BEGIN
     GROUP BY c.user_id, c.id
   ),
   cand AS (
-    SELECT owner_user_id, company_id, not_after, (not_after::date - p_hoje) AS dias FROM certs
+    -- cert_not_after em BRT p/ alinhar com p_hoje (evita off-by-one perto da meia-noite)
+    SELECT owner_user_id, company_id, not_after,
+           ((not_after AT TIME ZONE 'America/Sao_Paulo')::date - p_hoje) AS dias FROM certs
   ),
   ins AS (
     INSERT INTO public.notifications
@@ -71,7 +73,7 @@ BEGIN
       'ICP-Brasil (MP 2.200-2/2001)', '/configuracoes',
       (CASE WHEN dias < 0 THEN 'cert_vencido' ELSE 'cert_a_vencer' END) || ':' || company_id::text || ':' ||
         (CASE WHEN dias < 0 THEN 'V' WHEN dias <= 7 THEN 'D7' WHEN dias <= 15 THEN 'D15' ELSE 'D30' END),
-      not_after::date
+      (not_after AT TIME ZONE 'America/Sao_Paulo')::date
     FROM cand WHERE dias < 30
     ON CONFLICT (owner_user_id, chave) DO NOTHING
     RETURNING 1
@@ -101,7 +103,7 @@ BEGIN
       'Declaração mensal (PGDAS-D) pendente',
       'A declaração do mês ' || comp || ' ainda não foi transmitida. O prazo é o dia 20.',
       'Res. CGSN 140/2018, art. 38', '/impostos',
-      'pgdas_pendente:' || comp || ':' || (CASE WHEN extract(day FROM p_hoje) > 20 THEN 'POS' ELSE 'PRE' END),
+      'pgdas_pendente:' || company_id::text || ':' || comp || ':' || (CASE WHEN extract(day FROM p_hoje) > 20 THEN 'POS' ELSE 'PRE' END),
       make_date(substring(comp,1,4)::int, substring(comp,5,2)::int, 20)
     FROM pend
     ON CONFLICT (owner_user_id, chave) DO NOTHING
@@ -132,7 +134,7 @@ BEGIN
       'Declaração anual do MEI (DASN-SIMEI) pendente',
       'A DASN-SIMEI de ' || ano || ' ainda não foi entregue. O prazo é 31/05.',
       'Res. CGSN 140/2018, art. 109', '/impostos',
-      'dasn_pendente:' || ano::text || ':' ||
+      'dasn_pendente:' || company_id::text || ':' || ano::text || ':' ||
         (CASE WHEN extract(month FROM p_hoje) >= 6 THEN 'V' ELSE 'M' || extract(month FROM p_hoje)::text END),
       make_date(extract(year FROM p_hoje)::int, 5, 31)
     FROM pend
@@ -199,3 +201,12 @@ LANGUAGE sql SECURITY DEFINER SET search_path = public, auth AS $$
   ORDER BY n.created_at
   LIMIT p_limite;
 $$;
+
+-- SEGURANCA: funcoes nascem com EXECUTE para PUBLIC. So o cron (service_role) precisa delas.
+-- notificacoes_pendentes_email NAO filtra por auth.uid() e roda como owner (bypass RLS) —
+-- expor a authenticated/anon vazaria e-mail + notificacoes de todos os usuarios. Padrao do 0034.
+REVOKE ALL ON FUNCTION public.materializar_obrigacoes(date) FROM public;
+REVOKE ALL ON FUNCTION public.notificacoes_pendentes_email(int) FROM public;
+GRANT EXECUTE ON FUNCTION public.materializar_obrigacoes(date) TO service_role;
+GRANT EXECUTE ON FUNCTION public.notificacoes_pendentes_email(int) TO service_role;
+
