@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/honorarios-recorrentes", "schedule": "0 9 1 * *" }
+    { "path": "/api/cron/honorarios-recorrentes", "schedule": "0 9 1 * *" },
+    { "path": "/api/cron/obrigacoes", "schedule": "0 11 * * *" }
   ]
 }

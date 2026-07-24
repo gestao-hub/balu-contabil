@@ -18,6 +18,7 @@ import { useToast } from '@/components/Toaster';
 import AddEmpresaDialog from '@/components/AddEmpresaDialog';
 import Logo from '@/components/Logo';
 import ThemeToggle from '@/components/ThemeToggle';
+import { SinoNotificacoes } from '@/components/notificacoes/SinoNotificacoes';
 
 // Os values batem com o option set Bubble (lowercase). Para exibição, label é capitalizada.
 type Role = 'empresa' | 'contador' | 'adminbalu';
@@ -215,6 +216,11 @@ export default function MenuLateral({
         {open && escritorio && (
           <p className="mt-1 truncate text-xs text-muted-foreground">oferecido por {escritorio.nome}</p>
         )}
+      </div>
+
+      {/* Sino de notificações — sempre visível (mesmo recolhido), logo abaixo da marca. */}
+      <div className="border-b border-border p-2">
+        <SinoNotificacoes collapsed={!open} />
       </div>
 
       {/* Cabeçalho com usuário + empresa — só quando expandido.

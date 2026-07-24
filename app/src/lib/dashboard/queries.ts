@@ -4,6 +4,7 @@
 import 'server-only';
 import type { createServerClient } from '@/lib/supabase/server';
 import type { Row } from '@/types/database';
+import { daysUntilISO } from '@/lib/fiscal/saude-empresa';
 
 type SB = Awaited<ReturnType<typeof createServerClient>>;
 
@@ -87,7 +88,7 @@ export async function getDashboardMetrics(sb: SB, companyId: string): Promise<Da
 export async function getPendingActions(sb: SB, companyId: string): Promise<PendingAction[]> {
   const actions: PendingAction[] = [];
 
-  const [guiasRes, notasPendRes] = await Promise.all([
+  const [guiasRes, notasPendRes, certRes] = await Promise.all([
     sb
       .from('guias_fiscais')
       .select('id, competencia_referencia, data_vencimento, status')
@@ -103,6 +104,16 @@ export async function getPendingActions(sb: SB, companyId: string): Promise<Pend
       .eq('company_id', companyId)
       .eq('status', 'pendente')
       .limit(50),
+    // Validade do certificado A1 (mais recente entre os arquivos ativos).
+    sb
+      .from('arquivos_auxiliares')
+      .select('cert_not_after')
+      .eq('company_id', companyId)
+      .is('deleted_at', null)
+      .not('cert_not_after', 'is', null)
+      .order('cert_not_after', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   type GuiaPend = Pick<Row<'guias_fiscais'>, 'id' | 'competencia_referencia' | 'data_vencimento' | 'status'>;
@@ -144,9 +155,29 @@ export async function getPendingActions(sb: SB, companyId: string): Promise<Pend
     });
   }
 
-  // TODO(cert-a1): pendência "Certificado A1 vencendo em 30 dias" (V1 §5.2) não é
-  // implementável hoje — o schema não armazena a validade do certificado
-  // (arquivos_auxiliares só tem cert_password). Adicionar quando existir a coluna.
+  const certNotAfter = (certRes.data as { cert_not_after: string | null } | null)?.cert_not_after ?? null;
+  if (certNotAfter) {
+    const dias = daysUntilISO(certNotAfter);
+    if (dias != null && dias < 0) {
+      actions.push({
+        id: 'cert-a1-vencido',
+        severity: 'danger',
+        title: 'Certificado A1 vencido',
+        description: 'Certificado digital A1 vencido — a emissão de notas está parada.',
+        actionLabel: 'Renovar',
+        actionHref: '/configuracoes?tab=fiscal',
+      });
+    } else if (dias != null && dias < 30) {
+      actions.push({
+        id: 'cert-a1-vencendo',
+        severity: 'warning',
+        title: 'Certificado A1 vencendo',
+        description: `Certificado A1 vence em ${dias} dia(s).`,
+        actionLabel: 'Renovar',
+        actionHref: '/configuracoes?tab=fiscal',
+      });
+    }
+  }
 
   return actions;
 }

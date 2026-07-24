@@ -6,10 +6,12 @@ import PerfilForm from './PerfilForm';
 import AlterarSenhaForm from './AlterarSenhaForm';
 import ExportarDadosButton from './ExportarDadosButton';
 import DangerZone from './DangerZone';
+import PreferenciasNotificacao from './PreferenciasNotificacao';
 
 const TABS = [
-  { key: 'perfil',    label: 'Perfil' },
-  { key: 'seguranca', label: 'Segurança' },
+  { key: 'perfil',        label: 'Perfil' },
+  { key: 'seguranca',     label: 'Segurança' },
+  { key: 'notificacoes',  label: 'Notificações' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -74,6 +76,8 @@ export default async function ContaPage({ searchParams }: { searchParams: SP }) 
           <DangerZone email={email} />
         </div>
       )}
+
+      {active === 'notificacoes' && <PreferenciasNotificacao />}
     </main>
   );
 }
