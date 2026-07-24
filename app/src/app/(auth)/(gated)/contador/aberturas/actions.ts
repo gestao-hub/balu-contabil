@@ -7,6 +7,8 @@ import { registrarAuditoria } from '@/lib/security/audit';
 import { ABERTURA_TEXT_FIELDS, DOC_KEYS } from '@/types/abertura';
 import { notificarEtapaAbertura } from '@/lib/abertura/notificar';
 import { ETAPA_LABEL } from '@/lib/abertura/etapas';
+import { tipoDocumento, minutaPronta, type MinutaInput } from '@/lib/abertura/minuta';
+import { renderMinuta } from '@/lib/abertura/minuta/templates';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -172,6 +174,30 @@ export async function decidirAlteracaoAction(
   });
   revalidatePath(`/contador/aberturas/${alvo.aberturaId}`);
   return { ok: true };
+}
+
+export async function gerarMinutaAction(input: { aberturaId: string }): Promise<ActionResult<{ html: string; filename: string; tipoDoc: string }>> {
+  const e = await requireEscritorio();
+  if ('error' in e) return { ok: false, error: e.error };
+  const admin = createAdminClient();
+  const alvo = await aberturaDaCarteira(admin, e.contabilidadeId, input.aberturaId);
+  if (!alvo) return { ok: false, error: 'Abertura fora da sua carteira.' };
+
+  const { data: ab } = await admin.from('abertura_empresas').select('*').eq('id', alvo.aberturaId).maybeSingle();
+  if (!ab) return { ok: false, error: 'Abertura não encontrada.' };
+  const row = ab as Record<string, any>;
+
+  const pronta = minutaPronta(row as MinutaInput);
+  if (!pronta.ok) return { ok: false, error: `Faltam dados para a minuta: ${pronta.faltando.join(', ')}.` };
+
+  const tipoDoc = tipoDocumento(String(row.empresa_tipo ?? ''));
+  const { html, filename } = renderMinuta(tipoDoc, row);
+
+  await registrarAuditoria({
+    actorUserId: e.userId, acao: 'abertura.gerar_minuta', alvoTipo: 'company',
+    alvoId: alvo.companyId, contabilidadeId: e.contabilidadeId, meta: { tipoDoc },
+  });
+  return { ok: true, data: { html, filename, tipoDoc } };
 }
 
 export async function revisarDocumentoAction(
