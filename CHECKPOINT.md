@@ -1,7 +1,26 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-24 (sessão 6 — **Bloco 2 (abertura digital completa) IMPLEMENTADO** em `feat/bloco-2-abertura`: checklist, notificação de etapa, realtime, minuta por tipo; migration 0046 **aplicada**; tsc/vitest 513/build verdes; **2 fixes de smoke** — Realtime auth + clique do sino. **PENDENTE: usuário ainda vai rodar o smoke do Bloco 2 antes do merge** — retomar por aqui)
+> **Última atualização:** 2026-07-25 (sessão 7 — **Bloco 2 MERGEADO em `main`** (`6f01f1e`, pushed → deploy); smoke das frentes D/E automatizado contra o banco real; **SERPRO de produção VALIDADA ponta a ponta**; **migration 0047** corrige a janela do aviso da DASN. **Próximo: spec + plano do Bloco 3.**)
+
+---
+
+## Sessão 7 (2026-07-25) — merge do Bloco 2 + validação SERPRO + correção 0047
+
+**Bloco 2 MERGEADO em `main`** (`6f01f1e`, `--no-ff`, pushed → auto-deploy). O usuário rodou o smoke manual das frentes A (checklist), B (notificação/sino) e C (Realtime) e passou. As frentes **D e E foram testadas por harness automatizado** contra o banco real, reproduzindo o núcleo das actions (o que sobra depois de `requireEscritorio()`), **9/9**:
+- **D — minuta por tipo:** MEI → `roteiro_mei` (cita CCMEI/Portal, diz "Não há contrato social ou ato constitutivo a registrar"); EI → `requerimento_empresario` (modelo DREI); LTDA → `ato_constitutivo_slu` (CC art. 1.052). Guardas: LTDA sem capital bloqueia nomeando o campo; **MEI sem capital gera** (capital não se aplica); erro cumulativo lista todos os faltantes; anti-IDOR bloqueia escritório alheio.
+- **E — abertura sem dono:** `user_id null` avança etapa sem quebrar e **não notifica**; controle discriminante com a mesma função em abertura COM dono **cria** a notificação; reavançar mesma etapa não duplica.
+- Seed do Bloco 2 **restaurado** (`restore`) após o merge. Working tree limpo, 513/513.
+
+**SERPRO de PRODUÇÃO VALIDADA (derruba pendência antiga do Michel).** Com as chaves do `app/.env.local` + o certificado do contratante guardado no banco (**PIPER AUTOMAÇÕES E INTEGRAÇÕES LTDA**, CNPJ 61.061.690/0001-83), a cadeia inteira fechou ao vivo: `mTLS + consumer key/secret` → `/authenticate` (role-type TERCEIROS, accessToken 1h) → `Termo XML assinado com o A1 da empresa` → `POST /Apoiar (AUTENTICAPROCURADOR/ENVIOXMLASSINADO81)` → **token de procurador gerado** (36 chars, validade até a meia-noite BRT). Testado com **AL PISCINAS LTDA** (CNPJ 10.358.425/0001-20, único A1 no sistema, válido até 20/03/2027) e o token foi **restaurado ao valor original** depois. ⚠️ Isso valida a autenticação; **não** valida que uma consulta de um contribuinte específico será autorizada (depende da procuração daquele CNPJ).
+
+**Focus:** `FOCUS_NFE_ENV=hom`, token de 32 chars — `GET /v2/cnpjs/:cnpj` dá **404 em homologação** (endpoint só existe em `api.focusnfe.com.br`) e **403 `permissao_negada` em produção**. Não é token de revenda. Não afeta o Bloco 3 (SERPRO puro); é assunto do **Bloco 5**.
+
+**Correção 0047 — janela do aviso da DASN-SIMEI.** Descoberta testando a RPC do Bloco 1: a `0045b` abria a janela em **março** (`BETWEEN 3 AND 6`), mas o comentário da própria migration dizia "(jan–jun)" e o Master PRD pede aviso "a partir de janeiro" — o MEI perdia 2 meses num prazo que vence 31/05 com multa mínima de R$ 25 (art. 111). **Migration `0047_dasn_janela_janeiro.sql` aplicada em produção e commitada** (`f134dbc`): única mudança funcional é `BETWEEN 1 AND 6`. Provado no banco antes (15/02 → 0 avisos) e depois (15/01 e 15/02 → aviso `warning`, buckets M1/M2).
+
+**Bloco 3 — o que já existia (correção ao levantamento anterior):** o bloco `dasn_pendente` **já está implementado** na RPC `materializar_obrigacoes`; só o **DEFIS** é TODO (`0045b:174`). Testado 5/5: avisa em abril com `warning`/prazo 31/05/norma art. 109, escala para `danger` em junho (bucket `V`), é idempotente e **suprime quem já entregou** (declaração `DASN-SIMEI` com `data_transmissao` registrada). **Falta construir:** tela assistida da DASN, **registro manual de comprovante/`numero_declaracao`**, **DEFIS inteiro** (builder + tela + registro) e o bloco `defis_pendente` na RPC.
+
+**Bloqueio de dado (não de credencial) para testar a consulta DASN real:** não existe **nenhuma empresa MEI** no banco (as 4 `empresas_fiscais` são Simples, `code '1'`) e a DASN-SIMEI é MEI-only — a action barra antes da SERPRO. Para testar ponta a ponta é preciso um CNPJ MEI com A1 + procuração RFB.
 
 ---
 
@@ -186,15 +205,29 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 
 ## Sequência dos blocos
 
-**A (multi-tenant contador) → E (hardening/LGPD) → D (produção fiscal) → B (billing Asaas) → C (notificações/WhatsApp/IA)**
+> ⚠️ Duas numerações convivem: a **antiga A–E** (PRD-Balu-V2, blocos A e E já em main) e a **nova 1–7** do `PRD-MASTER-Balu-2026-07-24.md`, que é a válida desde a sessão 5. A tabela A–E abaixo fica como histórico.
+
+**Numeração vigente (Master PRD):** 1 (obrigações/notificações) → 2 (abertura completa) → **3 (DASN/DEFIS assistidas — próximo)** → 4 (billing Asaas 🔒) → 5 (produção fiscal 🔒) → 6 (WhatsApp/IA 🔒) → 7 (domínio/SLA/conciliação 🔒)
+
+| Bloco (Master PRD) | Spec | Plano | Implementação |
+|---|---|---|---|
+| 1 — motor de obrigações/notificações | ✅ aprovada | ✅ escrito (12 tasks) | ✅ **em main** (0045, 0045b, **0047**) |
+| 2 — abertura digital completa | ✅ aprovada | ✅ escrito (7 tasks) | ✅ **em main** (0046) — merge `6f01f1e` |
+| 3 — DASN-SIMEI assistida + DEFIS | ⬜ **próximo** | ⬜ | 🟡 parcial: aviso `dasn_pendente` já existe na RPC |
+| 4 — billing Asaas 🔒 | ⬜ | ⬜ | ⬜ |
+| 5 — produção fiscal 🔒 | ⬜ | ⬜ | ⬜ |
+| 6 — WhatsApp (Envia.Click) + IA (Claude) 🔒 | ⬜ | ⬜ | ⬜ |
+| 7 — domínio + SLA + conciliação 🔒 | ⬜ | ⬜ | ⬜ |
+
+**Histórico (numeração antiga A–E):**
 
 | Bloco | Spec | Plano | Implementação |
 |---|---|---|---|
 | A — multi-tenant, painel contador, white-label, honorários v2 | ✅ aprovada | ✅ escrito (21 tasks) | ✅ **em main** (0030–0036) |
 | E — hardening + LGPD | ✅ aprovada | ✅ escrito (16 tasks) | ✅ **em main** (0037–0042) |
-| D — produção fiscal (Focus prod, PGDAS-D real, DASN assistida, abertura UI) | ⬜ | ⬜ | ⬜ |
-| B — billing Asaas | ⬜ | ⬜ | ⬜ |
-| C — notificações, WhatsApp, IA | ⬜ | ⬜ | ⬜ |
+| D — produção fiscal (Focus prod, PGDAS-D real, DASN assistida, abertura UI) | ⬜ | ⬜ | ⬜ (virou Bloco 5) |
+| B — billing Asaas | ⬜ | ⬜ | ⬜ (virou Bloco 4) |
+| C — notificações, WhatsApp, IA | ⬜ | ⬜ | ⬜ (virou Bloco 6) |
 
 ## Decisões-chave já tomadas (não rediscutir sem motivo novo)
 
@@ -210,7 +243,7 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 
 ## Pendências externas (cobrar do Michel — travam D/B/C, não A/E)
 
-- [ ] Validar credenciais SERPRO de produção (ele diz "já tenho"; Trial dava 403)
+- [x] ~~Validar credenciais SERPRO de produção (ele diz "já tenho"; Trial dava 403)~~ — **VALIDADA em 2026-07-25** (sessão 7): autenticação de produção + geração de token de procurador funcionando com as chaves do `.env.local` e o cert do contratante (PIPER). Falta ainda: **procuração RFB por cliente** (a autorização por CNPJ segue sendo dependência real).
 - [ ] Credenciais Asaas de produção (não existem)
 - [ ] Credenciais WhatsApp Business API (ele diz que tem)
 - [ ] Contrato Focus produção + certificados A1 dos pilotos + procurações RFB
