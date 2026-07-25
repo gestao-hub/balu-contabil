@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-24 (sessão 5 — Master PRD + specs/planos Blocos 1 e 2; **Bloco 1 (motor de obrigações/notificações) IMPLEMENTADO** em `feat/bloco-1-obrigacoes`, smoke test manual OK, merge para main)
+> **Última atualização:** 2026-07-24 (sessão 6 — **Bloco 2 (abertura digital completa) IMPLEMENTADO** em `feat/bloco-2-abertura`: checklist, notificação de etapa, realtime, minuta por tipo; migration 0046 **aplicada**; tsc/vitest 513/build verdes; **2 fixes de smoke** — Realtime auth + clique do sino. **PENDENTE: usuário ainda vai rodar o smoke do Bloco 2 antes do merge** — retomar por aqui)
 
 ---
 
@@ -22,6 +22,30 @@
 - **Follow-ups não-bloqueantes documentados** (do review final): cadência de bucket PGDAS/DASN diverge da spec §5; badge conta só entre os 15 carregados; `getSiteUrl` no cron; `marcarNotificacaoLidaAction` não fiada ao clique; blocos DEFIS/limite_faturamento na RPC (TODO).
 
 **Próximo:** Bloco 2 (abertura digital completa) — plano pronto em `docs/superpowers/plans/2026-07-24-bloco-2-...md`, depende do Bloco 1 (usa `abertura_etapa` nas notificações).
+
+---
+
+## Sessão 6 (2026-07-24) — Bloco 2: Abertura Digital completa
+
+**Bloco 2 IMPLEMENTADO (branch `feat/bloco-2-abertura`, subagent-driven, 7 tasks).** Fecha as 4 lacunas da abertura para o cliente viver o processo. `tsc` 0 · **vitest 513/513** · `next build` limpo. Ainda **não mergeado** (aguarda aplicar a migration 0046 + consentimento — mesmo protocolo do Bloco 1).
+
+- **Migration 0046** (`app/supabase/migrations/0046_abertura_checklist.sql`): coluna `docs_revisao jsonb NOT NULL DEFAULT '{}'` em `abertura_empresas` + `abertura_empresas` na publication `supabase_realtime` (guarda idempotente igual à 0045). ⚠️ **Aplicar em produção antes/no merge** (runtime depende da coluna): `! node app/scratchpad/apply-migration.mjs app/supabase/migrations/0046_abertura_checklist.sql`.
+- **Frente A — Checklist de docs com status.** Helper puro `src/lib/abertura/checklist.ts` (`docsExigidos(tipo)`, `estadoDoc(path,rev)` → pendente_envio/aguardando_analise/aprovado/recusado; testes 6/6). `revisarDocumentoAction` em `contador/aberturas/actions.ts` faz **merge parcial** do JSONB `docs_revisao[docKey]` (nunca sobrescreve o objeto), e recusa move `processo_etapa → pendente_documentos` (se não terminal). UI: contador aprova/recusa por doc (com observação) em `DetalheAbertura.tsx`; cliente vê checklist read-only + reenvio (reusa `AlteracaoDialog`) em `AberturaInfoView.tsx`.
+- **Frente B — Notificação na transição (usa Bloco 1).** Helper `src/lib/abertura/notificar.ts` insere `notifications` (tipo `abertura_etapa`, upsert `ignoreDuplicates` por `(owner_user_id, chave)`; **guarda `user_id` null** = office-initiated, no-op). Ganchos em `avancarProcessoAction` (nova etapa), `concluirAberturaAction` (CNPJ emitido) e `revisarDocumentoAction` (recusa). E-mail sai pelo cron diário do Bloco 1.
+- **Frente C — Realtime.** `AberturaInfoView.tsx` assina `abertura_empresas` filtrado por `id=eq.{id}` (`createBrowserClient`, padrão do sino) → `router.refresh()` no UPDATE; cleanup `removeChannel`.
+- **Frente D — Minuta por tipo.** `src/lib/abertura/minuta/` (`tipoDocumento`: MEI→roteiro, EI→requerimento DREI, LTDA→ato SLU art. 1.052 CC; `minutaPronta` lista faltantes; templates HTML com escape completo, marca "MINUTA — rascunho"). `gerarMinutaAction` (guards + audit, não persiste) devolve HTML; UI baixa o arquivo (o contador usa "Salvar como PDF"). Testes 6/6.
+- **DECISÃO de formato (registrada):** minuta = **HTML pronto p/ impressão**, não PDF binário. Motivo: nenhuma lib de PDF instalada; `pdf-lib` renderiza prosa jurídica de forma tosca e Chromium em serverless é pesado/frágil; HTML é editável pela equipe e dá o melhor resultado. Zero dependência nova.
+- **Correções ao plano descobertas na execução** (o plano tinha placeholders): `registrarAuditoria` é objeto único (sem admin); `aberturaDaCarteira` retorna só `{aberturaId,companyId}` (as actions buscam a linha à parte p/ `docs_revisao`/`user_id`/etapa); `requireEscritorio` retorna `{error}|{userId,contabilidadeId}`; não existe tipo 'SLU' (LTDA→ato SLU); severidade só `info|warning|danger`.
+- **Follow-ups não-bloqueantes:** re-recusar o **mesmo** doc não re-notifica no sino (idempotente por chave `doc_recusado_{docKey}`) — mitigado pelo checklist+realtime que refletem o novo motivo; a chamada de notificação nas actions é `await` best-effort (poderia lançar em erro de rede após o UPDATE já persistido, como o insert de `empresas_fiscais` da conclusão); cliente vê checklist sem link de download (só path bruto, sem signed URL — por design).
+
+### Rodada de smoke (EM ANDAMENTO — retomar aqui na próxima sessão)
+Migration 0046 **aplicada** em produção (confirmado no banco: `docs_revisao` + `abertura_empresas` na publication `supabase_realtime`). Dev server pode estar de pé em localhost:3000 (se não, `npm run dev` em `balu/app`). **2 bugs achados no smoke e já corrigidos na branch:**
+- `ec80d73` — **Realtime não atualizava sem F5.** Causa: o `@supabase/ssr` carrega a sessão do cookie de forma assíncrona, e o `subscribe()` acontecia antes → socket **anon**, `auth.uid()` null, RLS descartava todos os eventos. Fix: `await getSession()` + `supabase.realtime.setAuth(access_token)` **antes** de `subscribe()`, no sino (`SinoNotificacoes.tsx`, Bloco 1) e na abertura (`AberturaInfoView.tsx`, Bloco 2). (DB estava certo — não era publication.)
+- `5c43c1f` — **clique no sino não abria a notificação.** O item linkava para `action_href` (ex.: `/configuracoes`), que parecia "só fechar o dropdown" quando o usuário já estava lá. Fix: item linka para `/notificacoes?sel=<id>#n-<id>` → a página marca a selecionada como lida, destaca (ring) e rola até ela; o botão "Abrir" (contexto) segue em cada item.
+
+**Seed de teste** (scratchpad, não commitado): `app/scratchpad/seed-abertura-bloco2.mjs` cria uma abertura **com dono** (cliente `walacesssantos@gmail.com`, editável), na carteira do escritório de teste, com 3 docs reais no storage — para testar o fluxo completo dos dois lados. Rodar: `! node app/scratchpad/seed-abertura-bloco2.mjs` (imprime o id da abertura + URLs); limpar: `... restore` (apaga o seed e devolve o `current_company` do cliente). Última abertura semeada: `6ecf3668-71b2-4015-a2e0-db5e3cd3f8b1`.
+
+**FALTA (retomada):** usuário rodar o smoke — checklist aprovar/recusar (contador) + realtime/sino/checklist (cliente) + minuta por tipo. Se passar: **merge** `feat/bloco-2-abertura` → `main` (+ push/deploy, mesmo protocolo do Bloco 1) e depois `restore` do seed. Branch tem 9 commits (7 de feature + 2 de smoke). Todos os fixes de smoke tocam Realtime/UX, não a lógica de negócio já revisada.
 
 ---
 

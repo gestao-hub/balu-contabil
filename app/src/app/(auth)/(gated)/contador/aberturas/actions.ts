@@ -5,6 +5,10 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { ABERTURA_TEXT_FIELDS, DOC_KEYS } from '@/types/abertura';
+import { notificarEtapaAbertura } from '@/lib/abertura/notificar';
+import { ETAPA_LABEL } from '@/lib/abertura/etapas';
+import { tipoDocumento, minutaPronta, type MinutaInput } from '@/lib/abertura/minuta';
+import { renderMinuta } from '@/lib/abertura/minuta/templates';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -60,6 +64,17 @@ export async function avancarProcessoAction(
     actorUserId: e.userId, acao: 'abertura.avancar', alvoTipo: 'company',
     alvoId: alvo.companyId, contabilidadeId: e.contabilidadeId, meta: { etapa: input.etapa },
   });
+
+  // Notifica o titular da nova etapa (Bloco 1). Busca user_id (o guard não o traz).
+  const { data: abRow } = await admin.from('abertura_empresas').select('user_id').eq('id', alvo.aberturaId).maybeSingle();
+  const label = ETAPA_LABEL[input.etapa] ?? input.etapa;
+  await notificarEtapaAbertura(admin, {
+    aberturaId: alvo.aberturaId, ownerUserId: (abRow as { user_id?: string | null } | null)?.user_id ?? null,
+    companyId: alvo.companyId, etapa: input.etapa,
+    titulo: `Abertura: ${label}`,
+    corpo: `O status do seu processo de abertura foi atualizado para "${label}".`,
+    severidade: input.etapa === 'pendente_documentos' ? 'warning' : (input.etapa === 'cancelado' ? 'danger' : 'info'),
+  });
   revalidatePath(`/contador/aberturas/${alvo.aberturaId}`);
   revalidatePath('/contador/aberturas');
   return { ok: true };
@@ -101,6 +116,15 @@ export async function concluirAberturaAction(input: { aberturaId: string; cnpj: 
   await registrarAuditoria({
     actorUserId: e.userId, acao: 'abertura.concluir', alvoTipo: 'company',
     alvoId: alvo.companyId, contabilidadeId: e.contabilidadeId, meta: { cnpj },
+  });
+
+  const { data: abRowC } = await admin.from('abertura_empresas').select('user_id').eq('id', alvo.aberturaId).maybeSingle();
+  await notificarEtapaAbertura(admin, {
+    aberturaId: alvo.aberturaId, ownerUserId: (abRowC as { user_id?: string | null } | null)?.user_id ?? null,
+    companyId: alvo.companyId, etapa: 'concluido',
+    titulo: 'Sua empresa foi aberta!',
+    corpo: `Parabéns! O CNPJ ${cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')} foi emitido e sua empresa está ativa.`,
+    severidade: 'info',
   });
   revalidatePath(`/contador/aberturas/${alvo.aberturaId}`);
   revalidatePath('/contador/aberturas');
@@ -149,5 +173,90 @@ export async function decidirAlteracaoAction(
     alvoTipo: 'company', alvoId: alvo.companyId, contabilidadeId: e.contabilidadeId,
   });
   revalidatePath(`/contador/aberturas/${alvo.aberturaId}`);
+  return { ok: true };
+}
+
+export async function gerarMinutaAction(input: { aberturaId: string }): Promise<ActionResult<{ html: string; filename: string; tipoDoc: string }>> {
+  const e = await requireEscritorio();
+  if ('error' in e) return { ok: false, error: e.error };
+  const admin = createAdminClient();
+  const alvo = await aberturaDaCarteira(admin, e.contabilidadeId, input.aberturaId);
+  if (!alvo) return { ok: false, error: 'Abertura fora da sua carteira.' };
+
+  const { data: ab } = await admin.from('abertura_empresas').select('*').eq('id', alvo.aberturaId).maybeSingle();
+  if (!ab) return { ok: false, error: 'Abertura não encontrada.' };
+  const row = ab as Record<string, any>;
+
+  const pronta = minutaPronta(row as MinutaInput);
+  if (!pronta.ok) return { ok: false, error: `Faltam dados para a minuta: ${pronta.faltando.join(', ')}.` };
+
+  const tipoDoc = tipoDocumento(String(row.empresa_tipo ?? ''));
+  const { html, filename } = renderMinuta(tipoDoc, row);
+
+  await registrarAuditoria({
+    actorUserId: e.userId, acao: 'abertura.gerar_minuta', alvoTipo: 'company',
+    alvoId: alvo.companyId, contabilidadeId: e.contabilidadeId, meta: { tipoDoc },
+  });
+  return { ok: true, data: { html, filename, tipoDoc } };
+}
+
+export async function revisarDocumentoAction(
+  input: { aberturaId: string; docKey: string; status: 'aprovado' | 'recusado'; observacao?: string },
+): Promise<ActionResult> {
+  const e = await requireEscritorio();
+  if ('error' in e) return { ok: false, error: e.error };
+  if (!(DOC_KEYS as readonly string[]).includes(input.docKey)) return { ok: false, error: 'Documento inválido.' };
+  if (input.status !== 'aprovado' && input.status !== 'recusado') return { ok: false, error: 'Status inválido.' };
+
+  const admin = createAdminClient();
+  const alvo = await aberturaDaCarteira(admin, e.contabilidadeId, input.aberturaId);
+  if (!alvo) return { ok: false, error: 'Abertura fora da sua carteira.' };
+
+  // Busca a linha para merge do JSONB + user_id (destinatário) + etapa atual.
+  const { data: ab } = await admin.from('abertura_empresas')
+    .select('docs_revisao, user_id, processo_etapa').eq('id', alvo.aberturaId).maybeSingle();
+  const revisaoAtual = ((ab as { docs_revisao?: Record<string, unknown> } | null)?.docs_revisao ?? {}) as Record<string, unknown>;
+  const etapaAtual = (ab as { processo_etapa?: string | null } | null)?.processo_etapa ?? 'recebido';
+  const ownerUserId = (ab as { user_id?: string | null } | null)?.user_id ?? null;
+
+  // Merge PARCIAL: só a chave do doc é tocada; os demais docs permanecem.
+  const patch: Record<string, unknown> = {
+    docs_revisao: {
+      ...revisaoAtual,
+      [input.docKey]: {
+        status: input.status,
+        observacao: input.observacao?.trim() || null,
+        revisado_por: e.userId,
+        revisado_em: new Date().toISOString(),
+      },
+    },
+  };
+  // Recusa move para pendente_documentos (se não estiver em etapa terminal).
+  if (input.status === 'recusado' && !['concluido', 'cancelado'].includes(etapaAtual)) {
+    patch.processo_etapa = 'pendente_documentos';
+    patch.processo_atualizado_por = e.userId;
+  }
+
+  const { error } = await admin.from('abertura_empresas').update(patch).eq('id', alvo.aberturaId);
+  if (error) return { ok: false, error: error.message };
+
+  await registrarAuditoria({
+    actorUserId: e.userId, acao: 'abertura.revisar_doc', alvoTipo: 'company',
+    alvoId: alvo.companyId, contabilidadeId: e.contabilidadeId,
+    meta: { docKey: input.docKey, status: input.status },
+  });
+
+  if (input.status === 'recusado') {
+    const motivo = input.observacao?.trim();
+    await notificarEtapaAbertura(admin, {
+      aberturaId: alvo.aberturaId, ownerUserId, companyId: alvo.companyId,
+      etapa: `doc_recusado_${input.docKey}`,
+      titulo: 'Um documento precisa de ajuste',
+      corpo: `O documento enviado foi recusado.${motivo ? ' Motivo: ' + motivo + '.' : ''} Reenvie pelo painel de abertura.`,
+      severidade: 'warning',
+    });
+  }
+  revalidatePath(`/contador/aberturas/${alvo.aberturaId}`);
+  revalidatePath('/contador/aberturas');
   return { ok: true };
 }
