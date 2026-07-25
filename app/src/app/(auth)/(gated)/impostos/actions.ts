@@ -12,12 +12,18 @@ import type { PagamentoDas } from '@/lib/fiscal/serpro-pagamentos-parse';
 import { consultarDasnSimei } from '@/lib/fiscal/serpro-dasn-simei';
 import { gerarDasSimples } from '@/lib/fiscal/serpro-das-simples';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
-import { lerReceitasParaApuracao } from '@/lib/fiscal/receitas-source';
+import { lerReceitasParaApuracao, lerNotasAnoCalendario } from '@/lib/fiscal/receitas-source';
 import { gerarDasMei } from '@/lib/fiscal/serpro-das-mei';
 import { resolverAnexoEmpresa } from '@/lib/fiscal/cnae-sync';
 import { anexarAnexosDasReceitas } from '@/lib/fiscal/segregacao';
 import { transmitirPgdasd } from '@/lib/fiscal/serpro-pgdasd';
 import type { DeclaracaoPgdasdResult } from '@/lib/fiscal/serpro-pgdasd-parse';
+import { registrarDeclaracaoAnual } from '@/lib/fiscal/declaracoes-anuais/registrar';
+import { calcularDivergencia } from '@/lib/fiscal/declaracoes-anuais/divergencia';
+import { resumirReceitasAno } from '@/lib/fiscal/dasn/resumo';
+import { DasnCamposSchema } from '@/lib/fiscal/dasn/campos';
+import { DefisCamposSchema } from '@/lib/fiscal/defis/campos';
+import type { DeclaracaoAnualTipo } from '@/lib/fiscal/declaracoes-anuais/tipos';
 
 export type GuiaActionResult = { ok: true } | { ok: false; error: string };
 
@@ -610,4 +616,64 @@ export async function marcarSincronizacaoInicialAction(): Promise<MarcarSincroni
 
   revalidatePath('/impostos');
   return { ok: true };
+}
+
+export type RegistrarDeclaracaoResult = { ok: true; id: string } | { ok: false; error: string };
+
+/**
+ * Registra (ou retifica) a declaração anual da empresa atual do usuário.
+ * `dataTransmissao` ausente = rascunho: grava, mas NÃO cala o aviso do sino.
+ * Roda com a sessão do usuário — a policy declaracoes_fiscais_owner cobre a escrita.
+ */
+export async function registrarDeclaracaoAnualAction(input: {
+  tipo: DeclaracaoAnualTipo;
+  ano: number;
+  dados: Record<string, unknown>;
+  numeroDeclaracao?: string | null;
+  dataTransmissao?: string | null;
+  comprovante?: { nome: string; mime: string; base64: string } | null;
+}): Promise<RegistrarDeclaracaoResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão inválida.' };
+
+  const { data: profile } = await supabase
+    .from('profiles').select('current_company').eq('user_id', user.id).single();
+  const companyId = (profile?.current_company ?? null) as string | null;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  const parsed = input.tipo === 'DASN-SIMEI'
+    ? DasnCamposSchema.safeParse(input.dados)
+    : DefisCamposSchema.safeParse(input.dados);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
+  }
+
+  // Divergência: compara o total declarado com o apurado pelas notas do ano.
+  const notas = await lerNotasAnoCalendario(supabase, companyId, input.ano);
+  const resumo = resumirReceitasAno(notas, input.ano);
+  const d = parsed.data as { receitaComercio?: number; receitaServico?: number; receitaBrutaTotal?: number };
+  const declarado = input.tipo === 'DASN-SIMEI'
+    ? (d.receitaComercio ?? 0) + (d.receitaServico ?? 0)
+    : (d.receitaBrutaTotal ?? 0);
+  const divergencia = calcularDivergencia(declarado, resumo.total);
+
+  return registrarDeclaracaoAnual(supabase, {
+    companyId,
+    ownerUserId: user.id,
+    tipo: input.tipo,
+    ano: input.ano,
+    dados: parsed.data as Record<string, unknown>,
+    numeroDeclaracao: input.numeroDeclaracao ?? null,
+    dataTransmissao: input.dataTransmissao ?? null,
+    divergenciaReceita: divergencia.diferenca,
+    origem: 'manual',
+    registradoPor: user.id,
+    comprovante: input.comprovante
+      ? { nome: input.comprovante.nome, mime: input.comprovante.mime, bytes: Buffer.from(input.comprovante.base64, 'base64') }
+      : null,
+  }).then((r) => {
+    if (r.ok) revalidatePath('/impostos');
+    return r;
+  });
 }
