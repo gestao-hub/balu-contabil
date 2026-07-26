@@ -19,6 +19,7 @@ type Notificacao = {
   action_href: string | null;
   lida_em: string | null;
   created_at: string;
+  company_id: string | null;
 };
 
 const SEVERIDADE_DOT: Record<Severidade, string> = {
@@ -30,16 +31,23 @@ const SEVERIDADE_DOT: Record<Severidade, string> = {
 export function SinoNotificacoes({ collapsed }: { collapsed: boolean }) {
   const [open, setOpen] = useState(false);
   const [itens, setItens] = useState<Notificacao[]>([]);
+  // De qual empresa é cada aviso. Sem isso o sino de quem tem mais de uma empresa
+  // mistura pendências de todas sem dizer de qual é cada uma.
+  const [empresas, setEmpresas] = useState<Map<string, string>>(new Map());
   const ref = useRef<HTMLDivElement>(null);
 
   async function carregar() {
     const supabase = createBrowserClient();
-    const { data } = await supabase
-      .from('notifications')
-      .select('id,titulo,corpo,severidade,action_href,lida_em,created_at')
-      .order('created_at', { ascending: false })
-      .limit(15);
+    const [{ data }, { data: cos }] = await Promise.all([
+      supabase
+        .from('notifications')
+        .select('id,titulo,corpo,severidade,action_href,lida_em,created_at,company_id')
+        .order('created_at', { ascending: false })
+        .limit(15),
+      supabase.from('companies').select('id,razao_social').is('deleted_at', null),
+    ]);
     setItens((data as Notificacao[] | null) ?? []);
+    setEmpresas(new Map(((cos ?? []) as { id: string; razao_social: string }[]).map((e) => [e.id, e.razao_social])));
   }
 
   useEffect(() => {
@@ -125,7 +133,9 @@ export function SinoNotificacoes({ collapsed }: { collapsed: boolean }) {
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nada por aqui.</p>
           ) : (
             <ul className="divide-y divide-border">
-              {itens.map((n) => (
+              {itens.map((n) => {
+                const empresa = n.company_id ? empresas.get(n.company_id) : undefined;
+                return (
                 <li key={n.id}>
                   <a
                     href={`/notificacoes?sel=${n.id}#n-${n.id}`}
@@ -135,10 +145,14 @@ export function SinoNotificacoes({ collapsed }: { collapsed: boolean }) {
                     <span className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground">{n.titulo}</p>
                       <p className="truncate text-xs text-muted-foreground">{n.corpo}</p>
+                      {empresas.size > 1 && empresa && (
+                        <p className="truncate text-xs font-medium text-muted-foreground-2">{empresa}</p>
+                      )}
                     </span>
                   </a>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
 

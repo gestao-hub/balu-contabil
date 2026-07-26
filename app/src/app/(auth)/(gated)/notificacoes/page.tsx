@@ -16,6 +16,7 @@ type Notificacao = {
   action_href: string | null;
   lida_em: string | null;
   created_at: string;
+  company_id: string | null;
 };
 
 const SEVERIDADE_DOT: Record<Severidade, string> = {
@@ -49,12 +50,21 @@ export default async function NotificacoesPage(
 
   const { data } = await supabase
     .from('notifications')
-    .select('id,titulo,corpo,norma,severidade,action_href,lida_em,created_at')
+    .select('id,titulo,corpo,norma,severidade,action_href,lida_em,created_at,company_id')
     .order('created_at', { ascending: false })
     .limit(100);
 
   const itens = (data as Notificacao[] | null) ?? [];
   const naoLidas = itens.filter((n) => !n.lida_em).length;
+
+  // De qual empresa é cada aviso. Só vira texto na tela quando o usuário tem mais
+  // de uma — com uma só, o nome repetido em toda linha é ruído.
+  const { data: empresas } = await supabase
+    .from('companies')
+    .select('id,razao_social')
+    .is('deleted_at', null);
+  const nomeEmpresa = new Map((empresas ?? []).map((e) => [e.id as string, e.razao_social as string]));
+  const multiEmpresa = nomeEmpresa.size > 1;
 
   return (
     <main className="p-6 max-w-2xl">
@@ -81,7 +91,10 @@ export default async function NotificacoesPage(
         </div>
       ) : (
         <ul className="space-y-2">
-          {itens.map((n) => (
+          {itens.map((n) => {
+            const empresa = n.company_id ? nomeEmpresa.get(n.company_id) : undefined;
+            const mostrarEmpresa = multiEmpresa && empresa;
+            return (
             <li key={n.id} id={`n-${n.id}`} className={`scroll-mt-6 rounded-md border bg-surface p-3 ${sel === n.id ? 'border-primary ring-2 ring-primary/40' : 'border-border'} ${n.lida_em && sel !== n.id ? 'opacity-60' : ''}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 gap-2">
@@ -90,17 +103,24 @@ export default async function NotificacoesPage(
                     <p className="font-medium text-foreground">{n.titulo}</p>
                     <p className="text-sm text-muted-foreground">{n.corpo}</p>
                     {n.norma && <p className="mt-1 text-xs text-muted-foreground">{n.norma}</p>}
-                    <p className="mt-1 text-xs text-muted-foreground">{dataHoraBR(n.created_at)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {mostrarEmpresa && <span className="font-medium text-foreground">{empresa} · </span>}
+                      {dataHoraBR(n.created_at)}
+                    </p>
                   </div>
                 </div>
                 {n.action_href && (
-                  <a href={n.action_href} className="shrink-0 text-sm font-medium text-primary hover:underline">
-                    Abrir
+                  // Passa por /notificacoes/abrir: a empresa ativa vira a do aviso
+                  // antes de chegar na página. Ir direto no action_href abria a
+                  // página da empresa errada pra quem tem mais de uma.
+                  <a href={`/notificacoes/abrir/${n.id}`} className="shrink-0 text-sm font-medium text-primary hover:underline">
+                    {mostrarEmpresa ? `Abrir em ${empresa}` : 'Abrir'}
                   </a>
                 )}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </main>
