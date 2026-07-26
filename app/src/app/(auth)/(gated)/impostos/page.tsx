@@ -8,9 +8,13 @@ import { createServerClient } from '@/lib/supabase/server';
 import { competenciaReferenciaBrt, competenciaLabel } from '@/lib/fiscal/guia';
 import { tipoFromCode } from '@/lib/fiscal/regime';
 import { derivarObrigacoes, competenciasEsperadasDoAno } from '@/lib/fiscal/obrigacoes';
+import { lerNotasAnoCalendario } from '@/lib/fiscal/receitas-source';
+import { resumirReceitasAno } from '@/lib/fiscal/dasn/resumo';
+import { defisVazio } from '@/lib/fiscal/defis/campos';
 import HistoricoGuias, { type GuiaRow } from './HistoricoGuias';
 import { type DeclaracaoRow } from './DeclaracoesSection';
 import DeclaracoesMeiSection from './DeclaracoesMeiSection';
+import DeclaracoesDefisSection from './DeclaracoesDefisSection';
 import GateInicialSerpro from './GateInicialSerpro';
 import PreviaMesCorrente from './PreviaMesCorrente';
 import FilaObrigacoes from './FilaObrigacoes';
@@ -74,7 +78,7 @@ export default async function ImpostosPage() {
       .order('competencia_referencia', { ascending: false })
       .limit(24),
     supabase.from('declaracoes_fiscais')
-      .select('id, competencia_referencia, tipo, numero_declaracao, data_transmissao, status')
+      .select('id, competencia_referencia, tipo, numero_declaracao, data_transmissao, status, origem, dados')
       .eq('company_id', companyId)
       .order('competencia_referencia', { ascending: false })
       .limit(24),
@@ -94,6 +98,7 @@ export default async function ImpostosPage() {
     numeroDeclaracao: (d.numero_declaracao as string | null) ?? null,
     dataTransmissao: (d.data_transmissao as string | null) ?? null,
     status: (d.status as string | null) ?? null,
+    origem: (d.origem as string | null) ?? null,
   }));
 
   const empresaNome = (company?.nome as string) ?? (company?.razao_social as string) ?? '—';
@@ -142,6 +147,31 @@ export default async function ImpostosPage() {
     .map(toGuiaRowDetalhe);
   const estimativaMesCorrente = apuracaoAtual?.valor_imposto != null ? Number(apuracaoAtual.valor_imposto) : null;
 
+  // Declarações anuais (Bloco 3): ano-calendário anterior ao corrente.
+  const anoDeclaracao = Number(competenciaAtual.slice(0, 4)) - 1;
+  const notasAno = await lerNotasAnoCalendario(supabase, companyId, anoDeclaracao);
+  const resumoAno = resumirReceitasAno(notasAno, anoDeclaracao);
+
+  // Rascunho salvo, se houver — repopula o formulário. Busca POR TIPO: uma empresa
+  // que trocou de regime pode ter DASN e DEFIS no mesmo ano, e um `find` só pela
+  // competência devolveria a errada.
+  const salvaDoAno = (tipo: string) => (declaracoes ?? []).find(
+    (d) => (d.competencia_referencia as string) === String(anoDeclaracao) && (d.tipo as string) === tipo,
+  ) ?? null;
+
+  const dadosDasn = (salvaDoAno('DASN-SIMEI')?.dados ?? null) as Record<string, unknown> | null;
+  const rascunhoDasn = dadosDasn
+    ? {
+        receitaComercio: Number(dadosDasn.receitaComercio ?? 0),
+        receitaServico: Number(dadosDasn.receitaServico ?? 0),
+        possuiEmpregado: Boolean(dadosDasn.possuiEmpregado),
+      }
+    : null;
+
+  const dadosDefis = (salvaDoAno('DEFIS')?.dados ?? null) as Record<string, unknown> | null;
+  const inicialDefis = dadosDefis
+    ?? { ...defisVazio(), receitaBrutaTotal: resumoAno.total, receitaMercadoInterno: resumoAno.total };
+
   return (
     <Page>
       <header className="mb-6">
@@ -171,6 +201,18 @@ export default async function ImpostosPage() {
               <h2 className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Precisa de atenção</h2>
               <FilaObrigacoes obrigacoes={obrigacoesAtencao} />
             </section>
+            {/* Gate por code (e não por isSimples): tipoFromCode mapeia code 3 —
+                Regime Normal — como 'simples', e Regime Normal não entrega DEFIS. */}
+            {(regimeCode === '1' || regimeCode === '2') && (
+              <section className="mb-8">
+                <h2 className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Declaração anual</h2>
+                <DeclaracoesDefisSection
+                  declaracoes={declaracoesRows.filter((d) => d.tipo === 'DEFIS')}
+                  anoCalendario={anoDeclaracao}
+                  inicial={inicialDefis}
+                />
+              </section>
+            )}
             <section>
               <h2 className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Histórico</h2>
               <HistoricoGuias initial={pagasHistorico} />
@@ -190,7 +232,9 @@ export default async function ImpostosPage() {
               <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações</h2>
               <DeclaracoesMeiSection
                 declaracoes={declaracoesRows.filter((d) => d.tipo === 'DASN-SIMEI')}
-                anoCalendario={Number(competenciaAtual.slice(0, 4)) - 1}
+                anoCalendario={anoDeclaracao}
+                resumo={resumoAno}
+                rascunho={rascunhoDasn}
               />
             </section>
             <section>
