@@ -1,7 +1,34 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-25 (sessão 8 — **Bloco 3 em execução na branch `bloco-3-dasn-defis`**: spec + plano escritos e **15 das 22 tasks implementadas** (toda a camada de lógica, as duas Server Actions, migrations 0048 e 0049 aplicadas, smoke verde). **Retomar na Task 16 — só falta a interface.**)
+> **Última atualização:** 2026-07-26 (sessão 9 — **Bloco 3 com 22/22 tasks na branch `bloco-3-dasn-defis`**: interface inteira construída, `tsc` 0 · vitest 565/565 · build limpo. **Falta o smoke manual do usuário** e, depois dele, o merge para `main` + `restore` do seed MEI.)
+
+---
+
+## Sessão 9 (2026-07-26) — Bloco 3: interface (Tasks 16–22)
+
+**Branch `bloco-3-dasn-defis`**, 6 commits novos. `tsc` 0 · **vitest 565/565** · `next build` limpo. Nada mergeado ainda.
+
+**Entregue (Tasks 16–21):**
+- **Task 16** — `DeclaracaoAnualShell.tsx` (casca comum: título, prazo, norma, badge rascunho/entregue/em atraso) e `RegistrarComprovanteDialog.tsx` (nº da declaração + data de transmissão + upload).
+- **Task 17** — `DasnAssistidaForm.tsx`: pré-preenche com as notas do ano, deixa editar, alerta divergência e teto do MEI (art. 18-A). Nunca bloqueia.
+- **Task 18** — `DeclaracoesMeiSection.tsx` reescrita e **o texto falso corrigido**: a promessa de "transmissão automática quando a Receita liberar a API" saiu. O Integra Contador **consulta**, não transmite declaração anual — o fluxo é assistido por definição, não por limitação temporária.
+- **Task 19** — `DefisForm.tsx` (accordions dirigidos por `GRUPOS_DEFIS`, grupo repetível de sócios com adicionar/remover, contador de progresso) e `DeclaracoesDefisSection.tsx`.
+- **Task 20** — ligação em `impostos/page.tsx`: DASN no ramo MEI, DEFIS no ramo Simples gated por `regimeCode === '1' || '2'` (Regime Normal, code `'3'`, não entrega DEFIS).
+- **Task 21** — card de declarações anuais no painel do contador, com o docblock do invariante "zero botões" atualizado junto.
+
+**Três correções ao plano, encontradas na execução:**
+1. **A URL do portal do DEFIS que o plano trazia dá 404.** `ATBHE/defis.app/` não existe — foi escrita por analogia, como o próprio plano avisava. A real é `https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/defis.app/entrada.aspx`, destino do link "Acessar a DEFIS" **de dentro do PGDAS-D 2018** (o DEFIS é módulo do PGDAS-D, não app irmão). Conferida em 2026-07-26: responde com o gate de login, não com 404. Diferente da DASN-SIMEI, **não tem entrada pública por CNPJ** — exige e-CAC ou código de acesso, e a UI diz isso.
+2. **O card da Task 21 era só leitura no plano** — o que deixaria `registrarDeclaracaoAnualContadorAction` (Task 12) sem nenhum chamador, código morto justamente na decisão de produto nº 1. O dialog foi ligado de verdade. Regra: **o registro pelo contador só aparece quando o cliente já salvou o rascunho**, porque a action valida `dados` contra o schema inteiro e o contador não tem de onde inventar os valores declarados; sem rascunho a UI diz isso em vez de oferecer um botão que falharia na validação. Exigiu `dados` na query de `contador/clientes/[companyId]/page.tsx` (o plano dizia que nenhuma mudança ali era necessária — verdade só para o card read-only).
+3. **`btoa(String.fromCharCode(...bytes))` do dialog estoura a pilha** bem antes dos 5 MB que o próprio campo anuncia (o spread vira um argumento por byte). Trocado por codificação em blocos de 32 KB, mais validação de mime/tamanho no cliente espelhando `validarComprovante()` — o servidor revalida de qualquer jeito.
+
+**Dois desvios menores, deliberados:** o `dados` enviado ao registrar o comprovante é o **corrente**, não o inicial (o plano usava `inicial` na DASN, o que gravaria valores antigos de quem editou e salvou); e a busca do rascunho em `page.tsx` é **por tipo**, não só por competência (uma empresa que trocou de regime pode ter DASN e DEFIS no mesmo ano, e o `find` só por competência devolveria a errada).
+
+**⚠️ `npm run lint` não é executável neste repo** — não existe config de ESLint e o `next lint` cai no wizard interativo. É pré-existente (o script nunca rodou); não foi introduzida config, está fora do escopo do bloco. `typecheck` e `build` cobriram a verificação.
+
+**⚠️ Seed MEI SEGUE ATIVO de propósito** (`app/scratchpad/seed-empresa-mei.mjs`): sem ele não há empresa MEI no banco e a tela da DASN não aparece pra clicar. O `restore` do plano (Task 22, Step 3) **foi adiado para depois do smoke manual** — rodar `node app/scratchpad/seed-empresa-mei.mjs restore` só no fechamento, junto do merge.
+
+**Retomar em:** smoke manual do usuário (DASN pela empresa MEI do seed; DEFIS por uma das 4 empresas Simples; card do contador). Passando → merge `--no-ff` para `main` + push (auto-deploy) + `restore` do seed. As sete premissas do Michel (tabela no fim do plano) continuam abertas — a lista de campos do art. 72 é a cara de mudar depois.
 
 ---
 
@@ -249,7 +276,7 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 |---|---|---|---|
 | 1 — motor de obrigações/notificações | ✅ aprovada | ✅ escrito (12 tasks) | ✅ **em main** (0045, 0045b, **0047**) |
 | 2 — abertura digital completa | ✅ aprovada | ✅ escrito (7 tasks) | ✅ **em main** (0046) — merge `6f01f1e` |
-| 3 — DASN-SIMEI assistida + DEFIS | ✅ aprovada | ✅ escrito (22 tasks) | 🟡 **15/22 na branch `bloco-3-dasn-defis`** (0048, 0049) — falta a interface (16–22) |
+| 3 — DASN-SIMEI assistida + DEFIS | ✅ aprovada | ✅ escrito (22 tasks) | 🟡 **22/22 na branch `bloco-3-dasn-defis`** (0048, 0049) — aguarda smoke manual + merge |
 | 4 — billing Asaas 🔒 | ⬜ | ⬜ | ⬜ |
 | 5 — produção fiscal 🔒 | ⬜ | ⬜ | ⬜ |
 | 6 — WhatsApp (Envia.Click) + IA (Claude) 🔒 | ⬜ | ⬜ | ⬜ |
@@ -287,9 +314,12 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 
 ## Próximo passo imediato
 
-**Retomar o Bloco 3 na Task 16** do plano `docs/superpowers/plans/2026-07-25-bloco-3-dasn-defis-assistidas.md`, na branch `bloco-3-dasn-defis`. Modo de execução escolhido: **inline, em lotes com checkpoints**. As 7 tasks restantes são todas de interface — ver a seção da sessão 8 acima para o que cada uma faz e para as duas armadilhas (o texto falso em `DeclaracoesMeiSection.tsx:32` e o invariante "zero botões" de `VisaoCliente.tsx`).
+**Bloco 3 com as 22 tasks feitas na branch `bloco-3-dasn-defis`.** O que falta é o **smoke manual do usuário** — mesmo protocolo dos Blocos 1 e 2:
+1. DASN: entrar como `walacesssantos@gmail.com` (o seed apontou o `current_company` dele para a empresa MEI) → `/impostos` → seção Declarações → conferir pré-preenchimento (R$ 4.500 = 2.300 comércio + 2.200 serviço), editar e salvar rascunho, registrar comprovante e verificar que **só a entrega cala o sino**.
+2. DEFIS: uma das 4 empresas Simples → `/impostos` → seção Declaração anual → accordions, sócios somando 100%, salvar rascunho.
+3. Contador: `/contador/clientes/<id>?tab=declaracoes` → card com situação e, havendo rascunho do cliente, o registro de comprovante.
 
-O seed MEI segue ativo no banco e é pré-requisito do smoke — não rodar `restore` antes de fechar o bloco.
+Passando → merge `--no-ff` para `main` + push (auto-deploy) + `node app/scratchpad/seed-empresa-mei.mjs restore`. **Não rodar o `restore` antes do smoke** — sem o seed não há empresa MEI e a tela da DASN não aparece.
 
 ## Convenções da sessão
 
