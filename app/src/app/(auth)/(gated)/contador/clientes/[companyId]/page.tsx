@@ -39,7 +39,9 @@ export default async function ClienteDrillDown(
       .eq('company_id', companyId).is('deleted_at', null)
       .order('data_vencimento', { ascending: false }).limit(24),
     supabase.from('declaracoes_fiscais')
-      .select('id, tipo, competencia_referencia, data_transmissao, status')
+      // `dados` é o rascunho do cliente: o registro de comprovante pelo contador
+      // reenvia esses valores, nunca inventa os declarados (ver VisaoCliente).
+      .select('id, tipo, competencia_referencia, data_transmissao, status, dados')
       .eq('company_id', companyId).order('competencia_referencia', { ascending: false }).limit(24),
   ]);
   return <VisaoCliente empresa={empresa} tab={tab} notas={notas ?? []} guias={guias ?? []} declaracoes={declaracoes ?? []} />;

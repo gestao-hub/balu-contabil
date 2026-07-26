@@ -12,12 +12,19 @@ import type { PagamentoDas } from '@/lib/fiscal/serpro-pagamentos-parse';
 import { consultarDasnSimei } from '@/lib/fiscal/serpro-dasn-simei';
 import { gerarDasSimples } from '@/lib/fiscal/serpro-das-simples';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
-import { lerReceitasParaApuracao } from '@/lib/fiscal/receitas-source';
+import { lerReceitasParaApuracao, lerNotasAnoCalendario } from '@/lib/fiscal/receitas-source';
 import { gerarDasMei } from '@/lib/fiscal/serpro-das-mei';
 import { resolverAnexoEmpresa } from '@/lib/fiscal/cnae-sync';
 import { anexarAnexosDasReceitas } from '@/lib/fiscal/segregacao';
 import { transmitirPgdasd } from '@/lib/fiscal/serpro-pgdasd';
 import type { DeclaracaoPgdasdResult } from '@/lib/fiscal/serpro-pgdasd-parse';
+import { registrarDeclaracaoAnual } from '@/lib/fiscal/declaracoes-anuais/registrar';
+import { calcularDivergencia } from '@/lib/fiscal/declaracoes-anuais/divergencia';
+import { resumirReceitasAno } from '@/lib/fiscal/dasn/resumo';
+import { DasnCamposSchema, DasnRascunhoSchema, rotuloCampoDasn } from '@/lib/fiscal/dasn/campos';
+import { DefisCamposSchema, DefisRascunhoSchema, rotuloCampoDefis } from '@/lib/fiscal/defis/campos';
+import { mensagemDeIssues } from '@/lib/fiscal/declaracoes-anuais/erros';
+import type { DeclaracaoAnualTipo } from '@/lib/fiscal/declaracoes-anuais/tipos';
 
 export type GuiaActionResult = { ok: true } | { ok: false; error: string };
 
@@ -610,4 +617,79 @@ export async function marcarSincronizacaoInicialAction(): Promise<MarcarSincroni
 
   revalidatePath('/impostos');
   return { ok: true };
+}
+
+export type RegistrarDeclaracaoResult = { ok: true; id: string } | { ok: false; error: string };
+
+/**
+ * Registra (ou retifica) a declaração anual de uma empresa do usuário.
+ * `dataTransmissao` ausente = rascunho: grava, mas NÃO cala o aviso do sino.
+ * Roda com a sessão do usuário — a policy declaracoes_fiscais_owner cobre a escrita.
+ *
+ * `companyId` vem de QUEM RENDERIZOU o formulário e é conferido contra a RLS de
+ * `companies`. Antes esta action relia em `profiles.current_company` no momento do
+ * envio: quem tem mais de uma empresa via a tela de uma e gravava na outra, porque
+ * a empresa ativa pode mudar entre o render e o submit — outra aba, o cache de
+ * rota do Next, ou o próprio link de notificação, que hoje troca a empresa ativa.
+ */
+export async function registrarDeclaracaoAnualAction(input: {
+  companyId: string;
+  tipo: DeclaracaoAnualTipo;
+  ano: number;
+  dados: Record<string, unknown>;
+  numeroDeclaracao?: string | null;
+  dataTransmissao?: string | null;
+  comprovante?: { nome: string; mime: string; base64: string } | null;
+}): Promise<RegistrarDeclaracaoResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão inválida.' };
+
+  const companyId = input.companyId;
+  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // A RLS `companies_select` (user_id = auth.uid()) é quem prova a posse: empresa
+  // de outro dono volta vazia e a action para aqui.
+  const { data: empresa } = await supabase
+    .from('companies').select('id').eq('id', companyId).is('deleted_at', null).maybeSingle();
+  if (!empresa) return { ok: false, error: 'Empresa não encontrada.' };
+
+  // Rascunho aceita formulário pela metade; a entrega exige o schema inteiro.
+  const rascunho = !input.dataTransmissao;
+  const ehDasn = input.tipo === 'DASN-SIMEI';
+  const schema = ehDasn
+    ? (rascunho ? DasnRascunhoSchema : DasnCamposSchema)
+    : (rascunho ? DefisRascunhoSchema : DefisCamposSchema);
+  const parsed = schema.safeParse(input.dados);
+  if (!parsed.success) {
+    return { ok: false, error: mensagemDeIssues(parsed.error.issues, ehDasn ? rotuloCampoDasn : rotuloCampoDefis) };
+  }
+
+  // Divergência: compara o total declarado com o apurado pelas notas do ano.
+  const notas = await lerNotasAnoCalendario(supabase, companyId, input.ano);
+  const resumo = resumirReceitasAno(notas, input.ano);
+  const d = parsed.data as { receitaComercio?: number; receitaServico?: number; receitaBrutaTotal?: number };
+  const declarado = input.tipo === 'DASN-SIMEI'
+    ? (d.receitaComercio ?? 0) + (d.receitaServico ?? 0)
+    : (d.receitaBrutaTotal ?? 0);
+  const divergencia = calcularDivergencia(declarado, resumo.total);
+
+  return registrarDeclaracaoAnual(supabase, {
+    companyId,
+    ownerUserId: user.id,
+    tipo: input.tipo,
+    ano: input.ano,
+    dados: parsed.data as Record<string, unknown>,
+    numeroDeclaracao: input.numeroDeclaracao ?? null,
+    dataTransmissao: input.dataTransmissao ?? null,
+    divergenciaReceita: divergencia.diferenca,
+    origem: 'manual',
+    registradoPor: user.id,
+    comprovante: input.comprovante
+      ? { nome: input.comprovante.nome, mime: input.comprovante.mime, bytes: Buffer.from(input.comprovante.base64, 'base64') }
+      : null,
+  }).then((r) => {
+    if (r.ok) revalidatePath('/impostos');
+    return r;
+  });
 }

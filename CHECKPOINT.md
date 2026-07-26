@@ -1,7 +1,107 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-25 (sessão 7 — **Bloco 2 MERGEADO em `main`** (`6f01f1e`, pushed → deploy); smoke das frentes D/E automatizado contra o banco real; **SERPRO de produção VALIDADA ponta a ponta**; **migration 0047** corrige a janela do aviso da DASN. **Próximo: spec + plano do Bloco 3.**)
+> **Última atualização:** 2026-07-26 (sessão 10 — **Bloco 3 VALIDADO AO VIVO pelo usuário**. O smoke manual rodou inteiro e achou **6 bugs**, todos corrigidos na branch `bloco-3-dasn-defis`: `tsc` 0 · vitest **568/568 + 9 pulados** · build limpo · árvore limpa. Seeds restaurados. **Falta só o merge `--no-ff` em `main` + push.**)
+
+---
+
+## Sessão 10 (2026-07-26) — Bloco 3: smoke manual e 6 correções
+
+**O smoke manual rodou e o Bloco 3 foi validado ao vivo.** Nenhuma das 22 tasks precisou ser refeita, mas o smoke achou **6 bugs que nenhum teste pegava** — 4 commits novos sobre os 25 da branch.
+
+**Os 6 bugs, em ordem de gravidade:**
+
+1. **Entrega regredia para rascunho** (`registrar.ts`). O upsert reescreve toda coluna do payload, então "salvar rascunho" **depois** da entrega gravava `data_transmissao`, `numero_declaracao` e `status` como `null` — perda silenciosa numa declaração já entregue. Reproduzido contra o banco antes de corrigir. Agora a entrega não regride: editar valores de uma declaração entregue é **retificação**.
+2. **Upload do comprovante batia em RLS** — `new row violates row-level security policy`. O bucket é privado e **não tem policy em `storage.objects`** (a própria 0048 diz: escrita só pela service role). O caminho do contador já fazia isso; o do empresário passava o client da sessão. Passou a usar `uploadToBucket()`. A escrita na **tabela** continua na sessão, então a RLS do empresário segue cobrindo a linha.
+3. **Gravava na empresa errada.** `registrarDeclaracaoAnualAction` lia `profiles.current_company` **no momento do envio**, não a empresa que a página renderizou — as duas divergem com outra aba, cache de rota do Next, ou o link de notificação. Agora o `companyId` vem do render e é conferido contra a RLS de `companies`.
+4. **"Salvar rascunho" era impossível de usar.** Validava contra o schema **completo** do art. 72; com o formulário em branco a mensagem era o `"Required"` cru do Zod. Travava também o card do contador, que só aparece depois de um rascunho salvo. Rascunho agora aceita parcial (`.partial()`), a **entrega** segue exigindo tudo, e `declaracoes-anuais/erros.ts` traduz o erro usando os `label` de `grupos.ts`.
+5. **Notificação levava à empresa errada.** `notifications.company_id` sempre existiu e ninguém lia; o `action_href` é rota crua e `/impostos` renderiza para a empresa **ativa**. O sino dizia "pendente" e a tela dizia "entregue" — eram duas empresas. Nova rota `/notificacoes/abrir/[id]` troca a empresa ativa antes de redirecionar; sino e lista passam a mostrar de qual empresa é cada aviso, com "Abrir em `<empresa>`". **É bug do Bloco 1** e atinge todos os tipos; o Bloco 3 só tornou visível.
+6. **Zero preso nas caixas de valor** — `value={numero}` impedia o campo de ficar vazio.
+
+**⚠️ A URL do DEFIS estava errada de novo — e fecha uma premissa do Michel.** `defis.app/entrada.aspx` responde **HTTP 200 com a página "Não Autorizado"**. A verificação da sessão 9 conferiu que não dava 404 — dava 200 com página de erro. **Conferir só o status engana neste portal.** O DEFIS **não tem endereço próprio abrível de fora**: é módulo do PGDAS-D e só existe dentro de sessão autenticada (`pgdasd2018.app/` idem). Não é caso de achar a URL certa — ela não existe. Agora aponta para `Servicos/ServicosComControleDeAcesso.aspx` (o balcão de e-CAC / código de acesso), o rótulo virou "Acessar o portal do Simples" e a seção explica o caminho `PGDAS-D → "Acessar a DEFIS"`.
+
+**Cobertura fechada (+12 testes).** Os três bugs de `registrar.ts` não tinham teste **nenhum**: o smoke rodava inteiro com service role, nunca enviava arquivo e só provava o lado da RPC, jamais o `lida_em`. Entraram os casos que faltavam, cada um com **discriminante**: a entrega da DASN não cala o aviso mensal do PGDAS-D (senão o teste de `lida_em` passaria com o filtro de chave errado) e "a ENTREGA continua exigindo o formulário inteiro" (senão os testes de rascunho passariam com a validação afrouxada por engano).
+
+**⚠️ Armadilha desarmada:** o smoke **lançava** no `beforeAll` quando a empresa do seed não existia. Como o seed é removido no fechamento do bloco, `npm test` em `main` quebraria a partir daqui. Agora **pula** (`describe.skipIf`) — 568 passam, 9 pulados, sem o seed.
+
+**Decisão em aberto (não mudei sozinho):** a **entrega** ainda exige o formulário completo. Argumento contra: quando o comprovante é registrado, a declaração **já foi transmitida de verdade** no portal — barrar o registro porque a cópia na Balu está incompleta impede guardar um fato consumado, e o bloco tem como princípio "sinaliza, nunca bloqueia". Contra a mudança: sem completude a cópia vale pouco. Contraria a decisão de produto nº 3 da spec, por isso ficou para o usuário decidir.
+
+**Seeds restaurados:** `seed-defis-rascunho.mjs restore`, `gate-serpro-bloco3.mjs restore` (`sincronizacao_inicial_serpro_at` de volta a `NULL`) e `seed-empresa-mei.mjs restore`. Nenhuma alteração de banco pendente.
+
+**⚠️ Lição de processo:** rodar `next build` com o `npm run dev` no ar corrompe `.next/` (`Cannot find module './XXXX.js'`) — os dois disputam a pasta. E **rodar a suíte durante o smoke manual apaga os dados do teste**: o `afterAll` do smoke limpa as declarações da empresa do seed.
+
+**RETOMAR EM:** merge `--no-ff` de `bloco-3-dasn-defis` para `main` + push (auto-deploy). Depois: Bloco 4 (Billing Asaas) e Bloco 5 (Produção Fiscal) seguem travados em credencial externa do Michel; as demais premissas dele continuam abertas — a lista de campos do art. 72 é a cara de mudar depois.
+
+---
+
+## Sessão 9 (2026-07-26) — Bloco 3: interface (Tasks 16–22)
+
+**Branch `bloco-3-dasn-defis`**, 6 commits novos. `tsc` 0 · **vitest 565/565** · `next build` limpo. Nada mergeado ainda.
+
+**Entregue (Tasks 16–21):**
+- **Task 16** — `DeclaracaoAnualShell.tsx` (casca comum: título, prazo, norma, badge rascunho/entregue/em atraso) e `RegistrarComprovanteDialog.tsx` (nº da declaração + data de transmissão + upload).
+- **Task 17** — `DasnAssistidaForm.tsx`: pré-preenche com as notas do ano, deixa editar, alerta divergência e teto do MEI (art. 18-A). Nunca bloqueia.
+- **Task 18** — `DeclaracoesMeiSection.tsx` reescrita e **o texto falso corrigido**: a promessa de "transmissão automática quando a Receita liberar a API" saiu. O Integra Contador **consulta**, não transmite declaração anual — o fluxo é assistido por definição, não por limitação temporária.
+- **Task 19** — `DefisForm.tsx` (accordions dirigidos por `GRUPOS_DEFIS`, grupo repetível de sócios com adicionar/remover, contador de progresso) e `DeclaracoesDefisSection.tsx`.
+- **Task 20** — ligação em `impostos/page.tsx`: DASN no ramo MEI, DEFIS no ramo Simples gated por `regimeCode === '1' || '2'` (Regime Normal, code `'3'`, não entrega DEFIS).
+- **Task 21** — card de declarações anuais no painel do contador, com o docblock do invariante "zero botões" atualizado junto.
+
+**Três correções ao plano, encontradas na execução:**
+1. **A URL do portal do DEFIS que o plano trazia dá 404.** `ATBHE/defis.app/` não existe — foi escrita por analogia, como o próprio plano avisava. A real é `https://www8.receita.fazenda.gov.br/SimplesNacional/Aplicacoes/ATSPO/defis.app/entrada.aspx`, destino do link "Acessar a DEFIS" **de dentro do PGDAS-D 2018** (o DEFIS é módulo do PGDAS-D, não app irmão). Conferida em 2026-07-26: responde com o gate de login, não com 404. Diferente da DASN-SIMEI, **não tem entrada pública por CNPJ** — exige e-CAC ou código de acesso, e a UI diz isso.
+2. **O card da Task 21 era só leitura no plano** — o que deixaria `registrarDeclaracaoAnualContadorAction` (Task 12) sem nenhum chamador, código morto justamente na decisão de produto nº 1. O dialog foi ligado de verdade. Regra: **o registro pelo contador só aparece quando o cliente já salvou o rascunho**, porque a action valida `dados` contra o schema inteiro e o contador não tem de onde inventar os valores declarados; sem rascunho a UI diz isso em vez de oferecer um botão que falharia na validação. Exigiu `dados` na query de `contador/clientes/[companyId]/page.tsx` (o plano dizia que nenhuma mudança ali era necessária — verdade só para o card read-only).
+3. **`btoa(String.fromCharCode(...bytes))` do dialog estoura a pilha** bem antes dos 5 MB que o próprio campo anuncia (o spread vira um argumento por byte). Trocado por codificação em blocos de 32 KB, mais validação de mime/tamanho no cliente espelhando `validarComprovante()` — o servidor revalida de qualquer jeito.
+
+**Dois desvios menores, deliberados:** o `dados` enviado ao registrar o comprovante é o **corrente**, não o inicial (o plano usava `inicial` na DASN, o que gravaria valores antigos de quem editou e salvou); e a busca do rascunho em `page.tsx` é **por tipo**, não só por competência (uma empresa que trocou de regime pode ter DASN e DEFIS no mesmo ano, e o `find` só por competência devolveria a errada).
+
+**⚠️ `npm run lint` não é executável neste repo** — não existe config de ESLint e o `next lint` cai no wizard interativo. É pré-existente (o script nunca rodou); não foi introduzida config, está fora do escopo do bloco. `typecheck` e `build` cobriram a verificação.
+
+**⚠️ Seed MEI SEGUE ATIVO de propósito** (`app/scratchpad/seed-empresa-mei.mjs`): sem ele não há empresa MEI no banco e a tela da DASN não aparece pra clicar. O `restore` do plano (Task 22, Step 3) **foi adiado para depois do smoke manual** — rodar `node app/scratchpad/seed-empresa-mei.mjs restore` só no fechamento, junto do merge.
+
+**Retomar em:** smoke manual do usuário. Passando → merge `--no-ff` para `main` + push (auto-deploy) + `restore` do seed. As sete premissas do Michel (tabela no fim do plano) continuam abertas — a lista de campos do art. 72 é a cara de mudar depois.
+
+### ⛔ Ponto de retomada exato (sessão 9 parou aqui)
+
+O servidor de dev foi subido, o banco foi conferido e o smoke **não chegou a ser rodado** — o usuário optou por parar e retomar depois. Estado levantado (scripts de conferência ficaram em `app/scratchpad/check-smoke-bloco3.mjs` e `check-smoke-bloco3b.mjs`, não versionados):
+
+- **DASN — destravada, pode testar direto.** Seed MEI vivo (`SEED BLOCO3 MEI LTDA`, 3 notas de 2025) e `profiles.current_company` de `walacesssantos@gmail.com` apontando pra ela. Esperado em `/impostos → Declarações`: comércio R$ 2.300 · serviço R$ 2.200 · total R$ 4.500 — a nota de **31/12/2025 23:30 BRT** (gravada como `2026-01-01T02:30Z`) tem de contar em **2025**; é o teste da borda do ano. Conferir também: alerta de divergência ao editar, alerta de teto acima de R$ 81.000, e que **salvar rascunho não cala o sino — só o registro do comprovante com data de transmissão cala**.
+- **DEFIS e card do contador — TRAVADOS por dado, não por código.** As duas `dev.ide` (Simples code `'1'`, de `walacesssantos@gmail.com`) têm `sincronizacao_inicial_serpro_at = NULL`, então `GateInicialSerpro` toma a página inteira e a seção do DEFIS nunca renderiza. A única Simples com sync feito é `AL PISCINAS LTDA` de `allanvalle@outlook.com` — a conta externa cuja senha não funciona neste ambiente (falha pré-existente conhecida). O card do contador cai junto: o escritório `Escritório Teste Balu` (login `testeefluxodeautomacao@gmail.com`) tem só a `dev.ide` `c2410872-c9c0-47b5-a0e9-4d3e699a614e` na carteira, e o card só oferece o registro **depois** que o cliente salvou um rascunho — que ele não consegue salvar com o gate no caminho.
+- **DECISÃO PENDENTE, é a primeira coisa a resolver ao voltar:** destravar exige `UPDATE public.empresas_fiscais SET sincronizacao_inicial_serpro_at = now() WHERE empresa_id = 'c2410872-c9c0-47b5-a0e9-4d3e699a614e'` — um campo, na empresa que serve aos dois testes de uma vez. **Não foi executado.** É banco de produção e a linha não é de seed, por isso a pergunta ficou aberta. Valor original a restaurar: `NULL`.
+
+---
+
+## Sessão 8 (2026-07-25) — Bloco 3: spec, plano e 15/22 tasks
+
+**Branch `bloco-3-dasn-defis`** (16 commits à frente de `main`, nada mergeado ainda). `tsc` 0 · **vitest 565/565** · working tree limpo.
+
+**Spec (`aab8117`) e plano (`3c06fa5`) escritos e commitados:**
+- `docs/superpowers/specs/2026-07-25-bloco-3-dasn-defis-assistidas-design.md`
+- `docs/superpowers/plans/2026-07-25-bloco-3-dasn-defis-assistidas.md` (22 tasks TDD, código completo em cada passo)
+
+**Arquitetura decidida:** dois módulos irmãos (`lib/fiscal/dasn/`, `lib/fiscal/defis/`) sobre uma costura mínima (`lib/fiscal/declaracoes-anuais/`). **Nenhuma tabela nova.** Três decisões de produto travadas antes de escrever a spec: (1) o **contador** também registra o comprovante, via Server Action com service role — o empresário registra o dele pela própria sessão; (2) o app **pré-preenche editável** e sinaliza divergência, nunca bloqueia; (3) DEFIS **completo**, todos os campos do art. 72.
+
+**A regra central do bloco, provada em smoke contra o banco real:** só `data_transmissao IS NOT NULL` cala o aviso do sino. **Rascunho não silencia nada.** E a RPC só deixa de *criar* o aviso — as notificações já criadas são marcadas como lidas pelo `registrar.ts`, senão o sino continua tocando depois da entrega.
+
+**Implementado (Tasks 1–15):**
+- **Migration 0048** (`966052c`) — aplicada e verificada: 5 colunas em `declaracoes_fiscais` (`dados` jsonb, `comprovante_path`, `origem`, `registrado_por`, `divergencia_receita`) + bucket privado `declaracoes-comprovantes`. **RLS não mudou nada:** `declaracoes_fiscais_owner` (0025) já deixa o empresário escrever e `declaracoes_select_contador` (0033) segue SELECT-only.
+- **Migration 0049** (`5403e3f`) — aplicada: bloco `defis_pendente` na RPC `materializar_obrigacoes` (ME/EPP codes `'1'`/`'2'`, janela jan–abr, `danger` a partir de março, prazo 31/03, art. 72). ACL `REVOKE/GRANT` preservada.
+- **Lógica pura, toda testada:** `declaracoes-anuais/{tipos,divergencia,comprovante}.ts`, `dasn/{resumo,campos}.ts`, `defis/{grupos,campos}.ts`. `resumirReceitasAno` recorta o ano em **BRT** (a nota de 31/12 22h BRT é 01/01 em UTC e cairia no ano errado); `avaliarLimiteMei` cobre o teto de R$ 81.000 e o excesso >20% (desenquadramento retroativo).
+- **`lerNotasAnoCalendario`** (`f3993c6`) entrou no **mesmo** `receitas-source.ts`, para não furar o docblock que diz que toda leitura de receita passa por ali. A janela SQL é folgada de propósito; o recorte exato do ano é da função pura.
+- **Duas Server Actions** (`a7795ec`, `4f76e3b`): a do empresário roda na sessão dele (RLS cobre); a do contador prova a permissão na aplicação (`requireEscritorio()` + `companyDaCarteira()`) e escreve com service role, com 403 genérico que não revela se a empresa existe. A guarda de carteira mora em `src/lib/contador/carteira.ts` — **não pode** ficar no arquivo `'use server'`, onde todo export precisa ser action serializável.
+- **Smoke `registrar.smoke.test.ts`** (`e2df92e`) — 6/6 contra o banco real: rascunho não cala / entrega cala, mais os três de anti-IDOR (recusa contabilidade errada, recusa ID inexistente com o mesmo `null`, e um **controle discriminante** que prova que a guarda aceita o caso legítimo — sem ele os dois primeiros passariam mesmo se ela recusasse tudo).
+
+**Correções ao plano descobertas na execução (o schema real manda):**
+- `notas_fiscais` **não tem** `owner_user_id`; `referencia` e `payload_focusnfe` são NOT NULL.
+- `companies_status_check` aceita só `active`/`inactive`/`em_abertura` — não `'ativa'`.
+- Tolerância da soma de participações do DEFIS: o plano se contradizia (o teste mandava rejeitar 59,99+40, a tolerância `<= 0.01` aceitava). Ficou `< 1e-6` — a folga é para resíduo de float, não para um centésimo de ponto, que é erro de digitação.
+- `resumo.ts` reusa `ymdBrt` de `tempo-brt.ts` em vez de duplicar o deslocamento de −3h.
+
+**⚠️ Seed MEI ATIVO no banco** (`app/scratchpad/seed-empresa-mei.mjs`, não versionado): não existia **nenhuma** empresa MEI na base. Criou `SEED BLOCO3 MEI LTDA` (`2afa159b-790e-4a28-a3b2-e7ea32cb8f2d`) com 3 notas de 2025 (comércio 2300 + serviço 2200 = 4500) e **apontou `profiles.current_company` do `walacesssantos@gmail.com` para ela**. O smoke depende do seed. Ao terminar o bloco: `! node app/scratchpad/seed-empresa-mei.mjs restore`.
+
+**RETOMAR NA TASK 16** (as 7 restantes são só interface): 16 casca + dialog de comprovante · 17 `DasnAssistidaForm` · 18 seção da DASN + **correção do texto** de `DeclaracoesMeiSection.tsx:32` ("A transmissão automática pela Balu chega quando a Receita liberar a API" — é falso: a SERPRO **consulta, não transmite** declaração anual; é assistido por definição, não por limitação temporária) · 19 form + seção do DEFIS · 20 ligar em `page.tsx` (DEFIS gated em `regimeCode === '1' || '2'`) · 21 card no painel do contador · 22 fechamento.
+
+**⚠️ Task 21 quebra um invariante de propósito:** o docblock de `VisaoCliente.tsx` diz *"Zero botões de ação — o contador só enxerga, nunca edita"*. O card de declarações anuais é a primeira exceção, consequência da decisão nº 1. O docblock tem de ser atualizado junto, não em silêncio.
+
+**Premissas a confirmar com o Michel antes do merge:** a lista de campos do art. 72 (define o tamanho do formulário inteiro — barata de mudar agora, cara depois), o público do DEFIS (`'1'`/`'2'`), a URL do portal do DEFIS (a da DASN está conferida no código desde 06/06; a do DEFIS entrou por analogia) e o realinhamento de que **a Balu não transmite** a declaração anual.
 
 ---
 
@@ -213,7 +313,7 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 |---|---|---|---|
 | 1 — motor de obrigações/notificações | ✅ aprovada | ✅ escrito (12 tasks) | ✅ **em main** (0045, 0045b, **0047**) |
 | 2 — abertura digital completa | ✅ aprovada | ✅ escrito (7 tasks) | ✅ **em main** (0046) — merge `6f01f1e` |
-| 3 — DASN-SIMEI assistida + DEFIS | ⬜ **próximo** | ⬜ | 🟡 parcial: aviso `dasn_pendente` já existe na RPC |
+| 3 — DASN-SIMEI assistida + DEFIS | ✅ aprovada | ✅ escrito (22 tasks) | 🟡 **22/22 na branch `bloco-3-dasn-defis`** (0048, 0049) — aguarda smoke manual + merge |
 | 4 — billing Asaas 🔒 | ⬜ | ⬜ | ⬜ |
 | 5 — produção fiscal 🔒 | ⬜ | ⬜ | ⬜ |
 | 6 — WhatsApp (Envia.Click) + IA (Claude) 🔒 | ⬜ | ⬜ | ⬜ |
@@ -251,9 +351,12 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 
 ## Próximo passo imediato
 
-Executar o plano do Bloco A (`docs/superpowers/plans/2026-07-22-bloco-a-multitenant-contador.md`), task por task, em branch `feat/bloco-a-multitenant`. Critério de merge: testes de RLS (Task 20) verdes.
+**Bloco 3 com as 22 tasks feitas na branch `bloco-3-dasn-defis`.** O que falta é o **smoke manual do usuário** — mesmo protocolo dos Blocos 1 e 2:
+1. DASN: entrar como `walacesssantos@gmail.com` (o seed apontou o `current_company` dele para a empresa MEI) → `/impostos` → seção Declarações → conferir pré-preenchimento (R$ 4.500 = 2.300 comércio + 2.200 serviço), editar e salvar rascunho, registrar comprovante e verificar que **só a entrega cala o sino**.
+2. DEFIS: uma das 4 empresas Simples → `/impostos` → seção Declaração anual → accordions, sócios somando 100%, salvar rascunho.
+3. Contador: `/contador/clientes/<id>?tab=declaracoes` → card com situação e, havendo rascunho do cliente, o registro de comprovante.
 
-**Retomada:** ao voltar, escolher o modo de execução (ficou pendente): (1) subagent-driven — um subagente por task com revisão entre tasks (recomendado), ou (2) inline em lotes com checkpoints. Começar pela Task 1 (migration 0030).
+Passando → merge `--no-ff` para `main` + push (auto-deploy) + `node app/scratchpad/seed-empresa-mei.mjs restore`. **Não rodar o `restore` antes do smoke** — sem o seed não há empresa MEI e a tela da DASN não aparece.
 
 ## Convenções da sessão
 
