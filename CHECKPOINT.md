@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-26 (sessão 10 — **Bloco 3 VALIDADO AO VIVO pelo usuário**. O smoke manual rodou inteiro e achou **6 bugs**, todos corrigidos na branch `bloco-3-dasn-defis`: `tsc` 0 · vitest **568/568 + 9 pulados** · build limpo · árvore limpa. Seeds restaurados. **Falta só o merge `--no-ff` em `main` + push.**)
+> **Última atualização:** 2026-07-26 (sessão 10 — **Bloco 3 VALIDADO AO VIVO e MERGEADO em `main`** (`faa6ef1`, `--no-ff`, pushed → auto-deploy). O smoke manual achou **6 bugs**, todos corrigidos antes do merge. `tsc` 0 · vitest **568/568 + 9 pulados** · build limpo. Seeds restaurados, nenhuma migration pendente. **Blocos 1, 2 e 3 estão em `main` e no ar.**)
 
 ---
 
@@ -30,7 +30,21 @@
 
 **⚠️ Lição de processo:** rodar `next build` com o `npm run dev` no ar corrompe `.next/` (`Cannot find module './XXXX.js'`) — os dois disputam a pasta. E **rodar a suíte durante o smoke manual apaga os dados do teste**: o `afterAll` do smoke limpa as declarações da empresa do seed.
 
-**RETOMAR EM:** merge `--no-ff` de `bloco-3-dasn-defis` para `main` + push (auto-deploy). Depois: Bloco 4 (Billing Asaas) e Bloco 5 (Produção Fiscal) seguem travados em credencial externa do Michel; as demais premissas dele continuam abertas — a lista de campos do art. 72 é a cara de mudar depois.
+**MERGEADO E NO AR.** `faa6ef1` (`--no-ff`) em `main`, pushed → auto-deploy. Branch `bloco-3-dasn-defis` pode ser apagada.
+
+**RETOMAR EM:** decidir o próximo bloco. Estado dos 7 do Master PRD:
+
+| Bloco | Estado |
+|---|---|
+| 1 — Motor Obrigações/Notificações | ✅ em `main` |
+| 2 — Abertura digital completa | ✅ em `main` |
+| 3 — DASN/DEFIS assistidas | ✅ em `main` (esta sessão) |
+| 4 — Billing Asaas | 🔒 credencial do Michel |
+| 5 — Produção Fiscal | 🔒 credencial do Michel (token Focus não é de revenda) |
+| 6 — WhatsApp/IA (Envia.Click + Claude) | 🔒 credencial do Michel |
+| 7 — Domínio/SLA/Conciliação | 🔒 depende do 4 |
+
+**Tudo que sobra depende de credencial externa.** O caminho sem bloqueio é: (a) a decisão em aberto acima sobre exigir formulário completo na entrega; (b) as premissas do Michel — a lista de campos do art. 72 é a cara de mudar depois; (c) os follow-ups não-bloqueantes do Bloco 1 (cadência de bucket PGDAS/DASN divergindo da spec §5, badge contando só entre os 15 carregados, `getSiteUrl` no cron).
 
 ---
 
