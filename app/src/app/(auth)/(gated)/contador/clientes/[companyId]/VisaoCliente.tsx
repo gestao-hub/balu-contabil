@@ -1,18 +1,31 @@
 'use client';
 // src/app/(auth)/contador/clientes/[companyId]/VisaoCliente.tsx
-// Drill-down somente-leitura do cliente: notas / guias / declarações.
-// Zero botões de ação — o contador só enxerga, nunca edita, os dados do cliente.
+// Drill-down do cliente: notas / guias / declarações.
+// Somente leitura, com UMA exceção: o registro de declaração anual (DASN/DEFIS),
+// que grava pela action com service role + guarda de carteira + auditoria — a RLS
+// do contador (declaracoes_select_contador) segue SELECT-only. Ver spec do Bloco 3, §6.5.
 import Link from 'next/link';
 import { Eye } from 'lucide-react';
 import { formatBRL, valorToCentavos } from '@/lib/format/dinheiro';
 import { formatCnpj } from '@/lib/format/masks';
 import { dataBR, competenciaLabel, statusGuiaBadge } from '@/lib/fiscal/guia';
+import RegistrarComprovanteDialog from '@/app/(auth)/(gated)/impostos/RegistrarComprovanteDialog';
+import { registrarDeclaracaoAnualContadorAction } from '@/app/(auth)/(gated)/contador/clientes/actions';
+import type { DeclaracaoAnualTipo } from '@/lib/fiscal/declaracoes-anuais/tipos';
 
 type Empresa = { id: string; nome: string | null; razao_social: string | null; cnpj: string | null };
 
 type NotaRow = { id: string; tipo_documento: string; data_emissao: string; status: string; valor_total: string | number };
 type GuiaRow = { id: string; competencia_referencia: string | null; data_vencimento: string | null; data_pagamento: string | null; status: string | null };
-type DeclaracaoRow = { id: string; tipo: string; competencia_referencia: string; data_transmissao: string | null; status: string | null };
+type DeclaracaoRow = {
+  id: string;
+  tipo: string;
+  competencia_referencia: string;
+  data_transmissao: string | null;
+  status: string | null;
+  /** Rascunho salvo pelo cliente (jsonb `dados`). Só existe nas declarações anuais. */
+  dados?: Record<string, unknown> | null;
+};
 
 type Props = {
   empresa: Empresa;
@@ -96,9 +109,80 @@ export default function VisaoCliente({ empresa, tab, notas, guias, declaracoes }
       ) : active === 'guias' ? (
         <GuiasTable guias={guias} />
       ) : (
-        <DeclaracoesTable declaracoes={declaracoes} />
+        <>
+          <DeclaracoesAnuaisCard
+            companyId={empresa.id}
+            declaracoes={declaracoes}
+            anoCalendario={new Date().getFullYear() - 1}
+          />
+          <div className="mt-6">
+            <DeclaracoesTable declaracoes={declaracoes} />
+          </div>
+        </>
       )}
     </main>
+  );
+}
+
+/**
+ * Declarações anuais do ano-calendário: situação + registro do comprovante.
+ * O registro só aparece quando o cliente já salvou o rascunho — a action valida
+ * `dados` contra o schema inteiro, e o contador não tem de onde inventar os
+ * valores declarados. Sem rascunho, dizemos isso em vez de oferecer um botão
+ * que falharia na validação.
+ */
+function DeclaracoesAnuaisCard({ companyId, declaracoes, anoCalendario }: {
+  companyId: string;
+  declaracoes: DeclaracaoRow[];
+  anoCalendario: number;
+}) {
+  const doAno = (tipo: string) =>
+    declaracoes.find((d) => d.tipo === tipo && d.competencia_referencia === String(anoCalendario)) ?? null;
+
+  const linhas: { tipo: DeclaracaoAnualTipo; label: string; prazo: string }[] = [
+    { tipo: 'DASN-SIMEI', label: 'DASN-SIMEI', prazo: `31/05/${anoCalendario + 1}` },
+    { tipo: 'DEFIS', label: 'DEFIS', prazo: `31/03/${anoCalendario + 1}` },
+  ];
+
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <h3 className="text-sm font-semibold text-foreground">Declarações anuais — {anoCalendario}</h3>
+      <ul className="mt-3 space-y-3">
+        {linhas.map((l) => {
+          const d = doAno(l.tipo);
+          const entregue = Boolean(d?.data_transmissao);
+          const rascunho = (d?.dados ?? null) as Record<string, unknown> | null;
+          return (
+            <li key={l.tipo} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+              <span>{l.label} <span className="text-muted-foreground-2">· prazo {l.prazo}</span></span>
+              <div className="flex items-center gap-3">
+                {!entregue && (rascunho ? (
+                  <RegistrarComprovanteDialog
+                    onSubmit={async ({ numeroDeclaracao, dataTransmissao, comprovante }) => {
+                      const r = await registrarDeclaracaoAnualContadorAction({
+                        companyId, tipo: l.tipo, ano: anoCalendario, dados: rascunho,
+                        numeroDeclaracao, dataTransmissao, comprovante,
+                      });
+                      return r.ok ? { ok: true } : { ok: false, error: r.error };
+                    }}
+                  />
+                ) : (
+                  <span className="text-xs text-muted-foreground-2">
+                    O cliente ainda não salvou o rascunho.
+                  </span>
+                ))}
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                  entregue ? 'bg-success/10 text-success'
+                    : d ? 'bg-surface-3 text-muted-foreground'
+                    : 'bg-alert/10 text-alert'}`}>
+                  {entregue ? 'Entregue' : d ? 'Rascunho' : 'Pendente'}
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
