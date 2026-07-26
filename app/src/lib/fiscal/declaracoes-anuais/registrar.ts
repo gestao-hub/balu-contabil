@@ -4,6 +4,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { registrarAuditoria } from '@/lib/security/audit';
+import { uploadToBucket } from '@/lib/clients/supabase-storage';
 import { BUCKET_COMPROVANTES, caminhoComprovante, validarComprovante } from './comprovante';
 import { TIPO_AVISO, type RegistroInput, type ResultadoRegistro } from './tipos';
 
@@ -19,10 +20,16 @@ export async function registrarDeclaracaoAnual(
     if (!v.ok) return { ok: false, error: v.error };
 
     comprovantePath = caminhoComprovante(input.companyId, input.tipo, input.ano, input.comprovante.mime);
-    const up = await client.storage
-      .from(BUCKET_COMPROVANTES)
-      .upload(comprovantePath, input.comprovante.bytes, { contentType: input.comprovante.mime, upsert: true });
-    if (up.error) return { ok: false, error: `Falha ao subir o comprovante: ${up.error.message}` };
+    // O bucket é privado e NÃO tem policy em storage.objects (0048): quem escreve
+    // é a service role, como em abertura-documentos. Subir com o client da sessão
+    // do empresário batia em "new row violates row-level security policy". A
+    // permissão já foi provada pelos dois callers, e `caminhoComprovante` prende o
+    // path ao companyId — o service role aqui não amplia o alcance de ninguém.
+    try {
+      await uploadToBucket(BUCKET_COMPROVANTES, comprovantePath, input.comprovante.bytes, input.comprovante.mime);
+    } catch (e) {
+      return { ok: false, error: `Falha ao subir o comprovante: ${e instanceof Error ? e.message : String(e)}` };
+    }
   }
 
   // Estado anterior, para a auditoria da retificadora (spec §5.5).
@@ -34,15 +41,24 @@ export async function registrarDeclaracaoAnual(
     .eq('tipo', input.tipo)
     .maybeSingle();
 
+  // Entrega não regride para rascunho. O upsert reescreve toda coluna do payload,
+  // então mandar `data_transmissao: null` num "salvar rascunho" feito DEPOIS da
+  // entrega apagava a data, o número e o status de quem já tinha declarado —
+  // perda de dado silenciosa. Editar os valores de uma declaração entregue é
+  // retificação: os dados mudam, a entrega anterior permanece até que um novo
+  // comprovante seja registrado por cima.
+  const dataTransmissao = input.dataTransmissao ?? anterior?.data_transmissao ?? null;
+  const numeroDeclaracao = input.numeroDeclaracao ?? anterior?.numero_declaracao ?? null;
+
   const linha: Record<string, unknown> = {
     company_id: input.companyId,
     owner_user_id: input.ownerUserId,
     competencia_referencia: String(input.ano),
     tipo: input.tipo,
     dados: input.dados,
-    numero_declaracao: input.numeroDeclaracao ?? null,
-    data_transmissao: input.dataTransmissao ?? null,
-    status: input.dataTransmissao ? 'Transmitida' : 'Rascunho',
+    numero_declaracao: numeroDeclaracao,
+    data_transmissao: dataTransmissao,
+    status: dataTransmissao ? 'Transmitida' : 'Rascunho',
     divergencia_receita: input.divergenciaReceita ?? null,
     origem: input.origem,
     registrado_por: input.registradoPor,

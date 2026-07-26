@@ -1,10 +1,11 @@
 // src/lib/fiscal/declaracoes-anuais/registrar.smoke.test.ts
-// Smoke contra o banco REAL. Exige a empresa do seed (scratchpad/seed-empresa-mei.mjs).
-// Faz snapshot antes e restaura depois — e VERIFICA a restauração por query.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+// Smoke contra o banco REAL. Usa a empresa do seed (scratchpad/seed-empresa-mei.mjs);
+// sem ela a suíte inteira é pulada. Limpa o que criou — e VERIFICA por query.
+import { describe, it, expect, afterAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { companyDaCarteira } from '@/lib/contador/carteira';
+import { registrarDeclaracaoAnual } from './registrar';
 
 const env = Object.fromEntries(
   readFileSync(new URL('../../../../.env.local', import.meta.url), 'utf8')
@@ -16,19 +17,26 @@ const env = Object.fromEntries(
 const RAZAO_SEED = 'SEED BLOCO3 MEI LTDA';
 const ANO = new Date().getFullYear() - 1;
 
-let admin: SupabaseClient;
-let companyId: string;
-let ownerUserId: string;
+const admin: SupabaseClient = createClient(
+  env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } },
+);
 
-beforeAll(async () => {
-  admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-  const { data } = await admin.from('companies').select('id, user_id').eq('razao_social', RAZAO_SEED).maybeSingle();
-  if (!data) throw new Error('Rode antes: node app/scratchpad/seed-empresa-mei.mjs');
-  companyId = data.id as string;
-  ownerUserId = data.user_id as string;
-});
+// Este smoke escreve na empresa do seed do Bloco 3. Sem ela, PULA em vez de
+// quebrar: o seed é removido no fechamento do bloco (`seed-empresa-mei.mjs
+// restore`), e a suíte numa árvore limpa não pode falhar por causa disso.
+// Antes o beforeAll lançava — `npm test` passava só enquanto o seed vivesse.
+const { data: seed } = await admin
+  .from('companies').select('id, user_id').eq('razao_social', RAZAO_SEED).maybeSingle();
+const semSeed = !seed;
+const companyId = (seed?.id ?? '') as string;
+const ownerUserId = (seed?.user_id ?? '') as string;
+
+if (semSeed) {
+  console.warn(`[smoke] "${RAZAO_SEED}" ausente — pulando. Para rodar: node app/scratchpad/seed-empresa-mei.mjs`);
+}
 
 afterAll(async () => {
+  if (semSeed) return;
   // Limpa o que o teste criou e CONFIRMA que limpou.
   await admin.from('declaracoes_fiscais').delete().eq('company_id', companyId);
   await admin.from('notifications').delete().eq('company_id', companyId);
@@ -46,7 +54,7 @@ async function avisosApos(hoje: string, tipo: string): Promise<number> {
   return count ?? 0;
 }
 
-describe('supressão do aviso de declaração anual', () => {
+describe.skipIf(semSeed)('supressão do aviso de declaração anual', () => {
   it('sem declaração nenhuma, a RPC gera dasn_pendente', async () => {
     await admin.from('declaracoes_fiscais').delete().eq('company_id', companyId);
     await admin.from('notifications').delete().eq('company_id', companyId);
@@ -76,7 +84,72 @@ describe('supressão do aviso de declaração anual', () => {
   });
 });
 
-describe('guarda de carteira do contador (anti-IDOR)', () => {
+// Os três abaixo cobrem o que passava por registrarDeclaracaoAnual() sem teste
+// nenhum — e cada um deles nasceu de um bug encontrado no smoke manual.
+describe.skipIf(semSeed)('registrarDeclaracaoAnual', () => {
+  const base = { companyId: '', ownerUserId: '', tipo: 'DASN-SIMEI' as const, ano: ANO, origem: 'manual' as const, registradoPor: '' };
+  const dados = { receitaComercio: 2300, receitaServico: 2200, possuiEmpregado: false };
+  const entrada = () => ({ ...base, companyId, ownerUserId, registradoPor: ownerUserId, dados });
+
+  const linha = async () => (await admin.from('declaracoes_fiscais')
+    .select('status, data_transmissao, numero_declaracao, comprovante_path')
+    .eq('company_id', companyId).eq('competencia_referencia', String(ANO)).eq('tipo', 'DASN-SIMEI').single()).data;
+
+  it('salvar rascunho DEPOIS da entrega não apaga a entrega', async () => {
+    await admin.from('declaracoes_fiscais').delete().eq('company_id', companyId);
+
+    const entrega = await registrarDeclaracaoAnual(admin, {
+      ...entrada(), dataTransmissao: `${ANO + 1}-05-20`, numeroDeclaracao: '123456789',
+    });
+    expect(entrega.ok).toBe(true);
+    expect((await linha())?.status).toBe('Transmitida');
+
+    // Editar os valores de uma declaração já entregue é retificação: os dados
+    // mudam, a entrega permanece. O upsert reescrevia data e número com null.
+    const rascunho = await registrarDeclaracaoAnual(admin, {
+      ...entrada(), dados: { ...dados, receitaComercio: 2500 }, dataTransmissao: null, numeroDeclaracao: null,
+    });
+    expect(rascunho.ok).toBe(true);
+
+    const depois = await linha();
+    expect(depois?.data_transmissao).not.toBeNull();
+    expect(depois?.numero_declaracao).toBe('123456789');
+    expect(depois?.status).toBe('Transmitida');
+  });
+
+  it('a entrega marca como lida a notificação já criada', async () => {
+    await admin.from('declaracoes_fiscais').delete().eq('company_id', companyId);
+    await admin.from('notifications').delete().eq('company_id', companyId);
+    expect(await avisosApos(`${ANO + 1}-02-15`, 'dasn_pendente')).toBeGreaterThan(0);
+
+    const r = await registrarDeclaracaoAnual(admin, { ...entrada(), dataTransmissao: `${ANO + 1}-05-20` });
+    expect(r.ok).toBe(true);
+
+    const { count } = await admin.from('notifications').select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId).eq('tipo', 'dasn_pendente').is('lida_em', null);
+    expect(count).toBe(0);
+  });
+
+  // Controle discriminante do teste acima: se o update de lida_em pegasse tudo,
+  // ele passaria mesmo com o filtro de chave errado. Aqui prova que não pega.
+  it('a entrega da DASN não cala o aviso mensal do PGDAS-D', async () => {
+    await admin.from('declaracoes_fiscais').delete().eq('company_id', companyId);
+    await admin.from('notifications').delete().eq('company_id', companyId);
+    await admin.from('notifications').insert({
+      owner_user_id: ownerUserId, company_id: companyId, tipo: 'pgdas_pendente', severidade: 'warning',
+      titulo: 'Declaração mensal (PGDAS-D) pendente', corpo: 'controle',
+      chave: `pgdas_pendente:${companyId}:${ANO}01:PRE`,
+    });
+
+    await registrarDeclaracaoAnual(admin, { ...entrada(), dataTransmissao: `${ANO + 1}-05-20` });
+
+    const { count } = await admin.from('notifications').select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId).eq('tipo', 'pgdas_pendente').is('lida_em', null);
+    expect(count).toBe(1);
+  });
+});
+
+describe.skipIf(semSeed)('guarda de carteira do contador (anti-IDOR)', () => {
   it('recusa a empresa quando a contabilidade não bate', async () => {
     const alvo = await companyDaCarteira(admin, '00000000-0000-0000-0000-000000000000', companyId);
     expect(alvo).toBeNull();
