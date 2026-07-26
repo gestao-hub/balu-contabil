@@ -7,6 +7,7 @@ export type DeclaracaoRow = {
   numeroDeclaracao: string | null;
   dataTransmissao: string | null; // ISO
   status: string | null;          // 'transmitida' | 'pendente'
+  origem?: string | null;         // 'serpro' | 'manual' (declarações anuais)
 };
 
 function badge(status: string | null) {
