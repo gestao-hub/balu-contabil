@@ -85,13 +85,23 @@ export default function DasnAssistidaForm({ resumo, inicial, onSalvar }: {
   );
 }
 
+/**
+ * O texto digitado vive aqui, não no número do pai. Com `value={numero}` o campo
+ * nunca ficava vazio: zerado mostrava "0" e era preciso apagá-lo antes de digitar,
+ * e limpar o campo fazia o "0" voltar sozinho. Vazio é um estado legítimo da
+ * digitação; para o cálculo ele continua valendo 0.
+ */
 function Campo({ label, valor, onChange }: { label: string; valor: number; onChange: (n: number) => void }) {
+  const [texto, setTexto] = useState(valor ? String(valor) : '');
   return (
     <label className="block text-sm">
       <span className="text-muted-foreground">{label}</span>
       <input
-        type="number" min={0} step="0.01" value={Number.isFinite(valor) ? valor : 0}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        type="number" min={0} step="0.01" placeholder="0,00" value={texto}
+        onChange={(e) => {
+          setTexto(e.target.value);
+          onChange(e.target.value === '' ? 0 : Number(e.target.value) || 0);
+        }}
         className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm tabular-nums"
       />
     </label>

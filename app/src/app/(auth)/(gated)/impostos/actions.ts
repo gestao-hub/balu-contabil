@@ -21,8 +21,9 @@ import type { DeclaracaoPgdasdResult } from '@/lib/fiscal/serpro-pgdasd-parse';
 import { registrarDeclaracaoAnual } from '@/lib/fiscal/declaracoes-anuais/registrar';
 import { calcularDivergencia } from '@/lib/fiscal/declaracoes-anuais/divergencia';
 import { resumirReceitasAno } from '@/lib/fiscal/dasn/resumo';
-import { DasnCamposSchema } from '@/lib/fiscal/dasn/campos';
-import { DefisCamposSchema } from '@/lib/fiscal/defis/campos';
+import { DasnCamposSchema, DasnRascunhoSchema, rotuloCampoDasn } from '@/lib/fiscal/dasn/campos';
+import { DefisCamposSchema, DefisRascunhoSchema, rotuloCampoDefis } from '@/lib/fiscal/defis/campos';
+import { mensagemDeIssues } from '@/lib/fiscal/declaracoes-anuais/erros';
 import type { DeclaracaoAnualTipo } from '@/lib/fiscal/declaracoes-anuais/tipos';
 
 export type GuiaActionResult = { ok: true } | { ok: false; error: string };
@@ -621,11 +622,18 @@ export async function marcarSincronizacaoInicialAction(): Promise<MarcarSincroni
 export type RegistrarDeclaracaoResult = { ok: true; id: string } | { ok: false; error: string };
 
 /**
- * Registra (ou retifica) a declaração anual da empresa atual do usuário.
+ * Registra (ou retifica) a declaração anual de uma empresa do usuário.
  * `dataTransmissao` ausente = rascunho: grava, mas NÃO cala o aviso do sino.
  * Roda com a sessão do usuário — a policy declaracoes_fiscais_owner cobre a escrita.
+ *
+ * `companyId` vem de QUEM RENDERIZOU o formulário e é conferido contra a RLS de
+ * `companies`. Antes esta action relia em `profiles.current_company` no momento do
+ * envio: quem tem mais de uma empresa via a tela de uma e gravava na outra, porque
+ * a empresa ativa pode mudar entre o render e o submit — outra aba, o cache de
+ * rota do Next, ou o próprio link de notificação, que hoje troca a empresa ativa.
  */
 export async function registrarDeclaracaoAnualAction(input: {
+  companyId: string;
   tipo: DeclaracaoAnualTipo;
   ano: number;
   dados: Record<string, unknown>;
@@ -637,16 +645,24 @@ export async function registrarDeclaracaoAnualAction(input: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão inválida.' };
 
-  const { data: profile } = await supabase
-    .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
+  const companyId = input.companyId;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
-  const parsed = input.tipo === 'DASN-SIMEI'
-    ? DasnCamposSchema.safeParse(input.dados)
-    : DefisCamposSchema.safeParse(input.dados);
+  // A RLS `companies_select` (user_id = auth.uid()) é quem prova a posse: empresa
+  // de outro dono volta vazia e a action para aqui.
+  const { data: empresa } = await supabase
+    .from('companies').select('id').eq('id', companyId).is('deleted_at', null).maybeSingle();
+  if (!empresa) return { ok: false, error: 'Empresa não encontrada.' };
+
+  // Rascunho aceita formulário pela metade; a entrega exige o schema inteiro.
+  const rascunho = !input.dataTransmissao;
+  const ehDasn = input.tipo === 'DASN-SIMEI';
+  const schema = ehDasn
+    ? (rascunho ? DasnRascunhoSchema : DasnCamposSchema)
+    : (rascunho ? DefisRascunhoSchema : DefisCamposSchema);
+  const parsed = schema.safeParse(input.dados);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
+    return { ok: false, error: mensagemDeIssues(parsed.error.issues, ehDasn ? rotuloCampoDasn : rotuloCampoDefis) };
   }
 
   // Divergência: compara o total declarado com o apurado pelas notas do ano.

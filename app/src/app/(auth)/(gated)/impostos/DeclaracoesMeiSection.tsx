@@ -20,8 +20,9 @@ const PORTAL_DASNSIMEI = 'https://www8.receita.fazenda.gov.br/SimplesNacional/Ap
 export type DadosDasn = { receitaComercio: number; receitaServico: number; possuiEmpregado: boolean };
 
 export default function DeclaracoesMeiSection({
-  declaracoes, anoCalendario, resumo, rascunho,
+  companyId, declaracoes, anoCalendario, resumo, rascunho,
 }: {
+  companyId: string; // a empresa que ESTA tela renderizou — vai junto no registro
   declaracoes: DeclaracaoRow[];
   anoCalendario: number; // ano-calendário a declarar (normalmente o ano anterior)
   resumo: ResumoReceitas;
@@ -79,7 +80,7 @@ export default function DeclaracoesMeiSection({
             <RegistrarComprovanteDialog
               onSubmit={async ({ numeroDeclaracao, dataTransmissao, comprovante }) =>
                 registrarDeclaracaoAnualAction({
-                  tipo: 'DASN-SIMEI', ano: anoCalendario, dados,
+                  companyId, tipo: 'DASN-SIMEI', ano: anoCalendario, dados,
                   numeroDeclaracao, dataTransmissao, comprovante,
                 })}
             />
@@ -94,7 +95,7 @@ export default function DeclaracoesMeiSection({
           resumo={resumo}
           inicial={inicial}
           onSalvar={async (d) => {
-            const r = await registrarDeclaracaoAnualAction({ tipo: 'DASN-SIMEI', ano: anoCalendario, dados: d });
+            const r = await registrarDeclaracaoAnualAction({ companyId, tipo: 'DASN-SIMEI', ano: anoCalendario, dados: d });
             if (r.ok) {
               setDados(d);
               setMsg('Rascunho salvo. O aviso só some quando você registrar o comprovante.');

@@ -169,8 +169,11 @@ export default async function ImpostosPage() {
     : null;
 
   const dadosDefis = (salvaDoAno('DEFIS')?.dados ?? null) as Record<string, unknown> | null;
+  // Sem notas no ano, pré-preencher com 0 só planta um zero pra apagar em dois
+  // campos. `undefined` deixa a caixa vazia, como os outros campos do art. 72.
+  const receitaPrefill = resumoAno.total > 0 ? resumoAno.total : undefined;
   const inicialDefis = dadosDefis
-    ?? { ...defisVazio(), receitaBrutaTotal: resumoAno.total, receitaMercadoInterno: resumoAno.total };
+    ?? { ...defisVazio(), receitaBrutaTotal: receitaPrefill, receitaMercadoInterno: receitaPrefill };
 
   return (
     <Page>
@@ -207,6 +210,7 @@ export default async function ImpostosPage() {
               <section className="mb-8">
                 <h2 className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Declaração anual</h2>
                 <DeclaracoesDefisSection
+                  companyId={companyId}
                   declaracoes={declaracoesRows.filter((d) => d.tipo === 'DEFIS')}
                   anoCalendario={anoDeclaracao}
                   inicial={inicialDefis}
@@ -231,6 +235,7 @@ export default async function ImpostosPage() {
             <section className="mb-8">
               <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Declarações</h2>
               <DeclaracoesMeiSection
+                companyId={companyId}
                 declaracoes={declaracoesRows.filter((d) => d.tipo === 'DASN-SIMEI')}
                 anoCalendario={anoDeclaracao}
                 resumo={resumoAno}
