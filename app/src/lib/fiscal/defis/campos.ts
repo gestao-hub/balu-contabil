@@ -2,7 +2,7 @@
 // Schema do DEFIS. Espelha grupos.ts campo a campo — o último teste de
 // campos.test.ts falha se os dois saírem de sincronia.
 import { z } from 'zod';
-import { camposPlanos } from './grupos';
+import { camposPlanos, GRUPOS_DEFIS } from './grupos';
 
 const moeda = z.number().min(0, 'Valor não pode ser negativo.');
 const inteiro = z.number().int('Informe um número inteiro.').min(0);
@@ -56,6 +56,35 @@ export const DefisCamposSchema = objeto.refine(
 );
 
 export type DefisCampos = z.infer<typeof DefisCamposSchema>;
+
+/**
+ * Schema do RASCUNHO: nada é obrigatório. Salvar trabalho pela metade é o
+ * propósito do botão — validar o art. 72 inteiro tornava "Salvar rascunho"
+ * impossível de usar até o último dos 22 campos estar preenchido, e a mensagem
+ * era um "Required" sem nome de campo. O que estiver preenchido continua sendo
+ * validado (moeda não-negativa, CPF de 11 dígitos, participação até 100%); só a
+ * exigência de estar completo cai, junto com a regra de somar 100%, que não faz
+ * sentido enquanto os sócios ainda estão sendo digitados.
+ */
+export const DefisRascunhoSchema = objeto.partial().extend({
+  socios: z.array(SocioDefisSchema.partial()).default([]),
+});
+
+const ROTULOS = new Map(camposPlanos().map((c) => [c.chave, c.label]));
+const ROTULOS_SOCIO = new Map(
+  (GRUPOS_DEFIS.find((g) => g.repetivel)?.campos ?? []).map((c) => [c.chave, c.label]),
+);
+
+/** Nome de tela de um campo do DEFIS, a partir do caminho do erro do Zod. */
+export function rotuloCampoDefis(caminho: readonly (string | number)[]): string {
+  const [primeiro, indice, campo] = caminho;
+  if (primeiro === 'socios') {
+    if (typeof indice !== 'number') return 'Sócios';
+    const nome = typeof campo === 'string' ? ROTULOS_SOCIO.get(campo) ?? campo : '';
+    return nome ? `Sócio ${indice + 1} — ${nome}` : `Sócio ${indice + 1}`;
+  }
+  return typeof primeiro === 'string' ? ROTULOS.get(primeiro) ?? primeiro : '';
+}
 
 /** Formulário em branco: todo campo plano como undefined, sócios vazio. */
 export function defisVazio(): Record<string, unknown> {

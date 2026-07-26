@@ -11,8 +11,9 @@ import { registrarDeclaracaoAnual } from '@/lib/fiscal/declaracoes-anuais/regist
 import { calcularDivergencia } from '@/lib/fiscal/declaracoes-anuais/divergencia';
 import { lerNotasAnoCalendario } from '@/lib/fiscal/receitas-source';
 import { resumirReceitasAno } from '@/lib/fiscal/dasn/resumo';
-import { DasnCamposSchema } from '@/lib/fiscal/dasn/campos';
-import { DefisCamposSchema } from '@/lib/fiscal/defis/campos';
+import { DasnCamposSchema, DasnRascunhoSchema, rotuloCampoDasn } from '@/lib/fiscal/dasn/campos';
+import { DefisCamposSchema, DefisRascunhoSchema, rotuloCampoDefis } from '@/lib/fiscal/defis/campos';
+import { mensagemDeIssues } from '@/lib/fiscal/declaracoes-anuais/erros';
 import type { DeclaracaoAnualTipo } from '@/lib/fiscal/declaracoes-anuais/tipos';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
@@ -42,11 +43,16 @@ export async function registrarDeclaracaoAnualContadorAction(input: {
   const alvo = await companyDaCarteira(admin, e.contabilidadeId, input.companyId);
   if (!alvo) return { ok: false, error: 'Empresa fora da sua carteira.' };
 
-  const parsed = input.tipo === 'DASN-SIMEI'
-    ? DasnCamposSchema.safeParse(input.dados)
-    : DefisCamposSchema.safeParse(input.dados);
+  // Mesma regra do lado do empresário: rascunho aceita formulário pela metade,
+  // entrega exige o schema inteiro — e o erro diz qual campo, não só "Required".
+  const rascunho = !input.dataTransmissao;
+  const ehDasn = input.tipo === 'DASN-SIMEI';
+  const schema = ehDasn
+    ? (rascunho ? DasnRascunhoSchema : DasnCamposSchema)
+    : (rascunho ? DefisRascunhoSchema : DefisCamposSchema);
+  const parsed = schema.safeParse(input.dados);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
+    return { ok: false, error: mensagemDeIssues(parsed.error.issues, ehDasn ? rotuloCampoDasn : rotuloCampoDefis) };
   }
 
   const notas = await lerNotasAnoCalendario(admin, alvo.companyId, input.ano);
