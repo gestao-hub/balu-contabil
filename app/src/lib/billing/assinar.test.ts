@@ -48,4 +48,20 @@ describe('acesso entre contratar e o primeiro pagamento', () => {
     expect(statusEfetivo({ status: 'inadimplente', trial_termina_em: venc }, '2026-07-28'))
       .toBe('bloqueado');
   });
+
+  // O QUE FALTAVA E O SMOKE DE 27/07 ACHOU: os casos acima assumem
+  // status='trial' durante a janela, mas `assinar.ts` so gravava
+  // `trial_termina_em` e deixava o status como estava. Contratando a partir
+  // de 'inadimplente' ou 'cancelada', o gate seguia bloqueando — o titular
+  // clicava Assinar, lia "assinatura criada" e continuava barrado.
+  it('contratar tem de sair de inadimplente/cancelada, nao so gravar a data', () => {
+    const venc = primeiroVencimento('2026-07-27');
+    for (const anterior of ['inadimplente', 'cancelada'] as const) {
+      expect(statusEfetivo({ status: anterior, trial_termina_em: venc }, '2026-07-28'))
+        .toBe('bloqueado');   // o estado de ORIGEM continua bloqueando...
+    }
+    // ...logo, contratar SO funciona porque assinar.ts grava status:'trial'.
+    expect(statusEfetivo({ status: 'trial', trial_termina_em: venc }, '2026-07-28'))
+      .toBe('liberado');
+  });
 });

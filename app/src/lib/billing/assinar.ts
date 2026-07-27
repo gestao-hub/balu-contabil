@@ -11,6 +11,7 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { asaas } from '@/lib/clients';
 import { ymdBrt } from '@/lib/fiscal/tempo-brt';
+import { sincronizarCobrancas, type CobrancaRemota } from './cobranca';
 
 export type DadosTitular = {
   assinaturaId: string;
@@ -24,7 +25,7 @@ export type DadosTitular = {
 };
 
 export type ResultadoAssinar =
-  | { ok: true; subscriptionId: string }
+  | { ok: true; subscriptionId: string; faturaUrl: string | null }
   | { ok: false; error: string };
 
 /** Dias até o primeiro vencimento. Também é a janela de acesso liberado
@@ -109,6 +110,18 @@ export async function criarAssinaturaNoAsaas(
     const novoTrial = trialAtual && trialAtual > venceEm ? trialAtual : venceEm;
 
     const { error } = await sb.from('assinaturas').update({
+      // O STATUS TAMBEM TEM DE MUDAR — so mexer em `trial_termina_em` nao
+      // libera nada. `statusEfetivo` de proposito nao honra data nenhuma
+      // para 'inadimplente' e 'cancelada' (a data pode ser anterior ao
+      // sinal de inadimplencia), entao quem contratava vindo desses estados
+      // via "assinatura criada" e continuava barrado, com a tarja de
+      // cobranca em aberto na tela. Achado no smoke manual de 27/07.
+      //
+      // 'trial' e o estado certo aqui: liberado, sem pagamento confirmado.
+      // O webhook promove para 'ativa' quando o boleto compensa, e devolve
+      // para 'inadimplente' se vencer — e ai o bloqueio volta na hora,
+      // porque data nenhuma o segura.
+      status: 'trial',
       plano_id: plano.id,
       asaas_subscription_id: assinatura.id,
       proxima_cobranca_em: venceEm,
@@ -117,7 +130,23 @@ export async function criarAssinaturaNoAsaas(
     }).eq('id', titular.assinaturaId);
     if (error) return { ok: false, error: error.message };
 
-    return { ok: true, subscriptionId: assinatura.id };
+    // A primeira fatura JA EXISTE no Asaas neste ponto — ele a emite junto
+    // com a assinatura. Puxar agora, em vez de esperar o webhook, e o que
+    // faz a tela ter um link de pagamento no mesmo segundo. Best effort de
+    // proposito: a contratacao ja deu certo do outro lado, e falhar aqui nao
+    // pode transforma-la em erro para o titular.
+    let faturaUrl: string | null = null;
+    try {
+      const { data: pagamentos } = await asaas.listarCobrancas(assinatura.id);
+      await sincronizarCobrancas(sb, titular.assinaturaId, (pagamentos ?? []) as CobrancaRemota[]);
+      faturaUrl = [...(pagamentos ?? [])]
+        .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1))
+        .find((p) => p.invoiceUrl)?.invoiceUrl ?? null;
+    } catch (e) {
+      console.error('[billing assinar] cobrancas nao sincronizadas', e);
+    }
+
+    return { ok: true, subscriptionId: assinatura.id, faturaUrl };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[billing assinar] falhou', msg);

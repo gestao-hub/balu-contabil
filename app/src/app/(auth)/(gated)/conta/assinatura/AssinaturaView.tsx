@@ -46,6 +46,7 @@ export default function AssinaturaView({
   semAcoes?: boolean;
 }) {
   const [msg, setMsg] = useState<string | null>(null);
+  const [fatura, setFatura] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [planoEscolhido, setPlanoEscolhido] = useState<string>(planos[0]?.id ?? '');
   const [pending, start] = useTransition();
@@ -61,11 +62,18 @@ export default function AssinaturaView({
   function assinar() {
     if (!planoEscolhido) return;
     setMsg(null);
+    setFatura(null);
     start(async () => {
       const r = await assinarPlanoAction(assinatura.id, planoEscolhido);
-      setMsg(r.ok
-        ? 'Assinatura criada. A primeira cobrança aparecerá aqui em instantes.'
-        : r.error);
+      if (!r.ok) { setMsg(r.error); return; }
+      // Nao prometer o que depende de webhook chegar. Ou ha fatura AGORA e
+      // ela vira um botao, ou o texto diz que ela aparece na lista abaixo —
+      // "aparecera aqui em instantes" deixava o titular olhando uma tela
+      // vazia sem saber por onde pagar (smoke de 27/07).
+      setFatura(r.faturaUrl);
+      setMsg(r.faturaUrl
+        ? 'Assinatura criada. Sua primeira fatura já está pronta.'
+        : 'Assinatura criada. A fatura aparecerá na lista de cobranças assim que o Asaas emitir.');
     });
   }
 
@@ -78,9 +86,17 @@ export default function AssinaturaView({
   return (
     <div className="space-y-4">
       {msg && (
-        <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-foreground">
-          {msg}
-        </p>
+        <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-foreground">
+          <p>{msg}</p>
+          {fatura && (
+            <a
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
+              href={fatura} target="_blank" rel="noreferrer"
+            >
+              Pagar agora <ExternalLink className="size-3.5" />
+            </a>
+          )}
+        </div>
       )}
 
       {/* Situação atual */}

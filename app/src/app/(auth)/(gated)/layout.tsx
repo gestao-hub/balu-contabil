@@ -41,6 +41,7 @@ export default async function GatedLayout({ children }: { children: React.ReactN
           status={aviso.status}
           trialTerminaEm={aviso.trialTerminaEm}
           href={aviso.href}
+          contratada={aviso.contratada}
         />
       )}
       {children}

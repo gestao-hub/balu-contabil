@@ -26,8 +26,21 @@ describe('statusEfetivo', () => {
     expect(statusEfetivo({ status: 'inadimplente', trial_termina_em: null }, '2026-07-27')).toBe('bloqueado');
   });
 
+  // 'inadimplente' e um sinal OBSERVADO (webhook ou cron viram cobranca
+  // vencida). Uma data gravada antes disso nao pode reabrir o acesso —
+  // senao quem nao pagou passaria pela porta do trial.
+  it('inadimplente bloqueia mesmo com data futura na linha', () => {
+    expect(statusEfetivo({ status: 'inadimplente', trial_termina_em: '2027-01-01' }, '2026-07-27')).toBe('bloqueado');
+  });
+
   it('cancelada bloqueia', () => {
     expect(statusEfetivo({ status: 'cancelada', trial_termina_em: null }, '2026-07-27')).toBe('bloqueado');
+  });
+
+  // Cancelar e ato deliberado: um vencimento futuro na linha nao pode
+  // reabrir a conta por tras da decisao do titular.
+  it('cancelada bloqueia MESMO com data futura', () => {
+    expect(statusEfetivo({ status: 'cancelada', trial_termina_em: '2027-01-01' }, '2026-07-27')).toBe('bloqueado');
   });
 
   // DISCRIMINANTE: sem este caso, uma implementacao que ignorasse a data e

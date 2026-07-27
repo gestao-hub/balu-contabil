@@ -1,6 +1,6 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { CreditCard, Check, Users } from 'lucide-react';
+import { CreditCard, Check, Users, ExternalLink } from 'lucide-react';
 import {
   assinarPlanoAction, trocarPlanoAction, cancelarAssinaturaAction,
 } from '../../conta/assinatura/actions';
@@ -29,14 +29,22 @@ export default function PlanosCards({
   clientes: number;
 }) {
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
+  const [fatura, setFatura] = useState<string | null>(null);
   const [confirmandoCancel, setConfirmandoCancel] = useState(false);
   const [pending, start] = useTransition();
 
-  function agir(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, sucesso: string) {
+  function agir(
+    fn: () => Promise<{ ok: true; faturaUrl?: string | null } | { ok: false; error: string }>,
+    sucesso: string,
+  ) {
     setMsg(null);
+    setFatura(null);
     start(async () => {
       const r = await fn();
       setMsg(r.ok ? { tipo: 'ok', texto: sucesso } : { tipo: 'erro', texto: r.error });
+      // Contratar devolve a fatura já emitida — o escritório precisa dela
+      // tanto quanto o empresário, senão termina o fluxo sem onde pagar.
+      if (r.ok && r.faturaUrl) setFatura(r.faturaUrl);
       setConfirmandoCancel(false);
     });
   }
@@ -44,13 +52,21 @@ export default function PlanosCards({
   return (
     <section className="space-y-4">
       {msg && (
-        <p className={`rounded-md border px-3 py-2 text-sm ${
+        <div className={`rounded-md border px-3 py-2 text-sm ${
           msg.tipo === 'ok'
             ? 'border-success/40 bg-success/10 text-success'
             : 'border-alert/40 bg-alert/10 text-alert'
         }`}>
-          {msg.texto}
-        </p>
+          <p>{msg.texto}</p>
+          {fatura && (
+            <a
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
+              href={fatura} target="_blank" rel="noreferrer"
+            >
+              Pagar agora <ExternalLink className="size-3.5" />
+            </a>
+          )}
+        </div>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

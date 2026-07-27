@@ -10,7 +10,14 @@ export type StatusAssinatura = 'trial' | 'ativa' | 'inadimplente' | 'cancelada' 
 
 export type AssinaturaParaStatus = {
   status: StatusAssinatura;
-  /** YYYY-MM-DD em BRT. Só relevante quando status === 'trial'. */
+  /**
+   * YYYY-MM-DD em BRT. É o campo **"liberado até"**, e não só a data do teste.
+   *
+   * Além do trial, `assinar.ts` o empurra para o primeiro vencimento quando o
+   * titular contrata: quem assina com o teste já vencido paga um boleto que
+   * leva dias a compensar, e sem isso seguiria barrado — clicando "Assinar",
+   * vendo sucesso e continuando sem poder emitir nota.
+   */
   trial_termina_em: string | null;
 };
 
@@ -31,7 +38,15 @@ export function statusEfetivo(a: AssinaturaParaStatus, hoje: string): 'liberado'
       if (!a.trial_termina_em) return 'bloqueado';
       return hoje <= a.trial_termina_em ? 'liberado' : 'bloqueado';
     case 'inadimplente':
+      // NAO honra `trial_termina_em`, de proposito: 'inadimplente' so e
+      // escrito por quem VIU uma cobranca vencida (webhook PAYMENT_OVERDUE
+      // ou o cron reconciliando). Liberar por causa de uma data gravada
+      // antes desse sinal deixaria passar justamente quem nao pagou.
+      // Quem acabou de contratar nao chega aqui: `assinar.ts` poe a
+      // assinatura em 'trial' ate o primeiro vencimento.
+      return 'bloqueado';
     case 'cancelada':
+      // Cancelar e ato deliberado do titular; nenhuma data futura reabre.
       return 'bloqueado';
   }
 }

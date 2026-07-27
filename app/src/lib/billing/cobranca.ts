@@ -14,7 +14,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ymdBrt } from '@/lib/fiscal/tempo-brt';
-import type { EfeitoEvento } from './eventos';
+import { efeitoDoStatusCobranca, type EfeitoEvento } from './eventos';
 
 export type PagamentoAsaas = {
   value?: number; dueDate?: string; status?: string;
@@ -77,4 +77,48 @@ export async function persistirCobranca(
     .update(patch).eq('asaas_charge_id', efeito.chargeId);
   if (error) return { ok: false, error: error.message };
   return { ok: true, acao: 'atualizada' };
+}
+
+/** Uma cobranca como o Asaas devolve em `GET /subscriptions/{id}/payments`. */
+export type CobrancaRemota = PagamentoAsaas & { id: string; subscription?: string };
+
+/**
+ * Traz para o banco as cobrancas que o Asaas ja tem.
+ *
+ * EXISTE PORQUE `cobrancas` NASCEU 100% DEPENDENTE DO WEBHOOK. O Asaas emite
+ * a primeira fatura no mesmo instante em que a assinatura e criada, mas o
+ * app so ficava sabendo se o POST dele chegasse — e ele nao alcanca
+ * `localhost`, nao atravessa firewall e pode falhar em producao. O titular
+ * contratava, via "a cobranca aparecera aqui em instantes" e ficava com a
+ * tela vazia, sem link para pagar. Achado no smoke manual de 27/07.
+ *
+ * Recebe a lista JA BUSCADA em vez de chamar o Asaas: o cron ja tem esses
+ * dados em maos (uma chamada, nao duas) e a funcao fica testavel sem rede.
+ *
+ * Nao lanca: sincronizar e conveniencia. Falhar aqui nao pode desfazer uma
+ * contratacao que ja deu certo do outro lado.
+ */
+export async function sincronizarCobrancas(
+  sb: SupabaseClient,
+  assinaturaId: string,
+  pagamentos: CobrancaRemota[],
+): Promise<{ gravadas: number; erros: number }> {
+  let gravadas = 0;
+  let erros = 0;
+  for (const p of pagamentos) {
+    if (!p?.id) continue;
+    try {
+      const r = await persistirCobranca(
+        sb, assinaturaId,
+        { tipo: efeitoDoStatusCobranca(p.status), chargeId: p.id, subscriptionId: p.subscription ?? null },
+        p,
+      );
+      if (r.ok) gravadas++;
+      else { erros++; console.error('[billing sync] cobranca nao gravada', p.id, r.error); }
+    } catch (err) {
+      erros++;
+      console.error('[billing sync] excecao ao gravar cobranca', p.id, err);
+    }
+  }
+  return { gravadas, erros };
 }

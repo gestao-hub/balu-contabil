@@ -19,6 +19,7 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { asaas } from '@/lib/clients';
 import { planoPorQtdClientes, type PlanoFaixa } from '@/lib/billing/faixa';
+import { sincronizarCobrancas, type CobrancaRemota } from '@/lib/billing/cobranca';
 import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 
 export type ResumoBilling = {
@@ -74,6 +75,11 @@ export async function rodarBilling(): Promise<ResumoBilling> {
     try {
       const { data: pagamentos } = await asaas.listarCobrancas(a.asaas_subscription_id as string);
       if (!pagamentos?.length) continue;
+
+      // Rede de seguranca do webhook perdido: as cobrancas ja estao em mao,
+      // gravar aqui nao custa uma chamada a mais. Sem isto, uma entrega
+      // falha do Asaas deixava o titular sem link de fatura para sempre.
+      await sincronizarCobrancas(sb, a.id as string, pagamentos as CobrancaRemota[]);
 
       // A cobranca mais recente por vencimento manda: e ela que diz se o
       // titular esta em dia hoje.

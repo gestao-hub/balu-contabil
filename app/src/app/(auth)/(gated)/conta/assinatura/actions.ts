@@ -12,6 +12,12 @@ import { criarAssinaturaNoAsaas } from '@/lib/billing/assinar';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
+/** Contratar devolve a fatura junto: sem um link na mao o titular termina o
+ *  fluxo sem saber por onde pagar — foi o que o smoke de 27/07 mostrou. */
+export type ResultadoContratar =
+  | { ok: true; faturaUrl: string | null }
+  | { ok: false; error: string };
+
 /**
  * Contrata o plano. É a saída do gate: sem esta action o trial acaba e o
  * titular fica bloqueado sem nada a fazer.
@@ -22,7 +28,7 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
  */
 export async function assinarPlanoAction(
   assinaturaId: string, planoId: string,
-): Promise<ActionResult> {
+): Promise<ResultadoContratar> {
   if (!assinaturaId || !planoId) return { ok: false, error: 'Dados incompletos.' };
 
   const supabase = await createServerClient();
@@ -95,7 +101,7 @@ export async function assinarPlanoAction(
 
   revalidatePath('/conta/assinatura');
   revalidatePath('/contador/assinatura');
-  return { ok: true };
+  return { ok: true, faturaUrl: r.faturaUrl };
 }
 
 /**
@@ -195,6 +201,14 @@ export async function cancelarAssinaturaAction(assinaturaId: string): Promise<Ac
   const admin = createAdminClient();
   const { error } = await admin.from('assinaturas').update({
     status: 'cancelada',
+    // LIMPAR O ID É PARTE DO CANCELAMENTO, não faxina. `cancelarAssinatura`
+    // faz DELETE no Asaas: a subscription deixa de existir lá. Guardar o id
+    // morto fazia `assinarPlanoAction` recusar com "Já existe uma assinatura
+    // ativa" — quem cancelasse nunca mais conseguiria voltar, e cancelar em
+    // um clique com re-entrada impossível é pior que não deixar cancelar.
+    asaas_subscription_id: null,
+    // O customer FICA: é o cadastro do titular no Asaas, reaproveitado na
+    // volta em vez de duplicar.
     cancelada_em: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }).eq('id', assinatura.id);

@@ -40,8 +40,13 @@ function diasAte(ymd: string): number {
 }
 
 export default function AvisoCobranca({
-  status, trialTerminaEm, href,
-}: { status: string; trialTerminaEm: string | null; href: string }) {
+  status, trialTerminaEm, href, contratada = false,
+}: {
+  status: string; trialTerminaEm: string | null; href: string;
+  /** true quando já existe assinatura no Asaas. Muda o tom da tarja: quem
+   *  contratou vê a fatura, não um convite a contratar. */
+  contratada?: boolean;
+}) {
   const pathname = usePathname();
   if (!faixaPermitida(pathname ?? '')) return null;
 
@@ -50,6 +55,21 @@ export default function AvisoCobranca({
       <div className="border-b border-alert/40 bg-alert/10 px-4 py-2 text-sm text-alert">
         Há uma cobrança em aberto.{' '}
         <Link href={href} className="font-medium underline">Ver assinatura</Link>
+      </div>
+    );
+  }
+
+  // JÁ CONTRATOU: está em 'trial' só até o primeiro boleto compensar. Mandar
+  // "assine" quem acabou de assinar é o que fazia a tarja parecer que o
+  // clique não tinha surtido efeito (smoke de 27/07).
+  if (status === 'trial' && contratada && trialTerminaEm) {
+    const dias = diasAte(trialTerminaEm);
+    return (
+      <div className="border-b border-primary/40 bg-primary/10 px-4 py-2 text-sm text-primary">
+        {dias < 0 ? 'Sua fatura está vencida.'
+          : dias === 0 ? 'Sua fatura vence hoje.'
+          : `Sua fatura vence em ${dias} dia${dias > 1 ? 's' : ''}.`}{' '}
+        <Link href={href} className="font-medium underline">Ver fatura</Link>
       </div>
     );
   }

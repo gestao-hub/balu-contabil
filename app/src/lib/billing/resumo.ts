@@ -4,7 +4,12 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-export type ResumoAviso = { status: string; trialTerminaEm: string | null; href: string };
+export type ResumoAviso = {
+  status: string; trialTerminaEm: string | null; href: string;
+  /** Já existe assinatura no Asaas. Sem isto a tarja pedia "assine" a quem
+   *  acabou de assinar, e o clique parecia não ter surtido efeito. */
+  contratada: boolean;
+};
 
 export async function resumoAssinatura(
   userId: string,
@@ -21,9 +26,13 @@ export async function resumoAssinatura(
         .select('contabilidade_id').eq('user_id', userId).maybeSingle();
       if (!m) return null;
       const { data: a } = await sb.from('assinaturas')
-        .select('status, trial_termina_em').eq('contabilidade_id', m.contabilidade_id).maybeSingle();
+        .select('status, trial_termina_em, asaas_subscription_id')
+        .eq('contabilidade_id', m.contabilidade_id).maybeSingle();
       return a
-        ? { status: a.status, trialTerminaEm: a.trial_termina_em, href: '/contador/assinatura' }
+        ? {
+            status: a.status, trialTerminaEm: a.trial_termina_em,
+            href: '/contador/assinatura', contratada: Boolean(a.asaas_subscription_id),
+          }
         : null;
     }
 
@@ -34,9 +43,13 @@ export async function resumoAssinatura(
     if (!emp || emp.contabilidade_id) return null;
 
     const { data: a } = await sb.from('assinaturas')
-      .select('status, trial_termina_em').eq('company_id', companyId).maybeSingle();
+      .select('status, trial_termina_em, asaas_subscription_id')
+      .eq('company_id', companyId).maybeSingle();
     return a
-      ? { status: a.status, trialTerminaEm: a.trial_termina_em, href: '/conta/assinatura' }
+      ? {
+          status: a.status, trialTerminaEm: a.trial_termina_em,
+          href: '/conta/assinatura', contratada: Boolean(a.asaas_subscription_id),
+        }
       : null;
   } catch {
     // A faixa e informativa: falhar em silencio e melhor que derrubar o

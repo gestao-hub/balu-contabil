@@ -22,6 +22,34 @@ const MAPA: Record<string, TipoEfeito> = {
   PAYMENT_REFUNDED:  'estorno',
 };
 
+/**
+ * Mesmo vocabulário, outra porta: aqui o que chega é o STATUS de uma cobrança
+ * lida da API (`GET /subscriptions/{id}/payments`), não um evento de webhook.
+ *
+ * Existe porque `cobrancas` era 100% dependente do webhook — e o webhook não
+ * alcança `localhost`, some atrás de um firewall e pode simplesmente falhar.
+ * Sem este caminho o titular contrata, o Asaas emite a fatura e a tela dele
+ * fica vazia, sem link para pagar.
+ */
+export function efeitoDoStatusCobranca(status: string | undefined): TipoEfeito {
+  switch (status) {
+    case 'RECEIVED':
+    case 'CONFIRMED':
+    case 'RECEIVED_IN_CASH':
+      return 'pagamento_confirmado';
+    case 'OVERDUE':
+      return 'cobranca_vencida';
+    case 'REFUNDED':
+    case 'REFUND_REQUESTED':
+      return 'estorno';
+    default:
+      // PENDING, AWAITING_RISK_ANALYSIS, status novo que ainda não conhecemos:
+      // registra a cobrança sem afirmar nada sobre pagamento. Nunca inventar
+      // 'pagamento_confirmado' por omissão.
+      return 'cobranca_criada';
+  }
+}
+
 export function traduzirEvento(payload: unknown): EfeitoEvento {
   if (typeof payload !== 'object' || payload === null) {
     return { tipo: 'ignorado', motivo: 'payload_invalido' };
