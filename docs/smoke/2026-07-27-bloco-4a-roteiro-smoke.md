@@ -122,17 +122,19 @@ Para ver a faixa azul de trial: `node app/scratchpad/destravar-empresario.mjs of
 Com um titular **bloqueado**, logar como **admin** → **Configurações**.
 
 > **Mudança de 27/07 (migration 0052): o comprovante é OBRIGATÓRIO.** Não existe
-> liberação sem arquivo anexado. A lista de formatos é de **bloqueio**, não de
-> permissão: passa foto (inclusive **HEIC** do iPhone), PDF, Word, texto,
-> planilha, e-mail salvo (`.eml`/`.msg`) e formato desconhecido; barra só
-> executável e script (`.exe`, `.js`, `.bat`, `.html`, `.svg`…), inclusive
-> disfarçado de `comprovante.pdf.exe`. Teto de 10 MB.
+> liberação sem arquivo anexado. A lista é de **permissão**: só carrega o que
+> está nela — PDF, foto (JPG, PNG, **HEIC** do iPhone, WEBP, TIFF), Word, texto,
+> planilha e e-mail salvo (`.eml`/`.msg`). Qualquer outra coisa é recusada **no
+> momento da escolha**, não no envio: o arquivo nem chega a aparecer como
+> selecionado. Vale inclusive para `comprovante.pdf.exe` — a checagem lê a
+> extensão final. Teto de 10 MB.
 
 | # | Ação | Esperado |
 |---|---|---|
 | L.1 | Achar o titular na lista | Aparece como **Bloqueado**. O filtro já vem em "só bloqueados ou liberados" |
 | L.2 | **Liberar acesso** → preencher tudo **menos** o arquivo | O botão **Confirmar liberação** fica **desabilitado**. O bloqueio é dito na entrada, não no envio |
-| L.3 | Anexar um `.exe` (ou renomear algo para `teste.pdf.exe`) | **Recusa**, dizendo que o formato não serve como comprovante |
+| L.3 | Abrir o seletor de arquivo | O `.exe` **nem aparece** na lista — o seletor já filtra pelos formatos aceitos |
+| L.3b | Trocar o seletor para "todos os arquivos" e escolher um `.exe`; repetir com um renomeado para `teste.pdf.exe` | **Recusa no instante da escolha**, com o erro embaixo do campo. O arquivo **não** fica listado como selecionado e o botão continua desabilitado |
 | L.4 | Anexar uma **foto** ou um **PDF**, motivo com menos de 5 letras, e confirmar | Recusa pelo motivo. Testar também **0** e **90** dias — recusa em ambos |
 | L.5 | Motivo válido + 7 dias + arquivo → confirmar | Libera. A linha passa a mostrar **Comprovante: `<nome do arquivo>`** |
 | L.6 | Clicar no nome do comprovante | **Baixa** o arquivo (nunca abre inline). O link é gerado no clique e vale 5 min |
