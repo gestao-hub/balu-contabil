@@ -16,6 +16,9 @@ public/swe-worker-*.js
 .env
 .env.local
 .env*.local
+# Copias de seguranca do .env (ex.: .env.local.bak-asaas). Sem esta linha um
+# backup de segredos fica visivel no `git status` esperando um `git add -A`.
+.env.local.*
 .env.example
 
 # ── Testes (Vitest / Playwright) ─────────────────────────────

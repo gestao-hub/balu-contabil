@@ -121,7 +121,12 @@ export async function criarAssinaturaNoAsaas(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[billing assinar] falhou', msg);
-    if (/ASAAS_API_KEY/.test(msg)) {
+    // O nome da variavel mudou para TOKEN_ASAAS_SANDBOX/PRODUCAO e este
+    // teste continuou procurando ASAAS_API_KEY — que nao existe mais em
+    // lugar nenhum. Resultado: token ausente caia no "Tente novamente",
+    // mandando o titular repetir um clique que nunca ia funcionar. Foi
+    // exatamente o que escondeu o bug do `$` nao escapado no .env.local.
+    if (/TOKEN_ASAAS_\w+ nao configurado/.test(msg)) {
       return { ok: false, error: 'A cobrança ainda não está configurada. Fale com o suporte.' };
     }
     return { ok: false, error: 'Não foi possível concluir a assinatura agora. Tente novamente.' };
