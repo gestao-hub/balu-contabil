@@ -12,6 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
   ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, LayoutDashboard, FilePlus, MessageCircle,
+  CreditCard,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -73,6 +74,12 @@ const NAV: NavItem[] = [
   { href: '/admin/contabilidades',  label: 'Escritórios',    Icon: Building2, roles: ['adminbalu'] },
   { href: '/admin/empresas',        label: 'Empresas',       Icon: Briefcase, roles: ['adminbalu'] },
   { href: '/admin/usuarios',        label: 'Usuários',       Icon: Users, roles: ['adminbalu'] },
+  { href: '/admin/assinaturas',     label: 'Assinaturas',    Icon: CreditCard, roles: ['adminbalu'] },
+  // Assinatura do titular (Bloco 4A). A do empresário é `precisaEmpresa`
+  // porque sem empresa corrente a tela vira beco "Nenhuma empresa
+  // selecionada" — mesma regra dos demais itens de empresa acima.
+  { href: '/contador/assinatura',   label: 'Assinatura',     Icon: CreditCard, roles: ['contador'] },
+  { href: '/conta/assinatura',      label: 'Assinatura',     Icon: CreditCard, precisaEmpresa: true },
   { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
 ];
 
