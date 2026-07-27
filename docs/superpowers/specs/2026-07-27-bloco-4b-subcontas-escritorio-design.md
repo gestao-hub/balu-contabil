@@ -1,6 +1,6 @@
 # Spec — Bloco 4B: O escritório cobrando (subconta Asaas)
 
-> **Data:** 2026-07-27 · **Status:** design decidido, **pendente de revisão própria** antes do plano · **Bloco:** 4B de 7+ do `PRD-MASTER-Balu-2026-07-24.md`
+> **Data:** 2026-07-27 · **Status:** **design fechado — os 5 pontos do §7 estão decididos, pronto para o plano** · **Bloco:** 4B de 7+ do `PRD-MASTER-Balu-2026-07-24.md`
 > **Depende de:** Bloco 4A (`2026-07-27-bloco-4a-assinatura-balu-design.md`) — cliente Asaas, webhook, módulo de segredo e tabela `cobrancas` nascem lá e são reusados aqui.
 > **Natureza:** 🟡 construível e testável no **sandbox** do Asaas. A virada para produção depende de **aprovação comercial do Asaas** para criação de subcontas, não só de uma chave.
 > **Base factual:** auditoria do código real em 2026-07-27 (migrations até `0049`, `src/`).
@@ -72,15 +72,69 @@ O escritório cadastra o que cobra fora da mensalidade. Levantamento do que de f
 - **Honorários:** o CRUD v2 que já existe ganha "gerar cobrança" no honorário recorrente, populando as colunas `asaas_*`.
 - **Onboarding da subconta:** enquanto o KYC não aprova, as telas de cobrança dizem o que falta em vez de oferecer um botão que falharia.
 
-## 7. Pontos a fechar antes do plano
+## 7. Pontos fechados (2026-07-27, sessão 13)
 
-Este documento registra o que já foi decidido; a rodada própria de revisão precisa fechar:
+Os cinco pontos que faltavam foram resolvidos: o nº 1 contra o sandbox, os outros
+quatro por decisão do usuário.
 
-1. **Campos exatos exigidos pelo Asaas** para criar subconta (dados do responsável, faturamento estimado, documentos) — conferir no sandbox.
-2. O que acontece com cobranças em aberto quando o escritório **sai da Balu** ou é desvinculado.
-3. Se o cliente final vê as cobranças do escritório **dentro do app dele** ou só recebe por e-mail/WhatsApp.
-4. Inadimplência do cliente com o escritório — se alimenta o semáforo do painel do contador (hoje "quem não pagou os honorários" já existe, alimentado por marcação manual).
-5. Se a Balu cobra comissão, e como isso aparece para o escritório.
+### 7.1 Campos exigidos pelo Asaas — levantado no sandbox
+
+`node app/scratchpad/_probe-subconta.mjs` (POST com corpo vazio, só para ler o validador —
+não cria subconta):
+
+- **A conta-mãe já opera subcontas em sandbox:** `GET /accounts` → HTTP 200, zero existentes.
+  A aprovação comercial da premissa 2 do §8 vale para **produção**; a construção e o teste do
+  bloco não dependem dela.
+- **Obrigatórios mínimos:** `cpfCnpj`, `name`, `birthDate`.
+- **`birthDate` só é exigido para CPF.** Com `companyType: LIMITED` o validador deixa de pedir —
+  o que separa, no formulário, escritório PJ de contador autônomo PF. São **dois** conjuntos de
+  campos, não um.
+- Com payload de PJ plausível (`email`, `mobilePhone`, `incomeValue`, endereço completo com
+  `postalCode`), a única recusa restante foi o CNPJ fictício: esse conjunto **basta** para criar.
+- **A confirmar na implementação:** se o KYC exige upload de documento depois da criação, e em
+  que estado a subconta fica enquanto isso.
+
+### 7.2 Escritório sai da Balu com cobranças em aberto → **a Balu não toca nelas**
+
+A Balu apenas para de exibir; as cobranças seguem vivas na subconta e o cliente paga
+normalmente. É o próprio princípio do §1 aplicado à saída: **o crédito é do escritório**, e
+cancelar cobrança de terceiro seria a Balu decidindo sobre dinheiro que não é dela. Bloquear a
+saída até quitar foi descartado por prender o escritório à plataforma por dívida de terceiro
+(exposição pelo CDC art. 39).
+
+*Consequência de implementação:* desvincular **não** dispara nada no Asaas. O que existe é o
+registro de que a subconta deixou de ser gerida pela Balu — e as telas de cobrança somem.
+
+### 7.3 O cliente final **vê** as cobranças dentro do app
+
+Tela com as cobranças do escritório, link de pagamento e Pix. Boleto que só chega por e-mail se
+perde, e inadimplência por esquecimento é a mais comum — mostrar no app onde o cliente já está é
+o que a evita.
+
+*Fronteira herdada do 4A:* essa tela é do **escritório cobrando**, não da Balu. Nada nela pode
+sugerir que a Balu condiciona acesso ao pagamento do honorário — o gate de inadimplência do 4A
+continua valendo só para a assinatura da Balu, nunca para dívida com o escritório.
+
+### 7.4 Semáforo do painel do contador — **automático onde houver cobrança, manual onde não**
+
+Onde a cobrança nasceu pela subconta, o status vem do Asaas; onde não houver, segue a marcação
+manual que já existe. Substituir o manual por completo tiraria o controle de quem cobra por fora
+do app, e no primeiro dia **ninguém** terá tudo cobrado por dentro.
+
+*Consequência de modelagem:* o status do honorário precisa distinguir **"pago segundo o Asaas"**
+de **"marcado como pago pelo contador"**. Um campo só, sobrescrito pelos dois caminhos, esconde
+qual dos dois falou por último.
+
+### 7.5 Comissão da Balu — **não agora, porta aberta**
+
+Fica fora do 4B, como o §4 já previa. O modelo de subconta permite ligar split de comissão depois
+sem migration nova, e a receita da Balu hoje é a assinatura do 4A. Segue como pergunta comercial
+ao Michel (premissa 3 do §8).
+
+### 7.6 Correção de numeração
+
+O §4 fala em migration `0051` — número **já usado** pela liberação manual do 4A. A `0052` também
+(comprovante obrigatório). A migration do 4B é a **`0053`**.
 
 ## 8. Premissas para o Michel
 
