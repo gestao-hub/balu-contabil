@@ -27,7 +27,7 @@ export default async function Page() {
   return (
     <div className="p-6">
       <h1 className="text-xl font-semibold mb-1">Assinaturas</h1>
-      <p className="text-sm text-neutral-500 mb-6">
+      <p className="mb-6 text-sm text-muted-foreground">
         Preços, faixas e período de teste. As alterações valem para as próximas cobranças —
         assinaturas já ativas seguem no valor contratado até o próximo ciclo.
       </p>

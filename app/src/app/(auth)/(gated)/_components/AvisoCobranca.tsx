@@ -47,9 +47,9 @@ export default function AvisoCobranca({
 
   if (status === 'inadimplente') {
     return (
-      <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-900">
+      <div className="border-b border-alert/40 bg-alert/10 px-4 py-2 text-sm text-alert">
         Há uma cobrança em aberto.{' '}
-        <Link href={href} className="underline font-medium">Ver assinatura</Link>
+        <Link href={href} className="font-medium underline">Ver assinatura</Link>
       </div>
     );
   }
@@ -65,8 +65,8 @@ export default function AvisoCobranca({
         : dias === 0 ? 'Seu período de teste termina hoje.'
         : `Seu período de teste termina em ${dias} dia${dias > 1 ? 's' : ''}.`;
       return (
-        <div className="bg-sky-50 border-b border-sky-200 px-4 py-2 text-sm text-sky-900">
-          {texto} <Link href={href} className="underline font-medium">Assinar</Link>
+        <div className="border-b border-primary/40 bg-primary/10 px-4 py-2 text-sm text-primary">
+          {texto} <Link href={href} className="font-medium underline">Assinar</Link>
         </div>
       );
     }

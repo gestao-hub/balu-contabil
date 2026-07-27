@@ -1,5 +1,6 @@
 'use client';
 import { useState, useTransition } from 'react';
+import { CreditCard, Check, Users } from 'lucide-react';
 import {
   assinarPlanoAction, trocarPlanoAction, cancelarAssinaturaAction,
 } from '../../conta/assinatura/actions';
@@ -43,16 +44,16 @@ export default function PlanosCards({
   return (
     <section className="space-y-4">
       {msg && (
-        <p className={`text-sm rounded border px-3 py-2 ${
+        <p className={`rounded-md border px-3 py-2 text-sm ${
           msg.tipo === 'ok'
-            ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
-            : 'border-amber-300 bg-amber-50 text-amber-900'
+            ? 'border-success/40 bg-success/10 text-success'
+            : 'border-alert/40 bg-alert/10 text-alert'
         }`}>
           {msg.texto}
         </p>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {planos.map((p) => {
           const ehAtivo = planoAtivo === p.id && contratada;
           const ehRecomendado = planoRecomendado === p.id;
@@ -63,37 +64,44 @@ export default function PlanosCards({
           return (
             <article
               key={p.id}
-              className={`rounded-lg border p-4 flex flex-col gap-3 ${
-                ehAtivo ? 'border-emerald-500 ring-1 ring-emerald-500' : 'border-neutral-300'
+              className={`flex flex-col gap-3 rounded-md border bg-surface p-4 transition-colors ${
+                ehAtivo ? 'border-primary bg-primary/10' : 'border-border hover:border-primary'
               }`}
             >
-              <header className="space-y-1">
+              <header className="space-y-1.5">
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-medium leading-tight">{p.nome}</h3>
-                  {ehAtivo && (
-                    <span className="shrink-0 rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
-                      Seu plano
+                  <h3 className={`flex items-center gap-2 text-sm leading-tight ${
+                    ehAtivo ? 'font-semibold text-primary' : 'text-foreground'
+                  }`}>
+                    <CreditCard className="size-4 shrink-0 text-primary" />
+                    {p.nome}
+                  </h3>
+                  {ehAtivo ? (
+                    <span className="flex shrink-0 items-center gap-1 rounded-md bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
+                      <Check className="size-3" /> Seu plano
                     </span>
-                  )}
-                  {!ehAtivo && ehRecomendado && (
-                    <span className="shrink-0 rounded bg-sky-100 px-2 py-0.5 text-xs text-sky-800">
+                  ) : ehRecomendado ? (
+                    <span className="shrink-0 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground-2">
                       Recomendado
                     </span>
-                  )}
+                  ) : null}
                 </div>
-                <p className="text-2xl font-semibold">{reais(p.valor_centavos)}</p>
-                <p className="text-xs text-neutral-500">por mês</p>
-                <p className="text-sm text-neutral-600">
+
+                <p className="text-2xl font-semibold text-foreground">{reais(p.valor_centavos)}</p>
+                <p className="text-xs text-muted-foreground">por mês</p>
+
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground-2">
+                  <Users className="size-3.5 shrink-0" />
                   {p.clientes_min ?? 0} a {p.clientes_max ?? '∞'} clientes
                 </p>
                 {ehRecomendado && (
-                  <p className="text-xs text-sky-700">
+                  <p className="text-xs text-muted-foreground">
                     Faixa da sua carteira hoje ({clientes} cliente{clientes === 1 ? '' : 's'}).
                   </p>
                 )}
               </header>
 
-              <div className="mt-auto flex flex-col gap-2">
+              <div className="mt-auto flex flex-col gap-2 pt-1">
                 {/* Botão 1 — assinar / trocar. O rótulo vira "Trocar plano"
                     ao passar o mouse quando já existe um plano em vigor. */}
                 <button
@@ -105,10 +113,10 @@ export default function PlanosCards({
                       : assinarPlanoAction(assinaturaId, p.id)),
                     ehTroca ? 'Plano trocado.' : 'Plano assinado.',
                   )}
-                  className={`group w-full rounded border px-3 py-1.5 text-sm ${
+                  className={`group flex w-full items-center justify-center rounded-md border px-2 py-2 text-sm transition-colors disabled:opacity-50 ${
                     ehAtivo
-                      ? 'cursor-default border-neutral-200 text-neutral-400'
-                      : 'border-neutral-800 hover:bg-neutral-900 hover:text-white'
+                      ? 'cursor-default border-primary/30 text-primary'
+                      : 'border-border text-muted-foreground-2 hover:border-primary hover:bg-primary/10 hover:text-primary'
                   }`}
                 >
                   {ehAtivo ? (
@@ -131,14 +139,14 @@ export default function PlanosCards({
                       type="button" disabled={pending}
                       onClick={() => agir(
                         () => cancelarAssinaturaAction(assinaturaId), 'Assinatura cancelada.')}
-                      className="flex-1 rounded border border-neutral-800 px-3 py-1.5 text-sm"
+                      className="flex-1 rounded-md border border-destructive px-2 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
                     >
                       Confirmar
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirmandoCancel(false)}
-                      className="rounded px-3 py-1.5 text-sm underline"
+                      className="rounded-md px-2 py-2 text-sm text-muted-foreground hover:text-foreground"
                     >
                       Voltar
                     </button>
@@ -148,10 +156,10 @@ export default function PlanosCards({
                     type="button"
                     disabled={pending || !ehAtivo}
                     onClick={() => setConfirmandoCancel(true)}
-                    className={`w-full rounded border px-3 py-1.5 text-sm ${
+                    className={`w-full rounded-md border px-2 py-2 text-sm transition-colors disabled:opacity-40 ${
                       ehAtivo
-                        ? 'border-neutral-300 hover:bg-neutral-100'
-                        : 'cursor-default border-neutral-200 text-neutral-400'
+                        ? 'border-border text-muted-foreground-2 hover:border-destructive hover:text-destructive'
+                        : 'cursor-default border-border/50 text-muted-foreground'
                     }`}
                   >
                     Cancelar plano
@@ -163,7 +171,7 @@ export default function PlanosCards({
         })}
       </div>
 
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-muted-foreground">
         O plano recomendado acompanha o tamanho da sua carteira. Você pode assinar um plano maior,
         mas se a carteira crescer além da faixa contratada nós ajustamos para a faixa correta na
         virada do mês. Cancelar é um clique, sem fidelidade.

@@ -18,7 +18,7 @@ export default async function Page() {
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold mb-2">Assinatura</h1>
-        <p className="text-sm text-neutral-600">Nenhuma empresa selecionada.</p>
+        <p className="text-sm text-muted-foreground-2">Nenhuma empresa selecionada.</p>
       </div>
     );
   }
@@ -32,7 +32,7 @@ export default async function Page() {
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold mb-2">Assinatura</h1>
-        <p className="text-sm text-neutral-600 max-w-prose">
+        <p className="max-w-prose text-sm text-muted-foreground-2">
           Sua empresa é atendida por um escritório de contabilidade, e o acesso à Balu está
           incluído no serviço dele. Não há cobrança para você aqui.
         </p>
@@ -49,7 +49,7 @@ export default async function Page() {
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold mb-2">Assinatura</h1>
-        <p className="text-sm text-neutral-600">
+        <p className="text-sm text-muted-foreground-2">
           Assinatura não encontrada para esta empresa. Fale com o suporte.
         </p>
       </div>

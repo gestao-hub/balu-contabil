@@ -1,5 +1,6 @@
 'use client';
 import { useState, useTransition } from 'react';
+import { CreditCard, Users, Pencil, Power } from 'lucide-react';
 import { salvarPlanoAction, desativarPlanoAction, type PlanoInput } from './actions';
 
 const reais = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -54,94 +55,124 @@ export default function PlanosAdmin({
     });
   }
 
+  const campo =
+    'mt-1 w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-sm text-foreground';
+
   return (
     <div className="space-y-4">
       {msg && (
-        <p className={`text-sm rounded border px-3 py-2 ${
+        <p className={`rounded-md border px-3 py-2 text-sm ${
           msg.tipo === 'ok'
-            ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
-            : 'border-amber-300 bg-amber-50 text-amber-900'
+            ? 'border-success/40 bg-success/10 text-success'
+            : 'border-alert/40 bg-alert/10 text-alert'
         }`}>
           {msg.texto}
         </p>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-left text-neutral-500">
-            <tr>
-              <th className="py-2">Plano</th><th>Público</th><th>Valor</th>
-              <th>Faixa</th><th>Teste</th><th>Em uso</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {planos.map((p) => (
-              <tr key={p.id} className="border-t">
-                <td className="py-2">
-                  {p.nome}
-                  {!p.ativo && <span className="ml-2 text-xs text-neutral-400">(inativo)</span>}
-                </td>
-                <td>{p.publico === 'empresa' ? 'Empresário' : 'Escritório'}</td>
-                <td>{reais(p.valor_centavos)}</td>
-                <td>
-                  {p.publico === 'escritorio'
-                    ? `${p.clientes_min ?? 0} a ${p.clientes_max ?? '∞'}`
-                    : '—'}
-                </td>
-                <td>{p.trial_dias} dias</td>
-                <td>{usoPorPlano[p.id] ?? 0}</td>
-                <td className="text-right whitespace-nowrap">
-                  <button className="underline mr-3" onClick={() => abrirEdicao(p)}>Editar</button>
-                  {p.ativo && (
-                    <button className="underline" disabled={pending} onClick={() => desativar(p.id)}>
-                      Desativar
-                    </button>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {planos.map((p) => {
+          const emUso = usoPorPlano[p.id] ?? 0;
+          return (
+            <article
+              key={p.id}
+              className={`flex flex-col gap-3 rounded-md border bg-surface p-4 transition-colors ${
+                p.ativo ? 'border-border hover:border-primary' : 'border-border/50 opacity-60'
+              }`}
+            >
+              <header className="space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="flex items-center gap-2 text-sm leading-tight text-foreground">
+                    <CreditCard className="size-4 shrink-0 text-primary" />
+                    {p.nome}
+                  </h3>
+                  {!p.ativo && (
+                    <span className="shrink-0 rounded-md bg-surface-3 px-2 py-0.5 text-xs text-muted-foreground">
+                      Inativo
+                    </span>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+
+                <p className="text-2xl font-semibold text-foreground">{reais(p.valor_centavos)}</p>
+                <p className="text-xs text-muted-foreground">
+                  por mês · {p.publico === 'empresa' ? 'Empresário' : 'Escritório'}
+                </p>
+
+                {p.publico === 'escritorio' && (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground-2">
+                    <Users className="size-3.5 shrink-0" />
+                    {p.clientes_min ?? 0} a {p.clientes_max ?? '∞'} clientes
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Teste de {p.trial_dias} dias · <span className="text-muted-foreground-2">{emUso} em uso</span>
+                </p>
+              </header>
+
+              <div className="mt-auto flex flex-col gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => abrirEdicao(p)}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md border border-border px-2 py-2 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+                >
+                  <Pencil className="size-3.5" /> Editar plano
+                </button>
+                <button
+                  type="button"
+                  disabled={pending || !p.ativo}
+                  onClick={() => desativar(p.id)}
+                  className={`flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-2 text-sm transition-colors disabled:opacity-40 ${
+                    p.ativo
+                      ? 'border-border text-muted-foreground-2 hover:border-destructive hover:text-destructive'
+                      : 'cursor-default border-border/50 text-muted-foreground'
+                  }`}
+                >
+                  <Power className="size-3.5" /> Desativar plano
+                </button>
+              </div>
+            </article>
+          );
+        })}
       </div>
 
       {edit && (
         <form
-          className="border rounded p-4 space-y-3 max-w-md"
+          className="max-w-md space-y-3 rounded-md border border-border bg-surface p-4"
           onSubmit={(e) => { e.preventDefault(); salvar(edit); }}
         >
-          <h2 className="font-medium">Editar {edit.nome}</h2>
+          <h2 className="text-sm font-medium text-foreground">Editar {edit.nome}</h2>
 
-          <label className="block text-sm">Nome
-            <input className="mt-1 w-full border rounded px-2 py-1" value={edit.nome}
+          <label className="block text-xs text-muted-foreground">Nome
+            <input className={campo} value={edit.nome}
               onChange={(e) => setEdit({ ...edit, nome: e.target.value })} />
           </label>
 
-          <label className="block text-sm">Valor (R$)
-            <input type="text" inputMode="decimal" className="mt-1 w-full border rounded px-2 py-1"
+          <label className="block text-xs text-muted-foreground">Valor (R$)
+            <input type="text" inputMode="decimal" className={campo}
               value={valorTexto} placeholder="199,00"
               onChange={(e) => setValorTexto(e.target.value)} />
           </label>
 
-          <label className="block text-sm">Dias de teste
-            <input type="number" min="0" className="mt-1 w-full border rounded px-2 py-1"
+          <label className="block text-xs text-muted-foreground">Dias de teste
+            <input type="number" min="0" className={campo}
               value={edit.trial_dias}
               onChange={(e) => setEdit({ ...edit, trial_dias: parseInt(e.target.value || '0', 10) })} />
-            <span className="text-xs text-neutral-500">
+            <span className="mt-1 block text-xs text-muted-foreground">
               Vale para quem se cadastrar a partir de agora.
             </span>
           </label>
 
           {edit.publico === 'escritorio' && (
             <div className="flex gap-3">
-              <label className="block text-sm flex-1">De (clientes)
-                <input type="number" min="0" className="mt-1 w-full border rounded px-2 py-1"
+              <label className="block flex-1 text-xs text-muted-foreground">De (clientes)
+                <input type="number" min="0" className={campo}
                   value={edit.clientes_min ?? 0}
                   onChange={(e) => setEdit({
                     ...edit, clientes_min: parseInt(e.target.value || '0', 10),
                   })} />
               </label>
-              <label className="block text-sm flex-1">Até (vazio = sem limite)
-                <input type="number" min="0" className="mt-1 w-full border rounded px-2 py-1"
+              <label className="block flex-1 text-xs text-muted-foreground">Até (vazio = sem limite)
+                <input type="number" min="0" className={campo}
                   value={edit.clientes_max ?? ''}
                   onChange={(e) => setEdit({
                     ...edit,
@@ -151,11 +182,13 @@ export default function PlanosAdmin({
             </div>
           )}
 
-          <div className="flex gap-2">
-            <button type="submit" disabled={pending} className="border rounded px-3 py-1">
+          <div className="flex gap-2 pt-1">
+            <button type="submit" disabled={pending}
+              className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary disabled:opacity-50">
               Salvar
             </button>
-            <button type="button" onClick={() => setEdit(null)} className="underline px-3 py-1">
+            <button type="button" onClick={() => setEdit(null)}
+              className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground">
               Cancelar
             </button>
           </div>

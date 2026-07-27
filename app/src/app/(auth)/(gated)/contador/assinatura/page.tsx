@@ -18,7 +18,7 @@ export default async function Page() {
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold mb-2">Assinatura do escritório</h1>
-        <p className="text-sm text-neutral-600">Você não faz parte de um escritório.</p>
+        <p className="text-sm text-muted-foreground-2">Você não faz parte de um escritório.</p>
       </div>
     );
   }
@@ -33,7 +33,7 @@ export default async function Page() {
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold mb-2">Assinatura do escritório</h1>
-        <p className="text-sm text-neutral-600">
+        <p className="text-sm text-muted-foreground-2">
           Assinatura não encontrada para este escritório. Fale com o suporte.
         </p>
       </div>
@@ -79,7 +79,7 @@ export default async function Page() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-xl font-semibold mb-1">Assinatura do escritório</h1>
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-muted-foreground">
           Sua carteira tem <strong>{clientes}</strong> cliente{clientes === 1 ? '' : 's'} hoje.
         </p>
       </div>
@@ -103,7 +103,7 @@ export default async function Page() {
       </div>
 
       {!escolha.ok && (
-        <p className="text-sm rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+        <p className="rounded-md border border-alert/40 bg-alert/10 px-3 py-2 text-sm text-alert">
           Não há plano configurado para a sua quantidade de clientes — nenhum aparece como
           recomendado. Fale com o suporte.
         </p>
