@@ -87,6 +87,9 @@ describe.skipIf(!temTudo)('ciclo de assinatura (sandbox Asaas + banco real)', ()
         cpfCnpj: '61061690000183',       // CNPJ real da PIPER, formato válido
         email: 'e2e@balu.test',
         asaasCustomerId: null,
+        // A fixture usa a linha como esta; contratar so mexe no status se
+        // ela estiver cancelada.
+        statusAtual: (original?.status as string) ?? 'trial',
       },
       { id: 'empresario_mensal', nome: 'E2E', valor_centavos: 4990, ciclo: 'MONTHLY' },
     );

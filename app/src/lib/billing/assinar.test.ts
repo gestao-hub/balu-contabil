@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { primeiroVencimento, DIAS_ATE_PRIMEIRO_VENCIMENTO } from './assinar';
+import { primeiroVencimento, DIAS_ATE_PRIMEIRO_VENCIMENTO, statusAoContratar } from './assinar';
 import { statusEfetivo } from './status';
 
 describe('primeiroVencimento', () => {
@@ -59,5 +59,29 @@ describe('acesso entre contratar e o primeiro pagamento', () => {
   it('teste vencido nao revive por causa da contratacao', () => {
     expect(statusEfetivo({ status: 'trial', trial_termina_em: '2026-07-26' }, '2026-07-28'))
       .toBe('bloqueado');
+  });
+});
+
+// Achado no smoke: assinar -> cancelar -> re-assinar -> pagar, e o pagamento
+// NUNCA era reconhecido. A linha ficava em 'cancelada', e todo caminho de
+// reconciliacao exclui esse status de proposito (para que nenhuma cobranca
+// atrasada do passado ressuscite conta encerrada). Re-contratar tem de tirar
+// a linha de la.
+describe('statusAoContratar', () => {
+  it('cancelada vira inadimplente — bloqueia, mas e reconciliavel', () => {
+    expect(statusAoContratar('cancelada')).toBe('inadimplente');
+  });
+
+  // DISCRIMINANTE: se devolvesse 'inadimplente' para todos, quem contratasse
+  // no meio de um teste vigente seria BLOQUEADO pelo proprio ato de assinar.
+  it('nao mexe em nenhum outro status', () => {
+    for (const s of ['trial', 'ativa', 'inadimplente', 'cortesia']) {
+      expect(statusAoContratar(s)).toBeNull();
+    }
+  });
+
+  it('o estado resultante bloqueia ate o pagamento', () => {
+    const depois = statusAoContratar('cancelada')!;
+    expect(statusEfetivo({ status: depois, trial_termina_em: null }, '2026-07-28')).toBe('bloqueado');
   });
 });

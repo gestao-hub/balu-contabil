@@ -20,6 +20,8 @@ export type DadosTitular = {
   email: string | null;
   /** Já existente, se o titular foi criado no Asaas numa tentativa anterior. */
   asaasCustomerId: string | null;
+  /** Status da linha AGORA — ver `statusAoContratar`. */
+  statusAtual: string;
 };
 
 export type ResultadoAssinar =
@@ -43,6 +45,29 @@ export function primeiroVencimento(
 ): string {
   const t = Date.parse(`${hoje}T00:00:00Z`) + dias * 86400000;
   return new Date(t).toISOString().slice(0, 10);
+}
+
+/**
+ * Para qual status a linha vai ao contratar. `null` = não mexer.
+ *
+ * Contratar NÃO libera acesso (decisão de 27/07), então a regra é quase
+ * sempre "não mexer". A exceção é 'cancelada', e ela não é cosmética:
+ *
+ * Depois de cancelar, a linha fica 'cancelada'. Re-contratar deixava o
+ * status como estava — e TODOS os caminhos de reconciliação excluem
+ * 'cancelada' de propósito, para que nenhuma cobrança atrasada do passado
+ * ressuscite uma conta que o titular encerrou. Resultado: o titular
+ * re-assinava, pagava, e o pagamento NUNCA era reconhecido. O cron pulava a
+ * linha, a tela desistia antes de consultar, e o webhook não promovia.
+ *
+ * Quem contratou de novo não está mais cancelado — está contratado e
+ * devendo a primeira fatura. 'inadimplente' é esse estado: bloqueia (o
+ * acesso ainda depende do pagamento) e é reconciliável.
+ *
+ * Achado no smoke manual de 27/07: assinar → cancelar → re-assinar → pagar.
+ */
+export function statusAoContratar(atual: string): 'inadimplente' | null {
+  return atual === 'cancelada' ? 'inadimplente' : null;
 }
 
 export async function criarAssinaturaNoAsaas(
@@ -106,10 +131,15 @@ export async function criarAssinaturaNoAsaas(
     // pela reconciliacao (lib/billing/reconciliar.ts), que a propria tela
     // dispara enquanto o titular espera. Com Pix ou cartao isso leva
     // segundos; com boleto, o tempo da compensacao.
+    const novoStatus = statusAoContratar(titular.statusAtual);
+
     const { error } = await sb.from('assinaturas').update({
       plano_id: plano.id,
       asaas_subscription_id: assinatura.id,
       proxima_cobranca_em: venceEm,
+      // Sair de 'cancelada' — sem isto o pagamento nunca seria reconhecido.
+      // Nos demais status o campo nem entra no patch, e fica intocado.
+      ...(novoStatus ? { status: novoStatus, cancelada_em: null } : {}),
       updated_at: new Date().toISOString(),
     }).eq('id', titular.assinaturaId);
     if (error) return { ok: false, error: error.message };
