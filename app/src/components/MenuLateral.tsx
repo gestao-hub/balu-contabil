@@ -355,7 +355,10 @@ export default function MenuLateral({
           marca do escritório, é isto que diz de quem é a plataforma.
           Recolhido, só "Balu" — "By Balu-contábil" não cabe em 4rem. */}
       <div className="border-t border-border px-2 py-2.5 text-center">
-        <span className="block truncate text-sm font-bold italic leading-none text-muted-foreground-2">
+        {/* `text-primary` é o mesmo azul do item de menu ativo
+            (bg-primary/15 text-primary) — token da marca, então acompanha
+            o tema claro e o escuro. */}
+        <span className="block truncate text-sm font-bold italic leading-none text-primary">
           {open ? 'By Balu-contábil' : 'Balu'}
         </span>
       </div>
