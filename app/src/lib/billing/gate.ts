@@ -44,7 +44,7 @@ async function avaliar(
     const sb = createAdminClient();
     const { data, error } = await sb
       .from('assinaturas')
-      .select('status, trial_termina_em')
+      .select('status, trial_termina_em, liberado_ate')
       .eq(coluna, valor)
       .maybeSingle();
 

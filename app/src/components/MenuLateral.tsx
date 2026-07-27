@@ -79,6 +79,7 @@ const NAV: NavItem[] = [
   { href: '/admin/empresas',        label: 'Empresas',       Icon: Briefcase, roles: ['adminbalu'] },
   { href: '/admin/usuarios',        label: 'Usuários',       Icon: Users, roles: ['adminbalu'] },
   { href: '/admin/assinaturas',     label: 'Assinaturas',    Icon: CreditCard, roles: ['adminbalu'] },
+  { href: '/admin/configuracoes',   label: 'Configurações',  Icon: Settings, roles: ['adminbalu'] },
   // Assinatura do titular (Bloco 4A). A do empresário é `precisaEmpresa`
   // porque sem empresa corrente a tela vira beco "Nenhuma empresa
   // selecionada" — mesma regra dos demais itens de empresa acima.

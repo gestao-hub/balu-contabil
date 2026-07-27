@@ -19,6 +19,12 @@ export type AssinaturaParaStatus = {
    * vendo sucesso e continuando sem poder emitir nota.
    */
   trial_termina_em: string | null;
+  /**
+   * Liberação manual do admin da Balu (YYYY-MM-DD em BRT), para quem pagou
+   * por boleto e mandou o comprovante antes da compensação. Libera até esta
+   * data seja qual for o status — e expira sozinha.
+   */
+  liberado_ate?: string | null;
 };
 
 /**
@@ -28,6 +34,22 @@ export type AssinaturaParaStatus = {
  * datas — não converta para Date, que reintroduz fuso.
  */
 export function statusEfetivo(a: AssinaturaParaStatus, hoje: string): 'liberado' | 'bloqueado' {
+  const base = porStatus(a, hoje);
+  if (base === 'liberado') return 'liberado';
+
+  // LIBERACAO MANUAL — a ultima palavra, e so no sentido de LIBERAR.
+  //
+  // Nao esta la em cima de proposito: quem ja passa pelo status normal nao
+  // precisa dela, e assim a liberacao nunca pode BLOQUEAR ninguem por
+  // engano. Vale para qualquer status, inclusive 'cancelada': e decisao
+  // explicita de uma pessoa, com motivo registrado e prazo — e o prazo e o
+  // que impede que vire acesso eterno por esquecimento.
+  if (a.liberado_ate && hoje <= a.liberado_ate) return 'liberado';
+
+  return 'bloqueado';
+}
+
+function porStatus(a: AssinaturaParaStatus, hoje: string): 'liberado' | 'bloqueado' {
   switch (a.status) {
     case 'cortesia':
     case 'ativa':

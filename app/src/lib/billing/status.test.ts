@@ -49,6 +49,47 @@ describe('statusEfetivo', () => {
     expect(statusEfetivo({ status: 'trial', trial_termina_em: '2020-01-01' }, '2026-07-27')).toBe('bloqueado');
   });
 
+  // ── Liberação manual do admin (0051) ────────────────────────────────
+  //
+  // Existe para quem pagou por boleto e mandou o comprovante antes da
+  // compensacao. Marcar 'ativa' na mao nao serviria: a reconciliacao veria
+  // o boleto OVERDUE no vencimento e bloquearia de novo na madrugada.
+  it('liberacao manual destrava inadimplente', () => {
+    expect(statusEfetivo(
+      { status: 'inadimplente', trial_termina_em: null, liberado_ate: '2026-08-05' },
+      '2026-07-27',
+    )).toBe('liberado');
+  });
+
+  it('liberacao manual vale ate o ULTIMO dia, inclusive', () => {
+    const a = { status: 'inadimplente' as const, trial_termina_em: null, liberado_ate: '2026-07-27' };
+    expect(statusEfetivo(a, '2026-07-27')).toBe('liberado');
+    expect(statusEfetivo(a, '2026-07-28')).toBe('bloqueado');
+  });
+
+  // Nao pode virar acesso eterno por esquecimento.
+  it('liberacao manual vencida nao vale mais', () => {
+    expect(statusEfetivo(
+      { status: 'inadimplente', trial_termina_em: null, liberado_ate: '2026-07-01' },
+      '2026-07-27',
+    )).toBe('bloqueado');
+  });
+
+  // DISCRIMINANTE: a liberacao so LIBERA. Uma implementacao que a usasse
+  // como fonte unica bloquearia quem esta em dia e nao tem liberacao.
+  it('sem liberacao manual, quem esta ativo continua liberado', () => {
+    expect(statusEfetivo(
+      { status: 'ativa', trial_termina_em: null, liberado_ate: null },
+      '2026-07-27',
+    )).toBe('liberado');
+  });
+
+  // O campo e opcional: todo chamador que nao o seleciona continua valendo.
+  it('ausencia do campo nao muda nada', () => {
+    expect(statusEfetivo({ status: 'inadimplente', trial_termina_em: null }, '2026-07-27')).toBe('bloqueado');
+    expect(statusEfetivo({ status: 'ativa', trial_termina_em: null }, '2026-07-27')).toBe('liberado');
+  });
+
   // Fronteira de ano: comparacao lexicografica de YYYY-MM-DD tem de ordenar
   // certo na virada, senao 2027-01-01 pareceria menor que 2026-12-31.
   it('trial que termina em 31/12 libera no dia e bloqueia em 01/01', () => {

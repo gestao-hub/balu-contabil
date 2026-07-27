@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
+import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { planoPorQtdClientes, type PlanoFaixa } from '@/lib/billing/faixa';
@@ -26,7 +27,7 @@ export default async function Page() {
   const supabase = await createServerClient();
   const { data: a } = await supabase
     .from('assinaturas')
-    .select('id, status, trial_termina_em, proxima_cobranca_em, plano_id, asaas_subscription_id, planos ( nome, valor_centavos )')
+    .select('id, status, trial_termina_em, proxima_cobranca_em, plano_id, asaas_subscription_id, liberado_ate, planos ( nome, valor_centavos )')
     .eq('contabilidade_id', ctx.contabilidade.id).maybeSingle();
 
   if (!a) {
@@ -49,6 +50,8 @@ export default async function Page() {
     trial_termina_em: a.trial_termina_em, proxima_cobranca_em: a.proxima_cobranca_em,
     planoNome: plano?.nome ?? null, valor_centavos: plano?.valor_centavos ?? null,
     contratada: Boolean(a.asaas_subscription_id),
+    // Só mostra se AINDA vale — data vencida na linha não é liberação.
+    liberadoAte: a.liberado_ate && ymdBrt() <= a.liberado_ate ? (a.liberado_ate as string) : null,
   };
 
   const { data: cobrancas } = await supabase

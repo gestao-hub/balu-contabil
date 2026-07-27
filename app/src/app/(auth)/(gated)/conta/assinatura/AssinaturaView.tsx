@@ -1,6 +1,6 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { CreditCard, Receipt, ExternalLink, Loader2 } from 'lucide-react';
+import { CreditCard, Receipt, ExternalLink, Loader2, ShieldCheck } from 'lucide-react';
 import { cancelarAssinaturaAction, assinarPlanoAction } from './actions';
 import { useVerificarPagamento, aguardandoPagamento } from './useVerificarPagamento';
 
@@ -14,6 +14,8 @@ export type AssinaturaVm = {
   proxima_cobranca_em: string | null; planoNome: string | null; valor_centavos: number | null;
   /** true quando já existe assinatura no Asaas — some o bloco de contratar. */
   contratada: boolean;
+  /** Liberação manual da Balu (0051), quando vigente. */
+  liberadoAte?: string | null;
 };
 
 const reais = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -143,6 +145,18 @@ export default function AssinaturaView({
             </div>
           )}
         </dl>
+
+        {/* Sem isto o titular vê "pagamento pendente" com o app funcionando e
+            não entende por quê — ou pior, acha que a cobrança sumiu. */}
+        {assinatura.liberadoAte && (
+          <p className="mt-3 flex items-start gap-1.5 rounded-md bg-success/10 px-2 py-1.5 text-xs text-success">
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
+            <span>
+              Seu acesso está liberado pela Balu até <strong>{dataBr(assinatura.liberadoAte)}</strong>,
+              enquanto o pagamento é confirmado.
+            </span>
+          </p>
+        )}
 
         {assinatura.status === 'cortesia' && (
           <p className="mt-3 text-xs text-muted-foreground">
