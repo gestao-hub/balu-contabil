@@ -67,25 +67,44 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ignored: 'assinatura_desconhecida' }, { status: 200 });
     }
 
-    // Idempotencia: asaas_charge_id e UNIQUE, entao reprocessar o mesmo
-    // evento e upsert, nunca linha nova.
-    //
-    // `pago_em` so entra no payload quando o evento CONFIRMA pagamento. Se
-    // fosse escrito como null nos demais, um PAYMENT_CREATED fora de ordem
-    // apagaria a data de um pagamento ja registrado — a mesma armadilha que
-    // o webhook da Focus documenta em route.ts:104-105. Coluna ausente do
-    // payload: no insert fica no default, no update fica intocada.
+    // O Asaas REENTREGA eventos e nao garante ordem (esta rota responde 200
+    // ate quando rejeita, entao qualquer coisa pode voltar). Um
+    // PAYMENT_CREATED que chega DEPOIS do PAYMENT_RECEIVED nao pode desfazer
+    // o pagamento. Por isso lemos a linha atual antes de decidir o que
+    // sobrescrever — mesmo espirito do webhook da Focus (route.ts:104-105),
+    // que so grava o que veio no callback.
+    const { data: atual } = await sb
+      .from('cobrancas').select('id, pago_em').eq('asaas_charge_id', efeito.chargeId).maybeSingle();
+    const jaPaga = Boolean(atual?.pago_em);
+    const eventoDePagamento = efeito.tipo === 'pagamento_confirmado' || efeito.tipo === 'estorno';
+
+    // Idempotencia no nivel do banco: asaas_charge_id e UNIQUE, entao
+    // reprocessar o mesmo evento e upsert, nunca linha nova.
     const linha: Record<string, unknown> = {
       assinatura_id: assinatura.id,
       asaas_charge_id: efeito.chargeId,
-      status: pay.status ?? 'DESCONHECIDO',
-      valor_centavos: Math.round((pay.value ?? 0) * 100),
-      vencimento: pay.dueDate ?? ymdBrt(),
-      link_fatura: pay.invoiceUrl ?? null,
       updated_at: new Date().toISOString(),
     };
+    // Campos ausentes do payload ficam INTOCADOS no update (e no default no
+    // insert). Sem essa guarda, um payload sem `value` gravaria 0 por cima
+    // do valor real, e a tela mostraria R$ 0,00 ao cliente.
+    if (pay.invoiceUrl) linha.link_fatura = pay.invoiceUrl;
+    if (typeof pay.value === 'number') linha.valor_centavos = Math.round(pay.value * 100);
+    if (pay.dueDate) linha.vencimento = pay.dueDate;
+
+    // `status` so regride se o evento for mesmo sobre pagamento. Um
+    // PAYMENT_CREATED atrasado nao devolve uma cobranca paga para PENDING.
+    if (!jaPaga || eventoDePagamento) {
+      linha.status = pay.status ?? 'DESCONHECIDO';
+    }
     if (efeito.tipo === 'pagamento_confirmado') {
       linha.pago_em = pay.paymentDate ?? ymdBrt();
+    }
+    // Insert precisa dos NOT NULL; se o payload nao trouxe, usa um default.
+    if (!atual) {
+      linha.status ??= pay.status ?? 'DESCONHECIDO';
+      linha.valor_centavos ??= 0;
+      linha.vencimento ??= ymdBrt();
     }
 
     const { error: erroCobranca } = await sb
@@ -96,12 +115,15 @@ export async function POST(req: Request) {
 
     const novoStatus = EFEITO_STATUS[efeito.tipo];
     if (novoStatus) {
-      // Cortesia nunca e rebaixada por evento de pagamento: sao contas
-      // liberadas por decisao interna, sem vinculo de cobranca real.
+      // `cortesia` e `cancelada` nunca sao tocadas por evento de pagamento:
+      // a primeira e liberacao por decisao interna, sem cobranca real; a
+      // segunda e democao deliberada do titular, e um boleto pago minutos
+      // antes do cancelamento (ou uma reentrega do Asaas) nao pode
+      // ressuscitar a conta.
       const { error: erroAssinatura } = await sb.from('assinaturas')
         .update({ status: novoStatus, updated_at: new Date().toISOString() })
         .eq('id', assinatura.id)
-        .neq('status', 'cortesia');
+        .not('status', 'in', '("cortesia","cancelada")');
       if (erroAssinatura) {
         console.error('[webhook asaas] erro ao atualizar assinatura', erroAssinatura.message);
       }

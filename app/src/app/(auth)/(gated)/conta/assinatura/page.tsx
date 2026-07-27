@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
-import AssinaturaView, { type AssinaturaVm, type CobrancaVm } from './AssinaturaView';
+import AssinaturaView, { type AssinaturaVm, type CobrancaVm, type PlanoVm } from './AssinaturaView';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +42,7 @@ export default async function Page() {
 
   const { data: a } = await supabase
     .from('assinaturas')
-    .select('id, status, trial_termina_em, proxima_cobranca_em, plano_id, planos ( nome, valor_centavos )')
+    .select('id, status, trial_termina_em, proxima_cobranca_em, plano_id, asaas_subscription_id, planos ( nome, valor_centavos )')
     .eq('company_id', companyId).maybeSingle();
 
   if (!a) {
@@ -65,6 +65,7 @@ export default async function Page() {
     id: a.id, status: a.status,
     trial_termina_em: a.trial_termina_em, proxima_cobranca_em: a.proxima_cobranca_em,
     planoNome: plano?.nome ?? null, valor_centavos: plano?.valor_centavos ?? null,
+    contratada: Boolean(a.asaas_subscription_id),
   };
 
   const { data: cobrancas } = await supabase
@@ -72,10 +73,19 @@ export default async function Page() {
     .select('id, status, valor_centavos, vencimento, link_fatura, pix_copia_cola')
     .eq('assinatura_id', a.id).order('vencimento', { ascending: false }).limit(24);
 
+  // Catálogo do público certo. Empresa nunca vê plano de escritório.
+  const { data: planos } = await supabase
+    .from('planos').select('id, nome, valor_centavos')
+    .eq('publico', 'empresa').eq('ativo', true).order('valor_centavos');
+
   return (
     <div className="p-6">
       <h1 className="text-xl font-semibold mb-6">Assinatura</h1>
-      <AssinaturaView assinatura={assinatura} cobrancas={(cobrancas ?? []) as CobrancaVm[]} />
+      <AssinaturaView
+        assinatura={assinatura}
+        cobrancas={(cobrancas ?? []) as CobrancaVm[]}
+        planos={(planos ?? []) as PlanoVm[]}
+      />
     </div>
   );
 }

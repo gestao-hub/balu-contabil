@@ -1,14 +1,17 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { cancelarAssinaturaAction } from './actions';
+import { cancelarAssinaturaAction, assinarPlanoAction } from './actions';
 
 export type CobrancaVm = {
   id: string; status: string; valor_centavos: number;
   vencimento: string; link_fatura: string | null; pix_copia_cola: string | null;
 };
+export type PlanoVm = { id: string; nome: string; valor_centavos: number };
 export type AssinaturaVm = {
   id: string; status: string; trial_termina_em: string | null;
   proxima_cobranca_em: string | null; planoNome: string | null; valor_centavos: number | null;
+  /** true quando já existe assinatura no Asaas — some o bloco de contratar. */
+  contratada: boolean;
 };
 
 const reais = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -23,10 +26,11 @@ const ROTULO: Record<string, string> = {
 };
 
 export default function AssinaturaView({
-  assinatura, cobrancas,
-}: { assinatura: AssinaturaVm; cobrancas: CobrancaVm[] }) {
+  assinatura, cobrancas, planos = [],
+}: { assinatura: AssinaturaVm; cobrancas: CobrancaVm[]; planos?: PlanoVm[] }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
+  const [planoEscolhido, setPlanoEscolhido] = useState<string>(planos[0]?.id ?? '');
   const [pending, start] = useTransition();
 
   function cancelar() {
@@ -36,6 +40,23 @@ export default function AssinaturaView({
       setConfirmando(false);
     });
   }
+
+  function assinar() {
+    if (!planoEscolhido) return;
+    setMsg(null);
+    start(async () => {
+      const r = await assinarPlanoAction(assinatura.id, planoEscolhido);
+      setMsg(r.ok
+        ? 'Assinatura criada. A primeira cobrança aparecerá aqui em instantes.'
+        : r.error);
+    });
+  }
+
+  // O bloco de contratar aparece para quem ainda nao tem assinatura no
+  // Asaas e nao e cortesia. E a SAIDA do gate: sem ele, quem sai do trial
+  // fica bloqueado sem nada a fazer.
+  const podeContratar =
+    !assinatura.contratada && assinatura.status !== 'cortesia' && planos.length > 0;
 
   return (
     <div className="space-y-6">
@@ -61,6 +82,51 @@ export default function AssinaturaView({
           </p>
         )}
       </section>
+
+      {podeContratar && (
+        <section className="border rounded p-4 space-y-3">
+          <h2 className="font-medium">
+            {assinatura.status === 'trial' ? 'Contratar agora' : 'Reativar o acesso'}
+          </h2>
+          <p className="text-sm text-neutral-600">
+            {assinatura.status === 'trial'
+              ? 'Você pode contratar antes do fim do teste — o período de teste continua valendo até o fim.'
+              : 'Contrate um plano para voltar a emitir notas e cadastrar clientes.'}
+          </p>
+
+          {planos.length === 1 ? (
+            <p className="text-sm">
+              <strong>{planos[0].nome}</strong> — {reais(planos[0].valor_centavos)} por mês
+            </p>
+          ) : (
+            <label className="block text-sm">
+              Plano
+              <select
+                className="mt-1 w-full border rounded px-2 py-1"
+                value={planoEscolhido}
+                onChange={(e) => setPlanoEscolhido(e.target.value)}
+              >
+                {planos.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome} — {reais(p.valor_centavos)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <button
+            className="border rounded px-3 py-1 text-sm"
+            disabled={pending || !planoEscolhido}
+            onClick={assinar}
+          >
+            {pending ? 'Processando…' : 'Assinar'}
+          </button>
+          <p className="text-xs text-neutral-500">
+            A fatura permite boleto, Pix ou cartão. Você pode cancelar quando quiser.
+          </p>
+        </section>
+      )}
 
       <section>
         <h2 className="font-medium mb-2">Cobranças</h2>

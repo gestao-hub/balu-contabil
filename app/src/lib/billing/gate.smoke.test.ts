@@ -13,6 +13,12 @@ let companyId = '';
 let assinaturaId = '';
 let statusOriginal: string | null = null;
 let trialOriginal: string | null = null;
+// Estado do ESCRITORIO mexido pelo ultimo teste. Vive fora do teste porque
+// a restauracao tem de acontecer no afterAll: se ficasse depois do
+// `expect`, uma assercao falha (ou um Ctrl+C) deixaria um escritorio REAL
+// marcado como inadimplente no banco de producao.
+let escAssinaturaId = '';
+let escStatusOriginal: string | null = null;
 
 describe.skipIf(!temEnv)('gate de assinatura (banco real)', () => {
   beforeAll(async () => {
@@ -30,12 +36,17 @@ describe.skipIf(!temEnv)('gate de assinatura (banco real)', () => {
   });
 
   afterAll(async () => {
-    // Devolve a assinatura ao estado ORIGINAL — o smoke nao pode deixar uma
-    // empresa real bloqueada nem inventar um estado que nao existia.
+    // Devolve tudo ao estado ORIGINAL — o smoke nao pode deixar uma empresa
+    // nem um escritorio real bloqueado, e nao pode inventar um estado que
+    // nao existia. Roda mesmo se um teste falhar no meio.
     if (assinaturaId && statusOriginal) {
       await sb.from('assinaturas')
         .update({ status: statusOriginal, trial_termina_em: trialOriginal })
         .eq('id', assinaturaId);
+    }
+    if (escAssinaturaId && escStatusOriginal) {
+      await sb.from('assinaturas')
+        .update({ status: escStatusOriginal }).eq('id', escAssinaturaId);
     }
   });
 
@@ -86,13 +97,16 @@ describe.skipIf(!temEnv)('gate de assinatura (banco real)', () => {
 
     const { data: aEsc } = await sb.from('assinaturas')
       .select('id, status').eq('contabilidade_id', comCarteira.contabilidade_id).maybeSingle();
-    const original = aEsc?.status ?? null;
-    if (aEsc) await sb.from('assinaturas').update({ status: 'inadimplente' }).eq('id', aEsc.id);
+    if (!aEsc) return;
+
+    // Registra ANTES de mexer, para o afterAll restaurar mesmo se o expect
+    // abaixo falhar.
+    escAssinaturaId = aEsc.id;
+    escStatusOriginal = aEsc.status;
+    await sb.from('assinaturas').update({ status: 'inadimplente' }).eq('id', aEsc.id);
 
     const { assertAssinaturaEmpresa } = await import('./gate');
     expect(await assertAssinaturaEmpresa(comCarteira.id)).toEqual({ ok: true });
-
-    if (aEsc && original) await sb.from('assinaturas').update({ status: original }).eq('id', aEsc.id);
   });
 
   // A trigger da 0050 tem de ter coberto todo mundo: se sobrou titular sem

@@ -56,22 +56,35 @@ export async function rodarBilling(): Promise<ResumoBilling> {
   };
 
   // ─────────────────────────────────────────────── 1. reconciliacao
+  //
+  // Reconcilia pelas COBRANCAS, nao pelo status da assinatura. O status de
+  // subscription do Asaas continua ACTIVE enquanto uma cobranca esta
+  // vencida — sao coisas diferentes. Uma versao anterior promovia
+  // `remota.status === 'ACTIVE'` para 'ativa', o que desfazia todo
+  // PAYMENT_OVERDUE na madrugada seguinte e tornava o gate inoperante.
+  //
+  // `cancelada` fica INTEIRAMENTE de fora: e democao deliberada do titular,
+  // e nenhuma cobranca atrasada do passado pode ressuscitar a conta.
   const { data: comAsaas } = await sb
     .from('assinaturas').select('id, status, asaas_subscription_id')
     .not('asaas_subscription_id', 'is', null)
-    .neq('status', 'cortesia');   // cortesia nao tem cobranca a reconciliar
+    .in('status', ['trial', 'ativa', 'inadimplente']);
 
   for (const a of comAsaas ?? []) {
     try {
-      const remota = await asaas.consultarAssinatura(a.asaas_subscription_id as string);
-      // ACTIVE no Asaas e a UNICA situacao que garante 'ativa' aqui.
-      // Qualquer outra coisa NAO vira inadimplente automaticamente: quem
-      // declara inadimplencia e o evento PAYMENT_OVERDUE. Ausencia de
-      // ACTIVE pode ser mil coisas, e rebaixar por ela bloquearia cliente
-      // adimplente.
-      if (remota.status === 'ACTIVE' && a.status !== 'ativa') {
+      const { data: pagamentos } = await asaas.listarCobrancas(a.asaas_subscription_id as string);
+      if (!pagamentos?.length) continue;
+
+      // A cobranca mais recente por vencimento manda: e ela que diz se o
+      // titular esta em dia hoje.
+      const recente = [...pagamentos].sort((x, y) => (x.dueDate < y.dueDate ? 1 : -1))[0];
+      const pago = recente.status === 'RECEIVED' || recente.status === 'CONFIRMED';
+      const vencido = recente.status === 'OVERDUE';
+
+      const alvo = pago ? 'ativa' : vencido ? 'inadimplente' : null;
+      if (alvo && alvo !== a.status) {
         await sb.from('assinaturas')
-          .update({ status: 'ativa', updated_at: new Date().toISOString() }).eq('id', a.id);
+          .update({ status: alvo, updated_at: new Date().toISOString() }).eq('id', a.id);
         resumo.reconciliadas++;
       }
     } catch (err) {

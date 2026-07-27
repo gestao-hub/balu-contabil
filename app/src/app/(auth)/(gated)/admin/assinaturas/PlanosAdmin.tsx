@@ -8,13 +8,37 @@ export default function PlanosAdmin({
   planos, usoPorPlano,
 }: { planos: PlanoInput[]; usoPorPlano: Record<string, number> }) {
   const [edit, setEdit] = useState<PlanoInput | null>(null);
+  // O valor em edicao vive como TEXTO. Um input controlado por
+  // `(centavos/100).toFixed(2)` se reformata a cada tecla: digitar "59,90"
+  // num campo mostrando "49.90" produzia 5.01, e o admin nao conseguia
+  // escrever o preco digito a digito — numa tela cuja unica funcao e mudar
+  // precos. A conversao acontece so no salvar.
+  const [valorTexto, setValorTexto] = useState('');
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [pending, start] = useTransition();
 
+  function abrirEdicao(p: PlanoInput) {
+    setEdit(p);
+    setValorTexto((p.valor_centavos / 100).toFixed(2).replace('.', ','));
+    setMsg(null);
+  }
+
+  /** Aceita "1.234,56" e "1234.56". Devolve null quando não é número. */
+  function paraCentavos(txt: string): number | null {
+    const limpo = txt.trim().replace(/\./g, '').replace(',', '.');
+    if (!limpo || !/^\d+(\.\d{1,2})?$/.test(limpo)) return null;
+    return Math.round(parseFloat(limpo) * 100);
+  }
+
   function salvar(p: PlanoInput) {
+    const centavos = paraCentavos(valorTexto);
+    if (centavos === null) {
+      setMsg({ tipo: 'erro', texto: 'Valor inválido. Use por exemplo 199,00.' });
+      return;
+    }
     setMsg(null);
     start(async () => {
-      const r = await salvarPlanoAction(p);
+      const r = await salvarPlanoAction({ ...p, valor_centavos: centavos });
       setMsg(r.ok ? { tipo: 'ok', texto: 'Salvo.' } : { tipo: 'erro', texto: r.error });
       if (r.ok) setEdit(null);
     });
@@ -67,7 +91,7 @@ export default function PlanosAdmin({
                 <td>{p.trial_dias} dias</td>
                 <td>{usoPorPlano[p.id] ?? 0}</td>
                 <td className="text-right whitespace-nowrap">
-                  <button className="underline mr-3" onClick={() => setEdit(p)}>Editar</button>
+                  <button className="underline mr-3" onClick={() => abrirEdicao(p)}>Editar</button>
                   {p.ativo && (
                     <button className="underline" disabled={pending} onClick={() => desativar(p.id)}>
                       Desativar
@@ -93,11 +117,9 @@ export default function PlanosAdmin({
           </label>
 
           <label className="block text-sm">Valor (R$)
-            <input type="number" step="0.01" min="0" className="mt-1 w-full border rounded px-2 py-1"
-              value={(edit.valor_centavos / 100).toFixed(2)}
-              onChange={(e) => setEdit({
-                ...edit, valor_centavos: Math.round(parseFloat(e.target.value || '0') * 100),
-              })} />
+            <input type="text" inputMode="decimal" className="mt-1 w-full border rounded px-2 py-1"
+              value={valorTexto} placeholder="199,00"
+              onChange={(e) => setValorTexto(e.target.value)} />
           </label>
 
           <label className="block text-sm">Dias de teste

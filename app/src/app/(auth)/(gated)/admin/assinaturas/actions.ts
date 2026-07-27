@@ -98,6 +98,22 @@ export async function desativarPlanoAction(id: string): Promise<ActionResult> {
     return { ok: false, error: `Não dá para desativar: ${count} assinatura(s) usam este plano.` };
   }
 
+  // A contagem acima NAO basta: assinatura de escritorio nasce com
+  // plano_id NULL e so ganha plano na primeira passada do cron, entao numa
+  // base recem-instalada ela le 0 e deixaria desativar a faixa do meio,
+  // abrindo um buraco. Validar o conjunto RESULTANTE fecha isso.
+  const { data: alvo } = await admin
+    .from('planos').select('publico').eq('id', id).maybeSingle();
+  if (alvo?.publico === 'escritorio') {
+    const { data: restantes } = await admin
+      .from('planos').select('id, clientes_min, clientes_max')
+      .eq('publico', 'escritorio').eq('ativo', true).neq('id', id);
+    const v = validarFaixas(restantes ?? []);
+    if (!v.ok) {
+      return { ok: false, error: `Desativar deixaria as faixas inconsistentes. ${v.erro}` };
+    }
+  }
+
   const { error } = await admin.from('planos')
     .update({ ativo: false, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) return { ok: false, error: error.message };
