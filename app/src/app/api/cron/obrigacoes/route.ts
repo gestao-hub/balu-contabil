@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/clients/email';
 import { renderNotificacaoEmail } from '@/lib/notifications/email-template';
+import { rodarBilling } from '@/lib/billing/cron';
 
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -15,18 +16,33 @@ export async function GET(req: Request) {
   if ((req.headers.get('authorization') ?? '') !== `Bearer ${secret}`)
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
+  // Billing (Bloco 4A) roda AQUI e não em cron próprio: o plano Hobby da
+  // Vercel permite exatamente 2 crons e o vercel.json já tem 2. O endpoint
+  // /api/cron/billing continua existindo para disparo manual.
+  //
+  // Vem ANTES das obrigações e em try/catch próprio: as duas rotinas são
+  // independentes, e uma falha na materialização (que retorna 500 abaixo)
+  // não pode impedir a reconciliação de cobrança de rodar naquele dia.
+  let billing: unknown = null;
+  try {
+    billing = await rodarBilling();
+  } catch (err) {
+    console.error('[cron obrigacoes] billing falhou', err);
+    billing = { erro: String(err) };
+  }
+
   const admin = createAdminClient();
 
   const { data: criadas, error: eRpc } = await admin.rpc('materializar_obrigacoes');
   if (eRpc) {
     console.error('[cron obrigacoes] materializar_obrigacoes', eRpc.message);
-    return NextResponse.json({ ok: false, error: eRpc.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: eRpc.message, billing }, { status: 500 });
   }
 
   const { data: pend, error: ePend } = await admin.rpc('notificacoes_pendentes_email', { p_limite: 200 });
   if (ePend) {
     console.error('[cron obrigacoes] notificacoes_pendentes_email', ePend.message);
-    return NextResponse.json({ ok: true, criadas, email_erro: ePend.message }, { status: 207 });
+    return NextResponse.json({ ok: true, criadas, email_erro: ePend.message, billing }, { status: 207 });
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://balu-contabil.vercel.app';
@@ -54,5 +70,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, criadas, enviados, pulados });
+  return NextResponse.json({ ok: true, criadas, enviados, pulados, billing });
 }
