@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect, useTransition } from 'react';
+import Link from 'next/link';
 import { useToast } from '@/components/Toaster';
+import { MSG_ASSINATURA_PENDENTE } from '@/lib/billing/mensagens';
 import { Plus, CheckCircle, XCircle, Pencil, Trash2, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { marcarPagoV2Action, desmarcarPagoV2Action, deleteHonorarioV2Action } from './actions';
 import HonorarioV2FormDialog, { type ClienteOption, type HonorarioV2Row } from './HonorarioV2FormDialog';
@@ -82,9 +84,15 @@ function downloadCSV(rows: HonorarioV2Row[]) {
 type Props = {
   initial: HonorarioV2Row[];
   clientes: ClienteOption[];
+  /** Assinatura pendente: as actions de escrita vão barrar. A lista continua
+   *  visível — consultar não depende de pagamento —, mas o bloqueio é dito
+   *  antes, não depois de preencher o formulário. */
+  assinaturaPendente?: boolean;
 };
 
-export default function HonorariosV2List({ initial, clientes }: Props) {
+export default function HonorariosV2List({
+  initial, clientes, assinaturaPendente = false,
+}: Props) {
   const toast = useToast();
   const [rows, setRows]                     = useState(initial);
   const [filtroStatus, setFiltroStatus]     = useState<'' | StatusHonorario>('');
@@ -148,6 +156,15 @@ export default function HonorariosV2List({ initial, clientes }: Props) {
   return (
     <div className="space-y-6">
 
+      {/* Um aviso só, no topo, em vez de cada botão falhar por conta própria:
+          criar, editar, marcar pago e desmarcar estão todos barrados. */}
+      {assinaturaPendente && (
+        <div className="rounded-md border border-alert/40 bg-alert/10 px-3 py-2 text-sm text-alert">
+          {MSG_ASSINATURA_PENDENTE}{' '}
+          <Link href="/contador/assinatura" className="font-medium underline">Ver assinatura</Link>
+        </div>
+      )}
+
       {/* ── Filtros ── */}
       <div className="flex flex-wrap gap-3 items-end">
         <select
@@ -187,8 +204,13 @@ export default function HonorariosV2List({ initial, clientes }: Props) {
             Exportar CSV
           </button>
           <button
-            onClick={() => { setEditing(undefined); setShowForm(true); }}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            onClick={() => {
+              // Diz na hora, em vez de deixar preencher o formulário inteiro
+              // para a action recusar no envio.
+              if (assinaturaPendente) { toast('error', MSG_ASSINATURA_PENDENTE); return; }
+              setEditing(undefined); setShowForm(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
             <Plus className="size-4" />
             Novo honorário

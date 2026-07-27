@@ -19,11 +19,13 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 import { statusEfetivo, type AssinaturaParaStatus } from './status';
+import { MSG_ASSINATURA_PENDENTE } from './mensagens';
 
 export type GateResult = { ok: true } | { ok: false; error: string };
 
-const MSG =
-  'Sua assinatura está com pendência. Regularize em Assinatura para voltar a usar esta função.';
+// A frase vem de `mensagens.ts` — módulo neutro, porque a TELA precisa dizer
+// exatamente o mesmo texto antes do envio, e este arquivo é server-only.
+const MSG = MSG_ASSINATURA_PENDENTE;
 
 /** Fail-open deliberado, igual ao `limitar` do rate-limit: erro de infra
  *  nao pode bloquear cliente que pagou. O risco inverso (um inadimplente
