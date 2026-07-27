@@ -33,6 +33,10 @@ export type EscritorioBranding = {
   nome: string;
   logoUrl: string | null;
   whatsapp: string | null;
+  /** true = é o escritório DO PRÓPRIO usuário (ele é membro). Nesse caso
+   *  some o "oferecido por" e o WhatsApp de suporte — os dois pressupõem
+   *  que a marca é de outra pessoa. */
+  proprio?: boolean;
 };
 
 export type MenuLateralProps = {
@@ -195,8 +199,9 @@ export default function MenuLateral({
           {open ? <X className="size-3" /> : <MenuIcon className="size-3" />}
         </button>
 
-      {/* Marca — vira a do escritório quando a empresa ativa está vinculada a um
-          escritório aprovado (co-branding); sem escritório, é sempre a Balu. */}
+      {/* Marca — o logo do escritório quando há um (o próprio, para o contador;
+          o que atende, para o empresário). Sem escritório, é a Balu.
+          Cantos arredondados no mesmo tom dos cards e itens de menu. */}
       <div className="border-b border-border px-3 py-4">
         <div className="flex items-center justify-between">
           {escritorio?.logoUrl ? (
@@ -204,7 +209,11 @@ export default function MenuLateral({
             <img
               src={escritorio.logoUrl}
               alt={escritorio.nome}
-              className={open ? 'h-7 max-w-[150px] object-contain' : 'size-6 object-contain'}
+              className={
+                open
+                  ? 'h-7 max-w-[150px] rounded-md object-contain'
+                  : 'size-6 rounded-md object-contain'
+              }
             />
           ) : open ? (
             <Logo size={26} />
@@ -220,8 +229,12 @@ export default function MenuLateral({
             <X className="size-4" />
           </button>
         </div>
+        {/* "oferecido por" só quando a marca é de OUTRA pessoa. Para o próprio
+            escritório mostramos o nome dele, sem a atribuição. */}
         {open && escritorio && (
-          <p className="mt-1 truncate text-xs text-muted-foreground">oferecido por {escritorio.nome}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {escritorio.proprio ? escritorio.nome : `oferecido por ${escritorio.nome}`}
+          </p>
         )}
       </div>
 
@@ -311,7 +324,7 @@ export default function MenuLateral({
             );
           })}
         </ul>
-        {escritorio?.whatsapp && (
+        {escritorio?.whatsapp && !escritorio.proprio && (
           <a
             href={`https://wa.me/${escritorio.whatsapp.replace(/\D/g, '')}`}
             target="_blank"
@@ -335,6 +348,16 @@ export default function MenuLateral({
           <LogOut className="size-4 shrink-0" />
           {open && <span>Sair</span>}
         </button>
+      </div>
+
+      {/* Assinatura da plataforma. Fica abaixo do Sair e ocupa a largura toda.
+          Ganha importância com o white-label: quando o topo do menu mostra a
+          marca do escritório, é isto que diz de quem é a plataforma.
+          Recolhido, só "Balu" — "By Balu-contábil" não cabe em 4rem. */}
+      <div className="border-t border-border px-2 py-2 text-center">
+        <span className="block truncate text-[11px] leading-none text-muted-foreground">
+          {open ? 'By Balu-contábil' : 'Balu'}
+        </span>
       </div>
 
       {(isDev || userRole === 'contador') && (
