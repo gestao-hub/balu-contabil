@@ -203,16 +203,23 @@ export default function MenuLateral({
           o que atende, para o empresário). Sem escritório, é a Balu.
           Cantos arredondados no mesmo tom dos cards e itens de menu. */}
       <div className="border-b border-border px-3 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
+          {/* min-w-0 + flex-1: sem isso o logo com max-w-full espremeria o
+              botão de fechar do drawer no mobile. */}
+          <div className="flex min-w-0 flex-1 items-center">
           {escritorio?.logoUrl ? (
+            // A largura útil aqui é ~216px (menu de 240 menos o px-3 dos dois
+            // lados). `max-w-full` deixa o logo usar tudo isso; a altura é o
+            // limite real, e `object-contain` preserva a proporção — logo
+            // largo fica limitado pela largura, logo quadrado pela altura.
             // eslint-disable-next-line @next/next/no-img-element -- URL assinada de bucket privado
             <img
               src={escritorio.logoUrl}
               alt={escritorio.nome}
               className={
                 open
-                  ? 'h-7 max-w-[150px] rounded-md object-contain'
-                  : 'size-6 rounded-md object-contain'
+                  ? 'h-16 max-w-full rounded-md object-contain'
+                  : 'size-10 rounded-md object-contain'
               }
             />
           ) : open ? (
@@ -220,11 +227,12 @@ export default function MenuLateral({
           ) : (
             <Logo variant="symbol" size={24} />
           )}
+          </div>
           <button
             type="button"
             aria-label="Fechar menu"
             onClick={() => setMobileOpen(false)}
-            className="grid size-8 place-items-center rounded-md text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground md:hidden"
+            className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground md:hidden"
           >
             <X className="size-4" />
           </button>
