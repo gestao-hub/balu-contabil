@@ -1,8 +1,49 @@
 # Roteiro do smoke manual — Bloco 4A (Assinatura da Balu)
 
-> **Status:** aguardando execução pelo usuário · **Escrito em:** 2026-07-27
+> **Status:** **em execução — parou no §2.4** · **Escrito em:** 2026-07-27
 > **Branch:** `bloco-4-billing-asaas` · **Spec:** `docs/superpowers/specs/2026-07-27-bloco-4a-assinatura-balu-design.md`
 > **Cenário já preparado no banco** — ver §5 antes de recriar qualquer coisa.
+
+## ⛔ RETOMAR AQUI
+
+**Falta:** o lado do **empresário** com o escritório inadimplente (§2.4, §2.5, §2.6) e o
+**fechamento** (§4). Todo o resto passou.
+
+O escritório está **`ativa` e pago** neste momento. Para os três passos que faltam ele
+precisa estar bloqueado — um comando:
+
+```bash
+node app/scratchpad/_rearmar-contratacao.mjs escritorio inadimplente
+```
+
+Depois logar como **`walacesssantos@gmail.com`** (a `ideapp` já está de volta na carteira)
+e rodar §2.4 → §2.5 → §2.6. Em seguida o **§4**.
+
+### O que já passou
+
+| Parte | Resultado |
+|---|---|
+| §1 — admin dos planos | ✅ |
+| §2.1–2.3 — gate do escritório, incluindo declaração anual liberada | ✅ |
+| §3 — empresário: bloqueio, DAS liberado, exportar liberado, contratar, pagar, cancelar | ✅ |
+| Liberação manual pelo admin (`/admin/configuracoes`) | ⬜ não testada |
+
+### Os 8 bugs que este smoke achou
+
+Nenhum deles era pego por teste automatizado:
+
+1. **`$` do token do Asaas comido pelo dotenv-expand** — chave certa no `.env.local`, app dizia "não configurado".
+2. **Guarda do erro apontando para `ASAAS_API_KEY`**, nome que não existe mais — escondia o bug 1 atrás de "Tente novamente".
+3. **`TOKEN_ASAAS_PRODUÇÃO`** com `Ç`/`Ã`: mina para o dia do `ASAAS_ENV=prod`.
+4. **Contratar não liberava o acesso** — `assinar.ts` gravava a data e não o status; as duas metades se contradiziam em silêncio.
+5. **`cobrancas` 100% dependente do webhook**, que não alcança `localhost` — fluxo terminava sem link de pagamento.
+6. **Cancelar deixava o `asaas_subscription_id` morto** → quem cancelasse nunca mais conseguiria reassinar.
+7. **A tela não refletia o pagamento sem F5** — o webhook avisa o servidor, não o navegador.
+8. **Re-contratar depois de cancelar nunca reconhecia o pagamento** — a linha ficava em `cancelada`, status que os três caminhos de reconciliação excluem de propósito.
+
+E **duas decisões de produto** mudaram o comportamento durante o smoke:
+contratar **não libera nada** (só o pagamento reconhecido libera), e o bloqueio é dito
+**na entrada** da tela, não no envio do formulário.
 
 **Antes de começar:** subir o dev com `npm run dev` em `balu/app`.
 **Enquanto o smoke roda: NÃO rodar a suíte** — os scripts abaixo mexem em assinaturas reais e o `afterAll` dos smokes automatizados sobrescreve o estado montado.
@@ -77,12 +118,30 @@ Login **empresário**:
 | 3.6 | Voltar a emitir nota | **Continua barrado.** Decisão de produto de 27/07: contratar não libera nada — o acesso volta no reconhecimento do pagamento, nunca no clique |
 | 3.7 | Pagar a fatura no sandbox (cartão `4444 4444 4444 4444`, validade futura, CVV `123`) e **voltar para a aba do Balu sem recarregar** | Em até 5s o selo vira **Ativa** sozinho, a cobrança aparece na lista e a tarja do topo some. Agora sim emitir nota **funciona** |
 | 3.8 | **Cancelar assinatura** → confirmar | Cancela em um clique, **sem** tela de retenção nem "fale com o suporte" (CDC art. 39). O `asaas_subscription_id` é limpo, então dá para contratar de novo |
+| 3.9 | **Re-assinar**, pagar de novo e esperar | Vira **Ativa** sozinho. Este passo existe porque a sequência assinar→cancelar→re-assinar→pagar deixava a linha em `cancelada`, status que os três caminhos de reconciliação excluem — o pagamento ficava invisível para sempre |
 
 Para ver a faixa azul de trial: `node app/scratchpad/destravar-empresario.mjs off trial 1`
 
+## 3-bis. Liberação manual pelo admin (não testada ainda)
+
+Com um titular **bloqueado e já contratado**, logar como **admin** → **Configurações**:
+
+| # | Ação | Esperado |
+|---|---|---|
+| L.1 | Achar o titular na lista | Aparece como **Bloqueado**. O filtro já vem em "só bloqueados ou liberados" |
+| L.2 | **Liberar acesso** → 7 dias → motivo | Recusa sem motivo (mínimo 5 caracteres) e fora de 1–60 dias |
+| L.3 | Voltar ao titular e usar uma função bloqueada | **Funciona**, e a tela de assinatura mostra a faixa verde *"liberado pela Balu até…"* |
+| L.4 | Admin → **Revogar** | Bloqueia de novo na hora |
+
 ## 4. Fechamento — obrigatório
 
+⚠️ **O `restore` dos dois scripts NÃO desfaz contratação.** Eles devolvem `status` e
+`trial_termina_em`, mas `plano_id`, `asaas_subscription_id` e as cobranças ficam — e a
+assinatura segue **viva no sandbox do Asaas**. Por isso o `_rearmar-contratacao` vem
+primeiro:
+
 ```bash
+node app/scratchpad/_rearmar-contratacao.mjs escritorio cortesia
 node app/scratchpad/destravar-empresario.mjs restore
 node app/scratchpad/smoke-bloco4a.mjs restore
 node app/scratchpad/_verify-0050.mjs
@@ -96,7 +155,19 @@ contabilidades SEM assinatura (tem de ser 0): 0
 empresas autosservico SEM assinatura (tem de ser 0): 0
 ```
 
-A `ideapp` volta para a carteira do `Escritório Teste Balu`, **sem** assinatura própria.
+A `ideapp` volta para a carteira do `Escritório Teste Balu`, **sem** assinatura própria, e
+o escritório volta a **cortesia sem contrato**.
+
+### Depois do fechamento, antes do merge
+
+```bash
+node app/scratchpad/_ver-escritorio.mjs   # sem subscription, sem cobranças
+npx vitest run                            # a suíte SEM o cenário montado
+```
+
+E o **`next build` com o dev parado** — é o único que pega export indevido em arquivo
+`'use server'`/`route.ts`, e o Bloco 4A criou dois desses (`lib/billing/cron.ts` e
+`admin/configuracoes/liberacao.ts`). `tsc` limpo não é garantia neste repo.
 
 ---
 
@@ -110,9 +181,17 @@ Os scripts vivem em `app/scratchpad/` (não versionado, mas presente no disco). 
 | `destravar-empresario.mjs` | Desvincula a `ideapp` da carteira **e cria a assinatura própria** (`estado` · `off [trial\|inadimplente] [dias]` · `restore`) |
 | `_verify-0050.mjs` | Confere tabelas, planos, cortesias e órfãos |
 | `_probe-asaas.mjs` | Testa conectividade com o sandbox do Asaas |
-| `_ver-cobrancas.mjs` | Compara as cobranças do banco com as do sandbox |
-| `_rearmar-a5.mjs` | Desfaz a contratação (apaga a subscription no sandbox) para repetir o passo 3.5 |
+| `_ver-cobrancas.mjs` | Compara as cobranças da `ideapp` no banco com as do sandbox |
+| `_ver-escritorio.mjs` | Despeja a linha de assinatura do escritório e suas cobranças |
+| `_ver-sub.mjs <sub_id>` | Lista as cobranças de uma subscription no sandbox |
+| `_rearmar-contratacao.mjs escritorio\|empresa [status]` | **Desfaz a contratação**: apaga a subscription no sandbox, remove cobranças, limpa plano/liberação e volta ao status pedido |
+| `_rearmar-a5.mjs` | Idem, só para a `ideapp` (anterior ao genérico acima) |
 | `_reconciliar.mjs` | Roda o cron de billing local — faz o que o webhook faria, já que ele não alcança `localhost` |
+| `_reparar-cancelada.mjs` | Destrava linhas em `cancelada` **com** subscription viva (o estado que o bug 8 criava) |
+| `_probe-gate.mjs` | Mostra o que o gate decidiria para cada titular, e se o PostgREST enxerga colunas novas |
+| `_env-como-o-next-le.mjs` | Compara o valor cru do `.env.local` com o que o Next entrega |
+| `_repro-assinar.mjs` | Reproduz a contratação fora do Next para ver o erro cru do Asaas |
+| `apply-0051.mjs` | Aplica a migration da liberação manual (**já aplicada**) |
 
 **Identificadores fixos:**
 - empresa `ideapp` / `dev.ide` = `c2410872-c9c0-47b5-a0e9-4d3e699a614e`

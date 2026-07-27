@@ -1,14 +1,59 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-27 (sessão 11 — **Bloco 4A IMPLEMENTADO, revisado e depurado; aguardando o smoke manual do usuário.** Branch `bloco-4-billing-asaas`, 16 commits. `tsc` 0 · vitest **680 passando, 27 pulados** · build limpo · **E2E 6/6 contra o sandbox real do Asaas**. **15 bugs corrigidos** (11 da revisão + 2 do debugging + 2 achados pela chave do sandbox). Migration `0050` aplicada em produção. **Blocos 1, 2 e 3 seguem em `main` e no ar.**)
+> **Última atualização:** 2026-07-27 (sessão 12 — **smoke manual do Bloco 4A em execução, parou no §2.4.** Branch `bloco-4-billing-asaas`, 24 commits. `tsc` 0 · **107 testes de billing passando** · migrations `0050` e `0051` aplicadas em produção. **O smoke achou 8 bugs** que nenhum teste pegava, todos corrigidos, e o usuário mudou **duas regras de produto** no caminho. **Blocos 1, 2 e 3 seguem em `main` e no ar.**)
 
 > ## ⛔ AO RETOMAR: mostrar o roteiro do smoke ao usuário
-> O próximo passo do Bloco 4A é o **smoke manual dele**. O roteiro completo, com
-> comandos, valores esperados e o cenário já preparado, está em
-> **`docs/smoke/2026-07-27-bloco-4a-roteiro-smoke.md`**.
+> O smoke do Bloco 4A **já rodou até o §2.3**. Falta o lado do empresário com o
+> escritório inadimplente (**§2.4, §2.5, §2.6**) e o **fechamento (§4)**.
+> Roteiro, progresso e ponto exato de retomada em
+> **`docs/smoke/2026-07-27-bloco-4a-roteiro-smoke.md`** — o cabeçalho dele tem um
+> bloco "RETOMAR AQUI" com o comando único para rearmar o cenário.
 > Pedido explícito do usuário: **entregar esse roteiro logo na retomada**, sem
 > ele precisar pedir.
+>
+> **Antes dos três passos**, o escritório precisa voltar a bloqueado (hoje está
+> `ativa` e pago):
+> ```
+> node app/scratchpad/_rearmar-contratacao.mjs escritorio inadimplente
+> ```
+
+---
+
+## Sessão 12 (2026-07-27) — smoke do 4A: 8 bugs, 2 regras de produto novas, migration 0051
+
+**O smoke manual pagou por si já no primeiro clique.** Oito bugs, nenhum pego por teste automatizado, e duas decisões de produto do usuário que mudaram o comportamento do bloco. 8 commits novos (`5bfb96a` → `8468ddd`).
+
+### Os oito bugs
+
+1. **`$` do token do Asaas comido pelo `dotenv-expand`.** O token começa com `$aact_…`; o Next passa o `.env` pelo dotenv-expand, que lê isso como referência de variável e resolve para **string vazia**. Chave certa no arquivo, app dizendo "não configurado". Escapar com `\$` resolve — e **não vale na Vercel**, onde o valor não passa por dotenv. Documentado no `.env.example`.
+2. **O guarda do erro procurava `ASAAS_API_KEY`**, nome que não existe desde que os tokens viraram por ambiente. Token ausente caía no genérico "Tente novamente" — foi o que escondeu o bug 1 e custou o diagnóstico direto.
+3. **`TOKEN_ASAAS_PRODUÇÃO`** estava escrito com `Ç` e `Ã` no `.env.local`. O código procura `TOKEN_ASAAS_PRODUCAO`. Mina armada para o dia do `ASAAS_ENV=prod`, com dinheiro real em jogo.
+4. **Contratar não liberava o acesso.** `assinar.ts` gravava `trial_termina_em` contando que isso liberasse, mas não mexia no status; `statusEfetivo` de propósito não honra data para `inadimplente`. As duas metades se contradiziam em silêncio. *(Corrigido e depois **revertido pela decisão de produto A** abaixo.)*
+5. **`cobrancas` nascia 100% dependente do webhook**, que não alcança `localhost`, não atravessa firewall e pode falhar. O Asaas emite a primeira fatura junto com a assinatura: agora ela é puxada na hora (`sincronizarCobrancas`) e o cron faz o mesmo com a lista que já tem em mãos.
+6. **Cancelar deixava o `asaas_subscription_id` morto na linha** (o `DELETE` no Asaas já tinha apagado a subscription lá), e `assinarPlanoAction` recusava com "Já existe uma assinatura ativa". **Quem cancelasse nunca mais voltava.**
+7. **A tela não refletia o pagamento sem F5.** O webhook avisa o *servidor*; o navegador que já renderizou não fica sabendo. Resolvido com consulta enquanto há o que esperar, só com a aba visível, checando na hora em que o usuário volta da aba do Asaas, e desistindo após 3 minutos.
+8. **Re-contratar depois de cancelar nunca reconhecia o pagamento.** A linha ficava em `cancelada`, e os **três** caminhos de reconciliação excluem esse status de propósito (cron por filtro, tela por early-return, webhook por regra). Três portas fechadas pelo motivo certo, e o resultado era um beco. `statusAoContratar` tira a linha de lá.
+
+### Duas decisões de produto do usuário
+
+**A. Contratar não libera nada.** Clicar "Assinar" mostrava "plano assinado" e destravava na hora. O usuário barrou: *"a mensagem e a liberação só devem ser efetivadas após o reconhecimento do pagamento"*. `criarAssinaturaNoAsaas` não toca mais em `status` nem em `trial_termina_em` — quem estava em teste vigente segue no prazo que já tinha, quem estava bloqueado continua bloqueado. **Consequência aceita:** boleto só libera na compensação.
+
+**B. O bloqueio é dito na entrada, não no envio.** Cadastrar cliente vira a tela de aviso; honorários mantêm a lista visível (consultar não é escrita e não depende de pagamento) com tarja no topo e o "Novo honorário" explicando o motivo. A frase saiu para `lib/billing/mensagens.ts` — `gate.ts` é `server-only` e a tela precisa do mesmo texto.
+
+### Migration `0051` — liberação manual (aplicada em produção)
+
+Resposta à consequência aceita em (A): `/admin/configuracoes` com botão de **liberar acesso** para quem pagou por boleto e mandou o comprovante. Colunas `liberado_ate`, `liberacao_motivo`, `liberacao_por`, `liberacao_em`.
+
+**Por que uma coluna e não "marcar como ativa":** seria desfeito sozinho. A reconciliação lê as cobranças no Asaas e, no vencimento, um boleto ainda não compensado vira `OVERDUE` → `inadimplente`. Quem mandou o comprovante seria bloqueado de novo na madrugada.
+
+`statusEfetivo` consulta `liberado_ate` **depois** do status e **só no sentido de liberar** — assim nunca bloqueia ninguém por engano. Sempre tem prazo (teto 60 dias) e motivo obrigatório; liberar e revogar vão para o `audit_log`.
+
+### Armadilhas que valem para as próximas sessões
+
+- **Log do dev em arquivo é obrigatório.** O `next dev` sem redirecionamento não deixava rastro, e o diagnóstico do bug 1 dependia de um `console.error` que ninguém via. Hoje: `npm run dev > app/scratchpad/dev.log 2>&1`. Foi esse log que pegou o `server-only` importado em Client Component — erro que **o `tsc` não vê**.
+- **`.env.local` tem armadilha dupla:** `$` não escapado e nome de chave com acento. `_auditar-env.mjs` varre as duas.
+- **Reconciliação e tela têm de usar a MESMA regra.** Extraída para `lib/billing/reconciliar.ts` — duplicada, cron e tela acabariam discordando sobre quem está em dia, e o cron roda de madrugada (a divergência só apareceria no dia seguinte).
 
 ---
 
@@ -58,7 +103,7 @@
 
 **⚠️ Armadilha nova:** `next build` recusa export extra em `route.ts` e **`tsc --noEmit` não pega** (a validação vive nos tipos gerados em `.next/types`). `tsc` limpo não é garantia neste repo.
 
-**RETOMAR EM: o smoke manual do usuário.** Roteiro completo em **`docs/smoke/2026-07-27-bloco-4a-roteiro-smoke.md`** — mostrar a ele logo na retomada, é pedido explícito. O cenário do §3 (empresa `ideapp` desvinculada da carteira, com assinatura própria) pode estar montado; conferir com `node app/scratchpad/destravar-empresario.mjs estado`. Passando o smoke: restaurar tudo → suíte sem o cenário → build com o dev parado → merge `--no-ff` → **confirmar antes do push** (auto-deploy).
+**RETOMAR EM: ver a sessão 12 acima** — o smoke começou e parou no §2.4.
 
 **Depois do 4A:** o **4B** (subcontas do escritório) tem spec de design mas **5 pontos em aberto no §7** que precisam de decisão antes do plano.
 
