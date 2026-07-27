@@ -143,7 +143,11 @@ export default function PlanosCards({
                     () => (ehTroca
                       ? trocarPlanoAction(assinaturaId, p.id)
                       : assinarPlanoAction(assinaturaId, p.id)),
-                    ehTroca ? 'Plano trocado.' : 'Plano assinado.',
+                    ehTroca
+                      ? 'Plano trocado.'
+                      // NAO dizer "plano assinado": contratar nao libera
+                      // nada, quem libera e o pagamento reconhecido.
+                      : 'Plano contratado. O acesso é liberado assim que o pagamento for confirmado.',
                   )}
                   className={`group flex w-full items-center justify-center rounded-md border px-2 py-2 text-sm transition-colors disabled:opacity-50 ${
                     ehAtivo

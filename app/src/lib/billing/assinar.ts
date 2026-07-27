@@ -20,8 +20,6 @@ export type DadosTitular = {
   email: string | null;
   /** Já existente, se o titular foi criado no Asaas numa tentativa anterior. */
   asaasCustomerId: string | null;
-  /** Fim do teste atual (YYYY-MM-DD) — usado para nunca encurtá-lo. */
-  trialTerminaEm: string | null;
 };
 
 export type ResultadoAssinar =
@@ -90,42 +88,28 @@ export async function criarAssinaturaNoAsaas(
     // 30/07. O que vale e a data que NOS pedimos.
     const venceEm = vencimento;
 
-    // NAO vira 'ativa' aqui: quem confirma pagamento e o webhook.
+    // CONTRATAR NAO LIBERA NADA. Decisao de produto de 27/07: o acesso volta
+    // quando o PAGAMENTO e reconhecido, nunca no clique.
     //
-    // Mas o acesso NAO pode continuar bloqueado depois de contratar. Quem
-    // assina com o teste ja vencido pagaria um boleto que leva dias a
-    // compensar, e ate la seguiria barrado — clicando "Assinar", vendo
-    // sucesso e continuando sem poder emitir nota. `trial_termina_em` e
-    // justamente o campo "liberado ate" dos status que nao sao 'ativa',
-    // entao ele passa a valer ate o primeiro vencimento.
+    // Por isso NEM o status NEM `trial_termina_em` sao tocados aqui:
+    //   · quem estava em teste vigente segue no teste que ja tinha (e o
+    //     prazo dele, nao uma promessa de pagamento — nao encurta nem
+    //     estende);
+    //   · quem estava bloqueado CONTINUA bloqueado ate o Asaas confirmar.
     //
-    // Toda saida continua segura: pagou -> webhook poe 'ativa'; nao pagou
-    // -> PAYMENT_OVERDUE poe 'inadimplente'; webhook perdido -> o cron
-    // reconcilia pelas cobrancas; nada acontece -> statusEfetivo bloqueia
-    // sozinho depois do vencimento.
+    // Uma versao anterior empurrava `trial_termina_em` para o primeiro
+    // vencimento e o status para 'trial', dando ~3 dias de acesso a quem so
+    // tinha clicado. Isso e credito, nao assinatura: quem nao pagasse o
+    // boleto teria usado o mes inteiro de graca a cada nova contratacao.
     //
-    // Nunca ENCURTA: quem assinou com teste mais longo pela frente mantem
-    // o que tinha.
-    const trialAtual = titular.trialTerminaEm;
-    const novoTrial = trialAtual && trialAtual > venceEm ? trialAtual : venceEm;
-
+    // Quem libera: PAYMENT_RECEIVED/CONFIRMED -> 'ativa', pelo webhook ou
+    // pela reconciliacao (lib/billing/reconciliar.ts), que a propria tela
+    // dispara enquanto o titular espera. Com Pix ou cartao isso leva
+    // segundos; com boleto, o tempo da compensacao.
     const { error } = await sb.from('assinaturas').update({
-      // O STATUS TAMBEM TEM DE MUDAR — so mexer em `trial_termina_em` nao
-      // libera nada. `statusEfetivo` de proposito nao honra data nenhuma
-      // para 'inadimplente' e 'cancelada' (a data pode ser anterior ao
-      // sinal de inadimplencia), entao quem contratava vindo desses estados
-      // via "assinatura criada" e continuava barrado, com a tarja de
-      // cobranca em aberto na tela. Achado no smoke manual de 27/07.
-      //
-      // 'trial' e o estado certo aqui: liberado, sem pagamento confirmado.
-      // O webhook promove para 'ativa' quando o boleto compensa, e devolve
-      // para 'inadimplente' se vencer — e ai o bloqueio volta na hora,
-      // porque data nenhuma o segura.
-      status: 'trial',
       plano_id: plano.id,
       asaas_subscription_id: assinatura.id,
       proxima_cobranca_em: venceEm,
-      trial_termina_em: novoTrial,
       updated_at: new Date().toISOString(),
     }).eq('id', titular.assinaturaId);
     if (error) return { ok: false, error: error.message };

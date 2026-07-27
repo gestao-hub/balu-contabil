@@ -73,9 +73,10 @@ Login **empresário**:
 | 3.2 | `/impostos` → gerar DAS | **Funciona** — a fronteira que não pode ser cruzada |
 | 3.3 | `/conta` → exportar meus dados | **Funciona**, e **sem** faixa de cobrança na tela |
 | 3.4 | Menu → Assinatura | Plano, situação **Pagamento pendente**, e o bloco **Assinar** com `Empresário — mensal` |
-| 3.5 | Clicar **Assinar** | Cria no **sandbox** (sem cobrança real). O bloco some e aparece **Próxima cobrança** em **hoje + 3 dias** |
-| 3.6 | Voltar a emitir nota | **Funciona agora.** Correção do systematic-debugging: contratar libera até o 1º vencimento — senão o titular clicaria "Assinar" e continuaria barrado até o boleto compensar |
-| 3.7 | **Cancelar assinatura** → confirmar | Cancela em um clique, **sem** tela de retenção nem "fale com o suporte" (CDC art. 39) |
+| 3.5 | Clicar **Assinar** | Cria no **sandbox** (sem cobrança real). O bloco some, o selo vira **Aguardando pagamento** e aparece o botão **Pagar agora** |
+| 3.6 | Voltar a emitir nota | **Continua barrado.** Decisão de produto de 27/07: contratar não libera nada — o acesso volta no reconhecimento do pagamento, nunca no clique |
+| 3.7 | Pagar a fatura no sandbox (cartão `4444 4444 4444 4444`, validade futura, CVV `123`) e **voltar para a aba do Balu sem recarregar** | Em até 5s o selo vira **Ativa** sozinho, a cobrança aparece na lista e a tarja do topo some. Agora sim emitir nota **funciona** |
+| 3.8 | **Cancelar assinatura** → confirmar | Cancela em um clique, **sem** tela de retenção nem "fale com o suporte" (CDC art. 39). O `asaas_subscription_id` é limpo, então dá para contratar de novo |
 
 Para ver a faixa azul de trial: `node app/scratchpad/destravar-empresario.mjs off trial 1`
 
@@ -109,6 +110,9 @@ Os scripts vivem em `app/scratchpad/` (não versionado, mas presente no disco). 
 | `destravar-empresario.mjs` | Desvincula a `ideapp` da carteira **e cria a assinatura própria** (`estado` · `off [trial\|inadimplente] [dias]` · `restore`) |
 | `_verify-0050.mjs` | Confere tabelas, planos, cortesias e órfãos |
 | `_probe-asaas.mjs` | Testa conectividade com o sandbox do Asaas |
+| `_ver-cobrancas.mjs` | Compara as cobranças do banco com as do sandbox |
+| `_rearmar-a5.mjs` | Desfaz a contratação (apaga a subscription no sandbox) para repetir o passo 3.5 |
+| `_reconciliar.mjs` | Roda o cron de billing local — faz o que o webhook faria, já que ele não alcança `localhost` |
 
 **Identificadores fixos:**
 - empresa `ideapp` / `dev.ide` = `c2410872-c9c0-47b5-a0e9-4d3e699a614e`

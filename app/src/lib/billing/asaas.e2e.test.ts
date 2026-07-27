@@ -87,7 +87,6 @@ describe.skipIf(!temTudo)('ciclo de assinatura (sandbox Asaas + banco real)', ()
         cpfCnpj: '61061690000183',       // CNPJ real da PIPER, formato válido
         email: 'e2e@balu.test',
         asaasCustomerId: null,
-        trialTerminaEm: null,            // simula teste JÁ vencido
       },
       { id: 'empresario_mensal', nome: 'E2E', valor_centavos: 4990, ciclo: 'MONTHLY' },
     );
@@ -104,11 +103,12 @@ describe.skipIf(!temTudo)('ciclo de assinatura (sandbox Asaas + banco real)', ()
     expect(data?.plano_id).toBe('empresario_mensal');
     expect(data?.asaas_subscription_id).toBe(subscriptionId);
     expect(data?.asaas_customer_id).toMatch(/^cus_/);
-    // O bug do systematic-debugging: contratar com o teste vencido tem de
-    // liberar o acesso ate o primeiro vencimento, senao o titular clica
-    // "Assinar" e continua barrado.
-    expect(data?.trial_termina_em).toBe(primeiroVencimento());
     expect(data?.proxima_cobranca_em).toBe(primeiroVencimento());
+    // CONTRATAR NAO LIBERA (decisao de produto de 27/07): `trial_termina_em`
+    // tem de sair INTOCADO. A fixture usa uma linha real, entao o valor certo
+    // e o que ela ja tinha — se virar o primeiro vencimento, alguem
+    // reintroduziu o acesso por contratacao.
+    expect(data?.trial_termina_em).toBe(original?.trial_termina_em ?? null);
   }, 30_000);
 
   it('a assinatura existe no Asaas com o valor certo', async () => {

@@ -85,7 +85,6 @@ export async function assinarPlanoAction(
       assinaturaId: a.id, nome, cpfCnpj,
       email: user.email ?? null,
       asaasCustomerId: a.asaas_customer_id,
-      trialTerminaEm: a.trial_termina_em,
     },
     {
       id: plano.id, nome: plano.nome,

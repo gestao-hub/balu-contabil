@@ -76,9 +76,11 @@ export default function AssinaturaView({
       // "aparecera aqui em instantes" deixava o titular olhando uma tela
       // vazia sem saber por onde pagar (smoke de 27/07).
       setFatura(r.faturaUrl);
+      // A frase tem de deixar claro que ainda falta pagar: o acesso volta no
+      // reconhecimento do pagamento, não no clique.
       setMsg(r.faturaUrl
-        ? 'Assinatura criada. Sua primeira fatura já está pronta.'
-        : 'Assinatura criada. A fatura aparecerá na lista de cobranças assim que o Asaas emitir.');
+        ? 'Plano contratado. Pague a fatura para liberar o acesso — assim que o pagamento for confirmado, esta tela se atualiza sozinha.'
+        : 'Plano contratado. A fatura aparecerá na lista de cobranças assim que o Asaas emitir, e o acesso é liberado quando o pagamento for confirmado.');
     });
   }
 

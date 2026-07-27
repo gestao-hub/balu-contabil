@@ -25,43 +25,39 @@ describe('primeiroVencimento', () => {
   });
 });
 
-// A regra que o bug expos: contratar com o teste JA VENCIDO nao pode
-// deixar o titular bloqueado esperando o boleto compensar. `assinar.ts`
-// empurra trial_termina_em para o primeiro vencimento; estes casos fixam a
-// consequencia no gate.
+// DECISAO DE PRODUTO (27/07): CONTRATAR NAO LIBERA NADA. O acesso volta
+// quando o PAGAMENTO e reconhecido — nunca no clique de assinar.
+//
+// `criarAssinaturaNoAsaas` nao toca em `status` nem em `trial_termina_em`
+// por isso. Estes casos fixam a consequencia no gate: quem estava bloqueado
+// continua bloqueado depois de contratar, e so 'ativa' (escrito pelo webhook
+// ou pela reconciliacao) muda isso.
 describe('acesso entre contratar e o primeiro pagamento', () => {
-  it('teste vencido + contratou hoje = LIBERADO ate o vencimento', () => {
+  it('quem estava bloqueado CONTINUA bloqueado depois de contratar', () => {
     const venc = primeiroVencimento('2026-07-27');           // 2026-07-30
-    expect(statusEfetivo({ status: 'trial', trial_termina_em: venc }, '2026-07-27')).toBe('liberado');
-    expect(statusEfetivo({ status: 'trial', trial_termina_em: venc }, '2026-07-30')).toBe('liberado');
-  });
-
-  it('passou do vencimento sem pagar e sem webhook = BLOQUEADO sozinho', () => {
-    const venc = primeiroVencimento('2026-07-27');
-    expect(statusEfetivo({ status: 'trial', trial_termina_em: venc }, '2026-07-31')).toBe('bloqueado');
-  });
-
-  // DISCRIMINANTE: sem este caso, uma implementacao que simplesmente
-  // liberasse tudo apos contratar passaria nos dois acima.
-  it('inadimplente declarado pelo webhook bloqueia mesmo dentro da janela', () => {
-    const venc = primeiroVencimento('2026-07-27');
-    expect(statusEfetivo({ status: 'inadimplente', trial_termina_em: venc }, '2026-07-28'))
-      .toBe('bloqueado');
-  });
-
-  // O QUE FALTAVA E O SMOKE DE 27/07 ACHOU: os casos acima assumem
-  // status='trial' durante a janela, mas `assinar.ts` so gravava
-  // `trial_termina_em` e deixava o status como estava. Contratando a partir
-  // de 'inadimplente' ou 'cancelada', o gate seguia bloqueando — o titular
-  // clicava Assinar, lia "assinatura criada" e continuava barrado.
-  it('contratar tem de sair de inadimplente/cancelada, nao so gravar a data', () => {
-    const venc = primeiroVencimento('2026-07-27');
     for (const anterior of ['inadimplente', 'cancelada'] as const) {
+      // Mesmo com o vencimento gravado na linha e a data ainda por vir.
       expect(statusEfetivo({ status: anterior, trial_termina_em: venc }, '2026-07-28'))
-        .toBe('bloqueado');   // o estado de ORIGEM continua bloqueando...
+        .toBe('bloqueado');
     }
-    // ...logo, contratar SO funciona porque assinar.ts grava status:'trial'.
-    expect(statusEfetivo({ status: 'trial', trial_termina_em: venc }, '2026-07-28'))
+  });
+
+  it('so o pagamento reconhecido libera', () => {
+    expect(statusEfetivo({ status: 'ativa', trial_termina_em: null }, '2026-07-28')).toBe('liberado');
+  });
+
+  // Contratar no meio de um teste vigente nao pode ENCURTAR o que ja foi
+  // dado: o teste e prazo concedido, e independe de haver contrato.
+  it('teste vigente continua valendo depois de contratar', () => {
+    expect(statusEfetivo({ status: 'trial', trial_termina_em: '2026-08-03' }, '2026-07-28'))
       .toBe('liberado');
+  });
+
+  // ...e tambem nao pode ESTENDER. Uma versao anterior empurrava
+  // `trial_termina_em` para o primeiro vencimento, o que dava ~3 dias de
+  // acesso a quem so tinha clicado — credito, nao assinatura.
+  it('teste vencido nao revive por causa da contratacao', () => {
+    expect(statusEfetivo({ status: 'trial', trial_termina_em: '2026-07-26' }, '2026-07-28'))
+      .toBe('bloqueado');
   });
 });
