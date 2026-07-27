@@ -19,19 +19,31 @@ export type DadosTitular = {
   email: string | null;
   /** Já existente, se o titular foi criado no Asaas numa tentativa anterior. */
   asaasCustomerId: string | null;
+  /** Fim do teste atual (YYYY-MM-DD) — usado para nunca encurtá-lo. */
+  trialTerminaEm: string | null;
 };
 
 export type ResultadoAssinar =
   | { ok: true; subscriptionId: string }
   | { ok: false; error: string };
 
-/** Primeiro vencimento: hoje + `dias`. Em BRT, porque o Asaas trata a data
- *  como dia civil e um deslocamento de fuso viraria cobranca um dia antes. */
-function primeiroVencimento(dias = 3): string {
-  const hoje = ymdBrt();
-  const d = new Date(`${hoje}T12:00:00-03:00`);
-  d.setDate(d.getDate() + dias);
-  return new Date(d.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+/** Dias até o primeiro vencimento. Também é a janela de acesso liberado
+ *  entre contratar e o boleto ser pago (ver `criarAssinaturaNoAsaas`). */
+export const DIAS_ATE_PRIMEIRO_VENCIMENTO = 3;
+
+/**
+ * Primeiro vencimento: `hoje` (em BRT) + `dias`, como data civil.
+ *
+ * Exportada para teste: a aritmética de data com fuso é onde o Bloco A e o
+ * Bloco 3 já erraram, e aqui um dia a menos vira cobrança antes da hora.
+ * Trabalha só com string YYYY-MM-DD para não depender do fuso do runtime
+ * (na Vercel é UTC, na máquina do dev é BRT).
+ */
+export function primeiroVencimento(
+  hoje: string = ymdBrt(), dias: number = DIAS_ATE_PRIMEIRO_VENCIMENTO,
+): string {
+  const t = Date.parse(`${hoje}T00:00:00Z`) + dias * 86400000;
+  return new Date(t).toISOString().slice(0, 10);
 }
 
 export async function criarAssinaturaNoAsaas(
@@ -58,22 +70,42 @@ export async function criarAssinaturaNoAsaas(
         .eq('id', titular.assinaturaId);
     }
 
+    const vencimento = primeiroVencimento();
     const assinatura = await asaas.criarAssinatura({
       customer: customerId,
       billingType: 'UNDEFINED',   // o cliente escolhe boleto/Pix/cartao na fatura
       value: plano.valor_centavos / 100,
-      nextDueDate: primeiroVencimento(),
+      nextDueDate: vencimento,
       cycle: plano.ciclo,
       description: `Balu — ${plano.nome}`,
     });
 
+    const venceEm = assinatura.nextDueDate ?? vencimento;
+
+    // NAO vira 'ativa' aqui: quem confirma pagamento e o webhook.
+    //
+    // Mas o acesso NAO pode continuar bloqueado depois de contratar. Quem
+    // assina com o teste ja vencido pagaria um boleto que leva dias a
+    // compensar, e ate la seguiria barrado — clicando "Assinar", vendo
+    // sucesso e continuando sem poder emitir nota. `trial_termina_em` e
+    // justamente o campo "liberado ate" dos status que nao sao 'ativa',
+    // entao ele passa a valer ate o primeiro vencimento.
+    //
+    // Toda saida continua segura: pagou -> webhook poe 'ativa'; nao pagou
+    // -> PAYMENT_OVERDUE poe 'inadimplente'; webhook perdido -> o cron
+    // reconcilia pelas cobrancas; nada acontece -> statusEfetivo bloqueia
+    // sozinho depois do vencimento.
+    //
+    // Nunca ENCURTA: quem assinou com teste mais longo pela frente mantem
+    // o que tinha.
+    const trialAtual = titular.trialTerminaEm;
+    const novoTrial = trialAtual && trialAtual > venceEm ? trialAtual : venceEm;
+
     const { error } = await sb.from('assinaturas').update({
       plano_id: plano.id,
       asaas_subscription_id: assinatura.id,
-      proxima_cobranca_em: assinatura.nextDueDate ?? null,
-      // NAO vira 'ativa' aqui: quem confirma pagamento e o webhook. Ate la
-      // o titular segue no trial que ja tinha — assinar nao pode ENCURTAR
-      // o periodo de teste de quem assinou antes de ele acabar.
+      proxima_cobranca_em: venceEm,
+      trial_termina_em: novoTrial,
       updated_at: new Date().toISOString(),
     }).eq('id', titular.assinaturaId);
     if (error) return { ok: false, error: error.message };

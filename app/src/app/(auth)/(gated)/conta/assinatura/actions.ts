@@ -31,7 +31,7 @@ export async function assinarPlanoAction(
 
   const { data: a } = await supabase
     .from('assinaturas')
-    .select('id, status, company_id, contabilidade_id, asaas_customer_id, asaas_subscription_id')
+    .select('id, status, company_id, contabilidade_id, asaas_customer_id, asaas_subscription_id, trial_termina_em')
     .eq('id', assinaturaId).maybeSingle();
   if (!a) return { ok: false, error: 'Assinatura não encontrada.' };
   if (a.asaas_subscription_id) return { ok: false, error: 'Já existe uma assinatura ativa.' };
@@ -78,6 +78,7 @@ export async function assinarPlanoAction(
       assinaturaId: a.id, nome, cpfCnpj,
       email: user.email ?? null,
       asaasCustomerId: a.asaas_customer_id,
+      trialTerminaEm: a.trial_termina_em,
     },
     {
       id: plano.id, nome: plano.nome,

@@ -7,7 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { limitar, ipDe } from '@/lib/security/rate-limit';
 import { segredoDoHeader } from '../segredo';
 import { traduzirEvento } from '@/lib/billing/eventos';
-import { ymdBrt } from '@/lib/fiscal/tempo-brt';
+import { persistirCobranca, type PagamentoAsaas } from '@/lib/billing/cobranca';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,11 +20,6 @@ const EFEITO_STATUS: Record<string, 'ativa' | 'inadimplente' | null> = {
   cobranca_vencida: 'inadimplente',
   cobranca_criada: null,
   estorno: null,
-};
-
-type PagamentoAsaas = {
-  value?: number; dueDate?: string; status?: string;
-  invoiceUrl?: string; paymentDate?: string;
 };
 
 export async function POST(req: Request) {
@@ -67,50 +62,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ignored: 'assinatura_desconhecida' }, { status: 200 });
     }
 
-    // O Asaas REENTREGA eventos e nao garante ordem (esta rota responde 200
-    // ate quando rejeita, entao qualquer coisa pode voltar). Um
-    // PAYMENT_CREATED que chega DEPOIS do PAYMENT_RECEIVED nao pode desfazer
-    // o pagamento. Por isso lemos a linha atual antes de decidir o que
-    // sobrescrever — mesmo espirito do webhook da Focus (route.ts:104-105),
-    // que so grava o que veio no callback.
-    const { data: atual } = await sb
-      .from('cobrancas').select('id, pago_em').eq('asaas_charge_id', efeito.chargeId).maybeSingle();
-    const jaPaga = Boolean(atual?.pago_em);
-    const eventoDePagamento = efeito.tipo === 'pagamento_confirmado' || efeito.tipo === 'estorno';
-
-    // Idempotencia no nivel do banco: asaas_charge_id e UNIQUE, entao
-    // reprocessar o mesmo evento e upsert, nunca linha nova.
-    const linha: Record<string, unknown> = {
-      assinatura_id: assinatura.id,
-      asaas_charge_id: efeito.chargeId,
-      updated_at: new Date().toISOString(),
-    };
-    // Campos ausentes do payload ficam INTOCADOS no update (e no default no
-    // insert). Sem essa guarda, um payload sem `value` gravaria 0 por cima
-    // do valor real, e a tela mostraria R$ 0,00 ao cliente.
-    if (pay.invoiceUrl) linha.link_fatura = pay.invoiceUrl;
-    if (typeof pay.value === 'number') linha.valor_centavos = Math.round(pay.value * 100);
-    if (pay.dueDate) linha.vencimento = pay.dueDate;
-
-    // `status` so regride se o evento for mesmo sobre pagamento. Um
-    // PAYMENT_CREATED atrasado nao devolve uma cobranca paga para PENDING.
-    if (!jaPaga || eventoDePagamento) {
-      linha.status = pay.status ?? 'DESCONHECIDO';
-    }
-    if (efeito.tipo === 'pagamento_confirmado') {
-      linha.pago_em = pay.paymentDate ?? ymdBrt();
-    }
-    // Insert precisa dos NOT NULL; se o payload nao trouxe, usa um default.
-    if (!atual) {
-      linha.status ??= pay.status ?? 'DESCONHECIDO';
-      linha.valor_centavos ??= 0;
-      linha.vencimento ??= ymdBrt();
-    }
-
-    const { error: erroCobranca } = await sb
-      .from('cobrancas').upsert(linha, { onConflict: 'asaas_charge_id' });
-    if (erroCobranca) {
-      console.error('[webhook asaas] erro ao gravar cobranca', erroCobranca.message);
+    // A persistencia mora em lib/billing/cobranca.ts para ser exercitada
+    // por teste — a regra de nao-regressao (evento fora de ordem nao pode
+    // desfazer um pagamento) e sutil demais para viver sem cobertura.
+    const r = await persistirCobranca(sb, assinatura.id, efeito, pay);
+    if (!r.ok) {
+      console.error('[webhook asaas] erro ao gravar cobranca', r.error);
     }
 
     const novoStatus = EFEITO_STATUS[efeito.tipo];
