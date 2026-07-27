@@ -62,6 +62,28 @@ export async function uploadToBucket(
   return { path };
 }
 
+/** Apaga um arquivo do bucket. Usado para não deixar órfão quando a gravação
+ *  no banco falha DEPOIS do upload ter subido. */
+export async function removeFromBucket(bucket: string, path: string): Promise<void> {
+  await admin().storage.from(bucket).remove([path]);
+}
+
+/**
+ * URL assinada que força DOWNLOAD, nunca renderização inline.
+ *
+ * É o que permite aceitar qualquer formato de comprovante sem herdar o risco
+ * do formato: o navegador salva o arquivo em vez de executar/renderizar o que
+ * veio dentro dele. `nomeArquivo` é o nome que o download recebe.
+ */
+export async function signedUrlDownload(
+  bucket: string, path: string, nomeArquivo: string, expiresInSec = 300,
+): Promise<string | null> {
+  const { data } = await admin().storage
+    .from(bucket)
+    .createSignedUrl(path, expiresInSec, { download: nomeArquivo });
+  return data?.signedUrl ?? null;
+}
+
 /** Lê os bytes de um arquivo do bucket (para recomputar content-hash na alteração). */
 export async function downloadFromBucket(bucket: string, path: string): Promise<Buffer> {
   const { data, error } = await admin().storage.from(bucket).download(path);

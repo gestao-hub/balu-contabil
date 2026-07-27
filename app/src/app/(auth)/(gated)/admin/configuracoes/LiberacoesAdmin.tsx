@@ -5,8 +5,13 @@
 // leva de 1 a 3 dias úteis. Sem isto ele fica bloqueado nesse intervalo tendo
 // pago — que é o pior momento possível para tirar o acesso de alguém.
 import { useState, useTransition } from 'react';
-import { KeyRound, ShieldCheck, Search } from 'lucide-react';
-import { liberarAcessoAction, revogarLiberacaoAction } from './actions';
+import { KeyRound, ShieldCheck, Search, Paperclip, Download } from 'lucide-react';
+import {
+  liberarAcessoAction, revogarLiberacaoAction, urlComprovanteLiberacaoAction,
+} from './actions';
+import {
+  validarComprovanteLiberacao, MAX_COMPROVANTE_LIBERACAO_BYTES,
+} from '@/lib/billing/comprovante-liberacao';
 import { DIAS_LIBERACAO_PADRAO, MAX_DIAS_LIBERACAO } from './liberacao';
 
 export type TitularVm = {
@@ -22,7 +27,26 @@ export type TitularVm = {
   liberadoAte: string | null;
   liberacaoMotivo: string | null;
   liberacaoVigente: boolean;
+  /** Nome do arquivo anexado, ou null quando a liberação é anterior à 0052. */
+  comprovanteNome: string | null;
 };
+
+/**
+ * Base64 em blocos. `String.fromCharCode(...bytes)` de uma vez estoura a pilha
+ * bem antes dos 10 MB que o campo aceita — o spread vira um argumento por byte.
+ * Mesma armadilha já resolvida em RegistrarComprovanteDialog.
+ */
+function paraBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  const BLOCO = 0x8000;
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += BLOCO) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + BLOCO));
+  }
+  return btoa(bin);
+}
+
+const MB = (b: number) => `${(b / (1024 * 1024)).toFixed(1)} MB`;
 
 const dataBr = (d: string) => d.split('-').reverse().join('/');
 
@@ -39,8 +63,10 @@ export default function LiberacoesAdmin({ titulares }: { titulares: TitularVm[] 
   const [abrindo, setAbrindo] = useState<string | null>(null);
   const [dias, setDias] = useState(String(DIAS_LIBERACAO_PADRAO));
   const [motivo, setMotivo] = useState('');
+  const [arquivo, setArquivo] = useState<File | null>(null);
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [pending, start] = useTransition();
+  const [baixando, setBaixando] = useState<string | null>(null);
 
   const termo = busca.trim().toLowerCase();
   const lista = titulares.filter((t) => {
@@ -49,17 +75,51 @@ export default function LiberacoesAdmin({ titulares }: { titulares: TitularVm[] 
     return t.nome.toLowerCase().includes(termo) || (t.cnpj ?? '').includes(termo);
   });
 
-  function fechar() { setAbrindo(null); setMotivo(''); setDias(String(DIAS_LIBERACAO_PADRAO)); }
+  function fechar() {
+    setAbrindo(null); setMotivo(''); setArquivo(null);
+    setDias(String(DIAS_LIBERACAO_PADRAO));
+  }
 
   function liberar(id: string) {
     const n = Number(dias);
     setMsg(null);
+
+    // O comprovante é requisito, não enfeite: barra aqui em 0 ms em vez de
+    // depois de trafegar megabytes. O servidor revalida de qualquer forma.
+    if (!arquivo) {
+      setMsg({ tipo: 'erro', texto: 'Anexe o comprovante. Não há liberação sem comprovante.' });
+      return;
+    }
+    const v = validarComprovanteLiberacao({
+      nome: arquivo.name, mime: arquivo.type, tamanho: arquivo.size,
+    });
+    if (!v.ok) { setMsg({ tipo: 'erro', texto: v.error }); return; }
+
     start(async () => {
-      const r = await liberarAcessoAction(id, n, motivo);
+      const buf = await arquivo.arrayBuffer();
+      const r = await liberarAcessoAction(id, n, motivo, {
+        nome: arquivo.name, mime: arquivo.type, base64: paraBase64(buf),
+      });
       setMsg(r.ok
-        ? { tipo: 'ok', texto: `Acesso liberado por ${n} dia${n > 1 ? 's' : ''}.` }
+        ? { tipo: 'ok', texto: `Acesso liberado por ${n} dia${n > 1 ? 's' : ''}, com comprovante anexado.` }
         : { tipo: 'erro', texto: r.error });
       if (r.ok) fechar();
+    });
+  }
+
+  /** Pede a URL assinada na hora do clique e abre. Nada de URL de comprovante
+   *  no HTML da lista. */
+  function verComprovante(id: string) {
+    setMsg(null);
+    setBaixando(id);
+    start(async () => {
+      try {
+        const r = await urlComprovanteLiberacaoAction(id);
+        if (!r.ok) { setMsg({ tipo: 'erro', texto: r.error }); return; }
+        window.open(r.url, '_blank', 'noopener,noreferrer');
+      } finally {
+        setBaixando(null);
+      }
     });
   }
 
@@ -84,6 +144,8 @@ export default function LiberacoesAdmin({ titulares }: { titulares: TitularVm[] 
           Para quem pagou por boleto e enviou o comprovante antes da compensação. A liberação vale
           até a data escolhida e <strong>expira sozinha</strong>. Quando o pagamento for
           reconhecido, a assinatura vira <em>Ativa</em> normalmente e a liberação deixa de importar.
+          <strong className="text-foreground"> Toda liberação exige o comprovante anexado</strong> —
+          ele fica guardado junto com quem liberou e por quê.
         </p>
       </div>
 
@@ -153,6 +215,16 @@ export default function LiberacoesAdmin({ titulares }: { titulares: TitularVm[] 
                       </span>
                     </p>
                   )}
+                  {t.comprovanteNome && (
+                    <button
+                      type="button" disabled={pending}
+                      onClick={() => verComprovante(t.id)}
+                      className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground-2 underline-offset-2 hover:text-primary hover:underline disabled:opacity-50"
+                    >
+                      <Download className="size-3 shrink-0" />
+                      {baixando === t.id ? 'Abrindo…' : `Comprovante: ${t.comprovanteNome}`}
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex shrink-0 flex-wrap gap-2">
@@ -195,10 +267,35 @@ export default function LiberacoesAdmin({ titulares }: { titulares: TitularVm[] 
                       />
                     </label>
                   </div>
+
+                  <label className="block text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <Paperclip className="size-3 shrink-0" />
+                      Comprovante <strong className="text-foreground">obrigatório</strong> — foto, PDF,
+                      Word, texto, planilha, e-mail salvo. Até {MB(MAX_COMPROVANTE_LIBERACAO_BYTES)}
+                    </span>
+                    <input
+                      type="file"
+                      // Sem `accept` restritivo de propósito: com o comprovante
+                      // obrigatório, um filtro estreito esconderia do admin o
+                      // arquivo que o cliente mandou (HEIC, .msg) e travaria a
+                      // liberação de quem já pagou. O servidor barra o que é
+                      // executável; o resto passa.
+                      onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
+                      className="mt-1 block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-surface file:px-2 file:py-1 file:text-sm file:text-muted-foreground-2 hover:file:border-primary hover:file:text-primary"
+                    />
+                    {arquivo && (
+                      <span className="mt-1 block text-xs text-success">
+                        {arquivo.name} · {MB(arquivo.size)}
+                      </span>
+                    )}
+                  </label>
+
                   <div className="flex flex-wrap items-center gap-3">
                     <button
-                      type="button" disabled={pending}
+                      type="button" disabled={pending || !arquivo}
                       onClick={() => liberar(t.id)}
+                      title={!arquivo ? 'Anexe o comprovante para liberar' : undefined}
                       className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
                     >
                       {pending ? 'Liberando…' : 'Confirmar liberação'}

@@ -1,23 +1,17 @@
 # Roteiro do smoke manual — Bloco 4A (Assinatura da Balu)
 
-> **Status:** **em execução — parou no §2.4** · **Escrito em:** 2026-07-27
+> **Status:** **em execução — falta só o §3-bis e o §4** · **Escrito em:** 2026-07-27
 > **Branch:** `bloco-4-billing-asaas` · **Spec:** `docs/superpowers/specs/2026-07-27-bloco-4a-assinatura-balu-design.md`
 > **Cenário já preparado no banco** — ver §5 antes de recriar qualquer coisa.
 
 ## ⛔ RETOMAR AQUI
 
-**Falta:** o lado do **empresário** com o escritório inadimplente (§2.4, §2.5, §2.6) e o
+**Falta:** o **§3-bis** (liberação manual do admin, agora com comprovante obrigatório) e o
 **fechamento** (§4). Todo o resto passou.
 
-O escritório está **`ativa` e pago** neste momento. Para os três passos que faltam ele
-precisa estar bloqueado — um comando:
-
-```bash
-node app/scratchpad/_rearmar-contratacao.mjs escritorio inadimplente
-```
-
-Depois logar como **`walacesssantos@gmail.com`** (a `ideapp` já está de volta na carteira)
-e rodar §2.4 → §2.5 → §2.6. Em seguida o **§4**.
+O escritório já está **`inadimplente` e sem contrato** — é a condição que o §3-bis pede,
+nada a rearmar. Logar como **admin** (`eufacopublicidade+admin@gmail.com`) e rodar L.1→L.9.
+Em seguida o **§4**.
 
 ### O que já passou
 
@@ -26,7 +20,8 @@ e rodar §2.4 → §2.5 → §2.6. Em seguida o **§4**.
 | §1 — admin dos planos | ✅ |
 | §2.1–2.3 — gate do escritório, incluindo declaração anual liberada | ✅ |
 | §3 — empresário: bloqueio, DAS liberado, exportar liberado, contratar, pagar, cancelar | ✅ |
-| Liberação manual pelo admin (`/admin/configuracoes`) | ⬜ não testada |
+| §2.4–2.6 — cliente não sente a inadimplência do escritório | ✅ |
+| §3-bis — liberação manual pelo admin, agora **com comprovante obrigatório** | ⬜ não testada |
 
 ### Os 8 bugs que este smoke achou
 
@@ -124,14 +119,29 @@ Para ver a faixa azul de trial: `node app/scratchpad/destravar-empresario.mjs of
 
 ## 3-bis. Liberação manual pelo admin (não testada ainda)
 
-Com um titular **bloqueado e já contratado**, logar como **admin** → **Configurações**:
+Com um titular **bloqueado**, logar como **admin** → **Configurações**.
+
+> **Mudança de 27/07 (migration 0052): o comprovante é OBRIGATÓRIO.** Não existe
+> liberação sem arquivo anexado. A lista de formatos é de **bloqueio**, não de
+> permissão: passa foto (inclusive **HEIC** do iPhone), PDF, Word, texto,
+> planilha, e-mail salvo (`.eml`/`.msg`) e formato desconhecido; barra só
+> executável e script (`.exe`, `.js`, `.bat`, `.html`, `.svg`…), inclusive
+> disfarçado de `comprovante.pdf.exe`. Teto de 10 MB.
 
 | # | Ação | Esperado |
 |---|---|---|
 | L.1 | Achar o titular na lista | Aparece como **Bloqueado**. O filtro já vem em "só bloqueados ou liberados" |
-| L.2 | **Liberar acesso** → 7 dias → motivo | Recusa sem motivo (mínimo 5 caracteres) e fora de 1–60 dias |
-| L.3 | Voltar ao titular e usar uma função bloqueada | **Funciona**, e a tela de assinatura mostra a faixa verde *"liberado pela Balu até…"* |
-| L.4 | Admin → **Revogar** | Bloqueia de novo na hora |
+| L.2 | **Liberar acesso** → preencher tudo **menos** o arquivo | O botão **Confirmar liberação** fica **desabilitado**. O bloqueio é dito na entrada, não no envio |
+| L.3 | Anexar um `.exe` (ou renomear algo para `teste.pdf.exe`) | **Recusa**, dizendo que o formato não serve como comprovante |
+| L.4 | Anexar uma **foto** ou um **PDF**, motivo com menos de 5 letras, e confirmar | Recusa pelo motivo. Testar também **0** e **90** dias — recusa em ambos |
+| L.5 | Motivo válido + 7 dias + arquivo → confirmar | Libera. A linha passa a mostrar **Comprovante: `<nome do arquivo>`** |
+| L.6 | Clicar no nome do comprovante | **Baixa** o arquivo (nunca abre inline). O link é gerado no clique e vale 5 min |
+| L.7 | Voltar ao titular e usar uma função bloqueada | **Funciona**, e a tela de assinatura mostra a faixa verde *"liberado pela Balu até…"* |
+| L.8 | Admin → **Revogar** | Bloqueia de novo na hora. O **comprovante continua listado** — revogar não apaga o lastro do que foi feito |
+| L.9 | **Renovar** com um arquivo diferente | O comprovante novo aparece, e o antigo **não é sobrescrito** no bucket (o `audit_log` guarda o path de cada liberação) |
+
+O caminho de storage já foi provado fora da tela: `node app/scratchpad/_probe-comprovante.mjs`
+(upload com service role, URL assinada com `attachment`, acesso público negado, limpeza).
 
 ## 4. Fechamento — obrigatório
 

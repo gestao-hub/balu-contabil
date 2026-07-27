@@ -23,6 +23,7 @@ export default async function Page() {
     .select(`
       id, status, trial_termina_em, proxima_cobranca_em, liberado_ate,
       liberacao_motivo, liberacao_em, asaas_subscription_id,
+      liberacao_comprovante_path, liberacao_comprovante_nome,
       company_id, contabilidade_id
     `)
     .order('created_at');
@@ -73,6 +74,9 @@ export default async function Page() {
       liberadoAte: a.liberado_ate,
       liberacaoMotivo: a.liberacao_motivo,
       liberacaoVigente: Boolean(a.liberado_ate && hoje <= a.liberado_ate),
+      // Só o nome e o "tem ou não" vêm para o cliente. A URL assinada é pedida
+      // sob demanda, um comprovante por clique.
+      comprovanteNome: a.liberacao_comprovante_path ? (a.liberacao_comprovante_nome ?? 'comprovante') : null,
     };
   });
 
