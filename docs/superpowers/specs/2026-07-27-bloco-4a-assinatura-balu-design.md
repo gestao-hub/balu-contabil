@@ -1,28 +1,39 @@
-# Spec — Bloco 4: Billing Asaas
+# Spec — Bloco 4A: Assinatura da Balu
 
-> **Data:** 2026-07-27 · **Status:** aprovada (design) · **Bloco:** 4 de 7 do `PRD-MASTER-Balu-2026-07-24.md`
-> **Pré-requisito de leitura:** §3 (princípios anti-bug) e §4 Bloco 4 do Master PRD; spec do Bloco 1 (motor de notificações), reusado aqui; Bloco E (padrão de webhook e de gate de escrita).
+> **Data:** 2026-07-27 · **Status:** aprovada (design) · **Bloco:** 4A de 7+ do `PRD-MASTER-Balu-2026-07-24.md`
+> **Pré-requisito de leitura:** §3 (princípios anti-bug) e §4 Bloco 4 do Master PRD; spec do Bloco 1 (motor de notificações), reusado aqui; Bloco E (padrão de webhook, de gate de escrita e de cifra em repouso).
 > **Natureza:** 🟢 buildável agora contra o **sandbox** do Asaas (self-service, não depende de terceiro). A virada para produção é uma env var.
 > **Base factual:** auditoria do código real em 2026-07-27 (migrations até `0049`, `src/`). Todo seam citado é arquivo real, com linha conferida.
+> **Bloco irmão:** `2026-07-27-bloco-4b-subcontas-escritorio-design.md` — o escritório cobrando o cliente dele. Ler §3.1 antes de mexer em honorários.
 
 ---
 
 ## 1. Objetivo
 
-Dar à Balu o que ela ainda não tem: **cobrança**. Assinatura recorrente via Asaas, com um gate de acesso que pressiona o inadimplente **sem nunca reter dado do titular e sem nunca causar dano fiscal a ele**.
+Dar à Balu o que ela ainda não tem: **cobrança da própria assinatura**. Assinatura recorrente via Asaas, com um gate de acesso que pressiona o inadimplente **sem reter dado do titular e sem causar dano fiscal a ele**.
 
-Hoje não existe uma linha de código de billing. O que existe são duas colunas-gancho, `honorarios.asaas_charge_id` e `honorarios.asaas_customer_id` (`0032:9-10`), criadas no Bloco A e **nunca lidas nem escritas** em TypeScript.
+Hoje não existe uma linha de código de billing. O que existe são duas colunas-gancho, `honorarios.asaas_charge_id` e `honorarios.asaas_customer_id` (`0032:9-10`), criadas no Bloco A e **nunca lidas nem escritas** em TypeScript — elas pertencem ao 4B, não a este bloco.
 
-### 1.1 Fronteira inegociável — o gate nunca causa multa
+### 1.1 Primeira fronteira — o gate nunca causa multa
 
 O app tem dois tipos de escrita, e tratá-los igual é o erro central que esta spec existe para evitar:
 
-- **Escrita comercial** — emitir uma nota, criar um cliente, abrir uma empresa. Adiar isso custa negócio ao usuário. É pressão legítima de cobrança.
-- **Escrita de obrigação legal com prazo** — gerar a guia do DAS, registrar o comprovante da DASN/DEFIS, transmitir PGDAS-D. Adiar isso custa **multa da Receita e irregularidade fiscal**.
+- **Escrita comercial** — emitir uma nota, criar um cliente, abrir uma empresa. Adiar custa negócio ao usuário. É pressão legítima de cobrança.
+- **Escrita de obrigação legal com prazo** — gerar a guia do DAS, registrar o comprovante da DASN/DEFIS, transmitir PGDAS-D. Adiar custa **multa da Receita e irregularidade fiscal**.
 
-Bloquear a segunda para cobrar uma dívida com a Balu transfere ao usuário uma penalidade de terceiro, desproporcional ao valor devido, num serviço que ele contratou justamente para não ter esse risco. Além do dano ao usuário, expõe a Balu pelo CDC art. 39.
+Bloquear a segunda para cobrar uma dívida com a Balu transfere ao usuário uma penalidade de terceiro, desproporcional ao valor devido, num serviço que ele contratou justamente para não correr esse risco. Além do dano, expõe a Balu pelo CDC art. 39.
 
 **Decisão de produto nº 1: o gate nunca alcança ação de obrigação legal.** Vale mesmo com a assinatura vencida há meses. A alavanca de cobrança é o bloqueio comercial, que já dói o suficiente.
+
+### 1.2 Segunda fronteira — o gate nunca alcança direito do titular (LGPD)
+
+A LGPD (Lei 13.709/2018) **art. 18** garante ao titular, entre outros: confirmação e **acesso** aos dados (I e II), **correção** (III), **portabilidade** (V) e **eliminação** (VI). O **§5º** do mesmo artigo obriga o controlador a atender **sem custo** ao titular.
+
+Inadimplência **não é hipótese legal de suspensão desses direitos**. Não existe no art. 18 nenhuma condição de adimplemento; condicionar o exercício ao pagamento é criar um custo que a lei proíbe.
+
+**Decisão de produto nº 2: o gate nunca alcança ação de direito do titular.** Exportar dados, excluir a conta, corrigir nome/e-mail/senha e consultar os próprios dados funcionam **integralmente** com a assinatura vencida, cancelada ou inexistente. Nenhuma tela desses fluxos pode sequer exibir a faixa de cobrança de forma que sugira condicionamento.
+
+Isso não é generosidade de produto — é o mesmo raciocínio que o `assertAceitesEmDia` já carrega no docblock (`src/lib/lgpd/pendencia-aceite.ts:19-21`), aplicado a outra causa de bloqueio.
 
 ## 2. Escopo
 
@@ -32,35 +43,32 @@ Bloquear a segunda para cobrar uma dívida com a Balu transfere ao usuário uma 
 - Webhook `src/app/api/webhooks/asaas/route.ts` + extração do módulo de segredo hoje acoplado à Focus.
 - Módulo `src/lib/billing/` — status efetivo, resolução de titular, faixa de plano, tradução dos eventos do Asaas.
 - Gate de escrita em duas portas (`assertAssinaturaEmpresa`, `assertAssinaturaEscritorio`), aplicado às actions comerciais.
+- **Tela `/admin/assinaturas`** — o AdminBalu gerencia planos, valores, faixas e dias de trial, sem deploy.
 - Reconciliação diária + recálculo mensal da faixa do escritório.
 - Telas de assinatura (empresário autosserviço e escritório), faixa de aviso, e avisos de cobrança pelo motor do Bloco 1.
 
+**Fora — é o Bloco 4B, não é descarte:**
+- Subconta Asaas por escritório.
+- Honorários do escritório cobrados pelo app.
+- Catálogo e cobrança de serviços avulsos do escritório.
+
 **Fora, de propósito:**
-- **Honorários do escritório ao cliente dele.** Ver §3.1 — decisão registrada, com motivo.
-- **Split de pagamento e subconta Asaas por escritório.** Consequência da anterior.
 - Armazenar PAN/cartão. O Asaas guarda; a Balu guarda id e token, nunca o número.
-- **Cobrança avulsa** (ex.: cobrar pela abertura de uma empresa). O Michel pediu na q1.3 da devolutiva, mas ela **não é assinatura** — não tem ciclo nem faixa, e não cabe em `planos` sem desfigurar a tabela. Sem piloto real não há como definir quando dispara nem quanto custa. Fica como follow-up nomeado (§11, premissa 6), não meio-implementada.
 - Nota fiscal da própria Balu sobre a assinatura. É emissão da Balu para o cliente dela, não do produto.
 
 ## 3. Decisões de produto
 
-### 3.1 Os honorários ficam de fora — e por quê
+### 3.1 Por que os honorários não estão aqui — e por que viraram bloco próprio
 
-O PRD Master manda "plugar nos honorários recorrentes" (`PRD-MASTER:229`) e, na mesma seção, põe **"split de pagamento" fora de escopo** (`PRD-MASTER:231`). Os dois não fecham: o honorário é **o escritório cobrando o cliente dele**, dinheiro que não é da Balu. Sem subconta, ele cairia na conta Asaas da Balu, que passaria a intermediar dinheiro de terceiro — repasse manual, exposição regulatória e contábil.
+O PRD Master manda "plugar nos honorários recorrentes" (`PRD-MASTER:229`) e, na mesma seção, põe **"split de pagamento" fora de escopo** (`PRD-MASTER:231`). Os dois não fecham, e a forma de fechar foi decidida por princípio:
 
-Levantamento dos documentos, feito antes de decidir:
+> **A Balu não pode intermediar dinheiro de terceiro.**
 
-| Fonte | O que diz |
-|---|---|
-| `docs/product/PRD-Balu-V2.md:96` | "o escritório cobra o cliente pelo app **(subconta/split a decidir na spec)**" — adiado para cá |
-| `PRD-MASTER-Balu-2026-07-24.md:231` | "Fora de escopo. (...) Split de pagamento." |
-| `PRD-Remanescente-Balu.md:116` | idem |
-| Devolutiva do Michel, q1.3 | marcou os três produtos, e **os três são a Balu cobrando**: assinatura do empresário, assinatura do escritório por nº de clientes, avulso |
-| Devolutiva do Michel, q1.4 | "o app precisa cobrar essa mensalidade dentro dele mesmo" = **"Sim, essencial"** |
+O honorário é **o escritório cobrando o cliente dele**. Se essa cobrança nascesse na conta Asaas da Balu, o dinheiro passaria por ela antes de chegar ao escritório — a Balu viraria intermediária financeira, com repasse manual e exposição regulatória e contábil. Split na cobrança da Balu tem o mesmo defeito: a cobrança pertence à conta dela.
 
-O Michel nunca pediu que o escritório cobrasse o cliente pelo app. O "não é o que eu esperava" que ele marcou no item de honorários (`conf10`) vem acompanhado da observação que ele mesmo escreveu — `"n vimos funcionar"` — repetida em outros sete itens; é "não vi funcionar", não "está desenhado errado", e o próprio HTML marca essas respostas como incompletas.
+A saída é **subconta por escritório**: a cobrança é emitida pela subconta, o credor é o escritório, o dinheiro liquida na conta dele, e a Balu nunca é dona do recurso. Isso traz onboarding com KYC, guarda de credencial de movimentação financeira de terceiro e um catálogo de serviços — trabalho que não cabe junto do gate sem inchar o smoke manual a ponto de ele deixar de encontrar bugs.
 
-**Decisão nº 2: o Bloco 4 cobra só o que é da Balu.** O honorário segue como está: controle manual do contador, recebimento por fora. As colunas `asaas_*` de `honorarios` **continuam sem uso, de propósito** — não são esquecimento. Subconta por escritório fica anotada como candidata a bloco futuro, e implica onboarding KYC de cada escritório no Asaas.
+**Decisão nº 3: vira o Bloco 4B.** As colunas `asaas_*` de `honorarios` seguem sem uso **neste bloco**, e o 4B é quem as consome. Não são esquecimento.
 
 ### 3.2 Quem paga, conforme a origem
 
@@ -71,15 +79,17 @@ Nenhum campo novo decide isso: a regra lê o multitenant que o Bloco A construiu
 
 ### 3.3 Escritório inadimplente não bloqueia a carteira
 
-**Decisão nº 3.** O escritório inadimplente perde as ações dele (operar abertura, criar cliente, honorários, convites). Os empresários da carteira **seguem trabalhando**.
+O escritório inadimplente perde as ações dele (operar abertura, criar cliente, honorários, convites). Os empresários da carteira **seguem trabalhando**.
 
 Motivo: o empresário não é parte do contrato e não tem como quitar a dívida do contador. Pará-lo é dano a quem não deve, e a reclamação chega na marca da Balu, não na do escritório.
 
-**Consequência aceita, registrada para ninguém tratar como bug:** um escritório que nunca assinou, ou que cancelou, **não trava a carteira dele**. As empresas com `contabilidade_id` respondem sempre liberadas. A alavanca é que o escritório não consegue operar.
+**Consequência aceita, registrada para ninguém tratar como bug:** um escritório que nunca assinou, ou que cancelou, **não trava a carteira dele**. As empresas com `contabilidade_id` respondem sempre liberadas — o gate nem consulta assinatura para elas. A alavanca é que o escritório não consegue operar.
 
-### 3.4 Trial de 3 dias; contas existentes entram como cortesia
+*(Revisitar depois é decisão consciente do usuário, registrada em 2026-07-27: mantém-se assim neste bloco.)*
 
-Cadastro novo nasce em `trial` por **3 dias** — duração em `planos`, não constante em código, para mudar sem deploy.
+### 3.4 Trial de 7 dias, configurável pelo admin
+
+Cadastro novo nasce em `trial` por **7 dias**. A duração mora em `planos.trial_dias` e é **editável pelo AdminBalu na tela `/admin/assinaturas`** — mudar de 7 para 14 é uma edição na tela, nunca um deploy.
 
 Toda `contabilidade` e toda `company` sem `contabilidade_id` **que já existirem no banco no momento da migration** recebem uma assinatura `cortesia`: sem vínculo Asaas, sem vencimento, nunca bloqueia. É o que garante que o deploy do bloco não bloqueia ninguém — nem os pilotos, nem as contas de teste, nem vocês. A virada de cada uma para cobrança real é manual e deliberada.
 
@@ -89,7 +99,7 @@ Aditiva e idempotente, no espírito das `0045`–`0049`. Próximo número livre 
 
 ### 4.1 `planos`
 
-Catálogo semeado pela migration. Preço, ciclo e faixa moram em tabela, não em código, porque mudar preço não pode exigir deploy.
+Catálogo semeado pela migration e **editável pelo admin em runtime**. Preço, ciclo, faixa e trial moram em tabela, não em código, porque mudar preço não pode exigir deploy.
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.planos (
@@ -100,15 +110,16 @@ CREATE TABLE IF NOT EXISTS public.planos (
   ciclo         text NOT NULL DEFAULT 'MONTHLY' CHECK (ciclo IN ('MONTHLY','YEARLY')),
   clientes_min  int,                           -- só para publico='escritorio'
   clientes_max  int,                           -- NULL = faixa aberta no topo
-  trial_dias    int NOT NULL DEFAULT 3,
+  trial_dias    int NOT NULL DEFAULT 7 CHECK (trial_dias >= 0),
   ativo         boolean NOT NULL DEFAULT true,
-  created_at    timestamptz NOT NULL DEFAULT now()
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
 );
 ```
 
 Valor em **centavos inteiros**, nunca `numeric` de reais — o repo já apanhou de dinheiro em ponto flutuante (`lib/format/dinheiro.ts` e o `normalizarValorBRL` do honorário nasceram disso).
 
-As faixas de escritório precisam ser **contíguas e sem sobreposição**; a função de escolha de faixa (§6.3) trata explicitamente o caso de nenhuma faixa casar, em vez de devolver `undefined` silencioso.
+As faixas de escritório precisam ser **contíguas e sem sobreposição**; a função de escolha de faixa (§6.3) trata explicitamente o caso de nenhuma faixa casar, em vez de devolver `undefined` silencioso. A tela de admin (§9.1) valida isso **antes de salvar**, porque é o admin quem passa a poder criar o buraco.
 
 ### 4.2 `assinaturas`
 
@@ -171,6 +182,8 @@ O `pix_copia_cola` já nasce aqui porque o **Bloco 6** vai enviar cobrança por 
 
 O titular lê: o dono da `company` (`companies.user_id = auth.uid()`) e os membros da `contabilidade` (via `minha_contabilidade_membro()`, o helper `SECURITY DEFINER` que a `0035` criou justamente para não recursar).
 
+`planos` é **legível por qualquer autenticado** (a tela de assinatura precisa mostrar o catálogo) e escrita só pelo service role — a tela de admin escreve por Server Action com `createAdminClient()`, nunca pela sessão.
+
 ### 4.5 Cortesia para o que já existe
 
 ```sql
@@ -179,7 +192,7 @@ INSERT INTO public.assinaturas (contabilidade_id, status)
   ON CONFLICT DO NOTHING;
 
 INSERT INTO public.assinaturas (company_id, status)
-  SELECT id FROM public.companies
+  SELECT id, 'cortesia' FROM public.companies
    WHERE contabilidade_id IS NULL AND deleted_at IS NULL
   ON CONFLICT DO NOTHING;
 ```
@@ -213,7 +226,7 @@ assertAssinaturaEscritorio(contabId: string): Promise<{ok:true} | {ok:false; err
 
 Duas portas em vez de uma resolução mágica porque cada action **já tem em mãos** o identificador certo: as do empresário têm `companyId`, as do contador têm `ctx.id` do `getContabilidadeCtx()`. Uma porta única teria de adivinhar o contexto — e adivinhar é como o Bloco 3 gravou declaração na empresa errada.
 
-`assertAssinaturaEmpresa` resolve a origem por dentro: `company.contabilidade_id` preenchido ⇒ responde `{ok:true}` sem consultar assinatura nenhuma (decisão nº 3).
+`assertAssinaturaEmpresa` resolve a origem por dentro: `company.contabilidade_id` preenchido ⇒ responde `{ok:true}` sem consultar assinatura nenhuma (decisão nº 3.3).
 
 ### 5.2 Por que não no layout nem no middleware
 
@@ -239,7 +252,18 @@ O docblock do `assertAceitesEmDia` já registra a lição do Bloco E: *"o layout
 | `impostos/actions.ts` | `gerarDasMeiAction`, `gerarDasSimplesAction`, `iniciarApuracaoAction`, `consultarDeclaracoesAction`, `consultarDasnSimeiAction`, `previewDeclaracaoAction`, `registrarDeclaracaoAnualAction`, `marcarGuiaPagaAction`, `salvarFolhaAction`, `marcarSincronizacaoInicialAction` |
 | `contador/clientes/actions.ts` | `registrarDeclaracaoAnualContadorAction` |
 
-**Nunca bloqueia** — direito do titular. Herda literalmente a regra que o `assertAceitesEmDia` já carrega: *"NUNCA usar em ações de direito do titular (exportar/excluir dados) — bloquear o exercício de direito LGPD seria o oposto do que a lei exige."* Alcança `conta/actions.ts` inteiro (`exportarMeusDadosAction`, `deleteAccountAction`, nome/e-mail/senha, preferências) e `exportNotasCsvAction`.
+**Nunca bloqueia** — direito do titular, LGPD art. 18 (decisão nº 2). Cada linha abaixo é o exercício de um inciso, não uma cortesia:
+
+| Action | Inciso do art. 18 |
+|---|---|
+| `exportarMeusDadosAction` | II (acesso) e V (portabilidade) |
+| `deleteAccountAction` | VI (eliminação) — no app, a anonimização do Bloco E |
+| `updateNomeAction`, `updateEmailAction` | III (correção) |
+| `updateSenhaAction` | segurança da conta; nunca condicionável a pagamento |
+| `salvarPreferenciasNotificacaoAction` | IX (revogação de consentimento de canal) |
+| `exportNotasCsvAction` | II e V sobre dado fiscal do titular |
+
+O **§5º do art. 18** obriga o atendimento **sem custo**; condicionar qualquer um desses ao pagamento cria exatamente o custo que a lei veda. Nenhuma tela desses fluxos exibe faixa de cobrança de forma que sugira condicionamento (§9.2).
 
 **Nunca bloqueia** leitura, listagem e preparação (`listarProdutosAction`, `listarCnaesEmpresaAction`, `listarTiposEmissaoAction`, `prepararEmissaoAction`, `prepararNotaManualAction`, `lookupCnpjAction`, `atualizarStatusNotaAction`, `loadAberturaAtual`).
 
@@ -247,7 +271,7 @@ O bloqueio mora **no ato**, não no formulário que leva até ele: `prepararEmis
 
 ### 5.4 Contra o esquecimento
 
-Um teste enumera as actions que **devem** ter gate e falha se alguma perder — e falha também se uma action da lista de "nunca bloqueia" ganhar gate por engano. É o discriminante que o Bloco 3 provou necessário: sem ele, os testes de bloqueio passariam mesmo com um gate que barra tudo.
+Um teste enumera as actions que **devem** ter gate e falha se alguma perder — e falha também se uma action das listas de "nunca bloqueia" ganhar gate por engano. É o discriminante que o Bloco 3 provou necessário: sem ele, os testes de bloqueio passariam mesmo com um gate que barra tudo.
 
 ## 6. Módulo `src/lib/billing/`
 
@@ -271,7 +295,7 @@ Recebe a `company` e devolve quem responde pela assinatura. Puro, sem I/O; quem 
 
 ### 6.3 `faixa.ts` — plano do escritório por nº de clientes
 
-Recebe a contagem de clientes e a lista de planos de escritório, devolve o plano. Trata explicitamente contagem zero e contagem acima de toda faixa; nunca devolve `undefined` implícito.
+Recebe a contagem de clientes e a lista de planos de escritório, devolve o plano. Trata explicitamente contagem zero, contagem acima de toda faixa e **buraco entre faixas** — este último passou a ser possível porque o admin edita as faixas em runtime (§9.1).
 
 ### 6.4 `eventos.ts` — tradução do vocabulário do Asaas
 
@@ -292,7 +316,9 @@ Superfície mínima: `criarCliente`, `criarAssinatura`, `cancelarAssinatura`, `c
 
 Env novas, também no `.env.example`: `ASAAS_ENV`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_SECRET`. **Armadilha conhecida deste repo:** o `.env.example` no disco já foi uma cópia do `.env.local` com segredos reais e foi commitado por engano em 22/07. Inspecionar o conteúdo antes de qualquer `git add` nele.
 
-Sem chave configurada, o cliente **falha explicitamente** na chamada, e não no import — o app tem de subir e funcionar inteiro sem billing enquanto a chave não chega.
+Sem chave configurada, o cliente **falha explicitamente na chamada, não no import** — o app tem de subir e funcionar inteiro sem billing enquanto a chave não chega. É o mesmo padrão do `sendEmail`, que já é no-op logado sem chave.
+
+**Os detalhes de rota e payload do Asaas devem ser conferidos contra o sandbox** quando a chave chegar; esta spec fixa a forma, não a assinatura exata dos endpoints.
 
 ### 7.2 Webhook `src/app/api/webhooks/asaas/route.ts`
 
@@ -326,46 +352,63 @@ Trial acabando e cobrança vencida entram como `notifications` pelo motor do Blo
 
 ### 8.4 **Armadilha de plataforma: o limite de crons da Vercel**
 
-`app/vercel.json` já tem **dois** crons (`honorarios-recorrentes` e `obrigacoes`). O plano **Hobby da Vercel permite exatamente dois**. Antes de criar um terceiro, o plano de implementação tem de **confirmar o tier do projeto `balu-contabil`**. Se for Hobby, a reconciliação e os avisos entram **dentro** do `/api/cron/obrigacoes`, que já roda diário — não viram cron novo. Descobrir isso no deploy seria descobrir tarde.
+`app/vercel.json` já tem **dois** crons (`honorarios-recorrentes` e `obrigacoes`). O plano **Hobby da Vercel permite exatamente dois**. Antes de criar um terceiro, o plano de implementação tem de **confirmar o tier do projeto `balu-contabil`** (scope `gestao-9664s-projects`). Se for Hobby, a reconciliação e os avisos entram **dentro** do `/api/cron/obrigacoes`, que já roda diário — não viram cron novo. Descobrir isso no deploy seria descobrir tarde.
 
 ## 9. Interface
 
+### 9.1 `/admin/assinaturas` — o AdminBalu gerencia os planos
+
+Tela nova na área de admin, ao lado de `/admin/empresas` e `/admin/usuarios`. Permite criar, editar, ativar e desativar planos: nome, público, valor, ciclo, faixa de clientes e **dias de trial**.
+
+Guarda: a área de admin tem hoje **duas** formas — `requireAdminBaluPage()` (`lib/admin/guard.ts:10`, que **redireciona**, para Server Components de página) e um `requireAdminBalu()` **local** a `admin/contabilidades/actions.ts`, que devolve `{userId}|{error}` para actions. A tela de planos precisa das duas; o `requireAdminBalu()` de action deve ser **extraído para `lib/admin/guard.ts`** junto do outro, em vez de duplicado num terceiro arquivo.
+
+Validações que a tela faz **antes de salvar**, porque é aqui que o buraco pode nascer:
+- faixas de escritório contíguas e sem sobreposição;
+- valor não negativo e trial não negativo;
+- **desativar um plano não pode órfãos:** se houver assinatura ativa apontando para ele, a tela recusa e diz quantas são.
+
+Toda escrita entra em `audit_log` via `registrarAuditoria` — mudar preço é ato administrativo com consequência financeira.
+
+### 9.2 Telas do assinante
+
 - **`/conta/assinatura`** (empresário autosserviço) e **`/contador/assinatura`** (escritório): plano, estado, dias de trial restantes, histórico de cobranças com link e Pix, e **cancelar sem barreira** — CDC art. 39: um clique, não um contato com suporte.
-- **Faixa de aviso** no topo quando o trial está acabando ou há cobrança vencida. Avisa, não bloqueia.
+- **Faixa de aviso** no topo quando o trial está acabando ou há cobrança vencida. Avisa, não bloqueia. **Não aparece** nas telas de direito do titular (exportar, excluir conta, dados pessoais) — ali ela sugeriria um condicionamento que a decisão nº 2 proíbe.
 - **Mensagem do bloqueio**: quando uma action é barrada, o erro diz o que aconteceu e leva à página de assinatura. Nunca um "não autorizado" seco.
-- Empresa com `contabilidade_id` **não vê nada disso** — ela não paga (decisão nº 3.2). Mostrar cobrança a quem não deve nada é um bug de produto.
+- Empresa com `contabilidade_id` **não vê nada disso** — ela não paga (§3.2). Mostrar cobrança a quem não deve nada é um bug de produto.
 
 ## 10. Testes
 
 **Puros, sem rede** — é onde mora a regra:
 - `statusEfetivo`: trial vigente, trial vencido ontem, cortesia, ativa, inadimplente, cancelada; e as fronteiras de BRT.
 - `titular`: com e sem `contabilidade_id`.
-- `faixa`: contagem zero, dentro da faixa, nas bordas, acima de toda faixa.
+- `faixa`: contagem zero, dentro da faixa, nas bordas, acima de toda faixa, e **buraco entre faixas**.
 - `eventos`: pagamento, vencimento, estorno, cancelamento, e **evento desconhecido não muda nada**.
 
 **Cobertura do gate** — a enumeração de §5.4, nos dois sentidos.
 
 **Discriminantes** — sem eles a suíte passa com um gate errado:
 - titular **inadimplente** consegue gerar DAS e registrar declaração anual;
-- titular **inadimplente** consegue exportar dados e excluir conta;
+- titular **inadimplente** consegue exportar dados, excluir conta e trocar senha (LGPD art. 18);
 - empresa **com** `contabilidade_id` emite nota mesmo com o escritório inadimplente.
+
+**Admin de planos** — desativar plano com assinatura ativa é recusado; faixa sobreposta é recusada.
 
 **Segredo do webhook** — o teste existente da Focus tem de continuar verde após a extração; mais os casos do header do Asaas, incluindo comprimento diferente.
 
-**Smoke contra o sandbox**, no fechamento, quando a chave chegar: criar cliente → assinatura → simular pagamento → conferir que o webhook mudou o estado → simular vencimento → conferir que o gate barra o comercial e libera o fiscal.
+**Smoke contra o sandbox**, no fechamento, quando a chave chegar: criar cliente → assinatura → simular pagamento → conferir que o webhook mudou o estado → simular vencimento → conferir que o gate barra o comercial e libera o fiscal e o direito do titular.
 
 ## 11. Premissas a confirmar com o Michel
 
 Registradas agora porque são baratas de mudar antes da implementação e caras depois — mesma disciplina das sete premissas do Bloco 3.
 
-| # | Premissa | Por que importa |
-|---|---|---|
-| 1 | **Preços e faixas** de cada plano | Semeados na migration. Trocar valor é UPDATE; trocar o **desenho das faixas** é migration nova |
-| 2 | **Trial de 3 dias** | Definido nesta sessão; 3 dias é curto para um SaaS contábil. Fica em `planos.trial_dias`, mudável sem deploy |
-| 3 | Escritório inadimplente **não** trava a carteira | Decisão nº 3. Se ele discordar, muda o alcance do gate |
-| 4 | Honorários **fora** do bloco | Decisão nº 2. Se ele quiser o escritório cobrando pelo app, entra subconta e o bloco dobra |
-| 5 | Conta Asaas — **titularidade e CNPJ** | Quem é o titular da conta que recebe. Trava a virada para produção, não a construção |
-| 6 | **Cobrança avulsa ficou fora** | Ele pediu na q1.3. Precisa de duas respostas antes de virar código: o que se cobra avulso, e quanto |
+| # | Premissa | Estado | Por que importa |
+|---|---|---|---|
+| 1 | **Preços e faixas** de cada plano | Resolvido por produto: **o admin edita na tela** (§9.1). Falta só o valor inicial do seed | Trocar valor virou operação, não deploy |
+| 2 | **Trial de 7 dias** | Definido em 2026-07-27; editável pelo admin | Fica em `planos.trial_dias` |
+| 3 | Escritório inadimplente **não** trava a carteira | Mantido nesta rodada por decisão do usuário; revisitar depois se preciso | Mudar altera o alcance do gate |
+| 4 | Honorários e subconta | Viraram o **Bloco 4B** | — |
+| 5 | Conta Asaas — **titularidade e CNPJ** da conta-mãe | Aberto | Trava a virada para produção, não a construção |
+| 6 | Cobrança avulsa | Virou o **Bloco 4B** (catálogo gerido pelo escritório) | — |
 
 ## 12. Ordem de implementação
 
@@ -376,7 +419,7 @@ Registradas agora porque são baratas de mudar antes da implementação e caras 
 5. Webhook + idempotência.
 6. Gate nas actions + teste de cobertura + discriminantes.
 7. Crons (depois de confirmar o tier da Vercel, §8.4).
-8. Telas.
+8. Telas — admin de planos e assinante.
 9. Smoke em sandbox no fechamento.
 
 Os passos 1–8 não dependem de credencial nenhuma — o bloco fica inteiro construído, testado e mergeável sem o Asaas. O passo 9 é o único que espera a chave, e é validação, não construção.
