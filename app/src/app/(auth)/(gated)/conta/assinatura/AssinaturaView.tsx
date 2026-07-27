@@ -1,7 +1,8 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { CreditCard, Receipt, ExternalLink } from 'lucide-react';
+import { CreditCard, Receipt, ExternalLink, Loader2 } from 'lucide-react';
 import { cancelarAssinaturaAction, assinarPlanoAction } from './actions';
+import { useVerificarPagamento, aguardandoPagamento } from './useVerificarPagamento';
 
 export type CobrancaVm = {
   id: string; status: string; valor_centavos: number;
@@ -50,6 +51,10 @@ export default function AssinaturaView({
   const [confirmando, setConfirmando] = useState(false);
   const [planoEscolhido, setPlanoEscolhido] = useState<string>(planos[0]?.id ?? '');
   const [pending, start] = useTransition();
+
+  // Enquanto o pagamento não cai, a tela se atualiza sozinha.
+  const esperando = aguardandoPagamento(assinatura.status, assinatura.contratada);
+  useVerificarPagamento(assinatura.id, esperando);
 
   function cancelar() {
     start(async () => {
@@ -106,10 +111,13 @@ export default function AssinaturaView({
             <CreditCard className="size-4 shrink-0 text-primary" />
             {assinatura.planoNome ?? 'Sem plano definido'}
           </h2>
-          <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${
+          <span className={`flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-semibold ${
             COR_STATUS[assinatura.status] ?? 'bg-surface-3 text-muted-foreground'
           }`}>
-            {ROTULO[assinatura.status] ?? assinatura.status}
+            {/* Contratou e o Asaas ainda não confirmou: dizer "período de
+                teste" aqui esconderia que há um pagamento em curso. */}
+            {esperando && <Loader2 className="size-3 animate-spin" />}
+            {esperando ? 'Aguardando pagamento' : ROTULO[assinatura.status] ?? assinatura.status}
           </span>
         </div>
 

@@ -19,7 +19,9 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { asaas } from '@/lib/clients';
 import { planoPorQtdClientes, type PlanoFaixa } from '@/lib/billing/faixa';
-import { sincronizarCobrancas, type CobrancaRemota } from '@/lib/billing/cobranca';
+import {
+  reconciliarAssinatura, type AssinaturaReconciliavel,
+} from '@/lib/billing/reconciliar';
 import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 
 export type ResumoBilling = {
@@ -73,26 +75,11 @@ export async function rodarBilling(): Promise<ResumoBilling> {
 
   for (const a of comAsaas ?? []) {
     try {
-      const { data: pagamentos } = await asaas.listarCobrancas(a.asaas_subscription_id as string);
-      if (!pagamentos?.length) continue;
-
-      // Rede de seguranca do webhook perdido: as cobrancas ja estao em mao,
-      // gravar aqui nao custa uma chamada a mais. Sem isto, uma entrega
-      // falha do Asaas deixava o titular sem link de fatura para sempre.
-      await sincronizarCobrancas(sb, a.id as string, pagamentos as CobrancaRemota[]);
-
-      // A cobranca mais recente por vencimento manda: e ela que diz se o
-      // titular esta em dia hoje.
-      const recente = [...pagamentos].sort((x, y) => (x.dueDate < y.dueDate ? 1 : -1))[0];
-      const pago = recente.status === 'RECEIVED' || recente.status === 'CONFIRMED';
-      const vencido = recente.status === 'OVERDUE';
-
-      const alvo = pago ? 'ativa' : vencido ? 'inadimplente' : null;
-      if (alvo && alvo !== a.status) {
-        await sb.from('assinaturas')
-          .update({ status: alvo, updated_at: new Date().toISOString() }).eq('id', a.id);
-        resumo.reconciliadas++;
-      }
+      // A regra mora em reconciliar.ts — a MESMA que a tela usa ao voltar do
+      // pagamento. Duplicada, cron e tela acabariam discordando sobre quem
+      // esta em dia.
+      const r = await reconciliarAssinatura(sb, a as AssinaturaReconciliavel);
+      if (r.mudou) resumo.reconciliadas++;
     } catch (err) {
       resumo.erros++;
       console.error('[cron billing] reconciliacao falhou', a.id, err);

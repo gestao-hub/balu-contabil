@@ -99,6 +99,7 @@ export default async function Page() {
           planoRecomendado={recomendado}
           contratada={assinatura.contratada}
           clientes={clientes}
+          status={assinatura.status}
         />
       </div>
 

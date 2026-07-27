@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { asaas } from '@/lib/clients';
 import { criarAssinaturaNoAsaas } from '@/lib/billing/assinar';
+import { reconciliarAssinatura } from '@/lib/billing/reconciliar';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -164,6 +165,58 @@ export async function trocarPlanoAction(
   revalidatePath('/conta/assinatura');
   revalidatePath('/contador/assinatura');
   return { ok: true };
+}
+
+/**
+ * Pergunta ao Asaas se a cobrança já foi paga e atualiza o que for preciso.
+ *
+ * A tela chama isto sozinha depois que o titular abre a fatura — ele pagou
+ * em outra aba e não deve precisar recarregar nada para ver "Ativa". O
+ * webhook continua sendo a via normal; esta é a que funciona quando ele
+ * demora, se perde ou (em desenvolvimento) não alcança o localhost.
+ *
+ * Devolve o status EFETIVO já reconciliado, para o cliente decidir se
+ * precisa pedir um refresh à árvore do servidor.
+ */
+export async function verificarPagamentoAction(
+  assinaturaId: string,
+): Promise<{ ok: true; status: string; mudou: boolean } | { ok: false; error: string }> {
+  if (!assinaturaId) return { ok: false, error: 'ID ausente.' };
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  // Leitura pela SESSÃO: a policy assinaturas_select_titular é o anti-IDOR,
+  // então quem não é titular não enxerga a linha e não consulta o Asaas por
+  // conta de outro.
+  const { data: a } = await supabase
+    .from('assinaturas').select('id, status, asaas_subscription_id')
+    .eq('id', assinaturaId).maybeSingle();
+  if (!a) return { ok: false, error: 'Assinatura não encontrada.' };
+
+  // 'cancelada' e 'cortesia' não se reconciliam: a primeira é decisão do
+  // titular, a segunda não tem cobrança.
+  if (a.status === 'cancelada' || a.status === 'cortesia' || !a.asaas_subscription_id) {
+    return { ok: true, status: a.status, mudou: false };
+  }
+
+  try {
+    const r = await reconciliarAssinatura(createAdminClient(), {
+      id: a.id, status: a.status, asaas_subscription_id: a.asaas_subscription_id,
+    });
+    if (r.mudou || r.cobrancasGravadas > 0) {
+      revalidatePath('/conta/assinatura');
+      revalidatePath('/contador/assinatura');
+    }
+    return { ok: true, status: r.status, mudou: r.mudou || r.cobrancasGravadas > 0 };
+  } catch (err) {
+    // Falhar aqui é silêncio de propósito: é uma consulta de conveniência
+    // rodando em laço. Um erro do Asaas não pode virar alerta na tela de
+    // quem está só esperando a confirmação.
+    console.error('[billing verificar] falhou', err);
+    return { ok: false, error: 'Não foi possível verificar agora.' };
+  }
 }
 
 export async function cancelarAssinaturaAction(assinaturaId: string): Promise<ActionResult> {

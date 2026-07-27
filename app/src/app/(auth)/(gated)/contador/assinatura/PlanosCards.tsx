@@ -1,9 +1,12 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { CreditCard, Check, Users, ExternalLink } from 'lucide-react';
+import { CreditCard, Check, Users, ExternalLink, Loader2 } from 'lucide-react';
 import {
   assinarPlanoAction, trocarPlanoAction, cancelarAssinaturaAction,
 } from '../../conta/assinatura/actions';
+import {
+  useVerificarPagamento, aguardandoPagamento,
+} from '../../conta/assinatura/useVerificarPagamento';
 
 export type PlanoCard = {
   id: string;
@@ -16,7 +19,7 @@ export type PlanoCard = {
 const reais = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function PlanosCards({
-  assinaturaId, planos, planoAtivo, planoRecomendado, contratada, clientes,
+  assinaturaId, planos, planoAtivo, planoRecomendado, contratada, clientes, status,
 }: {
   assinaturaId: string;
   planos: PlanoCard[];
@@ -27,11 +30,18 @@ export default function PlanosCards({
   /** true quando existe assinatura no Asaas — habilita trocar e cancelar. */
   contratada: boolean;
   clientes: number;
+  /** Status da assinatura. Separa "contratado" de "pago" no selo do card. */
+  status: string;
 }) {
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [fatura, setFatura] = useState<string | null>(null);
   const [confirmandoCancel, setConfirmandoCancel] = useState(false);
   const [pending, start] = useTransition();
+
+  // Enquanto o Asaas não confirma, a tela se atualiza sozinha — o selo do
+  // card vira "Plano ativo" sem ninguém recarregar nada.
+  const esperando = aguardandoPagamento(status, contratada);
+  useVerificarPagamento(assinaturaId, esperando);
 
   function agir(
     fn: () => Promise<{ ok: true; faturaUrl?: string | null } | { ok: false; error: string }>,
@@ -92,9 +102,15 @@ export default function PlanosCards({
                     <CreditCard className="size-4 shrink-0 text-primary" />
                     {p.nome}
                   </h3>
-                  {ehAtivo ? (
-                    <span className="flex shrink-0 items-center gap-1 rounded-md bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
-                      <Check className="size-3" /> Seu plano
+                  {ehAtivo && esperando ? (
+                    // Contratado mas ainda não pago. "Plano ativo" aqui
+                    // afirmaria um pagamento que não aconteceu.
+                    <span className="flex shrink-0 items-center gap-1 rounded-md bg-surface-3 px-2 py-0.5 text-xs font-semibold text-muted-foreground-2">
+                      <Loader2 className="size-3 animate-spin" /> Aguardando pagamento
+                    </span>
+                  ) : ehAtivo ? (
+                    <span className="flex shrink-0 items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-xs font-semibold text-success">
+                      <Check className="size-3" /> Plano ativo
                     </span>
                   ) : ehRecomendado ? (
                     <span className="shrink-0 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground-2">
