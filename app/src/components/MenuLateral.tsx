@@ -354,8 +354,8 @@ export default function MenuLateral({
           Ganha importância com o white-label: quando o topo do menu mostra a
           marca do escritório, é isto que diz de quem é a plataforma.
           Recolhido, só "Balu" — "By Balu-contábil" não cabe em 4rem. */}
-      <div className="border-t border-border px-2 py-2 text-center">
-        <span className="block truncate text-[11px] leading-none text-muted-foreground">
+      <div className="border-t border-border px-2 py-2.5 text-center">
+        <span className="block truncate text-sm font-bold italic leading-none text-muted-foreground-2">
           {open ? 'By Balu-contábil' : 'Balu'}
         </span>
       </div>
