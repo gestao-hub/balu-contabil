@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { lookupCnpj, type CnpjLookup } from '@/lib/fiscal/cnpj-lookup';
 import { ClienteSchema, type ClienteInput } from '@/types/zod';
+import { assertAssinaturaEmpresa } from '@/lib/billing/gate';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -36,6 +37,8 @@ export async function createClienteAction(input: ClienteInput): Promise<ActionRe
 
   const ctx = await getContext();
   if ('error' in ctx) return { ok: false, error: ctx.error };
+  const assinatura = await assertAssinaturaEmpresa(ctx.companyId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
   const { supabase, userId, companyId } = ctx;
 
   // Dedup por (owner_user_id, document) — PRD §6.4.
@@ -70,6 +73,8 @@ export async function updateClienteAction(id: string, input: ClienteInput): Prom
 
   const ctx = await getContext();
   if ('error' in ctx) return { ok: false, error: ctx.error };
+  const assinatura = await assertAssinaturaEmpresa(ctx.companyId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
   const { supabase, userId } = ctx;
 
   const { data, error } = await supabase
@@ -88,6 +93,8 @@ export async function updateClienteAction(id: string, input: ClienteInput): Prom
 export async function softDeleteClienteAction(id: string): Promise<ActionResult> {
   const ctx = await getContext();
   if ('error' in ctx) return { ok: false, error: ctx.error };
+  const assinatura = await assertAssinaturaEmpresa(ctx.companyId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
   const { supabase, userId } = ctx;
 
   const { data, error } = await supabase

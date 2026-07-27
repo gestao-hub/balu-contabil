@@ -9,6 +9,7 @@ import { ABERTURA_TEXT_FIELDS, DOC_KEYS, EMPTY_ABERTURA, type AberturaData, type
 import { uploadAberturaDoc, uploadToBucket, ABERTURA_BUCKET, downloadFromBucket } from '@/lib/clients/supabase-storage';
 import { canonical, dadosHash, sha256File } from '@/lib/abertura/hash';
 import { parseAberturaForm as parseForm, aberturaFileEntry as fileEntry } from '@/lib/abertura/form';
+import { assertAssinaturaEmpresa } from '@/lib/billing/gate';
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -27,6 +28,12 @@ export async function submitAberturaAction(fd: FormData): Promise<Result> {
     const { data: compGuard } = await supabase.from('companies').select('status').eq('id', profGuard.current_company).maybeSingle();
     const st = (compGuard as { status?: string } | null)?.status;
     if (st && st !== 'em_abertura') return { ok: false, error: 'Você já possui uma empresa ativa.' };
+    // Gate de assinatura (Bloco 4A). Reusa o current_company já lido acima —
+    // uma segunda leitura poderia divergir e foi assim que o Bloco 3 gravou
+    // na empresa errada. Quem NÃO tem empresa ainda passa direto: é o
+    // primeiro acesso, não há assinatura a cobrar.
+    const assinatura = await assertAssinaturaEmpresa(profGuard.current_company as string);
+    if (!assinatura.ok) return { ok: false, error: assinatura.error };
   }
 
   // Pré-checa CPF (coluna UNIQUE)

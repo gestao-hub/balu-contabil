@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { HonorarioV2Schema } from '@/types/zod';
+import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -28,6 +29,8 @@ function hojeBR(): string {
 export async function createHonorarioV2Action(input: unknown): Promise<ActionResult<{ id: string }>> {
   const ctx = await requireEscritorioAprovado();
   if ('ok' in ctx) return ctx;
+  const assinatura = await assertAssinaturaEscritorio(ctx.id);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const parsed = HonorarioV2Schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
@@ -73,6 +76,8 @@ export async function updateHonorarioV2Action(id: string, input: unknown): Promi
   if (!id) return { ok: false, error: 'ID ausente.' };
   const ctx = await requireEscritorioAprovado();
   if ('ok' in ctx) return ctx;
+  const assinatura = await assertAssinaturaEscritorio(ctx.id);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const parsed = HonorarioV2Schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
@@ -116,6 +121,8 @@ export async function marcarPagoV2Action(id: string, forma_pagamento: string): P
   if (!id) return { ok: false, error: 'ID ausente.' };
   const ctx = await requireEscritorioAprovado();
   if ('ok' in ctx) return ctx;
+  const assinatura = await assertAssinaturaEscritorio(ctx.id);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const admin = createAdminClient();
   const { error } = await admin
@@ -143,6 +150,8 @@ export async function desmarcarPagoV2Action(id: string): Promise<ActionResult> {
   if (!id) return { ok: false, error: 'ID ausente.' };
   const ctx = await requireEscritorioAprovado();
   if ('ok' in ctx) return ctx;
+  const assinatura = await assertAssinaturaEscritorio(ctx.id);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const admin = createAdminClient();
   const { error } = await admin
@@ -170,6 +179,8 @@ export async function deleteHonorarioV2Action(id: string): Promise<ActionResult>
   if (!id) return { ok: false, error: 'ID ausente.' };
   const ctx = await requireEscritorioAprovado();
   if ('ok' in ctx) return ctx;
+  const assinatura = await assertAssinaturaEscritorio(ctx.id);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const admin = createAdminClient();
   const { error } = await admin
