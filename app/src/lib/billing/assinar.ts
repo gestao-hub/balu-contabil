@@ -80,7 +80,14 @@ export async function criarAssinaturaNoAsaas(
       description: `Balu — ${plano.nome}`,
     });
 
-    const venceEm = assinatura.nextDueDate ?? vencimento;
+    // ⚠️ NAO usar `assinatura.nextDueDate` da resposta. Medido contra o
+    // sandbox em 2026-07-27: pedindo nextDueDate=2026-07-30, o Asaas cria a
+    // primeira cobranca vencendo em 30/07 e DEVOLVE nextDueDate=2026-08-30
+    // — o vencimento do ciclo SEGUINTE. Usa-lo como "liberado ate" daria um
+    // mes inteiro de acesso a quem nao pagasse o primeiro boleto, e a tela
+    // anunciaria "proxima cobranca em 30/08" com um boleto vencendo em
+    // 30/07. O que vale e a data que NOS pedimos.
+    const venceEm = vencimento;
 
     // NAO vira 'ativa' aqui: quem confirma pagamento e o webhook.
     //

@@ -8,16 +8,33 @@ import 'server-only';
 const PROD    = 'https://api.asaas.com';
 const SANDBOX = 'https://api-sandbox.asaas.com';
 
-function base(): string {
-  return process.env.ASAAS_ENV === 'prod' ? PROD : SANDBOX;
+/** 'prod' só quando explicitamente pedido. Qualquer outro valor — inclusive
+ *  ausente — é sandbox: o default nunca pode ser o que cobra de verdade. */
+function ehProd(): boolean {
+  return process.env.ASAAS_ENV === 'prod';
 }
 
-/** Falha na CHAMADA, nunca no import: o app tem de subir e funcionar
- *  inteiro sem billing enquanto a chave nao chega. Mesmo espirito do
- *  sendEmail, que ja e no-op logado sem chave. */
+function base(): string {
+  return ehProd() ? PROD : SANDBOX;
+}
+
+/**
+ * Token POR AMBIENTE, e não um `ASAAS_API_KEY` único.
+ *
+ * O ambiente e o token andam juntos: token de sandbox na URL de produção (ou
+ * o contrário) dá 401, e um token único convida a apontar a chave de
+ * produção para o sandbox sem perceber. É a mesma separação que a Focus faz
+ * entre `token_homologacao` e `token_producao` — e a lição do Bloco 5, onde
+ * "env e token mudam juntos" está registrado como landmine.
+ *
+ * Falha na CHAMADA, nunca no import: o app tem de subir e funcionar inteiro
+ * sem billing enquanto a chave não chega — mesmo espírito do `sendEmail`,
+ * que já é no-op logado sem chave.
+ */
 function apiKey(): string {
-  const k = process.env.ASAAS_API_KEY;
-  if (!k) throw new Error('ASAAS_API_KEY nao configurado');
+  const nome = ehProd() ? 'TOKEN_ASAAS_PRODUCAO' : 'TOKEN_ASAAS_SANDBOX';
+  const k = process.env[nome];
+  if (!k) throw new Error(`${nome} nao configurado`);
   return k;
 }
 
