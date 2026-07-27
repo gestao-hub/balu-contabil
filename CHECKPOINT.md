@@ -1,7 +1,39 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-26 (sessão 10 — **Bloco 3 VALIDADO AO VIVO e MERGEADO em `main`** (`faa6ef1`, `--no-ff`, pushed → auto-deploy). O smoke manual achou **6 bugs**, todos corrigidos antes do merge. `tsc` 0 · vitest **568/568 + 9 pulados** · build limpo. Seeds restaurados, nenhuma migration pendente. **Blocos 1, 2 e 3 estão em `main` e no ar.**)
+> **Última atualização:** 2026-07-27 (sessão 11 — **Bloco 4 desenhado e planejado; nenhuma linha de código ainda.** O bloco foi dividido em **4A** (a Balu cobrando) e **4B** (o escritório cobrando via subconta Asaas). Specs e plano do 4A commitados na branch `bloco-4-billing-asaas`. PDF explicativo para o Michel gerado. **Blocos 1, 2 e 3 seguem em `main` e no ar.**)
+
+---
+
+## Sessão 11 (2026-07-27) — Bloco 4: spec, divisão em 4A/4B e plano
+
+**Nada de código foi escrito.** A sessão produziu desenho, plano e material para o Michel. Branch `bloco-4-billing-asaas` (3 commits, só documentos): `694774e` spec inicial · `54b714a` divisão 4A/4B · `ab3bba1` plano do 4A.
+
+**Decisão de rota do usuário:** deixar pronto **tudo que dá para construir sem as chaves**, e trazer as credenciais depois só para validar. Ordem acordada: **4 → 5 (andaime da flag) → 6 (IA + WhatsApp) → 7**.
+
+**Duas decisões fechadas antes do desenho:**
+- **A entrega da DASN/DEFIS continua exigindo o formulário completo** — resolve a "decisão em aberto" que a sessão 10 deixou. Segue a decisão nº 3 da spec do Bloco 3; nada muda no código.
+- **O Bloco 4 virou dois.** O usuário reverteu a proposta de deixar honorários fora, por princípio: **a Balu não pode intermediar dinheiro de terceiro**. Isso descartou também o *split* (que eu não tinha examinado direito — numa cobrança com split a cobrança ainda pertence à conta da Balu e o dinheiro passa por ela). Só **subconta por escritório** resolve. Como isso é outro produto, virou o 4B.
+
+**Bloco 4A — a Balu cobrando** (`docs/superpowers/specs/2026-07-27-bloco-4a-assinatura-balu-design.md` + plano de 15 tasks TDD em `docs/superpowers/plans/2026-07-27-bloco-4a-assinatura-balu.md`):
+- Migration `0050`: `planos`, `assinaturas`, `cobrancas`. Titular por duas FKs anuláveis com `CHECK` de exclusividade. **Trigger** cria a assinatura em trial no INSERT de `company`/`contabilidade` — `company` nasce em vários caminhos e espalhar a criação pelas actions garantiria esquecer um. **Cortesia para tudo que já existe**, senão o deploy bloqueia os pilotos e as contas de vocês.
+- **Duas fronteiras inegociáveis do gate**, e são o miolo do bloco: (1) nunca alcança **obrigação legal com prazo** (gerar DAS, registrar declaração, transmitir PGDAS-D) — bloquear vira multa da Receita para o usuário, dano de terceiro desproporcional à dívida e exposição pelo CDC art. 39; (2) nunca alcança **direito do titular** — LGPD art. 18 (acesso, correção, portabilidade, eliminação) e o §5º, que obriga atendimento **sem custo**; inadimplência não é hipótese legal de suspensão desses direitos. Consequência de interface: a faixa de aviso de cobrança **não aparece** nas telas de direito do titular.
+- Trial de **7 dias**; preço, faixas e trial editáveis pelo AdminBalu em `/admin/assinaturas` — mudar preço virou operação, não deploy. Isso criou um caso novo: o admin pode gerar **buraco entre faixas**, tratado explicitamente.
+- Escritório inadimplente **não trava a carteira** (o empresário não é parte do contrato e não tem como quitar). Consequência aceita: escritório que nunca assinou não trava os clientes.
+- Status **derivado na leitura**, nunca lido cru da coluna — cron que falha não pode liberar quem devia bloquear nem bloquear quem pagou.
+
+**Bloco 4B — o escritório cobrando** (`docs/superpowers/specs/2026-07-27-bloco-4b-subcontas-escritorio-design.md`, **design decidido, pendente de revisão própria**): subconta criada pela API da Balu (a cobrança nasce na subconta, o credor é o escritório, o dinheiro liquida na conta dele); honorários; catálogo de avulsos gerido pelo escritório, aceitando **valor fixo ou percentual** (recuperação de crédito é percentual). Risco central registrado: a Balu passa a guardar credencial que **movimenta dinheiro de terceiro** — mais sensível que a service role; cifrar com `cifrarCampo` (que hoje não tem uso em runtime, o landmine anotado no Bloco E ganha seu primeiro ciclo legítimo). Criar subconta em **produção** provavelmente exige aprovação comercial do Asaas, não só chave.
+
+**Três erros do PRD derrubados pela auditoria do código real:**
+1. `notifications.tipo` tem **CHECK de lista fechada** (`0045:10-12`) — aviso de cobrança sem `ALTER` falha em runtime, não em compilação.
+2. `api/webhooks/segredo.ts` **não existe**; o real está dentro de `focus/`, lê da query `?s=` e tem `FOCUS_WEBHOOK_SECRET` hardcoded. É extração, não reuso — e o teste da Focus é a rede de segurança.
+3. **`vercel.json` já tem 2 crons e o plano Hobby permite exatamente 2.** A Task 13 confirma o tier antes de criar o terceiro; se for Hobby, a reconciliação entra no cron diário que já existe.
+
+**Correção ao PRD sobre o Bloco 6:** a conta Envia.Click conectada é a **do próprio Grupo Ide** (inboxes Eight Brand / Luan Suporte IA / Suporte Envia.Click, 2 agentes de IA ativos). A chave de API do Envia.Click **não é dependência do Michel** — a plataforma é de vocês. Mas **não há inbox de WhatsApp** (só `WebWidget` e `Api`), então o WABA do Balu segue faltando.
+
+**PDF para o Michel:** `Direcionamento/Balu-Como-vai-funcionar-a-cobranca-2026-07-27.pdf` (5 páginas, linguagem de negócio, sem termo técnico). Explica os dois tipos de cobrança, o que trava e o que nunca trava (com o porquê jurídico), a subconta, e reúne **7 perguntas abertas** para ele responder.
+
+**RETOMAR EM:** executar o plano do 4A a partir da Task 1 (migration `0050`). Nada trava — as tasks 1 a 14 dispensam credencial; só o smoke da Task 15 espera a chave do sandbox do Asaas.
 
 ---
 
@@ -39,7 +71,8 @@
 | 1 — Motor Obrigações/Notificações | ✅ em `main` |
 | 2 — Abertura digital completa | ✅ em `main` |
 | 3 — DASN/DEFIS assistidas | ✅ em `main` (esta sessão) |
-| 4 — Billing Asaas | 🔒 credencial do Michel |
+| 4A — Assinatura da Balu | 📋 spec + plano prontos (sessão 11); construível sem chave |
+| 4B — Subcontas do escritório | 📋 design decidido, pendente de revisão própria |
 | 5 — Produção Fiscal | 🔒 credencial do Michel (token Focus não é de revenda) |
 | 6 — WhatsApp/IA (Envia.Click + Claude) | 🔒 credencial do Michel |
 | 7 — Domínio/SLA/Conciliação | 🔒 depende do 4 |
