@@ -1,17 +1,24 @@
 # Roteiro do smoke manual — Bloco 4A (Assinatura da Balu)
 
-> **Status:** **em execução — falta só o §3-bis e o §4** · **Escrito em:** 2026-07-27
+> **Status:** ✅ **CONCLUÍDO em 2026-07-27** — todas as seções passaram · **Escrito em:** 2026-07-27
 > **Branch:** `bloco-4-billing-asaas` · **Spec:** `docs/superpowers/specs/2026-07-27-bloco-4a-assinatura-balu-design.md`
 > **Cenário já preparado no banco** — ver §5 antes de recriar qualquer coisa.
 
-## ⛔ RETOMAR AQUI
+## ✅ SMOKE CONCLUÍDO
 
-**Falta:** o **§3-bis** (liberação manual do admin, agora com comprovante obrigatório) e o
-**fechamento** (§4). Todo o resto passou.
+Todas as seções passaram, incluindo o §3-bis (liberação manual com comprovante
+obrigatório, migration 0052) que nunca tinha sido exercido.
 
-O escritório já está **`inadimplente` e sem contrato** — é a condição que o §3-bis pede,
-nada a rearmar. Logar como **admin** (`eufacopublicidade+admin@gmail.com`) e rodar L.1→L.9.
-Em seguida o **§4**.
+**Fechamento executado:** escritório de volta a `cortesia` sem contrato, `ideapp` na
+carteira sem assinatura própria, comprovantes de teste apagados do bucket,
+`_verify-0050` com `cortesia=3` e zero órfãos. Suíte **731/731** (27 pulados) sem o
+cenário montado, `next build` com o dev parado: **0 erros, 0 warnings, 46 rotas**.
+
+**Achado do fechamento:** o primeiro relato de "L.1 ao L.9 prontos" não batia com o
+`audit_log` — havia uma liberação e nenhum revogar. O L.8 e o L.9 foram então rodados
+de fato, e só aí a promessa central do desenho foi provada: **3 liberações, 3 paths
+distintos**, os dois arquivos convivendo no bucket, e o comprovante permanecendo na
+linha depois do revogar. Conferir o banco antes de aceitar um "passou" é barato.
 
 ### O que já passou
 
@@ -21,7 +28,8 @@ Em seguida o **§4**.
 | §2.1–2.3 — gate do escritório, incluindo declaração anual liberada | ✅ |
 | §3 — empresário: bloqueio, DAS liberado, exportar liberado, contratar, pagar, cancelar | ✅ |
 | §2.4–2.6 — cliente não sente a inadimplência do escritório | ✅ |
-| §3-bis — liberação manual pelo admin, agora **com comprovante obrigatório** | ⬜ não testada |
+| §3-bis — liberação manual pelo admin, **com comprovante obrigatório** (L.1→L.9) | ✅ |
+| §4 — fechamento, suíte sem cenário e build | ✅ |
 
 ### Os 8 bugs que este smoke achou
 

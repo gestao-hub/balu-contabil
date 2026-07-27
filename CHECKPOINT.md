@@ -1,22 +1,53 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-27 (sessão 12 — **smoke manual do Bloco 4A em execução, parou no §2.4.** Branch `bloco-4-billing-asaas`, 24 commits. `tsc` 0 · **107 testes de billing passando** · migrations `0050` e `0051` aplicadas em produção. **O smoke achou 8 bugs** que nenhum teste pegava, todos corrigidos, e o usuário mudou **duas regras de produto** no caminho. **Blocos 1, 2 e 3 seguem em `main` e no ar.**)
+> **Última atualização:** 2026-07-27 (sessão 13 — **smoke do Bloco 4A CONCLUÍDO e 4A fechado.** Branch `bloco-4-billing-asaas`, 38 commits. `tsc` 0 · **vitest 731/731** (27 pulados) · `next build` 0 erros / 46 rotas · migrations `0050`, `0051` e `0052` aplicadas em produção. O smoke da sessão 12 achou **8 bugs**; a 13 fechou o §2.4–2.6 e o §3-bis, e o usuário pediu uma regra nova: **comprovante obrigatório na liberação manual** (migration 0052). **Blocos 1, 2 e 3 em `main` e no ar.**)
 
-> ## ⛔ AO RETOMAR: mostrar o roteiro do smoke ao usuário
-> O smoke do Bloco 4A **já rodou até o §2.3**. Falta o lado do empresário com o
-> escritório inadimplente (**§2.4, §2.5, §2.6**) e o **fechamento (§4)**.
-> Roteiro, progresso e ponto exato de retomada em
-> **`docs/smoke/2026-07-27-bloco-4a-roteiro-smoke.md`** — o cabeçalho dele tem um
-> bloco "RETOMAR AQUI" com o comando único para rearmar o cenário.
-> Pedido explícito do usuário: **entregar esse roteiro logo na retomada**, sem
-> ele precisar pedir.
+> ## ▶ AO RETOMAR: o próximo alvo é o **Bloco 4B**
+> O 4A está **fechado** — smoke concluído, roteiro em
+> `docs/smoke/2026-07-27-bloco-4a-roteiro-smoke.md` marcado ✅. **Não há smoke
+> pendente.**
 >
-> **Antes dos três passos**, o escritório precisa voltar a bloqueado (hoje está
-> `ativa` e pago):
-> ```
-> node app/scratchpad/_rearmar-contratacao.mjs escritorio inadimplente
-> ```
+> O usuário decidiu na sessão 13: **fechar o Bloco B inteiro (4A + 4B)**. O
+> passo imediato é o **§7 da spec do 4B**
+> (`docs/superpowers/specs/2026-07-27-bloco-4b-subcontas-escritorio-design.md`):
+> **5 pontos de decisão** que precisam da resposta dele antes de existir plano.
+> Duas dependências externas seguem de pé: aprovação comercial do Asaas para
+> criação de subcontas, e as premissas do Michel (§8 da spec).
+
+---
+
+## Sessão 13 (2026-07-27) — smoke do 4A concluído + comprovante obrigatório (0052)
+
+**O smoke fechou, e ainda gerou uma regra de produto nova no caminho** — a terceira do bloco. 4 commits (`b163e89` → o merge).
+
+### O que passou
+
+`§2.4–2.6` (o cliente não sente a inadimplência do escritório: emitir nota funciona, `/conta` sem faixa de cobrança, tela de assinatura explicando que quem paga é o escritório) e `§3-bis` completo (L.1→L.9), que **nunca tinha sido exercido**.
+
+### Decisão de produto nº 3: comprovante obrigatório na liberação manual
+
+Pedido do usuário no meio do §3-bis. **Não existe liberação sem arquivo anexado.** A justificativa é de auditoria: a liberação manual é a única porta que destrava o gate sem passar pelo Asaas, e o único lastro era um texto livre digitado pelo próprio admin que liberou — que não distingue "o cliente mandou o comprovante do boleto" de "alguém liberou um conhecido".
+
+**Migration 0052:** quatro colunas em `assinaturas` (path, nome, mime, tamanho) + bucket privado `liberacoes-comprovantes`. O path é **único por upload** (carimbo de tempo), nunca sobrescrito: o `audit_log` guarda o path de cada liberação, e um path reaproveitado apontaria para o arquivo errado — pior que não ter histórico, porque parece certo.
+
+**A lista de formatos virou de PERMISSÃO, por decisão do usuário.** Eu tinha feito lista de bloqueio (barrar executável, deixar o resto passar) com o argumento de que, sendo o comprovante obrigatório, uma lista estreita não aperta a segurança — impede a liberação de quem já pagou. O usuário barrou: só carrega o que está listado. O argumento sobrevive na **largura** da lista: PDF, JPG/PNG/**HEIC**/WEBP/GIF/BMP/TIFF/AVIF, TXT/RTF/DOC/DOCX/ODT, CSV/XLS/XLSX/ODS, EML/MSG. Formato legítimo que falte se resolve acrescentando uma linha.
+
+**Um bug meu, achado pelo usuário na tela:** eu validava só no "Confirmar", então escolher um `.exe` o deixava **listado como se tivesse sido aceito** e a recusa vinha no envio. Agora a validação é **na escolha** — o arquivo recusado nunca chega a ser o selecionado, o input é limpo e o erro aparece sob o campo. O `accept` do input sai da **mesma constante** da validação do servidor, com teste que falha se divergirem.
+
+Nada é servido inline: a signed URL força `attachment`, dura 5 min e é gerada **no clique**, não junto com a lista — senão o HTML da página carregaria uma URL assinada por titular.
+
+### O achado de processo desta sessão
+
+O usuário relatou "L.1 ao L.9 prontos". O `audit_log` mostrava **uma** liberação e **nenhum** revogar — L.8 e L.9 não tinham rodado. Rodados de fato, provaram a promessa central do desenho: **3 liberações, 3 paths distintos**, os dois arquivos convivendo no bucket, comprovante permanecendo na linha depois do revogar. **Conferir o banco antes de aceitar um "passou" custa 30 segundos** e foi o que separou "testado" de "dito como testado".
+
+### Armadilha de ambiente reincidente
+
+O dev server caiu no meio da sessão com `_document.js` ausente e `clientReferenceManifest` indefinido. Causa: **dois `npm run dev` vivos** (um da sessão anterior, às 14:41, segurando a 3000; o meu na 3001) escrevendo o mesmo `.next/`. Mesmo estrago que `next build` com dev no ar. Conserto: matar os dois, `rm -rf .next`, subir **um**. Vale checar `Get-CimInstance Win32_Process` antes de subir o dev.
+
+### Scripts novos em `app/scratchpad/`
+
+`apply-0052.mjs` · `_reload-postgrest.mjs` (coluna nova sem reload = "column does not exist" pelo supabase-js) · `_probe-comprovante.mjs` (prova upload/signed URL/attachment/acesso público negado fora da tela) · `_ver-liberacoes.mjs` (audit + bucket + linha). O `_rearmar-contratacao.mjs` passou a apagar também os comprovantes do bucket — sem isso o fechamento "passa limpo" deixando arquivo de teste para trás.
 
 ---
 
@@ -143,7 +174,7 @@ Resposta à consequência aceita em (A): `/admin/configuracoes` com botão de **
 | 1 — Motor Obrigações/Notificações | ✅ em `main` |
 | 2 — Abertura digital completa | ✅ em `main` |
 | 3 — DASN/DEFIS assistidas | ✅ em `main` (esta sessão) |
-| 4A — Assinatura da Balu | 🟡 implementado e verificado; **aguardando smoke manual** e merge |
+| 4A — Assinatura da Balu | ✅ smoke concluído e mergeado em `main` (0050, 0051, 0052) |
 | 4B — Subcontas do escritório | 📋 design decidido, 5 pontos em aberto antes do plano |
 | 5 — Produção Fiscal | 🔒 credencial do Michel (token Focus não é de revenda) |
 | 6 — WhatsApp/IA (Envia.Click + Claude) | 🔒 credencial do Michel |
