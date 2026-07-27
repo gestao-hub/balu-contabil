@@ -11,6 +11,7 @@ import {
 } from './actions';
 import {
   validarComprovanteLiberacao, MAX_COMPROVANTE_LIBERACAO_BYTES,
+  ACCEPT_COMPROVANTE, FORMATOS_ACEITOS_TEXTO,
 } from '@/lib/billing/comprovante-liberacao';
 import { DIAS_LIBERACAO_PADRAO, MAX_DIAS_LIBERACAO } from './liberacao';
 
@@ -64,6 +65,7 @@ export default function LiberacoesAdmin({ titulares }: { titulares: TitularVm[] 
   const [dias, setDias] = useState(String(DIAS_LIBERACAO_PADRAO));
   const [motivo, setMotivo] = useState('');
   const [arquivo, setArquivo] = useState<File | null>(null);
+  const [erroArquivo, setErroArquivo] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [pending, start] = useTransition();
   const [baixando, setBaixando] = useState<string | null>(null);
@@ -76,8 +78,32 @@ export default function LiberacoesAdmin({ titulares }: { titulares: TitularVm[] 
   });
 
   function fechar() {
-    setAbrindo(null); setMotivo(''); setArquivo(null);
+    setAbrindo(null); setMotivo(''); setArquivo(null); setErroArquivo(null);
     setDias(String(DIAS_LIBERACAO_PADRAO));
+  }
+
+  /**
+   * Valida NA ESCOLHA, não no envio.
+   *
+   * Antes o arquivo recusado ficava listado como se tivesse sido aceito e só
+   * morria no "Confirmar" — a tela dizia uma coisa e o sistema fazia outra.
+   * Um arquivo que não serve nunca chega a ser o arquivo selecionado, e o
+   * `input` é limpo para o seletor não guardar o que foi recusado.
+   */
+  function escolher(e: React.ChangeEvent<HTMLInputElement>) {
+    setMsg(null);
+    const f = e.target.files?.[0] ?? null;
+    if (!f) { setArquivo(null); setErroArquivo(null); return; }
+
+    const v = validarComprovanteLiberacao({ nome: f.name, mime: f.type, tamanho: f.size });
+    if (!v.ok) {
+      setArquivo(null);
+      setErroArquivo(v.error);
+      e.target.value = '';
+      return;
+    }
+    setArquivo(f);
+    setErroArquivo(null);
   }
 
   function liberar(id: string) {
@@ -271,22 +297,26 @@ export default function LiberacoesAdmin({ titulares }: { titulares: TitularVm[] 
                   <label className="block text-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                       <Paperclip className="size-3 shrink-0" />
-                      Comprovante <strong className="text-foreground">obrigatório</strong> — foto, PDF,
-                      Word, texto, planilha, e-mail salvo. Até {MB(MAX_COMPROVANTE_LIBERACAO_BYTES)}
+                      Comprovante <strong className="text-foreground">obrigatório</strong> —{' '}
+                      {FORMATOS_ACEITOS_TEXTO}. Até {MB(MAX_COMPROVANTE_LIBERACAO_BYTES)}
                     </span>
                     <input
                       type="file"
-                      // Sem `accept` restritivo de propósito: com o comprovante
-                      // obrigatório, um filtro estreito esconderia do admin o
-                      // arquivo que o cliente mandou (HEIC, .msg) e travaria a
-                      // liberação de quem já pagou. O servidor barra o que é
-                      // executável; o resto passa.
-                      onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
+                      // `accept` filtra o seletor do sistema, mas é só sugestão
+                      // (dá para trocar para "todos os arquivos"). Quem decide
+                      // é o `escolher`, e o servidor revalida depois.
+                      accept={ACCEPT_COMPROVANTE}
+                      onChange={escolher}
                       className="mt-1 block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-surface file:px-2 file:py-1 file:text-sm file:text-muted-foreground-2 hover:file:border-primary hover:file:text-primary"
                     />
                     {arquivo && (
                       <span className="mt-1 block text-xs text-success">
                         {arquivo.name} · {MB(arquivo.size)}
+                      </span>
+                    )}
+                    {erroArquivo && (
+                      <span className="mt-1 block text-xs font-medium text-destructive">
+                        {erroArquivo}
                       </span>
                     )}
                   </label>

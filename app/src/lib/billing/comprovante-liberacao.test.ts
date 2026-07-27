@@ -6,6 +6,8 @@ import {
   extensaoDe,
   carimboDe,
   MAX_COMPROVANTE_LIBERACAO_BYTES,
+  ACCEPT_COMPROVANTE,
+  EXTENSOES_PERMITIDAS,
 } from './comprovante-liberacao';
 
 const ok = (p: Partial<{ nome: string; mime: string; tamanho: number }> = {}) => ({
@@ -17,9 +19,9 @@ describe('validarComprovanteLiberacao', () => {
     expect(validarComprovanteLiberacao(ok())).toEqual({ ok: true });
   });
 
-  // O ponto do bloco: comprovante e OBRIGATORIO, entao a lista e de BLOQUEIO.
-  // Se estes formatos fossem recusados, o admin ficaria sem poder liberar quem
-  // ja pagou so porque o cliente mandou foto de iPhone ou e-mail do Outlook.
+  // A lista de permissao e larga de proposito: e essa largura que evita travar
+  // a liberacao de quem ja pagou so porque o cliente mandou foto de iPhone ou
+  // e-mail do Outlook. Cada linha aqui e um formato que chega na pratica.
   it.each([
     ['foto do iPhone', 'IMG_0421.HEIC', 'image/heic'],
     ['print de tela', 'print.webp', 'image/webp'],
@@ -31,19 +33,37 @@ describe('validarComprovanteLiberacao', () => {
     ['planilha', 'extrato.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
     ['foto Android', 'foto.jpg', 'image/jpeg'],
     ['scan', 'scan.tiff', 'image/tiff'],
-    ['formato desconhecido', 'comprovante.xyz', 'application/octet-stream'],
-    ['sem extensao', 'comprovante', 'image/jpeg'],
+    ['camera que manda nome sem extensao', 'comprovante', 'image/jpeg'],
   ])('aceita %s', (_rotulo, nome, mime) => {
     expect(validarComprovanteLiberacao(ok({ nome, mime }))).toEqual({ ok: true });
   });
 
   it.each(['virus.exe', 'script.js', 'macro.bat', 'app.msi', 'shell.ps1', 'pagina.html', 'grafico.svg'])(
-    'recusa %s',
+    'recusa executavel ou script: %s',
     (nome) => {
       const r = validarComprovanteLiberacao(ok({ nome, mime: 'application/octet-stream' }));
       expect(r.ok).toBe(false);
     },
   );
+
+  // Antes passava (lista de bloqueio). O usuario decidiu que so carrega o que
+  // esta na lista: formato desconhecido na tela e indistinguivel de "deu
+  // certo" para um arquivo que ninguem consegue abrir depois.
+  it('recusa formato desconhecido', () => {
+    expect(validarComprovanteLiberacao(ok({ nome: 'comprovante.xyz', mime: 'application/octet-stream' })).ok)
+      .toBe(false);
+  });
+
+  it('recusa arquivo sem extensao e com MIME que nao diz nada', () => {
+    expect(validarComprovanteLiberacao(ok({ nome: 'comprovante', mime: 'application/octet-stream' })).ok)
+      .toBe(false);
+  });
+
+  it('a mensagem de recusa diz o que serve, nao so o que nao serve', () => {
+    const r = validarComprovanteLiberacao(ok({ nome: 'virus.exe' }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('PDF');
+  });
 
   // Truque classico: o navegador mostra o icone de PDF e o arquivo e executavel.
   // A checagem olha a extensao FINAL, nao a primeira.
@@ -67,6 +87,22 @@ describe('validarComprovanteLiberacao', () => {
 
   it('recusa nome vazio', () => {
     expect(validarComprovanteLiberacao(ok({ nome: '   ' })).ok).toBe(false);
+  });
+});
+
+describe('ACCEPT_COMPROVANTE', () => {
+  // O `accept` do input e a lista do servidor tem de sair da MESMA fonte. Se
+  // divergirem, o seletor esconde um formato que o servidor aceitaria (ou
+  // oferece um que ele recusa) — e o admin descobre no clique.
+  it('cobre exatamente as extensoes permitidas', () => {
+    expect(ACCEPT_COMPROVANTE.split(',')).toEqual(EXTENSOES_PERMITIDAS.map((e) => `.${e}`));
+  });
+
+  it('todo formato oferecido no seletor passa na validacao', () => {
+    for (const ext of EXTENSOES_PERMITIDAS) {
+      const r = validarComprovanteLiberacao({ nome: `arquivo.${ext}`, mime: '', tamanho: 10 });
+      expect(r, `extensao .${ext} recusada`).toEqual({ ok: true });
+    }
   });
 });
 

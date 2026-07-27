@@ -4,13 +4,16 @@
 // cobre a regra sem subir banco nem bucket. Mesmo desenho de
 // `lib/fiscal/declaracoes-anuais/comprovante.ts`.
 //
-// POR QUE LISTA DE BLOQUEIO E NÃO LISTA DE PERMISSÃO: aqui o comprovante é
-// OBRIGATÓRIO. Uma lista de permissão estreita não "aperta a segurança", ela
-// **impede a liberação** — o admin recebe um HEIC do iPhone, um .msg do
-// Outlook ou um print .webp e fica sem poder destravar quem já pagou. Como o
-// arquivo nunca é executado, nunca é servido inline (a signed URL força
-// download) e vive em bucket privado, o risco real está nos formatos
-// executáveis. São esses que a lista barra.
+// LISTA DE PERMISSÃO (decisão do usuário, 27/07): só carrega o que está
+// listado. A alternativa — barrar apenas executável e deixar passar o resto —
+// aceitava formato desconhecido, e na tela isso é indistinguível de "deu
+// certo" para um arquivo que ninguém consegue abrir depois.
+//
+// A lista é DELIBERADAMENTE larga, e essa largura é a mitigação do risco de
+// travar quem já pagou: entram HEIC do iPhone, .msg do Outlook, .eml, print
+// em webp e scan em tiff, porque é o que chega na prática. Apareceu um
+// formato legítimo fora dela, o conserto é acrescentar aqui — uma linha —, e
+// não afrouxar a regra.
 
 /** 10 MB. O limite real é o `serverActions.bodySizeLimit` de 20 MB do
  *  next.config.ts, e o base64 do payload infla o arquivo em ~33% (10 MB viram
@@ -20,22 +23,36 @@ export const MAX_COMPROVANTE_LIBERACAO_BYTES = 10 * 1024 * 1024;
 
 export const BUCKET_COMPROVANTES_LIBERACAO = 'liberacoes-comprovantes';
 
-/** Executável, script ou atalho — nada disso é comprovante de pagamento, e é
- *  o único grupo cujo dano não depende de como o arquivo é servido. A checagem
- *  olha a extensão FINAL, então `comprovante.pdf.exe` cai aqui. */
-const EXTENSOES_BLOQUEADAS = new Set([
-  'exe', 'com', 'bat', 'cmd', 'msi', 'scr', 'pif', 'cpl', 'hta', 'reg', 'lnk',
-  'jar', 'apk', 'app', 'dmg', 'deb', 'rpm', 'dll', 'so', 'bin',
-  'js', 'mjs', 'cjs', 'vbs', 'vbe', 'wsf', 'wsh', 'ps1', 'psm1', 'sh', 'bash',
-  'php', 'py', 'rb', 'pl', 'jsp', 'asp', 'aspx',
-  // Marcação que um navegador renderiza: não é comprovante de nada e abre a
-  // porta para phishing hospedado no domínio do storage.
-  'html', 'htm', 'xhtml', 'svg', 'swf',
-]);
+/** O que serve como comprovante. A checagem olha a extensão FINAL, então
+ *  `comprovante.pdf.exe` é `exe` e não entra. */
+export const EXTENSOES_PERMITIDAS = [
+  // Documento
+  'pdf',
+  // Foto e print — heic/heif são o padrão do iPhone; webp, o de print no Chrome
+  'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'avif',
+  // Texto e editor
+  'txt', 'rtf', 'doc', 'docx', 'odt',
+  // Planilha e extrato
+  'csv', 'xls', 'xlsx', 'ods',
+  // E-mail salvo: como muita gente encaminha o comprovante do banco
+  'eml', 'msg',
+] as const;
 
-/** Só para dar extensão a arquivo que chega sem nenhuma (câmera de alguns
- *  Androids manda `image` cru). Não é lista de permissão: MIME fora daqui
- *  passa, apenas sem extensão inferida. */
+const PERMITIDAS = new Set<string>(EXTENSOES_PERMITIDAS);
+
+/** Valor do `accept` do `<input type="file">`. É só uma sugestão ao seletor do
+ *  sistema — dá para escolher "todos os arquivos" e furar —, por isso a
+ *  validação de verdade acontece na escolha (cliente) e de novo no servidor. */
+export const ACCEPT_COMPROVANTE = EXTENSOES_PERMITIDAS.map((e) => `.${e}`).join(',');
+
+/** Para a mensagem de erro: dizer o que serve é mais útil que dizer o que não
+ *  serve, e é o que evita a segunda tentativa errada. */
+export const FORMATOS_ACEITOS_TEXTO =
+  'PDF, foto (JPG, PNG, HEIC, WEBP), Word, texto, planilha ou e-mail salvo';
+
+/** Extensão a partir do MIME, para arquivo que chega sem nenhuma no nome
+ *  (câmera de alguns Androids manda `image` cru). Sem isto, uma foto legítima
+ *  cairia como "sem extensão" e seria recusada. */
 const EXT_POR_MIME: Record<string, string> = {
   'application/pdf': 'pdf',
   'image/png': 'png',
@@ -84,8 +101,11 @@ export function validarComprovanteLiberacao(c: ComprovanteEntrada): ResultadoVal
     return { ok: false, error: 'O comprovante passa de 10 MB. Reduza o arquivo e tente de novo.' };
   }
   const ext = extensaoDe(nome, c.mime);
-  if (EXTENSOES_BLOQUEADAS.has(ext)) {
-    return { ok: false, error: `Arquivo .${ext} não é aceito como comprovante. Envie o documento, a foto ou o PDF.` };
+  if (!ext) {
+    return { ok: false, error: `Arquivo sem extensão reconhecida. Envie ${FORMATOS_ACEITOS_TEXTO}.` };
+  }
+  if (!PERMITIDAS.has(ext)) {
+    return { ok: false, error: `Arquivo .${ext} não serve como comprovante. Envie ${FORMATOS_ACEITOS_TEXTO}.` };
   }
   return { ok: true };
 }
