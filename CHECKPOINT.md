@@ -1,7 +1,14 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-27 (sessão 11 — **Bloco 4 desenhado e planejado; nenhuma linha de código ainda.** O bloco foi dividido em **4A** (a Balu cobrando) e **4B** (o escritório cobrando via subconta Asaas). Specs e plano do 4A commitados na branch `bloco-4-billing-asaas`. PDF explicativo para o Michel gerado. **Blocos 1, 2 e 3 seguem em `main` e no ar.**)
+> **Última atualização:** 2026-07-27 (sessão 11 — **Bloco 4A IMPLEMENTADO, revisado e depurado; aguardando o smoke manual do usuário.** Branch `bloco-4-billing-asaas`, 16 commits. `tsc` 0 · vitest **680 passando, 27 pulados** · build limpo · **E2E 6/6 contra o sandbox real do Asaas**. **15 bugs corrigidos** (11 da revisão + 2 do debugging + 2 achados pela chave do sandbox). Migration `0050` aplicada em produção. **Blocos 1, 2 e 3 seguem em `main` e no ar.**)
+
+> ## ⛔ AO RETOMAR: mostrar o roteiro do smoke ao usuário
+> O próximo passo do Bloco 4A é o **smoke manual dele**. O roteiro completo, com
+> comandos, valores esperados e o cenário já preparado, está em
+> **`docs/smoke/2026-07-27-bloco-4a-roteiro-smoke.md`**.
+> Pedido explícito do usuário: **entregar esse roteiro logo na retomada**, sem
+> ele precisar pedir.
 
 ---
 
@@ -33,7 +40,27 @@
 
 **PDF para o Michel:** `Direcionamento/Balu-Como-vai-funcionar-a-cobranca-2026-07-27.pdf` (5 páginas, linguagem de negócio, sem termo técnico). Explica os dois tipos de cobrança, o que trava e o que nunca trava (com o porquê jurídico), a subconta, e reúne **7 perguntas abertas** para ele responder.
 
-**RETOMAR EM:** executar o plano do 4A a partir da Task 1 (migration `0050`). Nada trava — as tasks 1 a 14 dispensam credencial; só o smoke da Task 15 espera a chave do sandbox do Asaas.
+### Implementação do 4A (mesma sessão) — 15 tasks executadas, 16 commits
+
+**Migration `0050` aplicada e verificada em produção:** `planos`, `assinaturas`, `cobrancas`, RLS, e a **trigger** que cria assinatura em trial no INSERT de `company`/`contabilidade` (trigger e não chamada nas actions porque `company` nasce em vários caminhos). **Cortesia para tudo que já existia** — 3 titulares, zero órfãos: o deploy não bloqueia ninguém.
+
+**15 bugs corrigidos.** Os cinco que valem lembrar:
+
+1. **Não existia caminho para assinar.** `criarCliente`/`criarAssinatura` tinham **zero chamadores**: no dia 8 o trial acabava, as 22 actions barravam e a única ação na tela era "cancelar". Falha da **minha spec**, não da implementação — o §9.2 listava o que a tela mostra e nunca previu contratar.
+2. **A reconciliação desfazia o gate toda madrugada.** Promovia por `remota.status === 'ACTIVE'`, mas status de *subscription* não é status de *pagamento*: fica ACTIVE com cobrança vencida. Todo `PAYMENT_OVERDUE` era revertido na noite seguinte. Passou a reconciliar pelas **cobranças**.
+3. **O `upsert` do PostgREST manda NULL nas colunas ausentes** — provado contra o banco. A correção anterior do `pago_em` **causava** o bug que pretendia evitar. O padrão certo (`update` parcial) já estava no webhook da Focus. A persistência saiu da route para `lib/billing/cobranca.ts`, onde dá para testar.
+4. **`TOKEN_ASAAS_SANDBOX` vs `ASAAS_API_KEY`** — o incidente do Resend se repetindo. Adotada a nomenclatura do usuário (token separado por ambiente), que é melhor: impossível rodar sandbox com chave de produção.
+5. **`nextDueDate` da resposta do Asaas é o ciclo SEGUINTE.** Pedindo 30/07 ele cria a cobrança em 30/07 e devolve 30/08. Usá-lo como "liberado até" dava **um mês de acesso grátis** a quem não pagasse. Só apareceu falando com o sandbox real.
+
+**Duas fronteiras do gate, fixadas por teste nos dois sentidos** (`cobertura-gate.test.ts`, 45 casos): nunca alcança **obrigação legal com prazo** (11 actions) nem **direito do titular** (LGPD art. 18, 7 actions). Três actions entraram na lista de "nunca" durante a execução: `criarContabilidadeAction` (o escritório ainda não existe), `removerClienteDaCarteiraAction` (reduzir a carteira **baixa** a fatura) e `removerMembroAction` (tirar acesso é segurança).
+
+**Cron:** o projeto está no plano **Hobby** da Vercel (2 crons, e o `vercel.json` já tem 2), então `rodarBilling` é chamada de dentro de `/api/cron/obrigacoes`, **por último** — timeout de wall-clock não é capturável por `try/catch`, e a materialização das obrigações tem prazo legal.
+
+**⚠️ Armadilha nova:** `next build` recusa export extra em `route.ts` e **`tsc --noEmit` não pega** (a validação vive nos tipos gerados em `.next/types`). `tsc` limpo não é garantia neste repo.
+
+**RETOMAR EM: o smoke manual do usuário.** Roteiro completo em **`docs/smoke/2026-07-27-bloco-4a-roteiro-smoke.md`** — mostrar a ele logo na retomada, é pedido explícito. O cenário do §3 (empresa `ideapp` desvinculada da carteira, com assinatura própria) pode estar montado; conferir com `node app/scratchpad/destravar-empresario.mjs estado`. Passando o smoke: restaurar tudo → suíte sem o cenário → build com o dev parado → merge `--no-ff` → **confirmar antes do push** (auto-deploy).
+
+**Depois do 4A:** o **4B** (subcontas do escritório) tem spec de design mas **5 pontos em aberto no §7** que precisam de decisão antes do plano.
 
 ---
 
@@ -71,8 +98,8 @@
 | 1 — Motor Obrigações/Notificações | ✅ em `main` |
 | 2 — Abertura digital completa | ✅ em `main` |
 | 3 — DASN/DEFIS assistidas | ✅ em `main` (esta sessão) |
-| 4A — Assinatura da Balu | 📋 spec + plano prontos (sessão 11); construível sem chave |
-| 4B — Subcontas do escritório | 📋 design decidido, pendente de revisão própria |
+| 4A — Assinatura da Balu | 🟡 implementado e verificado; **aguardando smoke manual** e merge |
+| 4B — Subcontas do escritório | 📋 design decidido, 5 pontos em aberto antes do plano |
 | 5 — Produção Fiscal | 🔒 credencial do Michel (token Focus não é de revenda) |
 | 6 — WhatsApp/IA (Envia.Click + Claude) | 🔒 credencial do Michel |
 | 7 — Domínio/SLA/Conciliação | 🔒 depende do 4 |
