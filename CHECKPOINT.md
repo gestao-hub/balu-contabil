@@ -3,17 +3,37 @@
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
 > **Última atualização:** 2026-07-27 (sessão 13 — **smoke do Bloco 4A CONCLUÍDO e 4A fechado.** Branch `bloco-4-billing-asaas`, 38 commits. `tsc` 0 · **vitest 731/731** (27 pulados) · `next build` 0 erros / 46 rotas · migrations `0050`, `0051` e `0052` aplicadas em produção. O smoke da sessão 12 achou **8 bugs**; a 13 fechou o §2.4–2.6 e o §3-bis, e o usuário pediu uma regra nova: **comprovante obrigatório na liberação manual** (migration 0052). **Blocos 1, 2 e 3 em `main` e no ar.**)
 
-> ## ▶ AO RETOMAR: o próximo alvo é o **Bloco 4B**
-> O 4A está **fechado** — smoke concluído, roteiro em
-> `docs/smoke/2026-07-27-bloco-4a-roteiro-smoke.md` marcado ✅. **Não há smoke
-> pendente.**
+> ## ▶ AO RETOMAR: voltar direto na pergunta de execução do 4B
+> **Pedido explícito do usuário ao encerrar a sessão 13:** retomar já na
+> pergunta, sem recapitular o que ficou pronto.
 >
-> O usuário decidiu na sessão 13: **fechar o Bloco B inteiro (4A + 4B)**. O
-> passo imediato é o **§7 da spec do 4B**
-> (`docs/superpowers/specs/2026-07-27-bloco-4b-subcontas-escritorio-design.md`):
-> **5 pontos de decisão** que precisam da resposta dele antes de existir plano.
-> Duas dependências externas seguem de pé: aprovação comercial do Asaas para
-> criação de subcontas, e as premissas do Michel (§8 da spec).
+> **Perguntar as duas coisas, juntas:**
+>
+> **1. Como executar o plano do 4B?**
+> - **(1) Subagent-driven** *(recomendado)* — um subagente novo por task, com
+>   revisão entre elas.
+> - **(2) Inline** — executar na própria sessão, em lotes com checkpoints.
+>
+> **2. O gate de inadimplência do 4A alcança a emissão de cobrança pela
+> subconta?** (bloqueia a **Task 9**)
+> Recomendação registrada no plano: bloqueia **criar** cobrança nova, e **nunca**
+> alcança ver, sincronizar ou receber as já emitidas — é com esse dinheiro que o
+> escritório paga a Balu. Mesma forma das duas fronteiras do 4A.
+>
+> **Estado:** o 4A está fechado e no ar (**não há smoke pendente**); a spec do 4B
+> teve os 5 pontos do §7 decididos; o plano está escrito e commitado em
+> `docs/superpowers/plans/2026-07-27-bloco-4b-subcontas-escritorio.md`
+> (14 tasks, TDD, código completo em cada passo). **Nenhuma linha de código do
+> 4B foi escrita ainda** — nada a desfazer.
+>
+> **Primeiro comando ao começar a executar:**
+> ```
+> git checkout main && git pull && git checkout -b feat/bloco-4b-subcontas
+> ```
+>
+> Dependências externas que seguem de pé: aprovação comercial do Asaas para
+> criar subconta **em produção** (em sandbox já funciona — provado nesta sessão)
+> e as premissas do Michel (§8 da spec).
 
 ---
 
@@ -45,9 +65,21 @@ O usuário relatou "L.1 ao L.9 prontos". O `audit_log` mostrava **uma** liberaç
 
 O dev server caiu no meio da sessão com `_document.js` ausente e `clientReferenceManifest` indefinido. Causa: **dois `npm run dev` vivos** (um da sessão anterior, às 14:41, segurando a 3000; o meu na 3001) escrevendo o mesmo `.next/`. Mesmo estrago que `next build` com dev no ar. Conserto: matar os dois, `rm -rf .next`, subir **um**. Vale checar `Get-CimInstance Win32_Process` antes de subir o dev.
 
+### Ainda na sessão 13: o 4B saiu do papel
+
+Depois do merge do 4A, o usuário decidiu **fechar o Bloco B inteiro (4A + 4B)**. Os **5 pontos do §7** da spec do 4B foram fechados — quatro por decisão dele, um contra o sandbox — e o **plano de implementação** foi escrito (`docs/superpowers/plans/2026-07-27-bloco-4b-subcontas-escritorio.md`, 14 tasks).
+
+**O achado do sandbox que mudou o desenho:** `birthDate` é obrigatório só para **CPF**. Com `companyType` de PJ o validador do Asaas para de pedir — então o onboarding da subconta são **dois formulários** (escritório PJ e contador autônomo PF), não um com campo condicional. A conta-mãe **já opera subcontas em sandbox** (`GET /accounts` → 200): a aprovação comercial do Asaas trava só a produção, não a construção.
+
+**Duas decisões de estrutura tomadas no plano:**
+- **`cobrancas_escritorio` é tabela separada de `cobrancas`.** Encaixar honorário na tabela do 4A exigiria afrouxar o `assinatura_id NOT NULL`, que é o que garante que tudo ali é dinheiro da Balu. A separação do dinheiro passa a existir no banco, não só no discurso.
+- **`honorarios.pagamento_origem`** (`asaas` | `manual`), decorrência da decisão 7.4: com o semáforo alimentado por dois caminhos, um `status` único sobrescrito pelos dois esconde qual falou por último.
+
+**A verificação que importa mais que as telas:** o `_probe-4b.mjs` (Task 14) consulta a cobrança **pela conta-mãe** e espera **404**. Se a conta-mãe enxergar a cobrança, o dinheiro está passando pela Balu — o princípio do §1 foi violado por mais que tudo funcione. É a única checagem que não depende de eu ter escrito o código certo.
+
 ### Scripts novos em `app/scratchpad/`
 
-`apply-0052.mjs` · `_reload-postgrest.mjs` (coluna nova sem reload = "column does not exist" pelo supabase-js) · `_probe-comprovante.mjs` (prova upload/signed URL/attachment/acesso público negado fora da tela) · `_ver-liberacoes.mjs` (audit + bucket + linha). O `_rearmar-contratacao.mjs` passou a apagar também os comprovantes do bucket — sem isso o fechamento "passa limpo" deixando arquivo de teste para trás.
+`apply-0052.mjs` · `_reload-postgrest.mjs` (coluna nova sem reload = "column does not exist" pelo supabase-js) · `_probe-comprovante.mjs` (prova upload/signed URL/attachment/acesso público negado fora da tela) · `_ver-liberacoes.mjs` (audit + bucket + linha) · `_probe-subconta.mjs` (campos exigidos pelo Asaas, sem criar nada) · `_esquema-4b.mjs` (dump das colunas reais das tabelas que o 4B toca). O `_rearmar-contratacao.mjs` passou a apagar também os comprovantes do bucket — sem isso o fechamento "passa limpo" deixando arquivo de teste para trás.
 
 ---
 
@@ -175,7 +207,7 @@ Resposta à consequência aceita em (A): `/admin/configuracoes` com botão de **
 | 2 — Abertura digital completa | ✅ em `main` |
 | 3 — DASN/DEFIS assistidas | ✅ em `main` (esta sessão) |
 | 4A — Assinatura da Balu | ✅ smoke concluído e mergeado em `main` (0050, 0051, 0052) |
-| 4B — Subcontas do escritório | 📋 design decidido, 5 pontos em aberto antes do plano |
+| 4B — Subcontas do escritório | 📋 **design fechado e plano escrito** (14 tasks); falta escolher o modo de execução e decidir o gate da Task 9 |
 | 5 — Produção Fiscal | 🔒 credencial do Michel (token Focus não é de revenda) |
 | 6 — WhatsApp/IA (Envia.Click + Claude) | 🔒 credencial do Michel |
 | 7 — Domínio/SLA/Conciliação | 🔒 depende do 4 |
