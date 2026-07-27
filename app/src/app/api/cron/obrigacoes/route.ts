@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/clients/email';
 import { renderNotificacaoEmail } from '@/lib/notifications/email-template';
+import { rodarBilling } from '@/lib/billing/cron';
 
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -54,5 +55,22 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, criadas, enviados, pulados });
+  // Billing (Bloco 4A) roda AQUI e não em cron próprio: o plano Hobby da
+  // Vercel permite exatamente 2 crons e o vercel.json já tem 2. O endpoint
+  // /api/cron/billing continua existindo para disparo manual.
+  //
+  // Roda POR ÚLTIMO de propósito. Ele faz uma chamada HTTP ao Asaas por
+  // assinatura (com retry e backoff), e um Asaas lento esgotaria o tempo da
+  // invocação inteira. Se isso acontecesse antes, a materialização das
+  // obrigações — que tem prazo legal — não rodaria naquele dia. E timeout
+  // de wall-clock não é capturável por try/catch: a única defesa é ordem.
+  let billing: unknown = null;
+  try {
+    billing = await rodarBilling();
+  } catch (err) {
+    console.error('[cron obrigacoes] billing falhou', err);
+    billing = { erro: String(err) };
+  }
+
+  return NextResponse.json({ ok: true, criadas, enviados, pulados, billing });
 }

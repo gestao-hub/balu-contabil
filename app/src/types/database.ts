@@ -408,6 +408,50 @@ export type Tables = {
     vigencia_inicio: string;
     norma: string | null;
   };
+  // ── Bloco 4A (migration 0050) ──────────────────────────────────────────
+  planos: {
+    id: string;
+    nome: string;
+    publico: 'empresa' | 'escritorio';
+    /** Centavos inteiros. Nunca reais em ponto flutuante. */
+    valor_centavos: number;
+    ciclo: 'MONTHLY' | 'YEARLY';
+    /** Só para publico='escritorio'. clientes_max null = faixa aberta no topo. */
+    clientes_min: number | null;
+    clientes_max: number | null;
+    trial_dias: number;
+    ativo: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  assinaturas: {
+    id: string;
+    /** Exatamente um dos dois é preenchido (assinaturas_titular_chk). */
+    contabilidade_id: string | null;
+    company_id: string | null;
+    plano_id: string | null;
+    status: 'trial' | 'ativa' | 'inadimplente' | 'cancelada' | 'cortesia';
+    trial_termina_em: string | null;
+    proxima_cobranca_em: string | null;
+    asaas_customer_id: string | null;
+    asaas_subscription_id: string | null;
+    cancelada_em: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  cobrancas: {
+    id: string;
+    assinatura_id: string;
+    asaas_charge_id: string;
+    status: string;
+    valor_centavos: number;
+    vencimento: string;
+    pago_em: string | null;
+    link_fatura: string | null;
+    pix_copia_cola: string | null;
+    created_at: string;
+    updated_at: string;
+  };
 };
 
 // Helper: linha de tabela X

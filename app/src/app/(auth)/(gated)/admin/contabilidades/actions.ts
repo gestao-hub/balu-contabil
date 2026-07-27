@@ -1,30 +1,21 @@
 // src/app/(auth)/admin/contabilidades/actions.ts
 'use server';
 import { revalidatePath } from 'next/cache';
-import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/clients/email';
 import { registrarAuditoria } from '@/lib/security/audit';
+import { requireAdminBaluAction } from '@/lib/admin/guard';
 
 // Padrão local ao arquivo — segue a convenção dominante do repo: cada
 // `actions.ts` declara seu próprio ActionResult (ver contador/actions.ts,
 // clientes/actions.ts, onboarding/actions.ts, impostos/actions.ts).
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
-async function requireAdminBalu(): Promise<{ userId: string } | { error: string }> {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Sessão inválida.' };
-  const { data: role } = await supabase.from('role_types')
-    .select('type').eq('user_id', user.id).maybeSingle();
-  if (role?.type !== 'AdminBalu') return { error: 'Acesso restrito.' };
-  return { userId: user.id };
-}
 
 export async function decidirContabilidadeAction(
   id: string, decisao: 'aprovada' | 'suspensa',
 ): Promise<ActionResult> {
-  const ctx = await requireAdminBalu();
+  const ctx = await requireAdminBaluAction();
   if ('error' in ctx) return { ok: false, error: ctx.error };
   const admin = createAdminClient();
   const { error } = await admin.from('contabilidades')

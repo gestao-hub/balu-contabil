@@ -8,6 +8,8 @@
 import { redirect } from 'next/navigation';
 import { getGateContext } from '@/lib/auth/gate-context';
 import { documentosPendentes } from '@/lib/lgpd/pendencia-aceite';
+import { resumoAssinatura } from '@/lib/billing/resumo';
+import AvisoCobranca from './_components/AvisoCobranca';
 
 export default async function GatedLayout({ children }: { children: React.ReactNode }) {
   // Mesmo helper memoizado do (auth)/layout: user + role + current_company sem
@@ -27,5 +29,22 @@ export default async function GatedLayout({ children }: { children: React.ReactN
   const needsOnboarding = !currentCompany && !['adminbalu', 'contador'].includes(normalizedRole);
   if (needsOnboarding) redirect('/onboarding');
 
-  return <>{children}</>;
+  // Faixa de cobrança (Bloco 4A) — só AVISA. O bloqueio mora na action, não
+  // aqui: gate em layout/middleware foi o que causou o loop de redirect da
+  // sessão 3, e de todo modo Server Actions não passam pelo layout.
+  const aviso = await resumoAssinatura(user.id, currentCompany, normalizedRole);
+
+  return (
+    <>
+      {aviso && (
+        <AvisoCobranca
+          status={aviso.status}
+          trialTerminaEm={aviso.trialTerminaEm}
+          href={aviso.href}
+          contratada={aviso.contratada}
+        />
+      )}
+      {children}
+    </>
+  );
 }

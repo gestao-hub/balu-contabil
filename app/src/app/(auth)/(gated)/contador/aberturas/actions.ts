@@ -9,6 +9,7 @@ import { notificarEtapaAbertura } from '@/lib/abertura/notificar';
 import { ETAPA_LABEL } from '@/lib/abertura/etapas';
 import { tipoDocumento, minutaPronta, type MinutaInput } from '@/lib/abertura/minuta';
 import { renderMinuta } from '@/lib/abertura/minuta/templates';
+import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -47,6 +48,8 @@ export async function avancarProcessoAction(
 ): Promise<ActionResult> {
   const e = await requireEscritorio();
   if ('error' in e) return { ok: false, error: e.error };
+  const assinatura = await assertAssinaturaEscritorio(e.contabilidadeId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
   if (!ETAPAS_OPERAVEIS.has(input.etapa)) return { ok: false, error: 'Etapa inválida.' };
 
   const admin = createAdminClient();
@@ -83,6 +86,8 @@ export async function avancarProcessoAction(
 export async function concluirAberturaAction(input: { aberturaId: string; cnpj: string }): Promise<ActionResult> {
   const e = await requireEscritorio();
   if ('error' in e) return { ok: false, error: e.error };
+  const assinatura = await assertAssinaturaEscritorio(e.contabilidadeId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
   const cnpj = input.cnpj.replace(/\D/g, '');
   if (cnpj.length !== 14) return { ok: false, error: 'CNPJ inválido (informe os 14 dígitos).' };
 
@@ -137,6 +142,8 @@ export async function decidirAlteracaoAction(
 ): Promise<ActionResult> {
   const e = await requireEscritorio();
   if ('error' in e) return { ok: false, error: e.error };
+  const assinatura = await assertAssinaturaEscritorio(e.contabilidadeId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const admin = createAdminClient();
   const { data: alt } = await admin.from('abertura_alteracoes')
@@ -179,6 +186,8 @@ export async function decidirAlteracaoAction(
 export async function gerarMinutaAction(input: { aberturaId: string }): Promise<ActionResult<{ html: string; filename: string; tipoDoc: string }>> {
   const e = await requireEscritorio();
   if ('error' in e) return { ok: false, error: e.error };
+  const assinatura = await assertAssinaturaEscritorio(e.contabilidadeId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
   const admin = createAdminClient();
   const alvo = await aberturaDaCarteira(admin, e.contabilidadeId, input.aberturaId);
   if (!alvo) return { ok: false, error: 'Abertura fora da sua carteira.' };
@@ -205,6 +214,8 @@ export async function revisarDocumentoAction(
 ): Promise<ActionResult> {
   const e = await requireEscritorio();
   if ('error' in e) return { ok: false, error: e.error };
+  const assinatura = await assertAssinaturaEscritorio(e.contabilidadeId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
   if (!(DOC_KEYS as readonly string[]).includes(input.docKey)) return { ok: false, error: 'Documento inválido.' };
   if (input.status !== 'aprovado' && input.status !== 'recusado') return { ok: false, error: 'Status inválido.' };
 

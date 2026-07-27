@@ -9,6 +9,7 @@ import { sendEmail } from '@/lib/clients/email';
 import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 import { limitar, ipDe } from '@/lib/security/rate-limit';
 import { registrarAuditoria } from '@/lib/security/audit';
+import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 
 // Padrão local ao arquivo (não cross-import de rota) — ver nota em ./actions.ts.
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
@@ -47,6 +48,8 @@ export async function convidarClienteAction(
 ): Promise<ActionResult<{ url: string }>> {
   const g = await requireEscritorioAprovado();
   if ('error' in g) return { ok: false, error: g.error };
+  const assinatura = await assertAssinaturaEscritorio(g.ctx.contabilidade!.id);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
   const admin = createAdminClient();
   // empresa precisa ser do escritório e não ter dono ainda
   const { data: comp } = await admin.from('companies')
@@ -112,6 +115,8 @@ export async function revogarLinkEscritorioAction(): Promise<ActionResult> {
 export async function convidarMembroAction(email: string): Promise<ActionResult<{ url: string }>> {
   const g = await requireEscritorioAprovado();
   if ('error' in g) return { ok: false, error: g.error };
+  const assinatura = await assertAssinaturaEscritorio(g.ctx.contabilidade!.id);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
   const admin = createAdminClient();
   const token = novoToken();
   const { error } = await admin.from('convites').insert({

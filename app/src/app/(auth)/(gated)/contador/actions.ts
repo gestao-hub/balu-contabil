@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
+import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { ContabilidadeSchema, CompanyCreateSchema, ContabilidadeBrandingSchema, AberturaCreateSchema } from '@/types/zod';
 import { posProcessarNovaEmpresa, resolverCodigoMunicipio } from '@/app/(auth)/onboarding/actions';
@@ -52,6 +53,8 @@ export async function criarEmpresaClienteAction(input: unknown): Promise<ActionR
   if ('error' in g) return { ok: false, error: g.error };
   if (!g.contabilidade || g.contabilidade.status !== 'aprovada')
     return { ok: false, error: 'Escritório não aprovado.' };
+  const assinatura = await assertAssinaturaEscritorio(g.contabilidade.id);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   // Mesmo pré-processamento de CNPJ do createCompanyAction (normCnpj é local porque
   // onboarding/actions.ts é 'use server' e não pode exportar função síncrona).
@@ -97,6 +100,8 @@ export async function criarAberturaClienteAction(fd: FormData): Promise<ActionRe
   if ('error' in g) return { ok: false, error: g.error };
   if (!g.contabilidade || g.contabilidade.status !== 'aprovada')
     return { ok: false, error: 'Escritório não aprovado.' };
+  const assinatura = await assertAssinaturaEscritorio(g.contabilidade.id);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const data = parseAberturaForm(fd);
   const parsed = AberturaCreateSchema.safeParse(data);

@@ -7,6 +7,7 @@
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
+import { assertAssinaturaEmpresa } from '@/lib/billing/gate';
 import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { assertTipoDoc, validarJustificativa, cancelamentoSoPortal, type TipoDoc } from '@/lib/fiscal/notas-tipo';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
@@ -164,6 +165,8 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
     .single();
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const assinatura = await assertAssinaturaEmpresa(companyId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const { data: company } = await supabase
     .from('companies')
@@ -414,6 +417,8 @@ export async function cancelarNotaAction(
     .single();
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const assinatura = await assertAssinaturaEmpresa(companyId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
@@ -558,6 +563,8 @@ export async function criarProdutoAction(input: CriarProdutoInput): Promise<Cria
     .from('profiles').select('current_company').eq('user_id', user.id).single();
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const assinatura = await assertAssinaturaEmpresa(companyId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const descricao = input.descricao.trim();
   const ncm = input.ncm.replace(/\D+/g, '');
@@ -616,6 +623,8 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
     .from('profiles').select('current_company').eq('user_id', user.id).single();
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const assinatura = await assertAssinaturaEmpresa(companyId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const { data: company } = await supabase
     .from('companies').select('cnpj, focus_token').eq('id', companyId).single();
@@ -735,6 +744,8 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
     .from('profiles').select('current_company').eq('user_id', user.id).single();
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const assinatura = await assertAssinaturaEmpresa(companyId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const { data: company } = await supabase
     .from('companies').select('cnpj, focus_token').eq('id', companyId).single();
@@ -842,6 +853,8 @@ export async function lancarNotaManualAction(input: NotaManualInput): Promise<La
     .from('profiles').select('current_company').eq('user_id', user.id).single();
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const assinatura = await assertAssinaturaEmpresa(companyId);
+  if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dataEmissao)) return { ok: false, error: 'Data de emissão inválida.' };
 

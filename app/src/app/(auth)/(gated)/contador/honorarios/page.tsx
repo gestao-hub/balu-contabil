@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { Receipt } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
+import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 import HonorariosV2List, { type HonorarioV2Row } from './HonorariosV2List';
 import type { ClienteOption } from './HonorarioV2FormDialog';
 
@@ -16,6 +17,13 @@ export default async function ContadorHonorariosPage() {
 
   const supabase = await createServerClient();
   const contabilidadeId = ctx.contabilidade.id;
+
+  // A LISTA CONTINUA VISÍVEL. Consultar honorários não é ação comercial de
+  // escrita e não depende de pagamento — bloquear a leitura seria esconder do
+  // escritório o que ele já registrou. O que muda é o aviso no topo e o
+  // "Novo honorário", que passa a dizer o motivo em vez de deixar preencher.
+  const gate = await assertAssinaturaEscritorio(contabilidadeId);
+  const assinaturaPendente = !gate.ok;
 
   // Join FK-desambiguado: honorarios.empresa_cliente_id → companies via a constraint
   // gerada pela 0032 (`ADD COLUMN ... REFERENCES` sem nome explícito = <tabela>_<coluna>_fkey).
@@ -75,7 +83,11 @@ export default async function ContadorHonorariosPage() {
         </p>
       </header>
 
-      <HonorariosV2List initial={honorarios} clientes={clientes} />
+      <HonorariosV2List
+        initial={honorarios}
+        clientes={clientes}
+        assinaturaPendente={assinaturaPendente}
+      />
     </main>
   );
 }

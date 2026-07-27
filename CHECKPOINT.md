@@ -1,7 +1,142 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-26 (sessão 10 — **Bloco 3 VALIDADO AO VIVO e MERGEADO em `main`** (`faa6ef1`, `--no-ff`, pushed → auto-deploy). O smoke manual achou **6 bugs**, todos corrigidos antes do merge. `tsc` 0 · vitest **568/568 + 9 pulados** · build limpo. Seeds restaurados, nenhuma migration pendente. **Blocos 1, 2 e 3 estão em `main` e no ar.**)
+> **Última atualização:** 2026-07-27 (sessão 13 — **smoke do Bloco 4A CONCLUÍDO e 4A fechado.** Branch `bloco-4-billing-asaas`, 38 commits. `tsc` 0 · **vitest 731/731** (27 pulados) · `next build` 0 erros / 46 rotas · migrations `0050`, `0051` e `0052` aplicadas em produção. O smoke da sessão 12 achou **8 bugs**; a 13 fechou o §2.4–2.6 e o §3-bis, e o usuário pediu uma regra nova: **comprovante obrigatório na liberação manual** (migration 0052). **Blocos 1, 2 e 3 em `main` e no ar.**)
+
+> ## ▶ AO RETOMAR: o próximo alvo é o **Bloco 4B**
+> O 4A está **fechado** — smoke concluído, roteiro em
+> `docs/smoke/2026-07-27-bloco-4a-roteiro-smoke.md` marcado ✅. **Não há smoke
+> pendente.**
+>
+> O usuário decidiu na sessão 13: **fechar o Bloco B inteiro (4A + 4B)**. O
+> passo imediato é o **§7 da spec do 4B**
+> (`docs/superpowers/specs/2026-07-27-bloco-4b-subcontas-escritorio-design.md`):
+> **5 pontos de decisão** que precisam da resposta dele antes de existir plano.
+> Duas dependências externas seguem de pé: aprovação comercial do Asaas para
+> criação de subcontas, e as premissas do Michel (§8 da spec).
+
+---
+
+## Sessão 13 (2026-07-27) — smoke do 4A concluído + comprovante obrigatório (0052)
+
+**O smoke fechou, e ainda gerou uma regra de produto nova no caminho** — a terceira do bloco. 4 commits (`b163e89` → o merge).
+
+### O que passou
+
+`§2.4–2.6` (o cliente não sente a inadimplência do escritório: emitir nota funciona, `/conta` sem faixa de cobrança, tela de assinatura explicando que quem paga é o escritório) e `§3-bis` completo (L.1→L.9), que **nunca tinha sido exercido**.
+
+### Decisão de produto nº 3: comprovante obrigatório na liberação manual
+
+Pedido do usuário no meio do §3-bis. **Não existe liberação sem arquivo anexado.** A justificativa é de auditoria: a liberação manual é a única porta que destrava o gate sem passar pelo Asaas, e o único lastro era um texto livre digitado pelo próprio admin que liberou — que não distingue "o cliente mandou o comprovante do boleto" de "alguém liberou um conhecido".
+
+**Migration 0052:** quatro colunas em `assinaturas` (path, nome, mime, tamanho) + bucket privado `liberacoes-comprovantes`. O path é **único por upload** (carimbo de tempo), nunca sobrescrito: o `audit_log` guarda o path de cada liberação, e um path reaproveitado apontaria para o arquivo errado — pior que não ter histórico, porque parece certo.
+
+**A lista de formatos virou de PERMISSÃO, por decisão do usuário.** Eu tinha feito lista de bloqueio (barrar executável, deixar o resto passar) com o argumento de que, sendo o comprovante obrigatório, uma lista estreita não aperta a segurança — impede a liberação de quem já pagou. O usuário barrou: só carrega o que está listado. O argumento sobrevive na **largura** da lista: PDF, JPG/PNG/**HEIC**/WEBP/GIF/BMP/TIFF/AVIF, TXT/RTF/DOC/DOCX/ODT, CSV/XLS/XLSX/ODS, EML/MSG. Formato legítimo que falte se resolve acrescentando uma linha.
+
+**Um bug meu, achado pelo usuário na tela:** eu validava só no "Confirmar", então escolher um `.exe` o deixava **listado como se tivesse sido aceito** e a recusa vinha no envio. Agora a validação é **na escolha** — o arquivo recusado nunca chega a ser o selecionado, o input é limpo e o erro aparece sob o campo. O `accept` do input sai da **mesma constante** da validação do servidor, com teste que falha se divergirem.
+
+Nada é servido inline: a signed URL força `attachment`, dura 5 min e é gerada **no clique**, não junto com a lista — senão o HTML da página carregaria uma URL assinada por titular.
+
+### O achado de processo desta sessão
+
+O usuário relatou "L.1 ao L.9 prontos". O `audit_log` mostrava **uma** liberação e **nenhum** revogar — L.8 e L.9 não tinham rodado. Rodados de fato, provaram a promessa central do desenho: **3 liberações, 3 paths distintos**, os dois arquivos convivendo no bucket, comprovante permanecendo na linha depois do revogar. **Conferir o banco antes de aceitar um "passou" custa 30 segundos** e foi o que separou "testado" de "dito como testado".
+
+### Armadilha de ambiente reincidente
+
+O dev server caiu no meio da sessão com `_document.js` ausente e `clientReferenceManifest` indefinido. Causa: **dois `npm run dev` vivos** (um da sessão anterior, às 14:41, segurando a 3000; o meu na 3001) escrevendo o mesmo `.next/`. Mesmo estrago que `next build` com dev no ar. Conserto: matar os dois, `rm -rf .next`, subir **um**. Vale checar `Get-CimInstance Win32_Process` antes de subir o dev.
+
+### Scripts novos em `app/scratchpad/`
+
+`apply-0052.mjs` · `_reload-postgrest.mjs` (coluna nova sem reload = "column does not exist" pelo supabase-js) · `_probe-comprovante.mjs` (prova upload/signed URL/attachment/acesso público negado fora da tela) · `_ver-liberacoes.mjs` (audit + bucket + linha). O `_rearmar-contratacao.mjs` passou a apagar também os comprovantes do bucket — sem isso o fechamento "passa limpo" deixando arquivo de teste para trás.
+
+---
+
+## Sessão 12 (2026-07-27) — smoke do 4A: 8 bugs, 2 regras de produto novas, migration 0051
+
+**O smoke manual pagou por si já no primeiro clique.** Oito bugs, nenhum pego por teste automatizado, e duas decisões de produto do usuário que mudaram o comportamento do bloco. 8 commits novos (`5bfb96a` → `8468ddd`).
+
+### Os oito bugs
+
+1. **`$` do token do Asaas comido pelo `dotenv-expand`.** O token começa com `$aact_…`; o Next passa o `.env` pelo dotenv-expand, que lê isso como referência de variável e resolve para **string vazia**. Chave certa no arquivo, app dizendo "não configurado". Escapar com `\$` resolve — e **não vale na Vercel**, onde o valor não passa por dotenv. Documentado no `.env.example`.
+2. **O guarda do erro procurava `ASAAS_API_KEY`**, nome que não existe desde que os tokens viraram por ambiente. Token ausente caía no genérico "Tente novamente" — foi o que escondeu o bug 1 e custou o diagnóstico direto.
+3. **`TOKEN_ASAAS_PRODUÇÃO`** estava escrito com `Ç` e `Ã` no `.env.local`. O código procura `TOKEN_ASAAS_PRODUCAO`. Mina armada para o dia do `ASAAS_ENV=prod`, com dinheiro real em jogo.
+4. **Contratar não liberava o acesso.** `assinar.ts` gravava `trial_termina_em` contando que isso liberasse, mas não mexia no status; `statusEfetivo` de propósito não honra data para `inadimplente`. As duas metades se contradiziam em silêncio. *(Corrigido e depois **revertido pela decisão de produto A** abaixo.)*
+5. **`cobrancas` nascia 100% dependente do webhook**, que não alcança `localhost`, não atravessa firewall e pode falhar. O Asaas emite a primeira fatura junto com a assinatura: agora ela é puxada na hora (`sincronizarCobrancas`) e o cron faz o mesmo com a lista que já tem em mãos.
+6. **Cancelar deixava o `asaas_subscription_id` morto na linha** (o `DELETE` no Asaas já tinha apagado a subscription lá), e `assinarPlanoAction` recusava com "Já existe uma assinatura ativa". **Quem cancelasse nunca mais voltava.**
+7. **A tela não refletia o pagamento sem F5.** O webhook avisa o *servidor*; o navegador que já renderizou não fica sabendo. Resolvido com consulta enquanto há o que esperar, só com a aba visível, checando na hora em que o usuário volta da aba do Asaas, e desistindo após 3 minutos.
+8. **Re-contratar depois de cancelar nunca reconhecia o pagamento.** A linha ficava em `cancelada`, e os **três** caminhos de reconciliação excluem esse status de propósito (cron por filtro, tela por early-return, webhook por regra). Três portas fechadas pelo motivo certo, e o resultado era um beco. `statusAoContratar` tira a linha de lá.
+
+### Duas decisões de produto do usuário
+
+**A. Contratar não libera nada.** Clicar "Assinar" mostrava "plano assinado" e destravava na hora. O usuário barrou: *"a mensagem e a liberação só devem ser efetivadas após o reconhecimento do pagamento"*. `criarAssinaturaNoAsaas` não toca mais em `status` nem em `trial_termina_em` — quem estava em teste vigente segue no prazo que já tinha, quem estava bloqueado continua bloqueado. **Consequência aceita:** boleto só libera na compensação.
+
+**B. O bloqueio é dito na entrada, não no envio.** Cadastrar cliente vira a tela de aviso; honorários mantêm a lista visível (consultar não é escrita e não depende de pagamento) com tarja no topo e o "Novo honorário" explicando o motivo. A frase saiu para `lib/billing/mensagens.ts` — `gate.ts` é `server-only` e a tela precisa do mesmo texto.
+
+### Migration `0051` — liberação manual (aplicada em produção)
+
+Resposta à consequência aceita em (A): `/admin/configuracoes` com botão de **liberar acesso** para quem pagou por boleto e mandou o comprovante. Colunas `liberado_ate`, `liberacao_motivo`, `liberacao_por`, `liberacao_em`.
+
+**Por que uma coluna e não "marcar como ativa":** seria desfeito sozinho. A reconciliação lê as cobranças no Asaas e, no vencimento, um boleto ainda não compensado vira `OVERDUE` → `inadimplente`. Quem mandou o comprovante seria bloqueado de novo na madrugada.
+
+`statusEfetivo` consulta `liberado_ate` **depois** do status e **só no sentido de liberar** — assim nunca bloqueia ninguém por engano. Sempre tem prazo (teto 60 dias) e motivo obrigatório; liberar e revogar vão para o `audit_log`.
+
+### Armadilhas que valem para as próximas sessões
+
+- **Log do dev em arquivo é obrigatório.** O `next dev` sem redirecionamento não deixava rastro, e o diagnóstico do bug 1 dependia de um `console.error` que ninguém via. Hoje: `npm run dev > app/scratchpad/dev.log 2>&1`. Foi esse log que pegou o `server-only` importado em Client Component — erro que **o `tsc` não vê**.
+- **`.env.local` tem armadilha dupla:** `$` não escapado e nome de chave com acento. `_auditar-env.mjs` varre as duas.
+- **Reconciliação e tela têm de usar a MESMA regra.** Extraída para `lib/billing/reconciliar.ts` — duplicada, cron e tela acabariam discordando sobre quem está em dia, e o cron roda de madrugada (a divergência só apareceria no dia seguinte).
+
+---
+
+## Sessão 11 (2026-07-27) — Bloco 4: spec, divisão em 4A/4B e plano
+
+**Nada de código foi escrito.** A sessão produziu desenho, plano e material para o Michel. Branch `bloco-4-billing-asaas` (3 commits, só documentos): `694774e` spec inicial · `54b714a` divisão 4A/4B · `ab3bba1` plano do 4A.
+
+**Decisão de rota do usuário:** deixar pronto **tudo que dá para construir sem as chaves**, e trazer as credenciais depois só para validar. Ordem acordada: **4 → 5 (andaime da flag) → 6 (IA + WhatsApp) → 7**.
+
+**Duas decisões fechadas antes do desenho:**
+- **A entrega da DASN/DEFIS continua exigindo o formulário completo** — resolve a "decisão em aberto" que a sessão 10 deixou. Segue a decisão nº 3 da spec do Bloco 3; nada muda no código.
+- **O Bloco 4 virou dois.** O usuário reverteu a proposta de deixar honorários fora, por princípio: **a Balu não pode intermediar dinheiro de terceiro**. Isso descartou também o *split* (que eu não tinha examinado direito — numa cobrança com split a cobrança ainda pertence à conta da Balu e o dinheiro passa por ela). Só **subconta por escritório** resolve. Como isso é outro produto, virou o 4B.
+
+**Bloco 4A — a Balu cobrando** (`docs/superpowers/specs/2026-07-27-bloco-4a-assinatura-balu-design.md` + plano de 15 tasks TDD em `docs/superpowers/plans/2026-07-27-bloco-4a-assinatura-balu.md`):
+- Migration `0050`: `planos`, `assinaturas`, `cobrancas`. Titular por duas FKs anuláveis com `CHECK` de exclusividade. **Trigger** cria a assinatura em trial no INSERT de `company`/`contabilidade` — `company` nasce em vários caminhos e espalhar a criação pelas actions garantiria esquecer um. **Cortesia para tudo que já existe**, senão o deploy bloqueia os pilotos e as contas de vocês.
+- **Duas fronteiras inegociáveis do gate**, e são o miolo do bloco: (1) nunca alcança **obrigação legal com prazo** (gerar DAS, registrar declaração, transmitir PGDAS-D) — bloquear vira multa da Receita para o usuário, dano de terceiro desproporcional à dívida e exposição pelo CDC art. 39; (2) nunca alcança **direito do titular** — LGPD art. 18 (acesso, correção, portabilidade, eliminação) e o §5º, que obriga atendimento **sem custo**; inadimplência não é hipótese legal de suspensão desses direitos. Consequência de interface: a faixa de aviso de cobrança **não aparece** nas telas de direito do titular.
+- Trial de **7 dias**; preço, faixas e trial editáveis pelo AdminBalu em `/admin/assinaturas` — mudar preço virou operação, não deploy. Isso criou um caso novo: o admin pode gerar **buraco entre faixas**, tratado explicitamente.
+- Escritório inadimplente **não trava a carteira** (o empresário não é parte do contrato e não tem como quitar). Consequência aceita: escritório que nunca assinou não trava os clientes.
+- Status **derivado na leitura**, nunca lido cru da coluna — cron que falha não pode liberar quem devia bloquear nem bloquear quem pagou.
+
+**Bloco 4B — o escritório cobrando** (`docs/superpowers/specs/2026-07-27-bloco-4b-subcontas-escritorio-design.md`, **design decidido, pendente de revisão própria**): subconta criada pela API da Balu (a cobrança nasce na subconta, o credor é o escritório, o dinheiro liquida na conta dele); honorários; catálogo de avulsos gerido pelo escritório, aceitando **valor fixo ou percentual** (recuperação de crédito é percentual). Risco central registrado: a Balu passa a guardar credencial que **movimenta dinheiro de terceiro** — mais sensível que a service role; cifrar com `cifrarCampo` (que hoje não tem uso em runtime, o landmine anotado no Bloco E ganha seu primeiro ciclo legítimo). Criar subconta em **produção** provavelmente exige aprovação comercial do Asaas, não só chave.
+
+**Três erros do PRD derrubados pela auditoria do código real:**
+1. `notifications.tipo` tem **CHECK de lista fechada** (`0045:10-12`) — aviso de cobrança sem `ALTER` falha em runtime, não em compilação.
+2. `api/webhooks/segredo.ts` **não existe**; o real está dentro de `focus/`, lê da query `?s=` e tem `FOCUS_WEBHOOK_SECRET` hardcoded. É extração, não reuso — e o teste da Focus é a rede de segurança.
+3. **`vercel.json` já tem 2 crons e o plano Hobby permite exatamente 2.** A Task 13 confirma o tier antes de criar o terceiro; se for Hobby, a reconciliação entra no cron diário que já existe.
+
+**Correção ao PRD sobre o Bloco 6:** a conta Envia.Click conectada é a **do próprio Grupo Ide** (inboxes Eight Brand / Luan Suporte IA / Suporte Envia.Click, 2 agentes de IA ativos). A chave de API do Envia.Click **não é dependência do Michel** — a plataforma é de vocês. Mas **não há inbox de WhatsApp** (só `WebWidget` e `Api`), então o WABA do Balu segue faltando.
+
+**PDF para o Michel:** `Direcionamento/Balu-Como-vai-funcionar-a-cobranca-2026-07-27.pdf` (5 páginas, linguagem de negócio, sem termo técnico). Explica os dois tipos de cobrança, o que trava e o que nunca trava (com o porquê jurídico), a subconta, e reúne **7 perguntas abertas** para ele responder.
+
+### Implementação do 4A (mesma sessão) — 15 tasks executadas, 16 commits
+
+**Migration `0050` aplicada e verificada em produção:** `planos`, `assinaturas`, `cobrancas`, RLS, e a **trigger** que cria assinatura em trial no INSERT de `company`/`contabilidade` (trigger e não chamada nas actions porque `company` nasce em vários caminhos). **Cortesia para tudo que já existia** — 3 titulares, zero órfãos: o deploy não bloqueia ninguém.
+
+**15 bugs corrigidos.** Os cinco que valem lembrar:
+
+1. **Não existia caminho para assinar.** `criarCliente`/`criarAssinatura` tinham **zero chamadores**: no dia 8 o trial acabava, as 22 actions barravam e a única ação na tela era "cancelar". Falha da **minha spec**, não da implementação — o §9.2 listava o que a tela mostra e nunca previu contratar.
+2. **A reconciliação desfazia o gate toda madrugada.** Promovia por `remota.status === 'ACTIVE'`, mas status de *subscription* não é status de *pagamento*: fica ACTIVE com cobrança vencida. Todo `PAYMENT_OVERDUE` era revertido na noite seguinte. Passou a reconciliar pelas **cobranças**.
+3. **O `upsert` do PostgREST manda NULL nas colunas ausentes** — provado contra o banco. A correção anterior do `pago_em` **causava** o bug que pretendia evitar. O padrão certo (`update` parcial) já estava no webhook da Focus. A persistência saiu da route para `lib/billing/cobranca.ts`, onde dá para testar.
+4. **`TOKEN_ASAAS_SANDBOX` vs `ASAAS_API_KEY`** — o incidente do Resend se repetindo. Adotada a nomenclatura do usuário (token separado por ambiente), que é melhor: impossível rodar sandbox com chave de produção.
+5. **`nextDueDate` da resposta do Asaas é o ciclo SEGUINTE.** Pedindo 30/07 ele cria a cobrança em 30/07 e devolve 30/08. Usá-lo como "liberado até" dava **um mês de acesso grátis** a quem não pagasse. Só apareceu falando com o sandbox real.
+
+**Duas fronteiras do gate, fixadas por teste nos dois sentidos** (`cobertura-gate.test.ts`, 45 casos): nunca alcança **obrigação legal com prazo** (11 actions) nem **direito do titular** (LGPD art. 18, 7 actions). Três actions entraram na lista de "nunca" durante a execução: `criarContabilidadeAction` (o escritório ainda não existe), `removerClienteDaCarteiraAction` (reduzir a carteira **baixa** a fatura) e `removerMembroAction` (tirar acesso é segurança).
+
+**Cron:** o projeto está no plano **Hobby** da Vercel (2 crons, e o `vercel.json` já tem 2), então `rodarBilling` é chamada de dentro de `/api/cron/obrigacoes`, **por último** — timeout de wall-clock não é capturável por `try/catch`, e a materialização das obrigações tem prazo legal.
+
+**⚠️ Armadilha nova:** `next build` recusa export extra em `route.ts` e **`tsc --noEmit` não pega** (a validação vive nos tipos gerados em `.next/types`). `tsc` limpo não é garantia neste repo.
+
+**RETOMAR EM: ver a sessão 12 acima** — o smoke começou e parou no §2.4.
+
+**Depois do 4A:** o **4B** (subcontas do escritório) tem spec de design mas **5 pontos em aberto no §7** que precisam de decisão antes do plano.
 
 ---
 
@@ -39,7 +174,8 @@
 | 1 — Motor Obrigações/Notificações | ✅ em `main` |
 | 2 — Abertura digital completa | ✅ em `main` |
 | 3 — DASN/DEFIS assistidas | ✅ em `main` (esta sessão) |
-| 4 — Billing Asaas | 🔒 credencial do Michel |
+| 4A — Assinatura da Balu | ✅ smoke concluído e mergeado em `main` (0050, 0051, 0052) |
+| 4B — Subcontas do escritório | 📋 design decidido, 5 pontos em aberto antes do plano |
 | 5 — Produção Fiscal | 🔒 credencial do Michel (token Focus não é de revenda) |
 | 6 — WhatsApp/IA (Envia.Click + Claude) | 🔒 credencial do Michel |
 | 7 — Domínio/SLA/Conciliação | 🔒 depende do 4 |

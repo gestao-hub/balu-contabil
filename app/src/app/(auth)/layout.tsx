@@ -26,25 +26,54 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
     supabase.from('contabilidade_membros').select('contabilidade_id').eq('user_id', user.id).maybeSingle(),
   ]);
 
-  // Co-branding (Task 18): só busca a contabilidade quando a empresa ATIVA tem
-  // contabilidade_id — sem isso, zero query extra (não pesa no caminho comum).
-  // Admin client: empresa não tem RLS de leitura em `contabilidades`.
+  // Marca do menu. Duas origens, com precedências diferentes:
+  //
+  //  1. O PRÓPRIO escritório, quando o usuário é membro de uma contabilidade.
+  //     O contador em geral não tem empresa ativa, então antes disto ele nunca
+  //     via a própria marca — caía no logo da Balu. Aqui não exigimos status
+  //     'aprovada': é a marca dele, vendo a si mesmo, e o logo tem de aparecer
+  //     assim que for enviado.
+  //  2. Co-branding (Task 18): o empresário vê a marca do escritório que o
+  //     atende. Aqui a aprovação É exigida — exibir a marca de um escritório
+  //     não aprovado para o cliente dele seria endossar quem ainda não passou
+  //     pela análise.
+  //
+  // `proprio` separa os dois casos na UI: "oferecido por X" e o WhatsApp de
+  // suporte só fazem sentido quando X é outra pessoa.
   let escritorio: EscritorioBranding | null = null;
-  const currentCompanyContabilidadeId =
-    (companies ?? []).find((c) => c.id === currentCompany)?.contabilidade_id ?? null;
-  if (currentCompanyContabilidadeId) {
-    const admin = createAdminClient();
+  const admin = createAdminClient();   // empresa não tem RLS de leitura em `contabilidades`
+
+  if (membro?.contabilidade_id) {
     const { data: contab } = await admin
       .from('contabilidades')
-      .select('nome, logo_url, whatsapp_suporte, status')
-      .eq('id', currentCompanyContabilidadeId)
+      .select('nome, logo_url')
+      .eq('id', membro.contabilidade_id)
       .maybeSingle();
-    if (contab?.status === 'aprovada') {
+    if (contab) {
       escritorio = {
         nome: contab.nome as string,
         logoUrl: contab.logo_url ? await signedUrlBranding(contab.logo_url as string) : null,
-        whatsapp: (contab.whatsapp_suporte as string | null) ?? null,
+        whatsapp: null,      // não faz sentido oferecer suporte de si para si
+        proprio: true,
       };
+    }
+  } else {
+    const currentCompanyContabilidadeId =
+      (companies ?? []).find((c) => c.id === currentCompany)?.contabilidade_id ?? null;
+    if (currentCompanyContabilidadeId) {
+      const { data: contab } = await admin
+        .from('contabilidades')
+        .select('nome, logo_url, whatsapp_suporte, status')
+        .eq('id', currentCompanyContabilidadeId)
+        .maybeSingle();
+      if (contab?.status === 'aprovada') {
+        escritorio = {
+          nome: contab.nome as string,
+          logoUrl: contab.logo_url ? await signedUrlBranding(contab.logo_url as string) : null,
+          whatsapp: (contab.whatsapp_suporte as string | null) ?? null,
+          proprio: false,
+        };
+      }
     }
   }
 
