@@ -102,6 +102,10 @@ export async function rodarBilling(): Promise<ResumoBilling> {
     .from('assinaturas').select('id, contabilidade_id, plano_id')
     .not('contabilidade_id', 'is', null).in('status', ['trial', 'ativa', 'inadimplente']);
 
+  /** Piso da faixa de um plano — serve para comparar "quem cobre mais". */
+  const pisoDe = (id: string | null) =>
+    (planosEsc ?? []).find((p) => p.id === id)?.clientes_min ?? null;
+
   for (const a of assEsc ?? []) {
     const { count } = await sb
       .from('companies').select('id', { count: 'exact', head: true })
@@ -115,7 +119,20 @@ export async function rodarBilling(): Promise<ResumoBilling> {
       resumo.erros++;
       continue;
     }
-    if (r.planoId !== a.plano_id) {
+
+    // SO CORRIGE PARA CIMA. O escritorio escolhe o plano nos cards da tela,
+    // e sobrescrever a escolha dele todo mes seria mudar o preco sem pedir:
+    // quem assinou o plano maior de proposito acordaria no menor. Mas quem
+    // esta ABAIXO da faixa da carteira e corrigido, senao bastaria assinar
+    // o plano de 50 clientes e crescer a vontade.
+    const pisoAtual = pisoDe(a.plano_id as string | null);
+    const pisoDaFaixa = pisoDe(r.planoId);
+    const precisaSubir =
+      a.plano_id === null ||
+      pisoAtual === null ||
+      (pisoDaFaixa !== null && pisoAtual < pisoDaFaixa);
+
+    if (precisaSubir && r.planoId !== a.plano_id) {
       await sb.from('assinaturas')
         .update({ plano_id: r.planoId, updated_at: new Date().toISOString() }).eq('id', a.id);
       resumo.faixasAtualizadas++;

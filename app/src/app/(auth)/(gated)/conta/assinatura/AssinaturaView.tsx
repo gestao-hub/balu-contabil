@@ -26,8 +26,14 @@ const ROTULO: Record<string, string> = {
 };
 
 export default function AssinaturaView({
-  assinatura, cobrancas, planos = [],
-}: { assinatura: AssinaturaVm; cobrancas: CobrancaVm[]; planos?: PlanoVm[] }) {
+  assinatura, cobrancas, planos = [], semAcoes = false,
+}: {
+  assinatura: AssinaturaVm; cobrancas: CobrancaVm[]; planos?: PlanoVm[];
+  /** Some com os blocos de contratar e cancelar. Usado pela tela do
+   *  contador, onde os cards de plano (PlanosCards) já fazem as duas
+   *  coisas — dois botões de cancelar na mesma tela seria armadilha. */
+  semAcoes?: boolean;
+}) {
   const [msg, setMsg] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [planoEscolhido, setPlanoEscolhido] = useState<string>(planos[0]?.id ?? '');
@@ -56,7 +62,7 @@ export default function AssinaturaView({
   // Asaas e nao e cortesia. E a SAIDA do gate: sem ele, quem sai do trial
   // fica bloqueado sem nada a fazer.
   const podeContratar =
-    !assinatura.contratada && assinatura.status !== 'cortesia' && planos.length > 0;
+    !semAcoes && !assinatura.contratada && assinatura.status !== 'cortesia' && planos.length > 0;
 
   return (
     <div className="space-y-6">
@@ -162,7 +168,7 @@ export default function AssinaturaView({
       {/* CDC art. 39: cancelar e um clique. Uma confirmacao simples, sem
           tela de retencao, sem "fale com o suporte", sem oferta de desconto
           no caminho. */}
-      {!['cancelada', 'cortesia'].includes(assinatura.status) && (
+      {!semAcoes && !['cancelada', 'cortesia'].includes(assinatura.status) && (
         <section className="border-t pt-4">
           {confirmando ? (
             <div className="flex flex-wrap items-center gap-3">

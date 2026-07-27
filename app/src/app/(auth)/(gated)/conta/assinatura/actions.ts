@@ -98,6 +98,68 @@ export async function assinarPlanoAction(
   return { ok: true };
 }
 
+/**
+ * Troca o plano de uma assinatura já contratada.
+ *
+ * Atualiza o valor no Asaas ANTES de gravar aqui: gravar primeiro e falhar
+ * lá deixaria a tela mostrando um plano que a cobrança não reflete.
+ */
+export async function trocarPlanoAction(
+  assinaturaId: string, planoId: string,
+): Promise<ActionResult> {
+  if (!assinaturaId || !planoId) return { ok: false, error: 'Dados incompletos.' };
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const { data: a } = await supabase
+    .from('assinaturas')
+    .select('id, status, plano_id, company_id, contabilidade_id, asaas_subscription_id')
+    .eq('id', assinaturaId).maybeSingle();
+  if (!a) return { ok: false, error: 'Assinatura não encontrada.' };
+  if (!a.asaas_subscription_id) {
+    return { ok: false, error: 'Não há assinatura ativa para trocar. Use "Assinar plano".' };
+  }
+  if (a.plano_id === planoId) return { ok: true };   // idempotente
+
+  const admin = createAdminClient();
+  const { data: plano } = await admin
+    .from('planos').select('id, nome, valor_centavos, publico, ativo')
+    .eq('id', planoId).maybeSingle();
+  if (!plano || !plano.ativo) return { ok: false, error: 'Plano indisponível.' };
+
+  const publicoEsperado = a.contabilidade_id ? 'escritorio' : 'empresa';
+  if (plano.publico !== publicoEsperado) {
+    return { ok: false, error: 'Este plano não se aplica à sua conta.' };
+  }
+
+  try {
+    await asaas.atualizarAssinatura(a.asaas_subscription_id, {
+      value: plano.valor_centavos / 100,
+      description: `Balu — ${plano.nome}`,
+    });
+  } catch (err) {
+    console.error('[assinatura] falha ao trocar plano no Asaas', err);
+    return { ok: false, error: 'Não foi possível trocar o plano agora. Tente novamente.' };
+  }
+
+  const { error } = await admin.from('assinaturas')
+    .update({ plano_id: plano.id, updated_at: new Date().toISOString() })
+    .eq('id', a.id);
+  if (error) return { ok: false, error: error.message };
+
+  await registrarAuditoria({
+    actorUserId: user.id, acao: 'assinatura.trocar_plano',
+    alvoTipo: 'assinatura', alvoId: a.id,
+    meta: { de: a.plano_id, para: plano.id },
+  });
+
+  revalidatePath('/conta/assinatura');
+  revalidatePath('/contador/assinatura');
+  return { ok: true };
+}
+
 export async function cancelarAssinaturaAction(assinaturaId: string): Promise<ActionResult> {
   if (!assinaturaId) return { ok: false, error: 'ID ausente.' };
 
