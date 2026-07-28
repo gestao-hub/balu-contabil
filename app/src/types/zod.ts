@@ -256,6 +256,53 @@ export const ServicoAvulsoSchema = z.object({
 });
 export type ServicoAvulsoInput = z.infer<typeof ServicoAvulsoSchema>;
 
+/**
+ * Bloco 4B — as duas fronteiras de EMISSÃO de cobrança pela subconta.
+ *
+ * Mesmo motivo dos dois schemas acima, com a aposta mais alta do bloco: daqui
+ * sai dinheiro real cobrado de um cliente real. Sem schema, `baseCentavos:
+ * "1000"` chegaria como string ao cálculo do percentual (`"1000" * 20 / 100`
+ * dá número, mas `"1000" + x` daria concatenação em qualquer refactor), e um
+ * `companyId` que não é uuid iria direto para o `.eq('id', ...)`.
+ *
+ * `vencimento` no formato do Asaas (YYYY-MM-DD) e **não no passado**: o Asaas
+ * recusa `dueDate` anterior a hoje com erro em inglês, e o contador veria
+ * "invalid_dueDate" no meio da tela de cobrança. A comparação é de string
+ * porque YYYY-MM-DD ordena lexicograficamente — e quem passa o "hoje" é a
+ * action, em BRT (`ymdBrt`), para não recusar o dia corrente às 21h.
+ */
+const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+export const CobrarClienteSchema = z.object({
+  companyId: z.string().uuid('Cliente inválido.'),
+  // `null` = cobrança livre (descrição e valor digitados na hora).
+  servicoAvulsoId: z.string().uuid('Serviço inválido.').nullish().transform((v) => v ?? null),
+  descricaoLivre: z
+    .string({ invalid_type_error: 'Descrição inválida.' })
+    .max(200, 'Descrição longa demais.')
+    .nullish()
+    .transform((v) => v?.trim() || null),
+  // Base do percentual (crédito recuperado, serviço-base da taxa de urgência) e
+  // também o valor da cobrança livre. Inteiro: centavo não tem fração.
+  baseCentavos: z
+    .number({ invalid_type_error: 'Informe o valor em números.' })
+    .int('Informe o valor em números.')
+    .max(2_147_483_647, 'Valor alto demais.')
+    .nullish()
+    .transform((v) => v ?? null),
+  vencimento: z.string({ required_error: 'Informe o vencimento.', invalid_type_error: 'Informe o vencimento.' })
+    .regex(DATA_ISO, 'Informe o vencimento.'),
+});
+export type CobrarClienteInput = z.infer<typeof CobrarClienteSchema>;
+
+export const CobrarHonorarioSchema = z.object({
+  honorarioId: z.string().uuid('Honorário inválido.'),
+  // Ausente = usa o vencimento que o honorário já tem. Só é preciso digitar
+  // quando aquele já passou — o Asaas não aceita vencimento no passado.
+  vencimento: z.string().regex(DATA_ISO, 'Informe o vencimento.').nullish().transform((v) => v ?? null),
+});
+export type CobrarHonorarioInput = z.infer<typeof CobrarHonorarioSchema>;
+
 export const AberturaCreateSchema = z.object({
   // required
   titular_nome_completo: z.string().trim().min(1, 'Informe o nome completo do titular.'),

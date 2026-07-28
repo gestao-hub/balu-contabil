@@ -10,6 +10,7 @@ import { join } from 'node:path';
 
 const SRC = join(process.cwd(), 'src', 'app');
 const ler = (p: string) => readFileSync(join(SRC, p), 'utf8');
+const lerLib = (p: string) => readFileSync(join(process.cwd(), 'src', 'lib', p), 'utf8');
 
 /** Extrai o corpo de uma action exportada, do `export async function NOME`
  *  ate o proximo `export async function` (ou fim do arquivo). */
@@ -92,6 +93,36 @@ describe('cobertura do gate de assinatura', () => {
         });
       }
     }
+  });
+
+  // ── Bloco 4B: o gate da EMISSAO mora um nivel abaixo da action ───────────
+  // Ha dois caminhos de emissao pela subconta (servico avulso e honorario) e
+  // havera mais. Repetir a chamada do gate em cada um seria repetir a chance de
+  // esquece-la, entao ela mora na porta unica: `emitirCobrancaEscritorio`.
+  //
+  // A rede muda de forma junto, e continua falhando nos dois sentidos: prova
+  // que o MOTOR chama o gate, e que cada action de emissao passa pelo motor em
+  // vez de falar com o Asaas por conta propria.
+  //
+  // DECISAO DO USUARIO (27/07), na mesma forma das duas fronteiras acima: o
+  // gate bloqueia CRIAR cobranca nova e NUNCA alcanca ver, sincronizar ou
+  // receber as ja emitidas — e com esse dinheiro que o escritorio paga a Balu.
+  describe('emissao pela subconta — gate na porta unica', () => {
+    const motor = lerLib(join('billing', 'emitir-cobranca.ts'));
+
+    it('emitirCobrancaEscritorio chama o gate', () => {
+      expect(CHAMA_GATE.test(corpoDaAction(motor, 'emitirCobrancaEscritorio'))).toBe(true);
+    });
+
+    it.each([
+      ['(auth)/(gated)/contador/clientes/[companyId]/cobrar-actions.ts', 'cobrarClienteAction'],
+      ['(auth)/(gated)/contador/honorarios/cobrar-actions.ts', 'cobrarHonorarioAction'],
+    ])('%s passa pelo motor (e nao pelo Asaas direto)', (arquivo, action) => {
+      const corpo = corpoDaAction(ler(arquivo), action);
+      expect(corpo).toContain('emitirCobrancaEscritorio(');
+      // Falar com o Asaas daqui seria contornar o gate e o cofre da credencial.
+      expect(corpo).not.toMatch(/asaasSub\s*\(|lerCredencial\s*\(/);
+    });
   });
 
   for (const [arquivo, actions, motivo] of NUNCA_PODE_TER_GATE) {

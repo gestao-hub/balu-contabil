@@ -192,6 +192,21 @@ export function asaasSub(token: string) {
     criarCliente: (d: { name: string; cpfCnpj: string; email?: string }) =>
       call<AsaasCliente>('POST', '/v3/customers', d, token),
 
+    /**
+     * Clientes JA cadastrados na subconta, filtrados pelo documento.
+     *
+     * Existe para nao criar um cadastro novo a cada emissao: `POST /v3/customers`
+     * NAO deduplica, e um honorario mensal viraria doze "clientes" iguais na
+     * agenda do escritorio — que e a agenda DELE, nao da Balu. Quem chama
+     * confere o documento devolvido antes de reusar (ver `emitir-cobranca.ts`):
+     * se o filtro do Asaas mudar de nome, o pior caso volta a ser o de hoje,
+     * criar um cadastro novo, e nunca cobrar a pessoa errada.
+     */
+    buscarClientesPorDocumento: (cpfCnpj: string) =>
+      call<{ data: AsaasCliente[] }>(
+        'GET', `/v3/customers?cpfCnpj=${encodeURIComponent(cpfCnpj)}&limit=10`, undefined, token,
+      ),
+
     criarCobranca: (d: {
       customer: string; billingType: 'BOLETO' | 'PIX' | 'UNDEFINED';
       value: number; dueDate: string; description?: string; externalReference?: string;
