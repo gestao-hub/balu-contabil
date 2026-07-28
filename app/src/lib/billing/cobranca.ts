@@ -18,7 +18,12 @@ import { efeitoDoStatusCobranca, type EfeitoEvento } from './eventos';
 
 export type PagamentoAsaas = {
   value?: number; dueDate?: string; status?: string;
-  invoiceUrl?: string; paymentDate?: string;
+  invoiceUrl?: string;
+  /** `string | null` porque e o que o Asaas devolve de verdade: em cobranca nao
+   *  paga o campo vem `null`, nao ausente (observado no sandbox em 28/07). O
+   *  tipo dizia so `string | undefined`, e o `??` abaixo ja tratava os dois —
+   *  era o TIPO que estava mentindo, nao o codigo. */
+  paymentDate?: string | null;
 };
 
 export type ResultadoPersistencia =
@@ -34,7 +39,7 @@ export async function persistirCobranca(
   pay: PagamentoAsaas,
 ): Promise<ResultadoPersistencia> {
   const { data: atual } = await sb
-    .from('cobrancas').select('id, pago_em')
+    .from('cobrancas').select('id, pago_em, status')
     .eq('asaas_charge_id', efeito.chargeId).maybeSingle();
 
   const confirmaPagamento = efeito.tipo === 'pagamento_confirmado';
@@ -66,12 +71,29 @@ export async function persistirCobranca(
   // PAYMENT_CREATED reentregue depois do PAYMENT_RECEIVED nao devolve uma
   // cobranca paga para PENDING.
   const jaPaga = Boolean(atual?.pago_em);
-  if (!jaPaga || eventoDePagamento) patch.status = pay.status ?? 'DESCONHECIDO';
 
-  // `pago_em` so e ESCRITO na confirmacao. Nos demais eventos ele fica fora
-  // do patch e portanto preservado — que era a intencao original e o
-  // upsert nao entregava.
-  if (confirmaPagamento) patch.pago_em = pay.paymentDate ?? ymdBrt();
+  // ESTORNO E TERMINAL, simetrico a guarda de "ja paga" acima dela. O evento
+  // que o Asaas mais reentrega e justamente PAYMENT_RECEIVED — e antes desta
+  // guarda ele encontrava `eventoDePagamento = true`, reescrevia `status` de
+  // volta para RECEIVED e ressuscitava uma cobranca ja devolvida. So o
+  // proprio evento de estorno (reentregue ou nao) pode gravar em cima de uma
+  // linha ja estornada; qualquer outro evento — inclusive um novo pagamento
+  // reentregue — fica fora do patch, `status` e `pago_em` intocados.
+  //
+  // Valores crus do Asaas que representam estorno: REFUNDED (total) e
+  // REFUND_REQUESTED (parcial/em andamento) — os dois classificados como
+  // tipo 'estorno' por `efeitoDoStatusCobranca` em eventos.ts, a mesma
+  // traducao usada pelo caminho de sincronizacao deste arquivo.
+  const jaEstornada = atual?.status === 'REFUNDED' || atual?.status === 'REFUND_REQUESTED';
+
+  if (!jaEstornada || efeito.tipo === 'estorno') {
+    if (!jaPaga || eventoDePagamento) patch.status = pay.status ?? 'DESCONHECIDO';
+
+    // `pago_em` so e ESCRITO na confirmacao. Nos demais eventos ele fica fora
+    // do patch e portanto preservado — que era a intencao original e o
+    // upsert nao entregava.
+    if (confirmaPagamento) patch.pago_em = pay.paymentDate ?? ymdBrt();
+  }
 
   const { error } = await sb.from('cobrancas')
     .update(patch).eq('asaas_charge_id', efeito.chargeId);

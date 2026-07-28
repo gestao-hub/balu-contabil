@@ -27,7 +27,7 @@ export default async function ContadorHonorariosPage() {
 
   // Join FK-desambiguado: honorarios.empresa_cliente_id → companies via a constraint
   // gerada pela 0032 (`ADD COLUMN ... REFERENCES` sem nome explícito = <tabela>_<coluna>_fkey).
-  const [{ data: honorariosRaw }, { data: carteiraRaw }] = await Promise.all([
+  const [{ data: honorariosRaw }, { data: carteiraRaw }, { data: cont }] = await Promise.all([
     supabase
       .from('honorarios')
       .select(`
@@ -44,7 +44,21 @@ export default async function ContadorHonorariosPage() {
       .eq('contabilidade_id', contabilidadeId)
       .is('deleted_at', null)
       .order('nome'),
+    // Bloco 4B — sem subconta APROVADA no Asaas não há para onde o dinheiro do
+    // cliente ir, e "Gerar cobrança" falharia no envio. Leitura pela sessão
+    // (policy `contabilidades_select_membro`); a chave cifrada não está no
+    // select nem poderia estar — a 0053 revogou a leitura dela.
+    supabase
+      .from('contabilidades')
+      .select('asaas_subconta_status')
+      .eq('id', contabilidadeId)
+      .maybeSingle(),
   ]);
+
+  // FALHA FECHADA: erro de leitura vira "não pode cobrar", nunca "pode". Errar
+  // para este lado custa um refresh; para o outro, custa a cobrança falhar na
+  // frente do cliente do escritório.
+  const subcontaAprovada = cont?.asaas_subconta_status === 'aprovada';
 
   const clientes: ClienteOption[] = (carteiraRaw ?? []).map(c => ({
     id: c.id as string,
@@ -87,6 +101,7 @@ export default async function ContadorHonorariosPage() {
         initial={honorarios}
         clientes={clientes}
         assinaturaPendente={assinaturaPendente}
+        subcontaAprovada={subcontaAprovada}
       />
     </main>
   );

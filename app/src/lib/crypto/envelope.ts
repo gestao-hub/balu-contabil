@@ -38,7 +38,11 @@ export function decryptBlob(blob: Buffer): Buffer {
   return Buffer.concat([decipher.update(ct), decipher.final()]);
 }
 
-const PREFIXO = 'enc:v1:';
+/** Exportado porque `credencial-subconta.ts` precisa distinguir "valor cifrado"
+ *  de "valor em claro" sem repetir a string: literal duplicado ali faria uma
+ *  futura `enc:v2:` ser lida como gravacao corrompida — a falha mais enganosa
+ *  possivel, porque acusaria dado bom. */
+export const PREFIXO = 'enc:v1:';
 
 /** Cifra um campo curto (string) para armazenar em repouso. '' passa direto. */
 export function cifrarCampo(v: string): string {

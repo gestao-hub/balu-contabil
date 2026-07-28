@@ -4,21 +4,12 @@
 // contabilidade_id (anti-IDOR) — mesmo padrão de contador/actions.ts.
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getContabilidadeCtx } from '@/lib/contador/guards';
+import { requireEscritorioAprovado } from '@/lib/contador/guards';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { HonorarioV2Schema } from '@/types/zod';
 import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
-
-/** Sessão válida + escritório aprovado, ou o erro pronto pra devolver da action. */
-async function requireEscritorioAprovado(): Promise<{ id: string; userId: string } | { ok: false; error: string }> {
-  const g = await getContabilidadeCtx();
-  if ('error' in g) return { ok: false, error: g.error };
-  if (!g.contabilidade) return { ok: false, error: 'Você não faz parte de um escritório.' };
-  if (g.contabilidade.status !== 'aprovada') return { ok: false, error: 'Escritório não aprovado.' };
-  return { id: g.contabilidade.id, userId: g.userId };
-}
 
 /** Data de hoje em YYYY-MM-DD, ajustada para BRT (mesmo ajuste do legado honorarios/actions.ts). */
 function hojeBR(): string {
@@ -28,7 +19,7 @@ function hojeBR(): string {
 
 export async function createHonorarioV2Action(input: unknown): Promise<ActionResult<{ id: string }>> {
   const ctx = await requireEscritorioAprovado();
-  if ('ok' in ctx) return ctx;
+  if (!ctx.ok) return ctx;
   const assinatura = await assertAssinaturaEscritorio(ctx.id);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
@@ -75,7 +66,7 @@ export async function createHonorarioV2Action(input: unknown): Promise<ActionRes
 export async function updateHonorarioV2Action(id: string, input: unknown): Promise<ActionResult> {
   if (!id) return { ok: false, error: 'ID ausente.' };
   const ctx = await requireEscritorioAprovado();
-  if ('ok' in ctx) return ctx;
+  if (!ctx.ok) return ctx;
   const assinatura = await assertAssinaturaEscritorio(ctx.id);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
@@ -120,7 +111,7 @@ export async function updateHonorarioV2Action(id: string, input: unknown): Promi
 export async function marcarPagoV2Action(id: string, forma_pagamento: string): Promise<ActionResult> {
   if (!id) return { ok: false, error: 'ID ausente.' };
   const ctx = await requireEscritorioAprovado();
-  if ('ok' in ctx) return ctx;
+  if (!ctx.ok) return ctx;
   const assinatura = await assertAssinaturaEscritorio(ctx.id);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
@@ -149,7 +140,7 @@ export async function marcarPagoV2Action(id: string, forma_pagamento: string): P
 export async function desmarcarPagoV2Action(id: string): Promise<ActionResult> {
   if (!id) return { ok: false, error: 'ID ausente.' };
   const ctx = await requireEscritorioAprovado();
-  if ('ok' in ctx) return ctx;
+  if (!ctx.ok) return ctx;
   const assinatura = await assertAssinaturaEscritorio(ctx.id);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
@@ -178,7 +169,7 @@ export async function desmarcarPagoV2Action(id: string): Promise<ActionResult> {
 export async function deleteHonorarioV2Action(id: string): Promise<ActionResult> {
   if (!id) return { ok: false, error: 'ID ausente.' };
   const ctx = await requireEscritorioAprovado();
-  if ('ok' in ctx) return ctx;
+  if (!ctx.ok) return ctx;
   const assinatura = await assertAssinaturaEscritorio(ctx.id);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 

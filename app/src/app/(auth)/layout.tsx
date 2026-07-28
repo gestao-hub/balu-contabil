@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getGateContext } from '@/lib/auth/gate-context';
+import { mostrarItemCobrancas } from '@/lib/billing/cobranca-escritorio-vm';
 import { signedUrlBranding } from '@/lib/clients/supabase-storage';
 import MenuLateral, { type EscritorioBranding } from '@/components/MenuLateral';
 
@@ -19,11 +20,23 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   const { user, currentCompany, normalizedRole } = ctx;
 
   const supabase = await createServerClient();
-  const [{ data: companies }, { data: membro }] = await Promise.all([
+  const [{ data: companies }, { data: membro }, cobrancasDoEscritorio] = await Promise.all([
     // contabilidade_id junto — evita 1 query extra pra descobrir se a empresa
     // ativa tem escritório (co-branding, Task 18).
     supabase.from('companies').select('id, nome, contabilidade_id').eq('user_id', user.id).is('deleted_at', null).order('nome'),
     supabase.from('contabilidade_membros').select('contabilidade_id').eq('user_id', user.id).maybeSingle(),
+    // Bloco 4B — EXISTE ALGUM BOLETO? (decisão do usuário, 28/07). O item
+    // "Cobranças" só entra no menu do empresário quando o escritório de fato
+    // emitiu algo pela subconta: vínculo com escritório não basta, porque a
+    // esmagadora maioria cobra fora da Balu e o item viraria uma tela vazia
+    // permanente ao lado de "Honorários", que fala da mesma dívida.
+    //
+    // `limit(1)`, não `count` — a pergunta é "existe?", e um COUNT exato varre
+    // a partição inteira do índice a cada carregamento de página autenticada.
+    // Sem empresa ativa a consulta nem sai (o item já não apareceria).
+    currentCompany
+      ? supabase.from('cobrancas_escritorio').select('id').eq('empresa_cliente_id', currentCompany).limit(1)
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   // Marca do menu. Duas origens, com precedências diferentes:
@@ -43,6 +56,32 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   let escritorio: EscritorioBranding | null = null;
   const admin = createAdminClient();   // empresa não tem RLS de leitura em `contabilidades`
 
+  // Vínculo cru da empresa ativa, sem exigir aprovação — o co-branding abaixo
+  // EXIGE 'aprovada', mas esta variável é a matéria-prima dele.
+  const currentCompanyContabilidadeId =
+    (companies ?? []).find((c) => c.id === currentCompany)?.contabilidade_id ?? null;
+
+  // O item /cobrancas do 4B: existe boleto, ponto. Não exige escritório
+  // aprovado, e não exige que a subconta ainda esteja de pé — escritório
+  // suspenso continua tendo boleto em aberto na mão do cliente, e sumir com o
+  // link de pagamento por causa do status DO ESCRITÓRIO seria fazer a briga
+  // deles respingar nele. Uma vez emitido, o item nunca mais some: a tela é
+  // também o histórico do que o cliente pagou.
+  //
+  // FALHA ABERTA em erro de leitura — a regra e o porquê moram em
+  // `mostrarItemCobrancas`. Esconder o item por um blip de rede faria o cliente
+  // concluir que não tem cobrança, e no menu não há onde escrever "não deu para
+  // conferir". Isto roda em TODA página autenticada, então "um blip" não é
+  // hipótese remota.
+  if (cobrancasDoEscritorio.error) {
+    console.error('[4b] existência de cobranças do escritório não pôde ser lida:',
+      cobrancasDoEscritorio.error.message);
+  }
+  const temCobrancasDoEscritorio = mostrarItemCobrancas({
+    erro: !!cobrancasDoEscritorio.error,
+    quantidade: (cobrancasDoEscritorio.data ?? []).length,
+  });
+
   if (membro?.contabilidade_id) {
     const { data: contab } = await admin
       .from('contabilidades')
@@ -58,8 +97,6 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
       };
     }
   } else {
-    const currentCompanyContabilidadeId =
-      (companies ?? []).find((c) => c.id === currentCompany)?.contabilidade_id ?? null;
     if (currentCompanyContabilidadeId) {
       const { data: contab } = await admin
         .from('contabilidades')
@@ -97,6 +134,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         companies={(companies ?? []).map((c) => ({ id: c.id, nome: c.nome }))}
         currentCompanyId={currentCompany}
         temEscritorio={!!membro}
+        temCobrancasDoEscritorio={temCobrancasDoEscritorio}
         escritorio={escritorio}
       />
       <div className="flex-1 overflow-y-auto pt-14 md:pt-0">{children}</div>

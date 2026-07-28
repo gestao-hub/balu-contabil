@@ -21,6 +21,12 @@ public/swe-worker-*.js
 .env.local.*
 .env.example
 
+# ── Scratchpad (aplicadores de migration, seeds e probes) ────
+# Sempre foi tratado como nao versionado, mas nunca esteve ignorado: aparecia
+# como `??` no status, a um `git add -A` distraido de virar commit. Os scripts
+# daqui leem SUPABASE_PASSWORD e CERT_ENC_KEY do .env.local.
+scratchpad/
+
 # ── Testes (Vitest / Playwright) ─────────────────────────────
 playwright-report
 blob-report

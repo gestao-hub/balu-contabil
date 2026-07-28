@@ -3,6 +3,8 @@
 import { z } from 'zod';
 import { isValidCnpj } from '@/lib/validators/cnpj';
 import { normalizarValorBRL } from '@/lib/format/dinheiro';
+import { COMPANY_TYPES } from '@/lib/billing/subconta';
+import { TIPOS_VALOR } from '@/lib/billing/avulso';
 import { EMPRESA_TIPOS, REGIMES, SEDE_TIPOS } from '@/types/abertura';
 
 export const ClienteSchema = z.object({
@@ -147,6 +149,181 @@ export const HonorarioV2Schema = z.object({
 }).refine((h) => !h.recorrente || h.recorrencia_dia != null,
   { message: 'Informe o dia da recorrência (1–28).' });
 export type HonorarioV2Input = z.infer<typeof HonorarioV2Schema>;
+
+/**
+ * Bloco 4B — a fronteira de entrada de `criarSubcontaAction`.
+ *
+ * O tipo `DadosSubconta` e apagado na compilacao: quem chama a action pode
+ * mandar QUALQUER coisa. Sem este schema, `incomeValue: "25000"` passava como
+ * string para um KYC IRREVERSIVEL, `name` nao-string estourava `TypeError` no
+ * `.trim()` (500 em vez de mensagem em portugues) e `companyType` nao era
+ * conferido contra o enum do Asaas.
+ *
+ * Aqui e so a checagem de FORMA. As regras do cadastro (documento com 11 ou 14
+ * digitos, CEP com 8, PJ pede tipo e PF pede nascimento) continuam em
+ * `validarDadosSubconta`, que a action chama logo depois — elas sao as mesmas
+ * que o formulario aplica antes do round-trip.
+ *
+ * `incomeValue` SEM `z.coerce`, de proposito: coagir "25000" e justamente o que
+ * deixava o valor errado entrar no KYC. Numero tem de chegar numero.
+ */
+const textoObrigatorio = (mensagem: string) =>
+  z.string({ required_error: mensagem, invalid_type_error: mensagem });
+
+export const SubcontaSchema = z.object({
+  name: textoObrigatorio('Informe o nome do escritório.'),
+  cpfCnpj: textoObrigatorio('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.'),
+  email: textoObrigatorio('Informe o e-mail do responsável.'),
+  mobilePhone: textoObrigatorio('Informe o celular com DDD.'),
+  incomeValue: z
+    .number({
+      required_error: 'Informe o faturamento mensal estimado.',
+      invalid_type_error: 'Informe o faturamento mensal estimado como número.',
+    })
+    .finite('Informe o faturamento mensal estimado como número.'),
+  address: textoObrigatorio('Informe endereço, número e bairro.'),
+  addressNumber: textoObrigatorio('Informe endereço, número e bairro.'),
+  province: textoObrigatorio('Informe endereço, número e bairro.'),
+  postalCode: textoObrigatorio('Informe o CEP com 8 dígitos.'),
+  birthDate: z
+    .string({ invalid_type_error: 'Informe a data de nascimento do responsável.' })
+    .nullish()
+    .transform((v) => v ?? null),
+  companyType: z
+    .enum(COMPANY_TYPES, { errorMap: () => ({ message: 'Informe o tipo da empresa.' }) })
+    .nullish()
+    .transform((v) => v ?? null),
+});
+export type SubcontaInput = z.infer<typeof SubcontaSchema>;
+
+/**
+ * Bloco 4B — a fronteira de entrada de `salvarServicoAction` (catalogo de
+ * avulsos do escritorio).
+ *
+ * Mesmo motivo do `SubcontaSchema`: o tipo `ServicoAvulso` some na compilacao e
+ * a action e um endpoint HTTP — quem chama pode mandar `valorCentavos: "900"`,
+ * `tipoValor: 'gratis'` ou `nome: {}`. Sem schema, a string de valor chegaria
+ * ate o INSERT (onde vira preco errado ou erro cru de Postgres na tela) e o
+ * `{}` estouraria `TypeError` no `.trim()` de `validarServicoAvulso`.
+ *
+ * So checagem de FORMA. As REGRAS — fixo exige valor e proibe percentual, e
+ * vice-versa — continuam em `validarServicoAvulso`, que espelha o CHECK
+ * `servicos_avulsos_valor_check` da 0053 e e a mesma funcao que a tela chama
+ * antes do round-trip.
+ *
+ * `valorCentavos` inteiro e limitado ao teto do `integer` do Postgres: acima
+ * disso o banco responde "value out of range", que chegaria ao escritorio como
+ * erro tecnico em ingles no meio do cadastro.
+ */
+export const ServicoAvulsoSchema = z.object({
+  // `null` = criar; uuid = editar aquele servico. String qualquer nao entra:
+  // o id vai direto para o `.eq('id', ...)` da action.
+  id: z.string().uuid('Serviço inválido.').nullish().transform((v) => v ?? null),
+  nome: z
+    .string({ required_error: 'Informe o nome do serviço.', invalid_type_error: 'Informe o nome do serviço.' })
+    .trim()
+    .min(1, 'Informe o nome do serviço.')
+    .max(200, 'Nome do serviço longo demais.'),
+  categoria: z
+    .string({ invalid_type_error: 'Categoria inválida.' })
+    .max(100, 'Categoria longa demais.')
+    .nullish()
+    .transform((v) => v?.trim() || null),
+  tipoValor: z.enum(TIPOS_VALOR, {
+    errorMap: () => ({ message: 'Escolha entre valor fixo e percentual.' }),
+  }),
+  valorCentavos: z
+    .number({ invalid_type_error: 'Informe o valor do serviço em números.' })
+    .int('Informe o valor do serviço em números.')
+    .max(2_147_483_647, 'Valor alto demais.')
+    .nullish()
+    .transform((v) => v ?? null),
+  percentual: z
+    .number({ invalid_type_error: 'Informe o percentual em números.' })
+    .finite('Informe o percentual em números.')
+    // A coluna e `numeric(5,2)`: 33.333 seria gravado como 33.33 SEM erro
+    // nenhum. A tela mostraria um numero e o escritorio cobraria outro, e a
+    // diferenca so apareceria na conciliacao. Recusar aqui e a unica forma de
+    // o que se ve ser o que se cobra. Tolerancia porque 33.33*100 nao da
+    // exatamente 3333 em ponto flutuante.
+    .refine(
+      (v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-9,
+      'O percentual aceita no máximo duas casas decimais.',
+    )
+    .nullish()
+    .transform((v) => v ?? null),
+  ativo: z.boolean({ invalid_type_error: 'Situação inválida.' }).nullish().transform((v) => v ?? true),
+});
+export type ServicoAvulsoInput = z.infer<typeof ServicoAvulsoSchema>;
+
+/**
+ * Bloco 4B — as duas fronteiras de EMISSÃO de cobrança pela subconta.
+ *
+ * Mesmo motivo dos dois schemas acima, com a aposta mais alta do bloco: daqui
+ * sai dinheiro real cobrado de um cliente real. Sem schema, `baseCentavos:
+ * "1000"` chegaria como string ao cálculo do percentual (`"1000" * 20 / 100`
+ * dá número, mas `"1000" + x` daria concatenação em qualquer refactor), e um
+ * `companyId` que não é uuid iria direto para o `.eq('id', ...)`.
+ *
+ * `vencimento` no formato do Asaas (YYYY-MM-DD) e **não no passado**: o Asaas
+ * recusa `dueDate` anterior a hoje com erro em inglês, e o contador veria
+ * "invalid_dueDate" no meio da tela de cobrança. A comparação é de string
+ * porque YYYY-MM-DD ordena lexicograficamente — e quem passa o "hoje" é a
+ * action, em BRT (`ymdBrt`), para não recusar o dia corrente às 21h.
+ */
+const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+export const CobrarClienteSchema = z.object({
+  companyId: z.string().uuid('Cliente inválido.'),
+  // `null` = cobrança livre (descrição e valor digitados na hora).
+  servicoAvulsoId: z.string().uuid('Serviço inválido.').nullish().transform((v) => v ?? null),
+  descricaoLivre: z
+    .string({ invalid_type_error: 'Descrição inválida.' })
+    .max(200, 'Descrição longa demais.')
+    .nullish()
+    .transform((v) => v?.trim() || null),
+  // Base do percentual (crédito recuperado, serviço-base da taxa de urgência) e
+  // também o valor da cobrança livre. Inteiro: centavo não tem fração.
+  baseCentavos: z
+    .number({ invalid_type_error: 'Informe o valor em números.' })
+    .int('Informe o valor em números.')
+    .max(2_147_483_647, 'Valor alto demais.')
+    .nullish()
+    .transform((v) => v ?? null),
+  vencimento: z.string({ required_error: 'Informe o vencimento.', invalid_type_error: 'Informe o vencimento.' })
+    .regex(DATA_ISO, 'Informe o vencimento.'),
+  // A CHAVE DE IDEMPOTENCIA DA SUBMISSAO (0055). O avulso nao tem chave
+  // natural — cobrar duas vezes o mesmo servico do mesmo cliente e legitimo —
+  // entao quem separa "duplo clique" de "cobrar de novo" e este UUID, gerado
+  // por `novaChaveEmissao` (lib/billing/chave-emissao) UMA VEZ POR ABERTURA DO
+  // FORMULARIO e renovado so apos uma emissao bem-sucedida. `CobrarDialog.tsx`
+  // e quem o manda hoje.
+  //
+  // OBRIGATORIA (28/07): Server Action e endpoint publico — um POST direto sem
+  // passar pela tela emitia MESMO ASSIM, sem reserva e sem indice unico, ou
+  // seja, SEM TRAVA NENHUMA contra duplo clique. Tornar a chave obrigatoria
+  // aqui, na fronteira do avulso, fecha o buraco sem mexer no motor: o
+  // caminho do honorario usa a chave NATURAL do `honorarioId` (`hon:<id>`),
+  // nunca manda `idempotencyKey`, e `chaveDeReserva` (emitir-cobranca.ts)
+  // resolve essa chave PRIMEIRO — continua emitindo sem esta aqui.
+  //
+  // `.toLowerCase()` porque `z.string().uuid()` aceita hexadecimal MAIUSCULO e
+  // o CHECK de formato da 0055 (`[0-9a-f]`) nao — sem isto, uma chave em
+  // maiusculas viraria erro cru de Postgres na tela do contador.
+  idempotencyKey: z.string({
+    required_error: 'Informe a chave de emissão.',
+    invalid_type_error: 'Chave de emissão inválida.',
+  }).uuid('Chave de emissão inválida.').transform((v) => v.toLowerCase()),
+});
+export type CobrarClienteInput = z.infer<typeof CobrarClienteSchema>;
+
+export const CobrarHonorarioSchema = z.object({
+  honorarioId: z.string().uuid('Honorário inválido.'),
+  // Ausente = usa o vencimento que o honorário já tem. Só é preciso digitar
+  // quando aquele já passou — o Asaas não aceita vencimento no passado.
+  vencimento: z.string().regex(DATA_ISO, 'Informe o vencimento.').nullish().transform((v) => v ?? null),
+});
+export type CobrarHonorarioInput = z.infer<typeof CobrarHonorarioSchema>;
 
 export const AberturaCreateSchema = z.object({
   // required

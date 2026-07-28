@@ -1,39 +1,367 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-27 (sessão 13 — **smoke do Bloco 4A CONCLUÍDO e 4A fechado.** Branch `bloco-4-billing-asaas`, 38 commits. `tsc` 0 · **vitest 731/731** (27 pulados) · `next build` 0 erros / 46 rotas · migrations `0050`, `0051` e `0052` aplicadas em produção. O smoke da sessão 12 achou **8 bugs**; a 13 fechou o §2.4–2.6 e o §3-bis, e o usuário pediu uma regra nova: **comprovante obrigatório na liberação manual** (migration 0052). **Blocos 1, 2 e 3 em `main` e no ar.**)
+> **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4B COMPLETO e com o SMOKE CONCLUÍDO.** Branch `feat/bloco-4b-subcontas`, 41 commits, **NÃO mergeada**. Tasks 13 e 14 fechadas, navegação, tela consolidada do contador, rodada de code-review + systematic-debugging, e o **SMOKE MANUAL CONCLUÍDO** (§1–§10, nenhum bug novo). **Pronto para merge.** Migrations `0053`, `0054` e `0055` **aplicadas em produção**. **Blocos 1, 2, 3 e 4A em `main` e no ar.**)
 
-> ## ▶ AO RETOMAR: voltar direto na pergunta de execução do 4B
-> **Pedido explícito do usuário ao encerrar a sessão 13:** retomar já na
-> pergunta, sem recapitular o que ficou pronto.
+> ## ✅ SMOKE DO 4B CONCLUÍDO (2026-07-28) — §1 a §10, todas passaram
+> **Nenhum bug novo** — o primeiro bloco do projeto em que isso acontece. Não é
+> sorte: o `/code-review` + `/systematic-debugging` rodados **antes** do smoke
+> acharam 6 problemas (`7b4a233`), incluindo a corrida de lost-update que teria
+> aparecido justamente no §7.
 >
-> **Perguntar as duas coisas, juntas:**
+> **Provado ao vivo contra o Asaas:** as 4 cobranças dão **200 pela subconta e
+> 404 pela conta-mãe**; o trinco recusa emissão **sem tocar no Asaas**; a
+> reconciliação faz o pagamento aparecer **sem webhook nenhum**; o estorno
+> desfaz o semáforo e **3 rodadas** do cron não o ressuscitam; o gate alcança
+> **criar** mas não **ver**, **receber** nem o cliente final.
 >
-> **1. Como executar o plano do 4B?**
-> - **(1) Subagent-driven** *(recomendado)* — um subagente novo por task, com
->   revisão entre elas.
-> - **(2) Inline** — executar na própria sessão, em lotes com checkpoints.
+> ⚠️ **CENÁRIO DEIXADO VIVO por decisão do usuário:** 4 cobranças, 1 serviço
+> avulso, 2 honorários de teste e a subconta ficam no banco **como prova de que
+> o teste foi feito**. **A limpeza acontece antes da entrega ao dono do
+> produto** — é uma pendência real, não lixo esquecido. A assinatura do
+> escritório JÁ foi restaurada (`cortesia`, `plano_id` nulo).
 >
-> **2. O gate de inadimplência do 4A alcança a emissão de cobrança pela
-> subconta?** (bloqueia a **Task 9**)
-> Recomendação registrada no plano: bloqueia **criar** cobrança nova, e **nunca**
-> alcança ver, sincronizar ou receber as já emitidas — é com esse dinheiro que o
-> escritório paga a Balu. Mesma forma das duas fronteiras do 4A.
+> Roteiro completo com os resultados: `docs/smoke/2026-07-28-bloco-4b-roteiro-smoke.md`.
+
+> ## ⛔ HISTÓRICO: o que faltava antes do smoke
+> **Roteiro pronto e renderizado:** `docs/smoke/2026-07-28-bloco-4b-roteiro-smoke.md`
+> (10 seções). **Mostrá-lo na conversa é a primeira coisa a fazer**, sem esperar
+> o usuário pedir.
 >
-> **Estado:** o 4A está fechado e no ar (**não há smoke pendente**); a spec do 4B
-> teve os 5 pontos do §7 decididos; o plano está escrito e commitado em
-> `docs/superpowers/plans/2026-07-27-bloco-4b-subcontas-escritorio.md`
-> (14 tasks, TDD, código completo em cada passo). **Nenhuma linha de código do
-> 4B foi escrita ainda** — nada a desfazer.
+> **Estado:** branch `feat/bloco-4b-subcontas`, árvore limpa (só os dois
+> untracked de sempre: um PDF na raiz e um `.docx` em `app/`). **Nada pela
+> metade, nada a desfazer.** Nenhum `node` vivo. Cenário do smoke **NÃO montado**
+> — nenhuma subconta, nenhuma cobrança, catálogo vazio; é o próprio smoke que
+> monta, pelas telas.
 >
-> **Primeiro comando ao começar a executar:**
-> ```
-> git checkout main && git pull && git checkout -b feat/bloco-4b-subcontas
-> ```
+> **Verificação no fecho:** `tsc` 0 · vitest **1142/1142** (27 pulados) ·
+> `next build` **0 erros / 56 rotas**.
+>
+> **O código passou por `/code-review` + `/systematic-debugging` antes do smoke**
+> (commit `7b4a233`): 6 achados, 5 corrigidos. O grave era uma **corrida de
+> lost-update** nascida na própria Task 13 — a varredura virou o segundo escritor
+> de `cobrancas_escritorio` e um UPDATE cego por `id` deixava um estorno recém-
+> chegado ser sobrescrito por um snapshot velho, marcando pago um honorário cujo
+> dinheiro voltou. Resolvido com compare-and-swap. Detalhes na seção da sessão 15.
+>
+> **A seção que decide o merge é a §9:** `node scratchpad/_probe-4b.mjs`. Cada
+> cobrança é consultada pela subconta (tem de dar **200**) e pela conta-mãe da
+> Balu (tem de dar **404**). Se a conta-mãe enxergar qualquer cobrança, o bloco
+> **não vai para `main`** por mais que todas as telas funcionem.
+>
+> **Duas coisas que o smoke local NÃO prova, e não são bug:** (a) o webhook da
+> subconta não pode ser cadastrado em local — `NEXT_PUBLIC_SITE_URL` é
+> `localhost` e `ehUrlEntregavel` recusa `http`/localhost de propósito, e
+> `ASAAS_WEBHOOK_SECRET` nem está no `.env.local`; (b) portanto o pagamento não
+> chega sozinho — quem o faz aparecer é a **reconciliação da Task 13**, e é
+> exatamente isso que o §6 do roteiro testa.
 >
 > Dependências externas que seguem de pé: aprovação comercial do Asaas para
-> criar subconta **em produção** (em sandbox já funciona — provado nesta sessão)
-> e as premissas do Michel (§8 da spec).
+> criar subconta **em produção** (sandbox já funciona), o
+> `ASAAS_WEBHOOK_SECRET` (≥32 chars) para o webhook em produção, e as premissas
+> do Michel (§8 da spec).
+
+---
+
+## Sessão 15 (2026-07-28) — Tasks 13 e 14, navegação, e o 4B fica pronto para o smoke
+
+Três commits: `468f8d9` (Task 13), `ebb75dc` (navegação + tela nova), `d6e3877`
+(roteiro do smoke).
+
+### Revisão das duas frentes que a sessão 14 deixou sem revisar
+
+A Task 12 (`34a9a62`) e o cadastro do webhook (`dd6b285`) foram revisadas antes
+de tudo. **Nada a corrigir** — leitura pela sessão com a policy real, chave da
+subconta que entra e não sai, best-effort na criação para não gerar subconta
+duplicada. Um detalhe herdado: as mensagens de `avisoDoDiagnostico` prometem
+"conferência diária", que só passou a existir com a Task 13.
+
+### Task 13 — a varredura, e as quatro decisões do plano que não sobreviveram
+
+Nenhuma das quatro decisões do snippet do plano resistiu ao repo real:
+
+1. **`lerCredencial` FORA do `try`**, com `if (!token) continue` supondo retorno
+   nulável. Ela **lança** desde a sessão 14 — uma contabilidade corrompida
+   derrubaria a reconciliação de **todas**, justo a rede de segurança.
+2. **Perdia o ESTORNO.** O plano copiava só a metade que ACENDE o semáforo do
+   honorário. Em vez de repetir o código, a escrita foi **extraída** para
+   `lib/billing/aplicar-cobranca-escritorio.ts` e **o webhook passou a chamar a
+   mesma função**. Sabotar o ramo do estorno agora derruba **os dois** caminhos
+   ao mesmo tempo — e essa é a prova de que não há como divergirem.
+3. **Filtrava por `asaas_subconta_status = 'aprovada'`.** Emitir exige KYC;
+   reconhecer o pagamento de uma cobrança **já emitida** não pode exigir nada.
+   KYC que regride não apaga os boletos na mão dos clientes.
+4. **Lia só a primeira página.** A rede viraria buraco no escritório com mais de
+   100 cobranças — o que tem mais dinheiro em jogo.
+
+**Levantado contra o sandbox** (`_probe-listar-pagamentos.mjs`): `GET /v3/payments`
+devolve `{ object, hasMore, totalCount, limit, offset, data }`, e o item da
+**lista** traz `paymentDate` **e** `confirmedDate` — iguais aos do corpo do
+webhook, que é o que permite a mesma escrita servir aos dois sem tradução.
+`paymentDate` vem **`null`** em cobrança não paga: o tipo `PagamentoAsaas` dizia
+`string | undefined`, era o **tipo** que mentia.
+
+> ⚠️ **`?status=BANANA` responde 200 e devolve a lista INTEIRA.** Filtro de
+> status com erro de digitação não falha: varre tudo **parecendo** que filtrou.
+> Daí não haver filtro de status na varredura, com teste que morde se aparecer.
+
+Teto de 50 páginas (5.000 cobranças/dia) como freio contra `hasMore` que nunca
+desce. Bater no teto é **contado e logado** — varredura truncada em silêncio é
+pior que varredura nenhuma, porque parece completa.
+
+**Quatro sabotagens provadas**, cada uma falhando no teste certo (credencial
+fora do try; filtro por 'aprovada'; ramo do estorno removido — derrubou webhook
+**e** varredura; leitura de uma página só).
+
+**Vazamento que o teste pegou:** o log de falha da varredura podia carregar o
+token se a mensagem viesse de fora. A mensagem do cliente Asaas hoje não o
+carrega, mas ela é montada longe dali e a regra do módulo é "nunca entra em log,
+**inclusive log de erro**" — agora é redigida com `mascarar` antes de sair.
+
+### Navegação: duas decisões do usuário e um bug que a seção criou
+
+**Decisão 1 — "Cobranças" do empresário aparece quando existe BOLETO**, não
+quando existe escritório. Ele convivia com "Honorários" falando da mesma dívida,
+e a maioria dos escritórios cobra fora da Balu: para esses o item era tela vazia
+permanente. O layout pergunta com `limit(1)`, não `count` (a pergunta é
+"existe?"). Não exige escritório aprovado nem subconta de pé — uma vez emitido,
+o boleto está na mão do cliente.
+
+**Decisão 2 — a tela que não existia.** O CHECKPOINT descrevia a seção
+agrupando três telas; **só duas existiam**. O contador via cobrança dentro de
+`/contador/honorarios` e por cliente, e uma **avulsa vencida não aparecia em
+lugar nenhum** — ele não tinha onde perguntar "o que está em aberto comigo?".
+Criada `/contador/cobrancas`: abas por situação, origem (honorário × avulso),
+totais do recorte atual, link da fatura para reenviar sem entrar no painel do
+Asaas. Leitura pela **sessão** — a primeira perna da policy `cobrancas_escritorio_select`
+é literalmente essa tela.
+
+**O vocabulário de status virou compartilhado.** `cobrancas-vm.ts` saiu da pasta
+da tela do cliente e virou `lib/billing/cobranca-escritorio-vm.ts`: duas telas
+leem a **mesma** cobrança agora, e rótulos separados fariam a conversa entre
+cliente e escritório começar com os dois olhando telas que discordam.
+
+**O bug que a seção criou, e que foi corrigido:** o realce do menu era
+`pathname.startsWith(href)` e funcionava **só porque nenhum href era prefixo de
+outro**. `/contador/configuracoes` é prefixo de `/contador/configuracoes/subconta`
+— os **dois** itens acendiam. A regra virou `components/menu-ativo.ts` (puro, com
+teste, porque **não há jsdom neste repo**): vence o href mais **longo**, e o
+prefixo tem de terminar em `/` — senão `/contador` acenderia numa futura
+`/contadores`.
+
+### Task 14 — o probe e o roteiro
+
+`scratchpad/_probe-4b.mjs`, **somente leitura**, e de propósito **não cria** a
+subconta nem a cobrança: ele audita o caminho de produção, não um caminho
+sintético que só ele percorre. A metade que o plano não tinha: além do **404
+pela conta-mãe**, ele consulta a mesma cobrança **pela subconta e exige 200** —
+sem isso, um `chargeId` errado daria 404 e o probe diria "separado" sem ter
+olhado para nada. **Um 404 sozinho não prova separação; prova ausência.**
+
+Ferramentas novas em `app/scratchpad/`: `_probe-listar-pagamentos.mjs`,
+`_probe-4b.mjs`, `_estado-4b.mjs` (estado do cenário), `_sandbox-pagar.mjs`
+(pagar/estornar no sandbox **sem tocar no banco** — é o banco que a reconciliação
+tem de atualizar sozinha; se o script mexesse na tabela, o smoke provaria a si
+mesmo), `_fk-cobrancas.mjs`.
+
+### A rodada de revisão antes do smoke (`7b4a233`)
+
+`/code-review` + `/systematic-debugging`. Seis achados; **cinco viraram
+correção**, e um era assert meu mal calibrado.
+
+**O grave, e ele nasceu na Task 13.** Até esta sessão o webhook era o **único**
+escritor de `cobrancas_escritorio`, e um `UPDATE ... WHERE id` bastava. A
+varredura o tornou o **segundo** — e ela lê uma **página inteira** (até 100
+linhas) antes de aplicar uma a uma, então o snapshot da última linha pode estar
+dezenas de round-trips velho. Um `PAYMENT_REFUNDED` chegando no meio era
+sobrescrito: a varredura reavaliava a trava "estorno é terminal" contra um estado
+que já não existia e regravava `paga`, marcando pago um honorário cujo dinheiro
+tinha voltado. **`aplicarEventoNaCobranca` decidia certo sobre um estado errado**
+— a falha escapava por fora dela. Conserto: **compare-and-swap**
+(`.eq('status', cob.status)` + linhas afetadas); zero linhas = outro escritor
+moveu, descarta sem retentar.
+
+> **A lição, e ela vale para qualquer bloco:** *acrescentar um segundo escritor a
+> uma tabela invalida as travas de concorrência do primeiro.* Nenhum teste do 4B
+> falhou quando a varredura nasceu, porque todos exercitavam um escritor de cada
+> vez. O teste que pegou isso precisou de um gancho (`aoAplicar`) que simula o
+> webhook chegando **entre** a leitura e a escrita — e os dois mocks de UPDATE
+> tiveram de passar a **honrar as condições `.eq`**: mock que responde "afetou"
+> sempre faria um CAS quebrado parecer funcionar.
+
+**Os outros quatro:** (a) **boleto órfão** nunca era detectado depois da emissão —
+a varredura é o único componente que vê os dois lados, e o `externalReference`
+torna o reconhecimento exato; agora é contado (`orfaos`) e logado; (b) **ordem
+explícita** `sort=dateCreated&order=desc` na listagem, porque batendo o teto de
+páginas é a ordem que decide qual ponta fica de fora — e o `order` foi **sondado**,
+não assumido (a lição do `status=BANANA` vale para qualquer parâmetro); (c)
+**`maxDuration = 60`** nas duas rotas de cron, que não declaravam nenhum: timeout
+de wall-clock não é capturável por try/catch, e como a varredura roda por último
+ela seria a primeira sacrificada — em silêncio; (d) **cap calado** em
+`/contador/cobrancas`: sem `.limit()` valia o "Max rows" do Supabase e **os totais
+eram somados sobre o array cortado**; agora `LIMITE=200` com aviso na tela e
+totais rotulados "(parcial)". E (e) o **nome do cliente que saiu do escritório**,
+que o embed pela sessão não alcançava — cobranças em aberto apareciam como
+"Cliente sem nome".
+
+**O achado que não era achado, e o que ele ensinou.** O probe acusou
+`asaas_api_key_cifrada` acessível a `authenticated`: era `INSERT`, e
+`contabilidades` tem RLS ligada e **nenhuma policy de INSERT** — grant de coluna
+inalcançável. Pior: o mesmo probe usava `.includes()` sobre um `array_agg` que o
+driver devolve como **string**, ou seja, fazia *substring match* e dava a resposta
+certa por acidente. **Assert mal calibrado custa o mesmo que teste que não morde:
+some a diferença entre achado e ruído.**
+
+**Confirmado no caminho** (evidência, não suposição): a `0053` funcionou como
+documentado — SELECT em todas as colunas menos a chave, UPDATE só nas 4 previstas;
+e o conjunto `DELETE/TRUNCATE/…` é o **default da plataforma Supabase**, idêntico
+em `companies`, `notifications`, `assinaturas` e `cobrancas`, todas pré-4B.
+
+Probes novos, todos somente leitura: `_probe-fronteiras-4b.mjs` (grants, embed do
+PostgREST, as consultas novas contra o banco real), `_probe-paginacao.mjs` (o laço
+de produção rodado contra o Asaas: 4 voltas em `limit=1`, para sozinho, cobertura
+idêntica a `limit=100`), `_probe-ordem.mjs`. A varredura também foi executada no
+**runtime real** via `/api/cron/billing`.
+
+### Dívidas registradas nesta sessão
+
+- `/honorarios` e `/cobrancas` **continuam convivendo** no menu do cliente por
+  decisão do usuário: um honorário cobrado aparece nas duas telas, com status
+  calculado por caminhos diferentes. Aceito conscientemente; reavaliar se o
+  smoke mostrar que confunde.
+- As duas telas antigas continuam em `/contador/configuracoes/{subconta,avulsos}`
+  na **URL** — só a posição no menu mudou. Mudar a rota quebraria link já mandado.
+- Seguem de pé as da sessão 14: `DROP COLUMN` dos ganchos mortos da `0032`;
+  `UNIQUE (contabilidade_id, lower(nome))` no catálogo; órfão de webhook só em
+  `console.error`; `db_atual.sql` e `types/database.ts` atrasados desde a `0050`.
+
+---
+
+## Sessão 14 (2026-07-28) — Bloco 4B em execução (subagent-driven)
+
+**Tasks 1–12 do plano fechadas**, cada uma com subagente próprio + revisão de conformidade e de qualidade. Branch `feat/bloco-4b-subcontas`, 38 commits, **não mergeada**. Migrations `0053`, `0054` e `0055` aplicadas em produção.
+
+**Verificação no fecho da sessão** (commit `e1cc9f5`, ambiente limpo, nenhum node vivo): `tsc --noEmit` **0 erros** · vitest **1112 passando / 0 falhando** (27 pulados — os smoke/e2e que exigem credencial) · `next build` **compilado com sucesso, 0 erros**.
+
+> ⚠️ **Duas frentes pousaram DEPOIS do pedido de encerramento e NÃO passaram por revisão:** a Task 12 (`34a9a62`) e o cadastro do webhook na subconta (`dd6b285`). Estão commitadas e verdes (`tsc` 0, 1112 testes), mas **nenhuma teve revisão de conformidade nem de qualidade**, ao contrário das Tasks 1–11. **Revisá-las é a primeira coisa a fazer, antes da Task 13.**
+>
+> **Nota da Task 12, decisão de produto pendente:** o empresário passou a ter **dois itens de menu concorrentes** — `/honorarios` (razão manual de mensalidades, sem link de pagamento, status calculado por data) e `/cobrancas` (boleto real da subconta, status do Asaas). Um honorário cobrado aparece **nas duas telas, com status calculado por caminhos diferentes**. Isso vai gerar pergunta no smoke. Decidir se `/honorarios` vira aba de `/cobrancas`, ou se some do menu quando o escritório usa subconta.
+
+### O achado que vale mais que o código desta sessão
+
+**O plano do 4B tem código pronto, e parte dele não funciona.** Não é plano ruim — é o que acontece quando um desenho vira código e encosta no repo e no banco reais. Mas mudou o método: **toda task passou a mandar o subagente conferir as suposições do plano antes de usá-las e reportar as divergências em vez de contorná-las em silêncio.** Nenhuma das 12 tasks passou sem divergência.
+
+Três defeitos que nenhuma verificação automática pegaria, e que só apareceram porque alguém abriu o arquivo:
+
+1. **O bloco nunca emitiria uma cobrança.** O plano gravava `asaas_subconta_status = 'pendente'` na criação, gateava a emissão (linha 1637) e a sincronização (2085) em `'aprovada'` — e **nenhuma das 2300 linhas jamais escrevia `'aprovada'`**. Resolvido consultando o Asaas de verdade (§KYC abaixo).
+2. **Retry num POST que devolve segredo de uso único.** `call` repetia `POST /v3/accounts` até 3× em 5xx/rede. Um 504 depois da criação deixava subconta órfã com a `apiKey` perdida **e sem registro em `audit_log`** — exatamente a janela que a Task 5 existia para fechar. Agora essa rota não retenta, e falha ambígua grava `subconta.possivel_orfa` com o documento para busca manual.
+3. **Um teste que anunciava uma invariante e não a checava.** O caso "a chave não vaza" montava o pior cenário e depois inspecionava **só o retorno**, enquanto os dois testes vizinhos inspecionavam os logs. Com a redação sabotada **e** o assert antigo, o teste passava. Corrigidos os dois lados.
+
+**A regra que se firmou na sessão, e que vale além do 4B:** *garantia de servidor não pode depender da tela.* Apareceu três vezes — o "apagar" do catálogo travado só na interface, a chave de idempotência opcional (Server Action é endpoint público), e o botão desabilitado apresentado como se fechasse uma corrida.
+
+### Dois bugs de PRODUÇÃO corrigidos, nenhum deles do 4B
+
+- **`0054`** — `criar_assinatura_trial()` quebrava **todo cadastro de escritório novo** desde a `0050`. Detalhes no §landmines.
+- **`e5685a4`** — estorno ressuscitado por evento reentregue no **4A**. `persistirCobranca` preservava `pago_em` no estorno (de propósito), mas `jaPaga = Boolean(pago_em)` continuava verdadeiro, e um `PAYMENT_RECEIVED` reentregue devolvia o status para `RECEIVED`. Agora `REFUNDED`/`REFUND_REQUESTED` são terminais para evento de pagamento. Os valores saíram do `efeitoDoStatusCobranca` que o próprio 4A já usa — não de suposição.
+
+### O status do KYC, que destravou o bloco
+
+`GET /v3/myAccount/status` com o token da **própria subconta** (a conta-mãe não tem rota de KYC por subconta). Sondado no sandbox: devolve **quatro** eixos — `commercialInfo`, `bankAccountInfo`, `documentation`, `general`. `mapearStatusSubconta` exige **os quatro** em `APPROVED` para promover; qualquer `REJECTED` recusa; **todo o resto vira `pendente`**. Exigir os quatro é deliberado: a doc diz que `general` deriva só de `commercialInfo`+`documentation`, então `general: APPROVED` com `bankAccountInfo: PENDING` é estado possível — subconta que cobra sem conta bancária aprovada acumula saldo que o escritório não saca. Errar para cima custa um clique em "sincronizar"; errar para baixo faz a cobrança falhar na frente do cliente do escritório.
+
+**Limite honesto:** só o valor `APPROVED` foi observado ao vivo (a conta-mãe está 100% aprovada e **não há nenhuma subconta no sandbox** — `GET /v3/accounts` devolve `totalCount: 0`). O mapeamento é à prova disso por construção, mas vale rodar `app/scratchpad/_probe-kyc-subconta.mjs` quando a primeira subconta pendente existir.
+
+### Idempotência da emissão: a arbitragem acontece ANTES do Asaas
+
+Duplo clique simultâneo emitia **dois boletos reais**. A `0055` fechou com **três camadas, nesta ordem**:
+
+1. **Reserva** (`reservas_cobranca_escritorio` + RPCs `reservar_emissao_cobranca`/`liberar_reserva_cobranca`) — trinco tomado **antes de qualquer chamada ao Asaas**, na chave desta emissão: `hon:<uuid>` (chave natural do honorário) ou `idem:<uuid>` (submissão do avulso). **Quem perde não fala com o Asaas.**
+2. **Pré-checagem já com o trinco na mão** — nunca antes; perguntar primeiro deixa a janela em que o vencedor commita entre a pergunta e a reserva do perdedor.
+3. **Índices únicos parciais** como rede de baixo: uma cobrança **viva** por honorário (`pendente|paga|vencida`; `estornada` não conta, para permitir recobrar) e `(contabilidade_id, idempotency_key)`.
+
+**A decisão mais sutil:** o trinco **não é devolvido depois de erro ambíguo** (5xx, timeout, 2xx sem `id`). Ali a cobrança *pode* ter nascido, e devolver o trinco na hora transformaria o próximo clique num segundo boleto **certo**. O TTL de 120s decide, e a reserva vencida é **roubada** pelo pedido seguinte no mesmo statement (com coluna `dono`, para que liberar seja exato). Pior caso: trancado por 2 minutos, nunca para sempre.
+
+**Caso residual irredutível:** erro ambíguo do Asaas **depois** de `criarCobranca` — não há como saber se nasceu. Delimitado no tempo, sem retry automático, com mensagem mandando conferir.
+
+**A chave do avulso** é UUID gerado na tela **uma vez por abertura do diálogo**, renovado **só após sucesso** (erro não renova: repetir com a mesma chave é o que impede o segundo boleto quando a falha foi ambígua). Ela não descreve *o que* se cobra — descreve **qual submissão está se repetindo**, e por isso não barra cobrança legítima repetida. Falha fechada: sem fonte criptográfica, o botão recusa emitir em vez de cair para `Math.random()`.
+
+### Decisões tomadas durante a execução (além das duas da retomada):
+- **Status do KYC vem do Asaas**, via `GET /v3/myAccount/status` com o token da própria subconta — nenhuma outra fonte é verdade sobre KYC.
+- **Navegação: seção "Cobranças" no menu lateral do contador**, agrupando conta de recebimento, catálogo de avulsos e cobranças emitidas. É módulo novo do produto, não ajuste de configuração, e o escritório volta nele toda semana. Fazer **depois da Task 12**, com todas as telas prontas.
+- **Modelo de papéis fica como dívida registrada** (ver §papéis abaixo), não interrompe o 4B.
+
+**Duas decisões tomadas na retomada:** execução **subagent-driven** (um subagente por task + revisão de spec e de qualidade entre elas), e o **gate de inadimplência do 4A bloqueia apenas *criar* cobrança nova pela subconta** — nunca alcança ver, sincronizar ou receber as já emitidas, porque é com esse dinheiro que o escritório paga a Balu. Mesma forma das duas fronteiras do 4A.
+
+### Duas landmines novas, ambas em `contabilidades`
+
+**1. A tabela não tem mais grant de tabela para `anon`/`authenticated`.** A 0053 acrescentou as cinco colunas `asaas*` e elas caíram debaixo das policies da `0035:20-27`, que dão SELECT **e UPDATE** a qualquer membro do escritório sobre a linha inteira. Pela anon key dava para se autoaprovar o KYC (`asaas_subconta_status='aprovada'`) e, pior, **zerar `asaas_api_key_cifrada`** — chave que o Asaas devolve uma única vez e sem a qual a subconta fica inoperável.
+
+O conserto (fim da 0053) **não pôde ser `REVOKE` por coluna**: privilégio de tabela e de coluna se **somam**, então revogar a coluna com o grant de tabela de pé não corta nada e **falha em silêncio**. Foi preciso revogar no nível da tabela e reconceder coluna a coluna — UPDATE só nas 4 colunas que a `0030:84` já pretendia (`nome, logo_url, whatsapp_suporte, email_remetente_nome`), SELECT em todas menos `asaas_api_key_cifrada`.
+
+**Consequência que vai morder:** **coluna nova em `contabilidades` nasce ilegível para o cliente** até alguém reaplicar o bloco `DO` do fim da 0053. E um `GRANT ALL ON ALL TABLES IN SCHEMA public` futuro reabre tudo calado.
+
+**2. `criar_assinatura_trial()` quebrava todo cadastro de escritório novo — em produção desde a 0050.** Corrigido pela **migration 0054**, já aplicada. A guarda era `IF TG_TABLE_NAME = 'companies' AND NEW.contabilidade_id IS NOT NULL`; **PL/pgSQL não garante short-circuit**, e a mesma função serve `trg_assinatura_contabilidade`, onde a coluna não existe → todo `INSERT INTO contabilidades` morria com `42703`. Passou meses despercebido porque só existe uma contabilidade, criada antes da 0050. Provado antes/depois em `BEGIN`/`ROLLBACK`, incluindo os dois caminhos de `companies`.
+
+### `lerCredencial` agora LANÇA — as Tasks 9 e 13 precisam mudar por causa disso
+
+O landmine do Bloco E foi retirado de verdade: `decifrarCampo` **rodou em runtime com a `CERT_ENC_KEY` real**, devolvendo o token `$aact_…` idêntico ao que entrou. (O probe do plano reimplementa o AES, então provaria a *chave* e não o *código*; a prova válida foi injetar a chave real na suíte, porque o `beforeAll` usa `??=` e a env vence a sintética.)
+
+No caminho, `lerCredencial` foi endurecida: **lança** quando falta o prefixo `enc:v1:`, em vez de herdar de `decifrarCampo` o fallback que devolve o valor cru. Esse fallback existe para certificado gravado em claro antes do Bloco E; para a apiKey da subconta **não há legado**, e devolver o valor cru esconderia o segredo mais sensível do sistema em claro no banco, parecendo que tudo funciona.
+
+**Efeito colateral a corrigir quando as tasks chegarem:** o plano chama `lerCredencial` **fora** do `try` em dois lugares — Task 13 (linhas 2089-2098, `sincronizarCobrancasEscritorio`) e Task 9 (linha 1671) — e escreve `if (!token) continue`, supondo retorno nulável. Com o throw, **uma** contabilidade corrompida derruba a reconciliação de **todas** — e essa varredura é justamente a rede de segurança para o webhook que não chega. A leitura tem de ficar **dentro** do `try`, um por linha.
+
+O literal `'enc:v1:'` foi eliminado da duplicação: `envelope.ts` passou a exportar `PREFIXO`. Sem isso, uma futura `enc:v2:` faria `lerCredencial` acusar "gravação corrompida" em credencial perfeitamente válida — a falha mais enganosa possível, porque aponta o dado bom.
+
+### O plano do 4B tem código escrito contra APIs que não existem
+
+Padrão que apareceu em três tasks seguidas e que nenhuma verificação automática pega: o plano traz código pronto, mas parte dele foi escrita contra funções inventadas. `requireContadorAction`, `requireContadorPage` e `exigirAcessoContador` (linha 1637) **não existem no repo** — o real é `getContabilidadeCtx()` em `@/lib/contador/guard**s**` (plural), com forma de retorno diferente. `tsc` não pega (o arquivo nem chega a existir), teste não pega. Só pega quem abre o arquivo real. **Toda task do 4B daqui em diante manda o subagente conferir as suposições do plano antes de usá-las e reportar as divergências, em vez de contorná-las em silêncio.**
+
+O mesmo padrão produziu o defeito de fluxo do §KYC acima: `'aprovada'` gateava tudo e ninguém escrevia.
+
+### Sem modelo de papéis, qualquer membro decide onde o dinheiro do escritório liquida
+
+`contabilidade_membros` não tem coluna de papel (`0030_contabilidades.sql:24-32`, com o TODO "dropar na V2/papéis"). Então **qualquer membro convidado** pode criar a subconta — isto é, escolher em qual CPF/CNPJ vai liquidar o dinheiro que os clientes do escritório pagam — e a guarda de "já tem subconta" torna a escolha **irreversível pela UI**. É coerente com o resto do produto hoje; o 4B é apenas a primeira ação em que a ausência de papéis custa dinheiro. **Decisão do usuário: registrar e seguir** — dívida conhecida, bloco próprio depois, feito direito e alcançando todas as ações sensíveis, não só esta. Hoje só existe um escritório e ele tem um dono; o risco vira real quando escritórios começarem a convidar equipe.
+
+### Buraco no plano do 4B: a cobrança de honorário nunca era emitida
+
+A tabela de arquivos a modificar do plano (linha 65) promete **"Gerar cobrança" no honorário**, e o webhook (linha 1910) e a sincronização (2110) já tratam `cob.honorario_id` — mas **nenhuma task preenchia `honorario_id`**. O único caminho de emissão escrito era o de **serviço avulso**, o que deixaria de fora a **mensalidade**, o principal que um escritório cobra. O módulo de honorários já tinha sido construído esperando isso: a `0032` criou `asaas_charge_id` e `asaas_customer_id` com o comentário literal `-- gancho Bloco B`.
+
+**Decisão do usuário: emitir por clique, dentro do 4B** — os dois caminhos (avulso e honorário), sempre por ação do contador. **Nada de cron nem emissão automática**: dinheiro emitido sem humano no laço é outro perfil de risco, e um cron errado emite para a carteira inteira.
+
+**Cuidado herdado:** passaram a existir **três** ligações honorário↔cobrança. A canônica eleita é **`cobrancas_escritorio.honorario_id`** — é a direção em que a resposta do dinheiro chega (webhook e cron só têm o `chargeId`) e mora na mesma linha do `asaas_charge_id UNIQUE`. `honorarios.cobranca_escritorio_id` é **derivada** (escrita na emissão com compare-and-swap, lida só para "já tem cobrança?"; **nenhuma decisão de pagamento passa por ela**). `honorarios.asaas_charge_id`/`asaas_customer_id` (ganchos da `0032`) ficaram **mortos de propósito** — preenchê-los seria a terceira ligação meia-preenchida. **Recomendação: `DROP COLUMN` na próxima migration do bloco.**
+
+### O webhook da subconta NÃO ESTÁ CADASTRADO — o ciclo não fecha
+
+Achado da Task 11, fora do plano: **não existe no repo nenhuma chamada a `POST /v3/webhooks`**, `asaasSub` não tinha o método, e o plano não menciona. O webhook da conta-mãe (cadastrado à mão no painel) entrega apenas os eventos **da conta-mãe**. Logo, **nenhum evento de subconta chega**: o roteamento do 4B está correto e **dormente**, e o escritório emitiria cobrança sem jamais saber que foi paga.
+
+A falha é do **lado seguro** — sem cadastro nada chega, e nada é marcado como pago indevidamente. O portão de autenticidade (`segredoDoHeader` com `ASAAS_WEBHOOK_SECRET`) roda **antes** de ler o corpo e vale igual para os dois ramos; sem o segredo certo a entrega morre em `unauthorized`.
+
+**Preocupação residual herdada do 4A:** o segredo é *bearer*. Quem o descobrir consegue postar `PAYMENT_RECEIVED` — no 4A isso mexia no dinheiro da Balu; no 4B passa a marcar honorário de terceiro como pago. Atenuante: é preciso acertar um `asaas_charge_id` existente, porque cobrança desconhecida é ignorada e **nenhum dos dois ramos faz INSERT**.
+
+**Roteamento:** por ausência de `subscription`. O payload do Asaas **não traz dono** (conferido contra o objeto real capturado em `asaas.e2e.test.ts`), e `externalReference` foi rejeitado por ser campo escolhido pelo remetente. O desenho compensa: **a ausência escolhe o RAMO, a busca decide a AÇÃO** — os dois ramos só agem sobre linha existente e nenhum faz INSERT, então evento roteado para o lado errado vira log e 200.
+
+### ⛔ AÇÃO DO USUÁRIO: `ASAAS_WEBHOOK_SECRET` não existe, e sem ele nenhuma subconta registra
+
+O cadastro do webhook (`dd6b285`) usa o **mesmo** `ASAAS_WEBHOOK_SECRET` que o `route.ts` já valida. **Ele não está em `app/.env.local`** (conferido: zero ocorrências) e precisa existir também na Vercel, **com no mínimo 32 caracteres** — o Asaas recusa `authToken` menor (`"O token deve ter pelo menos 32 caracteres."`).
+
+**O modo de falha é o mais silencioso possível:** se o valor configurado à mão no painel do Asaas for mais curto que 32, a conta-mãe continua funcionando normalmente e **nenhuma subconta jamais registra webhook**. Ninguém percebe até um escritório reclamar que cobrança paga não baixa.
+
+Dois detalhes do sandbox que moldaram o desenho:
+- **`POST /v3/webhooks` sem `authToken` NÃO deixa a config sem token** — o Asaas **gera um** e responde `hasAuthToken: true`. Como o segredo nunca volta na leitura, um webhook cadastrado à mão é **indistinguível de um saudável**, e mesmo assim toda entrega morre em `unauthorized`. Não há como diagnosticar pela API; só `PUT` sobrescreve. Daí o botão **"Reconfigurar avisos"**, sempre visível.
+- **O dedupe do Asaas é pela URL sozinha** — segundo POST com mesma URL devolve `400 "Já existe uma configuração..."`, o que dá idempotência de graça.
+
+**Trocar o segredo derruba todas as subcontas de uma vez, em silêncio:** elas seguem emitindo e nenhum pagamento volta. O conserto é apertar "Reconfigurar avisos" em cada escritório — não há automação.
+
+O estado do webhook é lido **ao vivo** na tela da subconta a cada carregamento, e não de uma coluna: o webhook pode ser apagado no painel do Asaas sem avisar, e uma coluna espelhada mentiria justamente no caso que importa.
+
+### O que falta para fechar o 4B
+
+1. **Task 13** — sincronização (com as duas correções do bloco ▶ no topo).
+2. **Task 14** — verificação final + `_probe-4b.mjs` (404 pela conta-mãe).
+3. ~~Cadastrar o webhook na subconta~~ — FEITO (`dd6b285`), mas depende do `ASAAS_WEBHOOK_SECRET` (§acima) e ainda sem revisão.
+4. **Navegação** — seção "Cobranças" no menu lateral; **hoje nenhuma tela do 4B é alcançável**.
+5. **Smoke manual do usuário**, o gate antes do merge.
+
+**Dívidas registradas, não bloqueantes:** `DROP COLUMN` dos ganchos mortos da `0032`; `UNIQUE (contabilidade_id, lower(nome))` no catálogo de avulsos (o seed pode duplicar em clique simultâneo — 13 linhas editáveis, zero dinheiro emitido); órfão de webhook só vai para `console.error` e não para `audit_log` (o helper exige `actorUserId`, e ali não há ator); `docs/reference/db_atual.sql` e `src/types/database.ts` seguem atrasados desde a `0050` (drift pré-existente).
 
 ---
 

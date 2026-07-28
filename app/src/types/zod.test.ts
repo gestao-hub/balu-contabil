@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { EmpresaFiscalSchema, CompanySchema, CompanyCreateSchema, AberturaCreateSchema, HonorarioSchema } from './zod';
+import { EmpresaFiscalSchema, CompanySchema, CompanyCreateSchema, AberturaCreateSchema, HonorarioSchema, SubcontaSchema, ServicoAvulsoSchema } from './zod';
 import { EMPTY_ABERTURA } from '@/types/abertura';
 
 describe('EmpresaFiscalSchema', () => {
@@ -147,5 +147,151 @@ describe('HonorarioSchema', () => {
   it('data_vencimento é obrigatória', () => {
     const { data_vencimento, ...sem } = base;
     expect(HonorarioSchema.safeParse(sem).success).toBe(false);
+  });
+});
+
+// Bloco 4B — a fronteira de entrada de `criarSubcontaAction`. Os tres buracos
+// que existiam quando a action confiava so no tipo `DadosSubconta` (apagado na
+// compilacao) estao cada um num teste abaixo. O que passa daqui vai para um
+// KYC IRREVERSIVEL.
+describe('SubcontaSchema', () => {
+  const base = {
+    name: 'Escritorio Exemplo LTDA',
+    cpfCnpj: '11222333000144',
+    email: 'responsavel@escritorio.com.br',
+    mobilePhone: '11999998888',
+    incomeValue: 25000,
+    address: 'Rua das Flores',
+    addressNumber: '100',
+    province: 'Centro',
+    postalCode: '01503000',
+    birthDate: null,
+    companyType: 'LIMITED',
+  };
+
+  it('aceita o payload que o formulário monta', () => {
+    const r = SubcontaSchema.safeParse(base);
+    expect(r.success).toBe(true);
+  });
+
+  // O pior dos tres: string com aparencia de numero ia inteira para o Asaas.
+  it('rejeita incomeValue como string — sem coerção', () => {
+    expect(SubcontaSchema.safeParse({ ...base, incomeValue: '25000' }).success).toBe(false);
+  });
+
+  it('rejeita incomeValue não-finito', () => {
+    expect(SubcontaSchema.safeParse({ ...base, incomeValue: Number.NaN }).success).toBe(false);
+    expect(SubcontaSchema.safeParse({ ...base, incomeValue: Infinity }).success).toBe(false);
+  });
+
+  // Antes: `TypeError` no `.trim()` da action, ou seja, 500 em vez de mensagem.
+  it('rejeita name que não é string, com mensagem em português', () => {
+    const r = SubcontaSchema.safeParse({ ...base, name: { toString: 'nao sou string' } });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.errors[0]?.message).toContain('nome do escritório');
+  });
+
+  it('rejeita companyType fora do enum do Asaas', () => {
+    expect(SubcontaSchema.safeParse({ ...base, companyType: 'SA' }).success).toBe(false);
+  });
+
+  it('aceita PF: companyType nulo e birthDate preenchido', () => {
+    const r = SubcontaSchema.safeParse({
+      ...base, cpfCnpj: '12345678909', companyType: null, birthDate: '1985-05-13',
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.companyType).toBeNull();
+  });
+
+  // O formulario sempre manda as duas chaves; ausencia vira null, e quem cobra
+  // a presenca conforme PJ/PF e `validarDadosSubconta`, com mensagem propria.
+  it('normaliza birthDate/companyType ausentes para null', () => {
+    const { birthDate, companyType, ...sem } = base;
+    const r = SubcontaSchema.safeParse(sem);
+    expect(r.success).toBe(true);
+    if (r.success) expect([r.data.birthDate, r.data.companyType]).toEqual([null, null]);
+  });
+
+  it('rejeita campo de texto ausente', () => {
+    const { postalCode, ...sem } = base;
+    const r = SubcontaSchema.safeParse(sem);
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.errors[0]?.message).toContain('CEP');
+  });
+});
+
+// Bloco 4B — a fronteira de `salvarServicoAction`. O tipo `ServicoAvulso` some
+// na compilacao: quem chama a action manda o que quiser.
+describe('ServicoAvulsoSchema', () => {
+  const base = {
+    id: null,
+    nome: 'Abertura de empresa',
+    categoria: 'Societário',
+    tipoValor: 'fixo',
+    valorCentavos: 90000,
+    percentual: null,
+    ativo: true,
+  };
+
+  it('aceita um serviço de valor fixo', () => {
+    const r = ServicoAvulsoSchema.safeParse(base);
+    expect(r.success).toBe(true);
+  });
+
+  // O caso que motiva o schema: "900" viraria preço errado no INSERT.
+  it('rejeita valorCentavos em string', () => {
+    const r = ServicoAvulsoSchema.safeParse({ ...base, valorCentavos: '90000' });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.errors[0]?.message).toContain('valor do serviço');
+  });
+
+  it('rejeita valorCentavos fracionário (a coluna é integer)', () => {
+    expect(ServicoAvulsoSchema.safeParse({ ...base, valorCentavos: 900.5 }).success).toBe(false);
+  });
+
+  it('rejeita valor acima do teto do integer do Postgres', () => {
+    expect(ServicoAvulsoSchema.safeParse({ ...base, valorCentavos: 2_147_483_648 }).success).toBe(false);
+  });
+
+  it('rejeita tipoValor fora do CHECK do banco', () => {
+    expect(ServicoAvulsoSchema.safeParse({ ...base, tipoValor: 'gratis' }).success).toBe(false);
+  });
+
+  it('rejeita nome que não é string, com mensagem em português', () => {
+    const r = ServicoAvulsoSchema.safeParse({ ...base, nome: { toString: 'nao sou string' } });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.errors[0]?.message).toContain('nome do serviço');
+  });
+
+  it('rejeita nome só de espaços', () => {
+    expect(ServicoAvulsoSchema.safeParse({ ...base, nome: '   ' }).success).toBe(false);
+  });
+
+  // O id vai direto para o `.eq('id', ...)` da action.
+  it('rejeita id que não é uuid, e aceita ausente como criação', () => {
+    expect(ServicoAvulsoSchema.safeParse({ ...base, id: 'nao-e-uuid' }).success).toBe(false);
+    const { id, ...sem } = base;
+    const r = ServicoAvulsoSchema.safeParse(sem);
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.id).toBeNull();
+  });
+
+  it('normaliza categoria vazia/ausente para null e apara os espaços', () => {
+    const vazia = ServicoAvulsoSchema.safeParse({ ...base, categoria: '   ' });
+    expect(vazia.success && vazia.data.categoria).toBeNull();
+    const comEspaco = ServicoAvulsoSchema.safeParse({ ...base, categoria: ' Fiscal ' });
+    expect(comEspaco.success && comEspaco.data.categoria).toBe('Fiscal');
+  });
+
+  it('trata ativo ausente como true (criação)', () => {
+    const { ativo, ...sem } = base;
+    const r = ServicoAvulsoSchema.safeParse(sem);
+    expect(r.success && r.data.ativo).toBe(true);
+  });
+
+  it('aceita percentual e recusa percentual não-numérico', () => {
+    const pct = { ...base, tipoValor: 'percentual', valorCentavos: null, percentual: 20 };
+    expect(ServicoAvulsoSchema.safeParse(pct).success).toBe(true);
+    expect(ServicoAvulsoSchema.safeParse({ ...pct, percentual: '20%' }).success).toBe(false);
   });
 });

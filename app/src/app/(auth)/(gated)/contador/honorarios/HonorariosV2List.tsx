@@ -2,10 +2,14 @@
 import { useState, useEffect, useTransition } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/components/Toaster';
-import { MSG_ASSINATURA_PENDENTE } from '@/lib/billing/mensagens';
-import { Plus, CheckCircle, XCircle, Pencil, Trash2, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { MSG_ASSINATURA_PENDENTE, MSG_SUBCONTA_NAO_APROVADA } from '@/lib/billing/mensagens';
+import {
+  Plus, CheckCircle, XCircle, Pencil, Trash2, ChevronLeft, ChevronRight, Download,
+  Receipt, AlertTriangle, CheckCircle2,
+} from 'lucide-react';
 import { marcarPagoV2Action, desmarcarPagoV2Action, deleteHonorarioV2Action } from './actions';
 import HonorarioV2FormDialog, { type ClienteOption, type HonorarioV2Row } from './HonorarioV2FormDialog';
+import CobrarHonorarioDialog, { type ResultadoCobranca } from './CobrarHonorarioDialog';
 import PopupConfirm from '@/components/PopupConfirm';
 import { statusHonorario, type StatusHonorario } from '@/lib/fiscal/status-honorario';
 import { ymdBrt } from '@/lib/fiscal/tempo-brt';
@@ -88,10 +92,14 @@ type Props = {
    *  visível — consultar não depende de pagamento —, mas o bloqueio é dito
    *  antes, não depois de preencher o formulário. */
   assinaturaPendente?: boolean;
+  /** Bloco 4B — KYC da subconta do escritório aprovado no Asaas. Default
+   *  `false` de propósito: quem esquecer de passar não emite cobrança, que é o
+   *  lado seguro de errar quando o assunto é dinheiro de terceiro. */
+  subcontaAprovada?: boolean;
 };
 
 export default function HonorariosV2List({
-  initial, clientes, assinaturaPendente = false,
+  initial, clientes, assinaturaPendente = false, subcontaAprovada = false,
 }: Props) {
   const toast = useToast();
   const [rows, setRows]                     = useState(initial);
@@ -104,8 +112,20 @@ export default function HonorariosV2List({
   const [confirmAcao, setConfirmAcao]       = useState<'pagar' | 'desmarcar' | 'excluir' | null>(null);
   const [forma, setForma]                   = useState<string>('pix');
   const [pending, start]                    = useTransition();
+  // Bloco 4B — emissão de cobrança do honorário.
+  const [cobrarRow, setCobrarRow]           = useState<HonorarioV2Row | null>(null);
+  // Caixa PERSISTENTE do resultado, e não só toast: o toast some em 3s e aqui
+  // há um link de fatura para abrir e, às vezes, um aviso de duplicidade que o
+  // contador precisa ler antes de mandar o boleto ao cliente.
+  const [emitida, setEmitida]               = useState<ResultadoCobranca | null>(null);
 
   useEffect(() => { setRows(initial); }, [initial]);
+
+  // Por que a cobrança está indisponível, se estiver. O motivo é dito na
+  // ENTRADA — clicar para descobrir que não podia é o que se está evitando.
+  const bloqueioCobranca = assinaturaPendente
+    ? MSG_ASSINATURA_PENDENTE
+    : !subcontaAprovada ? MSG_SUBCONTA_NAO_APROVADA : null;
 
   const filtrados = rows.filter(r => {
     if (filtroStatus && statusHonorario(r) !== filtroStatus) return false;
@@ -162,6 +182,52 @@ export default function HonorariosV2List({
         <div className="rounded-md border border-alert/40 bg-alert/10 px-3 py-2 text-sm text-alert">
           {MSG_ASSINATURA_PENDENTE}{' '}
           <Link href="/contador/assinatura" className="font-medium underline">Ver assinatura</Link>
+        </div>
+      )}
+
+      {/* Bloco 4B — o outro motivo de "Gerar cobrança" não funcionar. Só aparece
+          quando a assinatura está em dia: dois avisos de bloqueio juntos não
+          dizem qual resolver primeiro. */}
+      {!assinaturaPendente && !subcontaAprovada && (
+        <div className="rounded-md border border-alert/40 bg-alert/10 px-3 py-2 text-sm text-alert">
+          {MSG_SUBCONTA_NAO_APROVADA}{' '}
+          <Link href="/contador/configuracoes/subconta" className="font-medium underline">
+            Configurar conta de recebimento
+          </Link>
+        </div>
+      )}
+
+      {emitida && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success"
+        >
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Cobrança emitida. O cliente já a vê no app dele.
+            {emitida.linkFatura && (
+              <>
+                {' '}
+                <a href={emitida.linkFatura} target="_blank" rel="noopener noreferrer"
+                  className="font-medium underline">
+                  Abrir a fatura
+                </a>
+              </>
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* O aviso da action (back-pointer não gravado, segunda cobrança) fica
+          SEPARADO do sucesso e com cara de alerta: ele manda conferir no Asaas
+          antes de enviar o boleto, e não pode se perder dentro da frase verde. */}
+      {emitida?.aviso && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-md border border-alert/40 bg-alert/10 px-3 py-2 text-sm text-alert"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>{emitida.aviso}</span>
         </div>
       )}
 
@@ -276,6 +342,27 @@ export default function HonorariosV2List({
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 justify-end">
+                          {/* Bloco 4B — "Gerar cobrança". Some no honorário já
+                              PAGO: a action recusa esse caso, e oferecer o botão
+                              seria convidar a um erro. Não há pré-checagem de
+                              "já cobrado" aqui de propósito — quem responde isso
+                              é `cobrancas_escritorio` (a ligação canônica, que
+                              sabe o STATUS e libera recobrança após estorno), e
+                              a action já devolve o link da cobrança que bloqueou. */}
+                          {st !== 'pago' && (
+                            <button
+                              onClick={() => {
+                                if (bloqueioCobranca) { toast('error', bloqueioCobranca); return; }
+                                setEmitida(null);
+                                setCobrarRow(r);
+                              }}
+                              disabled={pending}
+                              title={bloqueioCobranca ?? 'Gerar cobrança pela conta do escritório'}
+                              className="text-primary hover:opacity-70 disabled:opacity-40"
+                            >
+                              <Receipt className="size-4" />
+                            </button>
+                          )}
                           {st !== 'pago' ? (
                             <button onClick={() => { setConfirmRow(r); setConfirmAcao('pagar'); setForma('pix'); }} disabled={pending}
                               title="Marcar como pago" className="text-success hover:opacity-70 disabled:opacity-40">
@@ -324,6 +411,12 @@ export default function HonorariosV2List({
           )}
         </>
       )}
+
+      <CobrarHonorarioDialog
+        honorario={cobrarRow}
+        onFechar={() => setCobrarRow(null)}
+        onEmitida={(r) => { setEmitida(r); toast('success', 'Cobrança emitida.'); }}
+      />
 
       <HonorarioV2FormDialog
         open={showForm}

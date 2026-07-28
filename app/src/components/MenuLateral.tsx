@@ -12,7 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
   ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, LayoutDashboard, FilePlus, MessageCircle,
-  CreditCard,
+  CreditCard, Receipt, Landmark, Tags,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -20,6 +20,7 @@ import AddEmpresaDialog from '@/components/AddEmpresaDialog';
 import Logo from '@/components/Logo';
 import ThemeToggle from '@/components/ThemeToggle';
 import { SinoNotificacoes } from '@/components/notificacoes/SinoNotificacoes';
+import { hrefAtivo } from '@/components/menu-ativo';
 
 // Os values batem com o option set Bubble (lowercase). Para exibição, label é capitalizada.
 type Role = 'empresa' | 'contador' | 'adminbalu';
@@ -44,7 +45,19 @@ export type MenuLateralProps = {
   userRole: Role;
   companies: { id: string; nome: string }[];
   currentCompanyId: string | null;
+  /** O USUÁRIO é membro de um escritório (papel contador). */
   temEscritorio: boolean;
+  /** A empresa ativa TEM PELO MENOS UMA cobrança emitida pelo escritório
+   *  (Bloco 4B). Decisão do usuário em 28/07: o item "Cobranças" entra no menu
+   *  quando existe boleto, não quando existe escritório. A esmagadora maioria
+   *  dos escritórios cobra fora da Balu — para esses, o item seria uma tela
+   *  vazia permanente ao lado de "Honorários", que fala da mesma dívida.
+   *
+   *  Não exige escritório aprovado nem subconta de pé: uma vez emitido, o
+   *  boleto está na mão do cliente e a tela é também o histórico do que ele
+   *  pagou. Some por status do ESCRITÓRIO seria fazer a briga deles respingar
+   *  nele. */
+  temCobrancasDoEscritorio?: boolean;
   escritorio?: EscritorioBranding | null;
 };
 
@@ -58,6 +71,16 @@ type NavItem = {
    *  o item é escondido em vez de virar beco (o empresário sem empresa nunca chega
    *  aqui: o gate de onboarding o intercepta antes). */
   precisaEmpresa?: boolean;
+  /** Feature que só existe depois que o escritório emitiu a primeira cobrança
+   *  pela subconta (Bloco 4B). Sem boleto o item viraria beco — mesma regra de
+   *  `precisaEmpresa` acima. A página continua acessível por URL e se explica
+   *  sozinha ("nenhuma cobrança do seu escritório por aqui ainda"). */
+  precisaCobranca?: boolean;
+  /** Título do grupo a que o item pertence. Itens com a MESMA `secao` têm de
+   *  estar adjacentes na lista: o cabeçalho é desenhado antes do primeiro e um
+   *  fecho depois do último, sem reordenar nada. Item sem `secao` continua solto,
+   *  que é o menu de hoje. */
+  secao?: string;
 };
 
 const NAV: NavItem[] = [
@@ -68,9 +91,22 @@ const NAV: NavItem[] = [
   { href: '/contador',              label: 'Escritório',     Icon: Briefcase, roles: ['contador'] },
   { href: '/contador/aberturas',    label: 'Aberturas',      Icon: FilePlus, roles: ['contador'] },
   { href: '/contador/honorarios',   label: 'Honorários',     Icon: HandCoins, roles: ['contador'] },
+  // ── Bloco 4B: o escritório cobrando os clientes DELE pela subconta Asaas ──
+  // Vira seção própria (decisão do usuário) e não mais três telas espalhadas:
+  // é módulo novo do produto, não ajuste de configuração, e o escritório volta
+  // nele toda semana. As duas de baixo moravam sob /contador/configuracoes e
+  // continuam lá na URL — mudar a rota agora quebraria links já mandados.
+  { href: '/contador/cobrancas',              label: 'Cobranças emitidas',   Icon: Receipt, roles: ['contador'], secao: 'Cobranças' },
+  { href: '/contador/configuracoes/subconta', label: 'Conta de recebimento', Icon: Landmark, roles: ['contador'], secao: 'Cobranças' },
+  { href: '/contador/configuracoes/avulsos',  label: 'Serviços avulsos',     Icon: Tags, roles: ['contador'], secao: 'Cobranças' },
   { href: '/contador/equipe',       label: 'Equipe',         Icon: Users, roles: ['contador'] },
   { href: '/contador/configuracoes', label: 'Config. escritório', Icon: Settings, roles: ['contador'] },
   { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, precisaEmpresa: true },
+  // Bloco 4B: as cobranças que o ESCRITÓRIO emitiu pela subconta dele (boleto/
+  // Pix com link de pagamento). Vizinho de Honorários de propósito — as duas
+  // telas falam do mesmo credor, e separá-las faria o cliente procurar o boleto
+  // na tela errada. Só aparece quando existe boleto (ver `precisaCobranca`).
+  { href: '/cobrancas',             label: 'Cobranças',      Icon: Receipt, precisaEmpresa: true, precisaCobranca: true },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings, precisaEmpresa: true },
   // Seção AdminBalu (oversight da plataforma). O admin não tem empresa/escritório
   // próprios, então não vê os itens tenant acima — estas telas são as dele.
@@ -89,7 +125,8 @@ const NAV: NavItem[] = [
 ];
 
 export default function MenuLateral({
-  userName, userRole, companies, currentCompanyId, temEscritorio, escritorio = null,
+  userName, userRole, companies, currentCompanyId, temEscritorio,
+  temCobrancasDoEscritorio = false, escritorio = null,
 }: MenuLateralProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -122,8 +159,18 @@ export default function MenuLateral({
     .filter((i) => i.href === '/contador' || !i.href.startsWith('/contador/') || temEscritorio)
     // Itens de empresa só com empresa própria (contador/admin sem empresa não os vê).
     .filter((i) => !i.precisaEmpresa || userRole === 'empresa' || companies.length > 0)
+    // Existe boleto? (ver o tipo acima). `escritorio.proprio` é o contador
+    // olhando a si mesmo: ele cobra pelo painel /contador/honorarios, não por
+    // esta tela de cliente.
+    .filter((i) => !i.precisaCobranca || (temCobrancasDoEscritorio && !escritorio?.proprio))
     // Admin usa /admin (Visão geral) como home; o "/" (dashboard de empresa) é beco pra ele.
     .filter((i) => !(userRole === 'adminbalu' && i.href === '/'));
+
+  // QUAL ITEM ACENDE. A regra mora em `menu-ativo.ts`, com teste: a seção
+  // Cobranças introduziu hrefs que são prefixo uns dos outros, e o
+  // `startsWith` simples de antes acendia DOIS itens em
+  // /contador/configuracoes/subconta.
+  const ativo = hrefAtivo(items.map((i) => i.href), pathname);
 
   async function changeCompany(companyId: string) {
     if (companyId === currentCompanyId) return;
@@ -313,10 +360,24 @@ export default function MenuLateral({
       {/* Navegação */}
       <nav className="flex-1 overflow-y-auto p-2">
         <ul className="flex flex-col gap-1">
-          {items.map(({ href, label, Icon }) => {
-            const active = pathname === href || (href !== '/' && pathname.startsWith(href));
+          {items.map(({ href, label, Icon, secao }, i) => {
+            const active = href === ativo;
+            // Cabeçalho antes do primeiro item da seção e fecho depois do
+            // último. Recolhido, o menu não tem largura para texto: fica só o
+            // traço, que já separa o grupo.
+            const abre = !!secao && items[i - 1]?.secao !== secao;
+            const fecha = !!secao && items[i + 1]?.secao !== secao;
             return (
-              <li key={href}>
+              <li key={href} className={fecha ? 'mb-1 border-b border-border pb-1' : undefined}>
+                {abre && (
+                  open ? (
+                    <p className="mt-3 px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {secao}
+                    </p>
+                  ) : (
+                    <hr className="my-2 border-border" aria-hidden />
+                  )
+                )}
                 <Link
                   href={href}
                   onClick={() => setMobileOpen(false)}

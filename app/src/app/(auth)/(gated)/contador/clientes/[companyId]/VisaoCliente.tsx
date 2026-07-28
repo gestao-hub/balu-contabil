@@ -1,9 +1,14 @@
 'use client';
 // src/app/(auth)/contador/clientes/[companyId]/VisaoCliente.tsx
 // Drill-down do cliente: notas / guias / declarações.
-// Somente leitura, com UMA exceção: o registro de declaração anual (DASN/DEFIS),
-// que grava pela action com service role + guarda de carteira + auditoria — a RLS
-// do contador (declaracoes_select_contador) segue SELECT-only. Ver spec do Bloco 3, §6.5.
+// Os DADOS FISCAIS são somente leitura. Há DUAS ações de escrita, e nenhuma
+// delas escreve dado fiscal:
+//  1. o registro de declaração anual (DASN/DEFIS), que grava pela action com
+//     service role + guarda de carteira + auditoria — a RLS do contador
+//     (declaracoes_select_contador) segue SELECT-only. Ver spec do Bloco 3, §6.5;
+//  2. Bloco 4B — emitir cobrança avulsa pela subconta do escritório
+//     (`CobrarDialog`), que é dinheiro do escritório com o cliente dele e não
+//     toca nada do fisco.
 import Link from 'next/link';
 import { Eye } from 'lucide-react';
 import { formatBRL, valorToCentavos } from '@/lib/format/dinheiro';
@@ -12,6 +17,7 @@ import { dataBR, competenciaLabel, statusGuiaBadge } from '@/lib/fiscal/guia';
 import RegistrarComprovanteDialog from '@/app/(auth)/(gated)/impostos/RegistrarComprovanteDialog';
 import { registrarDeclaracaoAnualContadorAction } from '@/app/(auth)/(gated)/contador/clientes/actions';
 import type { DeclaracaoAnualTipo } from '@/lib/fiscal/declaracoes-anuais/tipos';
+import CobrarDialog, { type ServicoOpcao } from './CobrarDialog';
 
 type Empresa = { id: string; nome: string | null; razao_social: string | null; cnpj: string | null };
 
@@ -27,12 +33,22 @@ type DeclaracaoRow = {
   dados?: Record<string, unknown> | null;
 };
 
+/** Bloco 4B — tudo que a emissão de cobrança precisa saber, resolvido no
+ *  servidor (catálogo, KYC da subconta e gate de inadimplência). */
+type CobrancaProps = {
+  servicos: ServicoOpcao[];
+  podeCobrar: boolean;
+  motivoBloqueio: string | null;
+  linkBloqueio: { href: string; rotulo: string } | null;
+};
+
 type Props = {
   empresa: Empresa;
   tab: string;
   notas: NotaRow[];
   guias: GuiaRow[];
   declaracoes: DeclaracaoRow[];
+  cobranca: CobrancaProps;
 };
 
 const TABS = [
@@ -59,7 +75,7 @@ function badgeDeclaracao(status: string | null): { label: string; cls: string } 
   return { label: 'Pendente', cls: 'bg-alert/10 text-alert' };
 }
 
-export default function VisaoCliente({ empresa, tab, notas, guias, declaracoes }: Props) {
+export default function VisaoCliente({ empresa, tab, notas, guias, declaracoes, cobranca }: Props) {
   const active: TabKey = (TABS.find((t) => t.key === tab)?.key ?? 'notas') as TabKey;
   const nomeExibicao = empresa.razao_social || empresa.nome || '—';
 
@@ -68,7 +84,7 @@ export default function VisaoCliente({ empresa, tab, notas, guias, declaracoes }
       <div className="mb-6 flex items-center gap-2 rounded-lg border border-primary bg-primary/10 px-4 py-3 text-sm text-primary">
         <Eye className="size-4 shrink-0" />
         <span>
-          Você está vendo os dados de <strong>{nomeExibicao}</strong> em modo leitura.
+          Você está vendo os dados fiscais de <strong>{nomeExibicao}</strong> em modo leitura.
         </span>
       </div>
 
@@ -83,6 +99,19 @@ export default function VisaoCliente({ empresa, tab, notas, guias, declaracoes }
           {empresa.cnpj ? formatCnpj(empresa.cnpj) : '—'}
         </p>
       </header>
+
+      {/* Bloco 4B — a emissão fica FORA das abas: ela não é uma visão dos dados
+          do cliente, é uma ação sobre dinheiro, e some da vista se ficar dentro
+          de "Notas". */}
+      <div className="mb-6">
+        <CobrarDialog
+          companyId={empresa.id}
+          servicos={cobranca.servicos}
+          podeCobrar={cobranca.podeCobrar}
+          motivoBloqueio={cobranca.motivoBloqueio}
+          linkBloqueio={cobranca.linkBloqueio}
+        />
+      </div>
 
       <nav className="border-b border-border mb-6">
         <ul className="flex gap-1">
