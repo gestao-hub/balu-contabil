@@ -10,7 +10,7 @@
 //  - nunca entra em log, INCLUSIVE log de erro — dai `mascarar`;
 //  - so este modulo decifra. Quem precisa da chave chama `lerCredencial` e
 //    passa direto para `asaasSub`, sem guardar em variavel de escopo largo.
-import { cifrarCampo, decifrarCampo } from '@/lib/crypto/envelope';
+import { cifrarCampo, decifrarCampo, PREFIXO } from '@/lib/crypto/envelope';
 
 export function guardarCredencial(apiKey: string): string {
   if (!apiKey) throw new Error('guardarCredencial: apiKey vazia');
@@ -30,7 +30,7 @@ export function lerCredencial(cifrada: string | null): string | null {
   // cifra. Entao valor sem prefixo so pode ser gravacao corrompida — e o
   // fallback silencioso a devolveria como se fosse chave boa, escondendo que
   // o segredo mais sensivel do sistema esta em claro no banco.
-  if (!cifrada.startsWith('enc:v1:')) {
+  if (!cifrada.startsWith(PREFIXO)) {
     throw new Error('lerCredencial: credencial da subconta sem cifra — gravacao corrompida');
   }
   return decifrarCampo(cifrada);

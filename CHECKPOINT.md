@@ -53,6 +53,16 @@ O conserto (fim da 0053) **não pôde ser `REVOKE` por coluna**: privilégio de 
 
 **2. `criar_assinatura_trial()` quebrava todo cadastro de escritório novo — em produção desde a 0050.** Corrigido pela **migration 0054**, já aplicada. A guarda era `IF TG_TABLE_NAME = 'companies' AND NEW.contabilidade_id IS NOT NULL`; **PL/pgSQL não garante short-circuit**, e a mesma função serve `trg_assinatura_contabilidade`, onde a coluna não existe → todo `INSERT INTO contabilidades` morria com `42703`. Passou meses despercebido porque só existe uma contabilidade, criada antes da 0050. Provado antes/depois em `BEGIN`/`ROLLBACK`, incluindo os dois caminhos de `companies`.
 
+### `lerCredencial` agora LANÇA — as Tasks 9 e 13 precisam mudar por causa disso
+
+O landmine do Bloco E foi retirado de verdade: `decifrarCampo` **rodou em runtime com a `CERT_ENC_KEY` real**, devolvendo o token `$aact_…` idêntico ao que entrou. (O probe do plano reimplementa o AES, então provaria a *chave* e não o *código*; a prova válida foi injetar a chave real na suíte, porque o `beforeAll` usa `??=` e a env vence a sintética.)
+
+No caminho, `lerCredencial` foi endurecida: **lança** quando falta o prefixo `enc:v1:`, em vez de herdar de `decifrarCampo` o fallback que devolve o valor cru. Esse fallback existe para certificado gravado em claro antes do Bloco E; para a apiKey da subconta **não há legado**, e devolver o valor cru esconderia o segredo mais sensível do sistema em claro no banco, parecendo que tudo funciona.
+
+**Efeito colateral a corrigir quando as tasks chegarem:** o plano chama `lerCredencial` **fora** do `try` em dois lugares — Task 13 (linhas 2089-2098, `sincronizarCobrancasEscritorio`) e Task 9 (linha 1671) — e escreve `if (!token) continue`, supondo retorno nulável. Com o throw, **uma** contabilidade corrompida derruba a reconciliação de **todas** — e essa varredura é justamente a rede de segurança para o webhook que não chega. A leitura tem de ficar **dentro** do `try`, um por linha.
+
+O literal `'enc:v1:'` foi eliminado da duplicação: `envelope.ts` passou a exportar `PREFIXO`. Sem isso, uma futura `enc:v2:` faria `lerCredencial` acusar "gravação corrompida" em credencial perfeitamente válida — a falha mais enganosa possível, porque aponta o dado bom.
+
 ### Buraco no plano do 4B, a decidir na Task 9
 
 A tabela de arquivos a modificar do plano (linha 65) promete **"Gerar cobrança" no honorário**, e o webhook (linha 1910) e a sincronização (2110) já tratam `cob.honorario_id` — mas **nenhuma task preenche `honorario_id`**. O único caminho de emissão escrito é o de **serviço avulso**. Do jeito que está, o 4B entregaria o avulso e deixaria de fora a **mensalidade**, que é o principal que um escritório cobra. Decidir ao chegar na Task 9.
