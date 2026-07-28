@@ -32,7 +32,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getGateContext } from '@/lib/auth/gate-context';
 import { formatBRL } from '@/lib/format/dinheiro';
 import CopiarPix from './CopiarPix';
-import { type CobrancaVm, rotuloStatus, corStatus, podePagar, totalEmAberto } from './cobrancas-vm';
+import { type CobrancaVm, rotuloStatus, corStatus, podePagar, totalEmAberto } from '@/lib/billing/cobranca-escritorio-vm';
 
 export const dynamic = 'force-dynamic';
 

@@ -1,4 +1,12 @@
-// Bloco 4B — regras de apresentação da tela do cliente final (decisão 7.3).
+// Bloco 4B — como uma cobrança do escritório se APRESENTA.
+//
+// DUAS TELAS LEEM A MESMA COBRANÇA: o cliente final (`/cobrancas`, decisão 7.3)
+// e o escritório que a emitiu (`/contador/cobrancas`). Por isso este módulo saiu
+// de dentro da pasta da tela do cliente e veio para `lib/` — se cada uma
+// tivesse o seu rótulo e a sua cor, a MESMA cobrança apareceria "Em aberto" de
+// um lado e "Pendente" do outro, e a conversa entre os dois começaria com os
+// dois olhando telas que discordam. É o mesmo argumento dos três relógios que
+// `cobranca-escritorio.ts` faz para o estado; aqui vale para o vocabulário.
 //
 // Puro de propósito: sem I/O, sem React, sem `server-only`. O que decide se
 // aparece um botão "Pagar" merece teste próprio, e montar a página inteira só

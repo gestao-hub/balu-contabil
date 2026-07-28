@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rotuloStatus, corStatus, estaEmAberto, podePagar, totalEmAberto } from './cobrancas-vm';
+import { rotuloStatus, corStatus, estaEmAberto, podePagar, totalEmAberto } from './cobranca-escritorio-vm';
 
 // Os quatro do CHECK `cobrancas_escritorio_status_check` (migration 0053).
 const STATUS = ['pendente', 'paga', 'vencida', 'estornada'] as const;
