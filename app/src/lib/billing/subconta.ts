@@ -1,0 +1,81 @@
+// Bloco 4B — regras puras do cadastro da subconta Asaas.
+//
+// Puro de proposito: a action valida ANTES de chamar o Asaas. Um payload
+// recusado la volta como erro cru em ingles, e o escritorio no meio do
+// onboarding nao tem o que fazer com isso.
+//
+// PJ e PF sao conjuntos DIFERENTES de campos, levantado contra o sandbox:
+// `birthDate` e obrigatorio so para CPF; com `companyType` de PJ o validador
+// do Asaas deixa de pedir.
+
+export type CompanyType = 'MEI' | 'LIMITED' | 'INDIVIDUAL' | 'ASSOCIATION';
+
+export type DadosSubconta = {
+  name: string;
+  cpfCnpj: string;
+  email: string;
+  mobilePhone: string;
+  incomeValue: number;
+  address: string;
+  addressNumber: string;
+  province: string;
+  postalCode: string;
+  birthDate: string | null;
+  companyType: CompanyType | null;
+};
+
+export type ResultadoValidacao = { ok: true } | { ok: false; error: string };
+
+export const soDigitos = (v: string): string => (v ?? '').replace(/\D+/g, '');
+
+/** 11 digitos = CPF (pessoa fisica); 14 = CNPJ (pessoa juridica). */
+export function ehPessoaJuridica(cpfCnpj: string): boolean {
+  return soDigitos(cpfCnpj).length === 14;
+}
+
+export function validarDadosSubconta(d: DadosSubconta): ResultadoValidacao {
+  if (!d.name?.trim()) return { ok: false, error: 'Informe o nome do escritório.' };
+
+  const doc = soDigitos(d.cpfCnpj);
+  if (doc.length !== 11 && doc.length !== 14) {
+    return { ok: false, error: 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.' };
+  }
+  if (!d.email?.trim()) return { ok: false, error: 'Informe o e-mail do responsável.' };
+  if (soDigitos(d.mobilePhone).length < 10) {
+    return { ok: false, error: 'Informe o celular com DDD.' };
+  }
+  if (!(d.incomeValue > 0)) {
+    return { ok: false, error: 'Informe o faturamento mensal estimado.' };
+  }
+  if (!d.address?.trim() || !d.addressNumber?.trim() || !d.province?.trim()) {
+    return { ok: false, error: 'Informe endereço, número e bairro.' };
+  }
+  if (soDigitos(d.postalCode).length !== 8) {
+    return { ok: false, error: 'Informe o CEP com 8 dígitos.' };
+  }
+
+  if (ehPessoaJuridica(d.cpfCnpj)) {
+    if (!d.companyType) return { ok: false, error: 'Informe o tipo da empresa.' };
+  } else {
+    if (!d.birthDate) return { ok: false, error: 'Informe a data de nascimento do responsável.' };
+  }
+  return { ok: true };
+}
+
+/** Payload já no formato que o Asaas espera: documento, celular e CEP só com
+ *  dígitos, e o campo do "outro tipo" ausente em vez de nulo. */
+export function montarPayloadSubconta(d: DadosSubconta): Record<string, unknown> {
+  const pj = ehPessoaJuridica(d.cpfCnpj);
+  return {
+    name: d.name.trim(),
+    email: d.email.trim(),
+    cpfCnpj: soDigitos(d.cpfCnpj),
+    mobilePhone: soDigitos(d.mobilePhone),
+    incomeValue: d.incomeValue,
+    address: d.address.trim(),
+    addressNumber: d.addressNumber.trim(),
+    province: d.province.trim(),
+    postalCode: soDigitos(d.postalCode),
+    ...(pj ? { companyType: d.companyType } : { birthDate: d.birthDate }),
+  };
+}
