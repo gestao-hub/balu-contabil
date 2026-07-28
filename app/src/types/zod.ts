@@ -292,6 +292,20 @@ export const CobrarClienteSchema = z.object({
     .transform((v) => v ?? null),
   vencimento: z.string({ required_error: 'Informe o vencimento.', invalid_type_error: 'Informe o vencimento.' })
     .regex(DATA_ISO, 'Informe o vencimento.'),
+  // A CHAVE DE IDEMPOTENCIA DA SUBMISSAO (0055). O avulso nao tem chave
+  // natural — cobrar duas vezes o mesmo servico do mesmo cliente e legitimo —
+  // entao quem separa "duplo clique" de "cobrar de novo" e este UUID, gerado
+  // com `crypto.randomUUID()` UMA VEZ POR ABERTURA DO FORMULARIO e renovado so
+  // apos uma emissao bem-sucedida.
+  //
+  // OPCIONAL SO ENQUANTO A TELA NAO EXISTE (Task 10). Sem ela NAO HA TRAVA
+  // NENHUMA contra duplo clique no avulso: nem reserva, nem indice unico.
+  //
+  // `.toLowerCase()` porque `z.string().uuid()` aceita hexadecimal MAIUSCULO e
+  // o CHECK de formato da 0055 (`[0-9a-f]`) nao — sem isto, uma chave em
+  // maiusculas viraria erro cru de Postgres na tela do contador.
+  idempotencyKey: z.string().uuid('Chave de emissão inválida.')
+    .nullish().transform((v) => v?.toLowerCase() ?? null),
 });
 export type CobrarClienteInput = z.infer<typeof CobrarClienteSchema>;
 

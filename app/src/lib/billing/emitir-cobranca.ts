@@ -25,6 +25,8 @@ import { asaasSub } from '@/lib/clients/asaas';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { lerCredencial } from '@/lib/billing/credencial-subconta';
 import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
+import { statusDoErroAsaas } from '@/lib/billing/subconta-erros';
+import { cobrancaViva } from '@/lib/billing/cobranca-escritorio';
 import { soDigitos } from '@/lib/billing/subconta';
 
 export type ClienteCobravel = {
@@ -48,11 +50,30 @@ export type PedidoEmissao = {
   /** Preenchido no caminho do honorario; `null` no do avulso. Ver LIGACAO
    *  CANONICA no cabecalho de `cobrar-actions.ts` dos honorarios. */
   honorarioId: string | null;
+  /**
+   * UUID gerado PELO NAVEGADOR, uma vez por abertura do formulario de cobranca
+   * avulsa, e renovado so apos uma emissao bem-sucedida.
+   *
+   * Ela nao descreve O QUE se cobra — descreve QUAL SUBMISSAO esta se repetindo.
+   * Cobrar duas vezes o mesmo servico do mesmo cliente e legitimo (dois meses de
+   * consultoria, duas certidoes para dois socios), entao nao ha chave natural no
+   * avulso: dois cliques na MESMA tela colidem, e "cobrar de novo" (tela nova,
+   * chave nova) emite.
+   *
+   * `null` no caminho do honorario, que ja tem chave natural (`honorarioId`), e
+   * `null` tambem em qualquer chamador que ainda nao a mande — e AI NAO HA
+   * TRAVA NENHUMA contra duplo clique. Ver IDEMPOTENCIA, abaixo.
+   */
+  idempotencyKey: string | null;
 };
 
 export type ResultadoEmissao =
   | { ok: true; cobrancaId: string; chargeId: string; linkFatura: string | null }
-  | { ok: false; error: string };
+  // `linkFatura` na RECUSA nao e enfeite: quando a recusa e "isto ja foi
+  // emitido", o contador precisa CHEGAR na cobranca que bloqueou — para
+  // conferir o valor, reenviar ao cliente ou estorna-la. Sem o link, a unica
+  // saida e cacar no Asaas. Mesma forma de `CobrarHonorarioResult`.
+  | { ok: false; error: string; linkFatura?: string | null };
 
 /** Mensagem unica para "o Asaas nao respondeu como devia". Nunca repassa o
  *  texto do Asaas: o corpo de erro dele carrega dado do cliente e, no caminho
@@ -111,6 +132,192 @@ function mensagemCurta(e: unknown): string {
   const bruto = e instanceof Error ? e.message : String(e);
   const limpo = PADROES_CREDENCIAL.reduce((t, re) => t.replace(re, '[REDIGIDO]'), bruto);
   return limpo.slice(0, 200);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IDEMPOTENCIA — POR QUE A ARBITRAGEM ACONTECE ANTES DO ASAAS
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ┌─ O ACHADO QUE DESENHOU ISTO ────────────────────────────────────────────┐
+// │ Botao desabilitado nao alcanca duas abas nem POST direto: o banco e o   │
+// │ unico lugar onde duas requisicoes simultaneas se encontram. Mas os      │
+// │ INDICES UNICOS da 0055 arbitram tarde demais — eles recusam a segunda   │
+// │ LINHA, e a essa altura os dois boletos JA NASCERAM no Asaas. O segundo  │
+// │ ficaria ORFAO: sem linha, o webhook o trata como 'cobranca_desconhecida'│
+// │ e ele some do painel, mas continua na mao do cliente do escritorio.     │
+// │ Isso e PIOR que o estado anterior (duplicado, porem rastreado).         │
+// │                                                                         │
+// │ Entao a arbitragem tem de acontecer ANTES da chamada ao Asaas:          │
+// │                                                                         │
+// │   1. RESERVA  — `reservar_emissao_cobranca` (0055) toma um trinco na    │
+// │      chave desta emissao. Quem perde a corrida NAO FALA COM O ASAAS.    │
+// │   2. PRE-CHECAGEM — so DEPOIS de ter o trinco se pergunta ao banco se   │
+// │      ja existe cobranca. A ordem importa: perguntar antes de reservar    │
+// │      deixa a janela em que o vencedor commita entre a pergunta e a       │
+// │      reserva do perdedor — e o segundo boleto nasce.                     │
+// │   3. INDICES  — rede de baixo. Se algo escapar dos dois passos acima, a  │
+// │      LINHA duplicada ainda e recusada, e o 23505 vira mensagem em        │
+// │      portugues (nunca erro cru de Postgres na tela) mais auditoria do    │
+// │      boleto orfao.                                                       │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌─ A RESERVA NAO PODE VIRAR LAPIDE ───────────────────────────────────────┐
+// │ Se o Asaas falhar (ou o processo morrer) depois da reserva, o contador  │
+// │ nao pode ficar trancado. Duas defesas, nesta ordem:                     │
+// │                                                                         │
+// │  * TTL. Toda reserva expira em `TTL_RESERVA_SEGS` e e ROUBADA pelo      │
+// │    pedido seguinte (ON CONFLICT ... WHERE expira_em < now(), na 0055).  │
+// │    Vale mesmo se este processo for morto no meio — deploy, timeout da   │
+// │    Vercel, queda de rede. O pior caso e "trancado por 2 minutos", nunca │
+// │    "trancado para sempre".                                              │
+// │  * LIBERACAO EXPLICITA, e SO QUANDO SE SABE QUE NADA NASCEU:            │
+// │      - sucesso (a linha ja esta gravada, e o indice assume a guarda);   │
+// │      - recusa 4xx do Asaas (ele respondeu "nao" — nada foi criado);     │
+// │      - falha ao cadastrar o cliente (acontece antes da cobranca);       │
+// │      - pre-checagem que bloqueou (nem chegamos ao Asaas);               │
+// │      - 23505 (a cobranca que bloqueia ja esta no banco, guardando).     │
+// │    NAO se libera depois de erro AMBIGUO — 5xx, timeout, resposta 200    │
+// │    sem id — porque ali a cobranca PODE ter nascido, e devolver o trinco │
+// │    na hora transformaria o proximo clique num segundo boleto certo. Ali │
+// │    o TTL decide, e o contador espera dois minutos em vez de mandar dois │
+// │    boletos.                                                             │
+// └─────────────────────────────────────────────────────────────────────────┘
+
+/** Vive mais que qualquer chamada ao Asaas (o cliente tenta 3x com backoff) e
+ *  menos que a paciencia de quem clicou. Curto demais e a reserva vence com a
+ *  emissao ainda em voo, e o segundo clique a rouba: volta o duplo boleto. */
+const TTL_RESERVA_SEGS = 120;
+
+type Reserva = { chave: string; dono: string };
+
+const EMISSAO_EM_ANDAMENTO =
+  'Esta cobrança já está sendo emitida agora mesmo. Espere alguns segundos e confira a fatura antes de tentar de novo.';
+const NAO_DA_PARA_CONFERIR =
+  'Não foi possível confirmar se esta cobrança já foi emitida. Tente de novo em instantes.';
+const JA_EMITIDA_EM_ABERTO =
+  'Este honorário já tem uma cobrança em aberto. Estorne-a antes de emitir outra.';
+const JA_EMITIDA_PAGA =
+  'Este honorário já tem uma cobrança PAGA. Estorne-a antes de emitir outra.';
+const JA_EMITIDA_SUBMISSAO =
+  'Esta cobrança já foi emitida — confira a fatura. Para cobrar de novo, abra o formulário outra vez.';
+/** O 23505 e a rede de baixo: se ele mordeu, a cobranca ja nasceu no Asaas e
+ *  NAO foi gravada. O contador precisa saber disso antes de mandar o boleto. */
+const DUPLICADA_APOS_ASAAS =
+  'Esta cobrança já estava emitida. Pode ter nascido uma segunda cobrança no Asaas sem ficar registrada aqui — confira no Asaas antes de enviar ao cliente e avise o suporte da Balu.';
+
+/**
+ * A chave que identifica ESTA emissão para o trinco, ou `null` quando não há
+ * nenhuma — e aí não existe trava alguma contra duplo clique.
+ *
+ * O honorário tem chave NATURAL e por isso vem primeiro: ele descreve a dívida,
+ * e vale mesmo entre telas diferentes. A do avulso descreve a submissão.
+ *
+ * Minúsculas de propósito: `z.string().uuid()` aceita hexadecimal MAIÚSCULO, e o
+ * CHECK de formato da 0055 (`[0-9a-f]`) não — sem isto, uma chave em maiúsculas
+ * vinda do navegador viraria erro cru de Postgres na tela do contador.
+ */
+function chaveDeReserva(p: PedidoEmissao): string | null {
+  if (p.honorarioId) return `hon:${p.honorarioId.toLowerCase()}`;
+  const k = p.idempotencyKey?.trim().toLowerCase();
+  return k ? `idem:${k}` : null;
+}
+
+/**
+ * Toma o trinco. `'perdeu'` = outro pedido está emitindo isto agora.
+ *
+ * FALHA FECHADA, ao contrário de `limitar()` (rate-limit), que falha aberta: lá
+ * o pior caso é um request a mais; aqui é um BOLETO REAL a mais na mão do
+ * cliente do escritório. Sem conseguir falar com o trinco, não se emite.
+ */
+async function reservarEmissao(
+  sb: SupabaseClient, contabilidadeId: string, chave: string,
+): Promise<{ ok: true; reserva: Reserva } | { ok: false; motivo: 'perdeu' | 'indisponivel' }> {
+  const { data, error } = await sb.rpc('reservar_emissao_cobranca', {
+    p_contabilidade: contabilidadeId, p_chave: chave, p_ttl_segs: TTL_RESERVA_SEGS,
+  });
+  if (error) {
+    console.error('[4b] reserva de emissao indisponivel', contabilidadeId, error.message);
+    return { ok: false, motivo: 'indisponivel' };
+  }
+  if (!data) return { ok: false, motivo: 'perdeu' };
+  return { ok: true, reserva: { chave, dono: String(data) } };
+}
+
+/**
+ * Devolve o trinco. Só é chamada onde se sabe que nenhuma cobrança nasceu —
+ * ver a nota LÁPIDE acima.
+ *
+ * Best-effort: falhar aqui não é erro para o contador, porque a reserva expira
+ * sozinha. Silenciar seria pior, então fica no log.
+ */
+async function liberarReserva(
+  sb: SupabaseClient, contabilidadeId: string, r: Reserva | null,
+): Promise<void> {
+  if (!r) return;
+  const { error } = await sb.rpc('liberar_reserva_cobranca', {
+    p_contabilidade: contabilidadeId, p_chave: r.chave, p_dono: r.dono,
+  });
+  if (error) {
+    console.error(`[4b] reserva nao liberada (expira em ate ${TTL_RESERVA_SEGS}s)`, r.chave, error.message);
+  }
+}
+
+type Bloqueio = { motivo: 'honorario'; status: string; linkFatura: string | null }
+              | { motivo: 'submissao'; status: string; linkFatura: string | null };
+
+/**
+ * A cobrança já gravada que impede esta emissão — ou `null` quando não há.
+ *
+ * É a pergunta que os índices únicos da 0055 respondem tarde demais, feita
+ * ANTES de gastar uma chamada no Asaas. Os dois predicados espelham os dois
+ * índices, e divergir deles é o que faz a tela deixar passar o que o banco
+ * recusa:
+ *  * honorário → só cobrança VIVA bloqueia (`cobrancaViva`), porque estorno
+ *    libera a recobrança;
+ *  * submissão → QUALQUER linha com a mesma chave bloqueia, sem olhar status:
+ *    a chave descreve um POST que se repetiu, não uma dívida.
+ *
+ * `'indisponivel'` (erro de leitura) NÃO vira "pode emitir": no escuro, emitir
+ * pode significar o segundo boleto real; recusar custa um clique.
+ *
+ * `.eq('contabilidade_id')` em toda consulta porque o admin client ignora RLS —
+ * sem ele, a cobrança viva de outro escritório decidiria esta emissão.
+ */
+async function cobrancaQueBloqueia(
+  sb: SupabaseClient, p: PedidoEmissao,
+): Promise<Bloqueio | 'indisponivel' | null> {
+  const alvo = sb.from('cobrancas_escritorio')
+    .select('status, link_fatura')
+    .eq('contabilidade_id', p.contabilidadeId);
+
+  if (p.honorarioId) {
+    const { data, error } = await alvo.eq('honorario_id', p.honorarioId);
+    if (error) {
+      console.error('[4b] leitura das cobrancas do honorario falhou', p.honorarioId, error.message);
+      return 'indisponivel';
+    }
+    const linhas = (data ?? []) as Array<{ status: string; link_fatura: string | null }>;
+    const viva = linhas.find((l) => cobrancaViva(String(l.status)));
+    return viva ? { motivo: 'honorario', status: String(viva.status), linkFatura: viva.link_fatura ?? null } : null;
+  }
+
+  const k = p.idempotencyKey?.trim().toLowerCase();
+  if (!k) return null;
+  const { data, error } = await alvo.eq('idempotency_key', k);
+  if (error) {
+    console.error('[4b] leitura da chave de idempotencia falhou', p.contabilidadeId, error.message);
+    return 'indisponivel';
+  }
+  const linhas = (data ?? []) as Array<{ status: string; link_fatura: string | null }>;
+  return linhas[0]
+    ? { motivo: 'submissao', status: String(linhas[0].status), linkFatura: linhas[0].link_fatura ?? null }
+    : null;
+}
+
+/** A frase para o contador quando algo já emitido bloqueia esta emissão. */
+function mensagemDoBloqueio(b: Bloqueio): string {
+  if (b.motivo === 'submissao') return JA_EMITIDA_SUBMISSAO;
+  return b.status === 'paga' ? JA_EMITIDA_PAGA : JA_EMITIDA_EM_ABERTO;
 }
 
 /**
@@ -175,15 +382,54 @@ export async function emitirCobrancaEscritorio(
     return { ok: false, error: 'A credencial da conta de recebimento não está guardada. Fale com o suporte da Balu.' };
   }
 
+  // ─── RESERVA: A ARBITRAGEM, ANTES DE QUALQUER COISA NO ASAAS ──────────────
+  // Ver o bloco IDEMPOTENCIA acima. Sem chave (chamador que ainda nao a manda)
+  // nao ha trinco — e nao ha trava contra duplo clique.
+  const chave = chaveDeReserva(p);
+  let reserva: Reserva | null = null;
+  if (chave) {
+    const r = await reservarEmissao(sb, p.contabilidadeId, chave);
+    if (!r.ok) {
+      return {
+        ok: false,
+        error: r.motivo === 'perdeu' ? EMISSAO_EM_ANDAMENTO : NAO_DA_PARA_CONFERIR,
+      };
+    }
+    reserva = r.reserva;
+  }
+
+  // ─── PRE-CHECAGEM, JA COM O TRINCO NA MAO ─────────────────────────────────
+  // DEPOIS da reserva, nunca antes: perguntar primeiro deixaria a janela em que
+  // o vencedor da corrida commita a linha entre a pergunta e a reserva do
+  // perdedor — e o perdedor emitiria o segundo boleto.
+  const bloqueio = await cobrancaQueBloqueia(sb, p);
+  if (bloqueio) {
+    await liberarReserva(sb, p.contabilidadeId, reserva);
+    if (bloqueio === 'indisponivel') return { ok: false, error: NAO_DA_PARA_CONFERIR };
+    return { ok: false, error: mensagemDoBloqueio(bloqueio), linkFatura: bloqueio.linkFatura };
+  }
+
   // ─── A COBRANCA NASCE NA SUBCONTA ─────────────────────────────────────────
   // `asaasSub(token)`, JAMAIS `asaas`. Com o cliente da conta-mae a cobranca
   // nasceria pertencendo a Balu, e a Balu estaria intermediando dinheiro de
   // terceiro. O token e usado e descartado aqui dentro: nunca vai para variavel
   // de modulo, log, auditoria ou retorno.
   const sub = asaasSub(token);
+
+  // O cadastro do cliente e um `try` PROPRIO porque falhar aqui e o unico erro
+  // do Asaas que nao e ambiguo: ele acontece ANTES de `criarCobranca`, entao
+  // nenhuma cobranca nasceu e o trinco volta na hora.
+  let customerId: string;
+  try {
+    customerId = await clienteNaSubconta(sub, p.cliente.nome, doc, p.cliente.email);
+  } catch (e) {
+    console.error('[4b] cadastro do cliente na subconta falhou:', mensagemCurta(e));
+    await liberarReserva(sb, p.contabilidadeId, reserva);
+    return { ok: false, error: ERRO_ASAAS };
+  }
+
   let cobranca;
   try {
-    const customerId = await clienteNaSubconta(sub, p.cliente.nome, doc, p.cliente.email);
     cobranca = await sub.criarCobranca({
       customer: customerId,
       billingType: 'UNDEFINED',        // o cliente escolhe boleto/Pix/cartao na fatura
@@ -195,9 +441,20 @@ export async function emitirCobrancaEscritorio(
   } catch (e) {
     // A chave pode aparecer numa mensagem de erro de rede; nunca repassar.
     console.error('[4b] emitir cobranca falhou:', mensagemCurta(e));
+    // 4xx = o Asaas RESPONDEU e RECUSOU: nada nasceu do outro lado, e segurar o
+    // trinco so faria o contador esperar para corrigir o dado e tentar de novo.
+    // 5xx, timeout e DNS nao dizem nada sobre o que aconteceu la — ali o trinco
+    // FICA e expira sozinho (ver LAPIDE). Mesma leitura de `statusDoErroAsaas`
+    // que decide a subconta orfa no 4B.
+    const status = statusDoErroAsaas(e);
+    if (status !== null && status >= 400 && status < 500) {
+      await liberarReserva(sb, p.contabilidadeId, reserva);
+    }
     return { ok: false, error: ERRO_ASAAS };
   }
   if (!cobranca?.id) {
+    // O Asaas respondeu 2xx sem id: o contrato mudou e a cobranca provavelmente
+    // NASCEU. Caso ambiguo — o trinco fica e expira sozinho.
     console.error('[4b] Asaas respondeu sem id de cobranca', p.contabilidadeId);
     return { ok: false, error: ERRO_ASAAS };
   }
@@ -205,8 +462,8 @@ export async function emitirCobrancaEscritorio(
   // ─── PERSISTENCIA ─────────────────────────────────────────────────────────
   // A cobranca JA EXISTE no Asaas neste ponto. Falhar aqui nao a desfaz — por
   // isso o erro diz para conferir antes de repetir, e nao "tente de novo".
-  // `asaas_charge_id` e UNIQUE (0053): 23505 significa que esta cobranca ja
-  // esta gravada, e nao ha nada a corrigir.
+  // `asaas_charge_id` e UNIQUE (0053) e a 0055 acrescentou mais dois indices
+  // unicos: 23505 aqui e a REDE DE BAIXO mordendo, tratada logo abaixo.
   const { data: linha, error } = await sb.from('cobrancas_escritorio').insert({
     contabilidade_id: p.contabilidadeId,
     empresa_cliente_id: p.cliente.id,
@@ -218,7 +475,40 @@ export async function emitirCobrancaEscritorio(
     valor_centavos: p.valorCentavos,
     vencimento: p.vencimento,
     link_fatura: cobranca.invoiceUrl ?? null,
+    // Grava a chave da SUBMISSAO, e nao a do honorario: o `hon:` ja tem indice
+    // proprio, e escrever os dois faria a mesma divida ser guardada por duas
+    // chaves diferentes. NULL fica fora do indice unico parcial.
+    idempotency_key: p.honorarioId ? null : (p.idempotencyKey?.trim().toLowerCase() ?? null),
   }).select('id').maybeSingle();
+
+  // ─── 23505: A REDE DE BAIXO MORDEU ────────────────────────────────────────
+  // So se chega aqui se a reserva e a pre-checagem falharam em ver o que o
+  // indice viu (escrita fora do app, linha legada, chave de outra origem). A
+  // cobranca JA NASCEU no Asaas e nao vai ser gravada: e o boleto orfao. Nunca
+  // pode sair como erro cru de Postgres na tela — vira frase em portugues, com
+  // o link da cobranca QUE BLOQUEOU para o contador conseguir ver qual e, mais
+  // uma auditoria propria para o boleto orfao nao sumir do mundo.
+  if (error?.code === '23505') {
+    console.error('[4b] COBRANCA EMITIDA E RECUSADA POR UNICIDADE', cobranca.id, error.message);
+    const jaExiste = await cobrancaQueBloqueia(sb, p);
+    await registrarAuditoria({
+      actorUserId: p.userId, acao: 'cobranca_escritorio.duplicada_bloqueada',
+      alvoTipo: 'company', alvoId: p.cliente.id, contabilidadeId: p.contabilidadeId,
+      meta: {
+        charge_id: cobranca.id, valor_centavos: p.valorCentavos,
+        honorario_id: p.honorarioId, servico_avulso_id: p.servicoAvulsoId,
+        idempotency_key: p.idempotencyKey ?? null, restricao: error.message,
+      },
+    });
+    // A linha que bloqueia ja esta no banco e guarda o alvo daqui em diante: o
+    // trinco cumpriu o papel e volta.
+    await liberarReserva(sb, p.contabilidadeId, reserva);
+    return {
+      ok: false,
+      error: DUPLICADA_APOS_ASAAS,
+      linkFatura: jaExiste && jaExiste !== 'indisponivel' ? jaExiste.linkFatura : null,
+    };
+  }
 
   if (error || !linha) {
     console.error('[4b] COBRANCA EMITIDA E NAO GRAVADA', cobranca.id, error?.message ?? 'sem linha');
@@ -234,11 +524,22 @@ export async function emitirCobrancaEscritorio(
         erro: error?.message ?? 'insert sem linha',
       },
     });
+    // O TRINCO FICA, de proposito. A cobranca existe no Asaas e NAO existe no
+    // banco: nem a linha nem o indice guardam este alvo, e devolver o trinco
+    // agora faria o proximo clique emitir o segundo boleto de verdade. O TTL
+    // solta em ate `TTL_RESERVA_SEGS` — tempo de o contador ler a frase abaixo
+    // e ir conferir no Asaas, que e exatamente o que ela manda fazer.
     return {
       ok: false,
       error: 'A cobrança foi emitida no Asaas mas não pôde ser registrada aqui. Confira no Asaas antes de emitir de novo e avise o suporte da Balu.',
     };
   }
+
+  // Gravado. Daqui em diante quem guarda o alvo sao os indices unicos da 0055 —
+  // a linha do honorario, ou a `idempotency_key` da submissao. O trinco ja nao
+  // tem o que proteger e volta na hora, para o contador nao esperar o TTL numa
+  // recobranca legitima.
+  await liberarReserva(sb, p.contabilidadeId, reserva);
 
   await registrarAuditoria({
     actorUserId: p.userId, acao: 'cobranca_escritorio.emitida',

@@ -100,8 +100,13 @@ export async function cobrarHonorarioAction(entrada: unknown): Promise<CobrarHon
     .eq('id', honorarioId).eq('contabilidade_id', ctx.id).maybeSingle();
   if (!hon) return { ok: false, error: 'Honorário não encontrado neste escritório.' };
 
-  // TRAVA DE DUPLO CLIQUE (sequencial). O clique SIMULTANEO ainda passa — ver o
-  // compare-and-swap la embaixo e a nota no relatorio da task.
+  // TRAVA DE DUPLO CLIQUE (sequencial), e a PRIMEIRA das tres — esta existe
+  // para a MENSAGEM: ela responde em portugues, com o link da fatura, antes de
+  // gastar qualquer coisa. O clique SIMULTANEO nao para aqui (as duas
+  // requisicoes leem o mesmo nada); quem o arbitra e a RESERVA tomada dentro de
+  // `emitirCobrancaEscritorio`, antes da chamada ao Asaas, e o indice unico
+  // parcial da 0055 como rede de baixo. Ver o bloco IDEMPOTENCIA em
+  // `lib/billing/emitir-cobranca.ts`.
   //
   // A pergunta e feita a `cobrancas_escritorio` (a ligacao CANONICA) e nao ao
   // back-pointer, porque o back-pointer nao sabe o STATUS: ele diz "houve
@@ -171,6 +176,10 @@ export async function cobrarHonorarioAction(entrada: unknown): Promise<CobrarHon
     // honorario marcar como pago (decisao 7.4: semaforo automatico onde houver
     // cobranca pela subconta, manual onde nao houver).
     honorarioId: hon.id as string,
+    // Sem chave de submissao: o honorario TEM chave natural, e e ela que a
+    // reserva (`hon:<id>`) e o indice unico parcial usam. Mandar as duas faria
+    // a mesma divida ser guardada por dois nomes diferentes.
+    idempotencyKey: null,
   });
   if (!r.ok) return r;
 

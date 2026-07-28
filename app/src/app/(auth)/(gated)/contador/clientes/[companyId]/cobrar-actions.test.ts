@@ -343,6 +343,43 @@ describe('cobrarClienteAction — fronteira e vencimento', () => {
     expect(h.clienteDaCarteira).not.toHaveBeenCalled();
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // A CHAVE DE IDEMPOTENCIA DA SUBMISSAO (0055).
+  //
+  // O avulso nao tem chave natural, entao e ESTE UUID que separa "duplo clique"
+  // de "cobrar de novo". Ele nasce no navegador (`crypto.randomUUID()`, uma vez
+  // por abertura do formulario) e a action so o repassa — mas repassar e a
+  // metade que, se sumir, apaga a trava inteira sem quebrar nada visivel.
+  // ─────────────────────────────────────────────────────────────────────────
+  it('a chave da submissao chega INTEIRA ao motor de emissao', async () => {
+    const K = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    await cobrarClienteAction(entrada({ idempotencyKey: K }));
+    expect(pedidoEmitido()).toMatchObject({ idempotencyKey: K });
+  });
+
+  // `z.string().uuid()` aceita hexadecimal MAIUSCULO; o CHECK de formato da
+  // 0055 (`[0-9a-f]`) nao. Sem a normalizacao na fronteira, uma chave em
+  // maiusculas viraria erro cru de Postgres na tela do contador.
+  it('chave em MAIUSCULAS e normalizada na fronteira', async () => {
+    await cobrarClienteAction(entrada({ idempotencyKey: 'AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE' }));
+    expect(pedidoEmitido()).toMatchObject({ idempotencyKey: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' });
+  });
+
+  it('chave que nao e uuid e recusada na fronteira, sem emitir nada', async () => {
+    const r = await cobrarClienteAction(entrada({ idempotencyKey: 'nao-e-uuid' }));
+    expect(r).toEqual({ ok: false, error: 'Chave de emissão inválida.' });
+    expect(h.emitirCobrancaEscritorio).not.toHaveBeenCalled();
+  });
+
+  // A TELA AINDA NAO EXISTE (Task 10). Enquanto ela nao mandar a chave, este
+  // caminho segue SEM TRAVA contra duplo clique — declarado aqui para nao virar
+  // surpresa, e nao para ser aceito para sempre.
+  it('sem chave a action ainda emite, e o motor recebe null', async () => {
+    const r = await cobrarClienteAction(entrada());
+    expect(r).toMatchObject({ ok: true });
+    expect(pedidoEmitido()).toMatchObject({ idempotencyKey: null });
+  });
+
   it('vencimento no passado recusa em portugues, em vez de erro do Asaas em ingles', async () => {
     const r = await cobrarClienteAction(entrada({ vencimento: '2020-01-10' }));
     expect(r).toEqual({ ok: false, error: 'O vencimento não pode ser anterior a hoje.' });

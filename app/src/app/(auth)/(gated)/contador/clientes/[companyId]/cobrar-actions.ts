@@ -26,7 +26,11 @@ import { CobrarClienteSchema } from '@/types/zod';
 
 export type CobrarResult =
   | { ok: true; linkFatura: string | null }
-  | { ok: false; error: string };
+  // `linkFatura` na recusa: quando o motivo e "esta cobranca ja foi emitida"
+  // (chave de idempotencia repetida), o contador precisa CHEGAR na fatura que
+  // bloqueou para conferir antes de tentar de novo. Mesma forma de
+  // `CobrarHonorarioResult`.
+  | { ok: false; error: string; linkFatura?: string | null };
 
 export async function cobrarClienteAction(entrada: unknown): Promise<CobrarResult> {
   const ctx = await requireEscritorioAprovado();
@@ -95,6 +99,20 @@ export async function cobrarClienteAction(entrada: unknown): Promise<CobrarResul
     vencimento: dados.vencimento,
     servicoAvulsoId: servicoId,
     honorarioId: null,
+    // ┌─ A TELA PRECISA MANDAR ISTO (Task 10) ────────────────────────────┐
+    // │ O avulso NAO TEM chave natural: cobrar duas vezes o mesmo servico │
+    // │ do mesmo cliente e legitimo. Quem separa "duplo clique" de        │
+    // │ "cobrar de novo" e um UUID gerado no navegador com                │
+    // │ `crypto.randomUUID()` UMA VEZ POR ABERTURA DO FORMULARIO, mantido │
+    // │ em estado e RENOVADO SO APOS UMA EMISSAO BEM-SUCEDIDA.            │
+    // │                                                                   │
+    // │ Enquanto o formulario nao existir e nao mandar a chave, este      │
+    // │ caminho segue SEM TRAVA contra duplo clique simultaneo: sem chave │
+    // │ nao ha reserva a tomar antes do Asaas nem indice unico a violar   │
+    // │ depois. O caminho do honorario nao depende disto — ele tem chave  │
+    // │ natural (`honorarioId`).                                          │
+    // └───────────────────────────────────────────────────────────────────┘
+    idempotencyKey: dados.idempotencyKey,
   });
   if (!r.ok) return r;
 

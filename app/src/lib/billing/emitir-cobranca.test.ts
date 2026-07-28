@@ -16,7 +16,13 @@
 //   5. deixar a chave cair em log, auditoria ou retorno;
 //   6. tirar o `.eq('id', contabilidade)` da leitura da credencial;
 //   7. deixar uma cobranca emitida e nao gravada sair em silencio;
-//   8. criar um cadastro de cliente novo a cada emissao.
+//   8. criar um cadastro de cliente novo a cada emissao;
+//   9. arbitrar a idempotencia DEPOIS da chamada ao Asaas — o que faz nascer o
+//      segundo boleto e deixa-lo orfao (ver a secao 9, e o bloco IDEMPOTENCIA
+//      do modulo);
+//  10. devolver o trinco depois de um erro AMBIGUO do Asaas, transformando o
+//      proximo clique num segundo boleto certo;
+//  11. deixar um 23505 chegar cru a tela do contador.
 //
 // TUDO MOCKADO NA FRONTEIRA: Asaas, gate e auditoria. O Supabase e um fake
 // passado por parametro. A cifra (`credencial-subconta`) e a de VERDADE, com uma
@@ -110,18 +116,48 @@ import { emitirCobrancaEscritorio, clienteDaCarteira, type PedidoEmissao } from 
 type Insercao = { tabela: string; valores: Record<string, unknown> };
 type Consulta = { tabela: string; eq: unknown[][] };
 
+type ChamadaRpc = { fn: string; args: Record<string, unknown> };
+
 const db = {
   consultas: [] as Consulta[],
   insercoes: [] as Insercao[],
+  rpcs: [] as ChamadaRpc[],
   contabilidade: null as Record<string, unknown> | null,
   erroContabilidade: null as { message: string } | null,
   company: null as Record<string, unknown> | null,
   linhaInserida: { id: 'cob_0001' } as { id: string } | null,
-  erroInsert: null as { message: string } | null,
+  erroInsert: null as { message: string; code?: string } | null,
+  /** O que a pre-checagem encontra em `cobrancas_escritorio`. */
+  cobrancasExistentes: [] as Array<{ status: string; link_fatura: string | null }>,
+  erroLista: null as { message: string } | null,
+  /** `null` = a RPC devolveu NULL = PERDEU a corrida do trinco. */
+  donoReserva: 'd0d0d0d0-1111-4111-8111-111111111111' as string | null,
+  erroReservar: null as { message: string } | null,
+  erroLiberar: null as { message: string } | null,
+  /** O que mudou no banco ENTRE a pre-checagem e o INSERT. E a unica maneira
+   *  honesta de encenar um 23505: se a linha ja existisse antes, a pre-checagem
+   *  teria barrado e o Asaas nunca teria sido chamado. */
+  aoInserir: null as (() => void) | null,
 };
 
 function fakeSb(): SupabaseClient {
   return {
+    // A RPC do trinco (0055). Fica no `ordem` junto com as chamadas do Asaas
+    // porque a invariante que mais importa deste modulo e a ORDEM entre as duas:
+    // reservar DEPOIS de falar com o Asaas e o que produz o boleto orfao.
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      h.ordem.push(`rpc:${fn}`);
+      db.rpcs.push({ fn, args });
+      if (fn === 'reservar_emissao_cobranca') {
+        return db.erroReservar
+          ? { data: null, error: db.erroReservar }
+          : { data: db.donoReserva, error: null };
+      }
+      if (fn === 'liberar_reserva_cobranca') {
+        return db.erroLiberar ? { data: null, error: db.erroLiberar } : { data: 1, error: null };
+      }
+      throw new Error(`RPC inesperada no fake: ${fn}`);
+    },
     from(tabela: string) {
       return {
         select: (_cols: string) => {
@@ -133,11 +169,22 @@ function fakeSb(): SupabaseClient {
               tabela === 'contabilidades'
                 ? { data: db.contabilidade, error: db.erroContabilidade }
                 : { data: db.company, error: null },
+            // FIEL AO supabase-js: o proprio builder e um thenable, e awaita-lo
+            // sem `.maybeSingle()` devolve a LISTA. E assim que a pre-checagem
+            // pergunta "ja existe cobranca para este alvo?".
+            then: (
+              res: (v: { data: unknown; error: unknown }) => unknown,
+              rej: (e: unknown) => unknown,
+            ) => Promise.resolve({
+              data: db.erroLista ? null : db.cobrancasExistentes,
+              error: db.erroLista,
+            }).then(res, rej),
           };
           return b;
         },
         insert: (valores: Record<string, unknown>) => {
           db.insercoes.push({ tabela, valores });
+          db.aoInserir?.();
           return {
             select: (_c: string) => ({
               maybeSingle: async () => ({
@@ -161,6 +208,10 @@ const pedido = (over: Partial<PedidoEmissao> = {}): PedidoEmissao => ({
   vencimento: '2026-08-10',
   servicoAvulsoId: null,
   honorarioId: null,
+  // O default e o caminho SEM chave nenhuma — o do avulso de hoje, cuja tela
+  // ainda nao existe (Task 10). Ele nao toma trinco: e o unico caminho sem
+  // trava, e a secao 9 prova que ele continua assim de proposito.
+  idempotencyKey: null,
   ...over,
 });
 
@@ -184,6 +235,13 @@ beforeEach(() => {
 
   db.consultas = [];
   db.insercoes = [];
+  db.rpcs = [];
+  db.cobrancasExistentes = [];
+  db.erroLista = null;
+  db.donoReserva = 'd0d0d0d0-1111-4111-8111-111111111111';
+  db.erroReservar = null;
+  db.erroLiberar = null;
+  db.aoInserir = null;
   db.contabilidade = {
     id: CONTABILIDADE_ID,
     asaas_subconta_status: 'aprovada',
@@ -445,6 +503,273 @@ describe('emitirCobrancaEscritorio — cliente na subconta', () => {
     await emitirCobrancaEscritorio(fakeSb(), pedido());
     expect(h.buscarClientesPorDocumento).toHaveBeenCalledWith('12345678000195');
     expect(h.criarCliente).toHaveBeenCalledWith(expect.objectContaining({ cpfCnpj: '12345678000195' }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. IDEMPOTENCIA — O SEGUNDO BOLETO NAO PODE NASCER
+//
+// Estes testes existem para morder o achado que desenhou a 0055: arbitrar
+// DEPOIS da chamada ao Asaas nao impede o segundo boleto, so o deixa ORFAO —
+// pior que duplicado e rastreado. Tudo aqui e sobre ORDEM e sobre QUANDO o
+// trinco volta.
+// ---------------------------------------------------------------------------
+const HONORARIO = '33333333-3333-4333-8333-333333333333';
+const CHAVE = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+const rpcsDe = (fn: string) => db.rpcs.filter((r) => r.fn === fn);
+const idx = (o: string) => h.ordem.indexOf(o);
+
+describe('emitirCobrancaEscritorio — a reserva vem ANTES do Asaas', () => {
+  it('o honorario reserva pela chave natural, antes de qualquer chamada ao Asaas', async () => {
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r.ok).toBe(true);
+
+    expect(rpcsDe('reservar_emissao_cobranca')[0]?.args).toMatchObject({
+      p_contabilidade: CONTABILIDADE_ID, p_chave: `hon:${HONORARIO}`,
+    });
+    // A INVARIANTE INTEIRA EM UMA LINHA: se a reserva escorregar para depois de
+    // `criarCobranca`, os dois cliques emitem e o perdedor deixa um orfao.
+    expect(idx('rpc:reservar_emissao_cobranca')).toBeGreaterThan(-1);
+    expect(idx('rpc:reservar_emissao_cobranca')).toBeLessThan(idx('sub.buscarClientes'));
+    expect(idx('rpc:reservar_emissao_cobranca')).toBeLessThan(idx('sub.criarCobranca'));
+  });
+
+  it('o avulso reserva pela chave da SUBMISSAO', async () => {
+    await emitirCobrancaEscritorio(fakeSb(), pedido({ idempotencyKey: CHAVE }));
+    expect(rpcsDe('reservar_emissao_cobranca')[0]?.args).toMatchObject({ p_chave: `idem:${CHAVE}` });
+  });
+
+  // `z.string().uuid()` aceita hexadecimal MAIUSCULO; o CHECK de formato da 0055
+  // (`[0-9a-f]`) nao. Sem a normalizacao, uma chave em maiusculas viraria erro
+  // cru de Postgres — na reserva E na linha.
+  it('chave em MAIUSCULAS e normalizada na reserva e na linha gravada', async () => {
+    await emitirCobrancaEscritorio(fakeSb(), pedido({ idempotencyKey: CHAVE.toUpperCase() }));
+    expect(rpcsDe('reservar_emissao_cobranca')[0]?.args).toMatchObject({ p_chave: `idem:${CHAVE}` });
+    expect(db.insercoes[0].valores).toMatchObject({ idempotency_key: CHAVE });
+  });
+
+  it('PERDER a corrida do trinco nao gasta UMA chamada no Asaas', async () => {
+    db.donoReserva = null; // a RPC devolveu NULL: outro pedido esta emitindo isto
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r).toEqual({
+      ok: false,
+      error: 'Esta cobrança já está sendo emitida agora mesmo. Espere alguns segundos e confira a fatura antes de tentar de novo.',
+    });
+    // O CORACAO DA TASK: o perdedor nao fala com o Asaas, entao o segundo
+    // boleto nao nasce.
+    expect(h.asaasSub).not.toHaveBeenCalled();
+    expect(h.criarCobranca).not.toHaveBeenCalled();
+    expect(db.insercoes).toHaveLength(0);
+  });
+
+  // Ao contrario de `limitar()` (rate-limit), que falha ABERTA: la o pior caso e
+  // um request a mais; aqui e um boleto real a mais.
+  it('trinco indisponivel FALHA FECHADA — nao emite', async () => {
+    db.erroReservar = { message: 'could not connect' };
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('Não foi possível confirmar') });
+    expect(h.criarCobranca).not.toHaveBeenCalled();
+  });
+
+  // Sem chave nenhuma nao ha o que trancar. Esta e a lacuna conhecida do avulso
+  // ate a tela existir (Task 10) — declarada aqui para nao virar surpresa.
+  it('sem honorario e sem chave NAO ha reserva (lacuna conhecida do avulso)', async () => {
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido());
+    expect(r.ok).toBe(true);
+    expect(rpcsDe('reservar_emissao_cobranca')).toHaveLength(0);
+    expect(db.insercoes[0].valores).toMatchObject({ idempotency_key: null });
+  });
+});
+
+describe('emitirCobrancaEscritorio — pre-checagem, COM o trinco na mao', () => {
+  it('honorario com cobranca VIVA nao chega ao Asaas e devolve o link que bloqueou', async () => {
+    db.cobrancasExistentes = [{ status: 'pendente', link_fatura: 'https://asaas.invalid/i/ja_existe' }];
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r).toEqual({
+      ok: false,
+      error: 'Este honorário já tem uma cobrança em aberto. Estorne-a antes de emitir outra.',
+      // Sem o link o contador so descobre qual e cacando no Asaas.
+      linkFatura: 'https://asaas.invalid/i/ja_existe',
+    });
+    expect(h.criarCobranca).not.toHaveBeenCalled();
+    // E o trinco volta na hora: nao ha nada a proteger, e segura-lo faria o
+    // contador esperar o TTL para estornar e recobrar.
+    expect(rpcsDe('liberar_reserva_cobranca')).toHaveLength(1);
+  });
+
+  it('cobranca PAGA diz a outra frase', async () => {
+    db.cobrancasExistentes = [{ status: 'paga', link_fatura: null }];
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r).toMatchObject({ error: 'Este honorário já tem uma cobrança PAGA. Estorne-a antes de emitir outra.' });
+  });
+
+  // Estorno libera a recobranca (decisao do usuario, 28/07). O predicado daqui
+  // TEM de concordar com o do indice unico parcial da 0055.
+  it('honorario so com cobranca ESTORNADA emite normalmente', async () => {
+    db.cobrancasExistentes = [{ status: 'estornada', link_fatura: 'x' }];
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r.ok).toBe(true);
+    expect(h.criarCobranca).toHaveBeenCalledTimes(1);
+  });
+
+  // A chave descreve um POST que se repetiu, nao uma divida: aqui o status nao
+  // importa, e o indice `cobrancas_escritorio_idem_uidx` tambem nao o olha.
+  it('chave de submissao repetida bloqueia MESMO com a cobranca estornada', async () => {
+    db.cobrancasExistentes = [{ status: 'estornada', link_fatura: 'https://asaas.invalid/i/velha' }];
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ idempotencyKey: CHAVE }));
+    expect(r).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('já foi emitida'),
+      linkFatura: 'https://asaas.invalid/i/velha',
+    });
+    expect(h.criarCobranca).not.toHaveBeenCalled();
+  });
+
+  it('a pre-checagem e escopada pelo escritorio do contexto', async () => {
+    await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    const c = db.consultas.find((q) => q.tabela === 'cobrancas_escritorio');
+    expect(c?.eq).toContainEqual(['contabilidade_id', CONTABILIDADE_ID]);
+    expect(c?.eq).toContainEqual(['honorario_id', HONORARIO]);
+  });
+
+  // A ORDEM E A INVARIANTE. Perguntar antes de reservar deixa a janela em que o
+  // vencedor commita a linha entre a pergunta e a reserva do perdedor.
+  it('pergunta ao banco DEPOIS de ter o trinco, nunca antes', async () => {
+    await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    const posReserva = db.rpcs.findIndex((r) => r.fn === 'reservar_emissao_cobranca');
+    expect(posReserva).toBe(0);
+    // A consulta de cobrancas so aparece depois — e a de `contabilidades`
+    // (credencial) e a unica anterior.
+    expect(db.consultas.map((c) => c.tabela)).toEqual(['contabilidades', 'cobrancas_escritorio']);
+    expect(idx('rpc:reservar_emissao_cobranca')).toBeLessThan(idx('sub.buscarClientes'));
+  });
+
+  it('leitura que falha NAO emite no escuro', async () => {
+    db.erroLista = { message: 'permission denied' };
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('Não foi possível confirmar') });
+    expect(h.criarCobranca).not.toHaveBeenCalled();
+    expect(rpcsDe('liberar_reserva_cobranca')).toHaveLength(1);
+  });
+});
+
+describe('emitirCobrancaEscritorio — quando o trinco volta (e quando NAO volta)', () => {
+  it('sucesso: libera o trinco e grava a chave da submissao', async () => {
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ idempotencyKey: CHAVE }));
+    expect(r.ok).toBe(true);
+    expect(db.insercoes[0].valores).toMatchObject({ idempotency_key: CHAVE });
+    expect(rpcsDe('liberar_reserva_cobranca')[0]?.args).toMatchObject({
+      p_contabilidade: CONTABILIDADE_ID,
+      p_chave: `idem:${CHAVE}`,
+      // O `dono` e o que impede um pedido cuja reserva ja venceu de apagar a
+      // reserva VIVA de quem a roubou.
+      p_dono: 'd0d0d0d0-1111-4111-8111-111111111111',
+    });
+  });
+
+  it('honorario NAO grava idempotency_key — quem manda e a chave natural', async () => {
+    await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO, idempotencyKey: CHAVE }));
+    expect(db.insercoes[0].valores).toMatchObject({ honorario_id: HONORARIO, idempotency_key: null });
+  });
+
+  // 4xx = o Asaas RESPONDEU e RECUSOU. Nada nasceu, e prender o contador por
+  // dois minutos por um vencimento invalido seria castigo sem motivo.
+  it('recusa 4xx do Asaas devolve o trinco na hora', async () => {
+    const e = new Error('Asaas POST /v3/payments → 400: invalid_dueDate') as Error & { status: number };
+    e.status = 400;
+    h.estado.erroCobranca = e;
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r.ok).toBe(false);
+    expect(rpcsDe('liberar_reserva_cobranca')).toHaveLength(1);
+  });
+
+  // O CASO QUE NAO PODE AFROUXAR: com 5xx/timeout a cobranca PODE ter nascido.
+  // Devolver o trinco agora faz o proximo clique virar um segundo boleto certo.
+  it.each([
+    ['5xx', 502],
+    ['sem status (timeout/DNS)', null],
+  ])('erro AMBIGUO do Asaas (%s) NAO devolve o trinco', async (_n, status) => {
+    const e = new Error('socket hang up') as Error & { status?: number };
+    if (status !== null) e.status = status;
+    h.estado.erroCobranca = e;
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r.ok).toBe(false);
+    expect(rpcsDe('liberar_reserva_cobranca')).toHaveLength(0);
+  });
+
+  it('resposta 2xx SEM id tambem e ambigua: o trinco fica', async () => {
+    h.estado.cobranca = { invoiceUrl: 'x' };
+    await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(rpcsDe('liberar_reserva_cobranca')).toHaveLength(0);
+  });
+
+  // Falhar aqui e o unico erro do Asaas que NAO e ambiguo: acontece antes de
+  // `criarCobranca`, entao nenhuma cobranca nasceu.
+  it('falha ao CADASTRAR o cliente devolve o trinco (a cobranca nem foi tentada)', async () => {
+    h.estado.erroBusca = new Error('Asaas GET /v3/customers → 500');
+    h.criarCliente.mockRejectedValueOnce(new Error('Asaas POST /v3/customers → 500'));
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r).toMatchObject({ ok: false });
+    expect(h.criarCobranca).not.toHaveBeenCalled();
+    expect(rpcsDe('liberar_reserva_cobranca')).toHaveLength(1);
+  });
+
+  // A cobranca existe no Asaas e nao existe no banco: nem linha nem indice
+  // guardam este alvo. Devolver o trinco seria abrir a porta para o segundo
+  // boleto justamente no pior estado possivel.
+  it('cobranca emitida e NAO gravada segura o trinco ate o TTL', async () => {
+    db.erroInsert = { message: 'permission denied for table cobrancas_escritorio' };
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(r).toMatchObject({ error: expect.stringContaining('Confira no Asaas') });
+    expect(rpcsDe('liberar_reserva_cobranca')).toHaveLength(0);
+  });
+});
+
+describe('emitirCobrancaEscritorio — 23505: a rede de baixo', () => {
+  const erro23505 = {
+    code: '23505',
+    message: 'duplicate key value violates unique constraint "cobrancas_escritorio_honorario_viva_uidx"',
+  };
+
+  it('vira frase em PORTUGUES com o link, e nunca erro cru de Postgres na tela', async () => {
+    db.erroInsert = erro23505;
+    // A linha aparece DEPOIS da pre-checagem — do contrario o Asaas nem teria
+    // sido chamado, e nao haveria 23505 nenhum para tratar.
+    db.aoInserir = () => {
+      db.cobrancasExistentes = [{ status: 'pendente', link_fatura: 'https://asaas.invalid/i/bloqueou' }];
+    };
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+
+    expect(r).toEqual({
+      ok: false,
+      error: 'Esta cobrança já estava emitida. Pode ter nascido uma segunda cobrança no Asaas sem ficar registrada aqui — confira no Asaas antes de enviar ao cliente e avise o suporte da Balu.',
+      linkFatura: 'https://asaas.invalid/i/bloqueou',
+    });
+    // O texto do Postgres nao chega ao contador em pedaco nenhum.
+    expect(JSON.stringify(r)).not.toContain('duplicate key');
+    expect(JSON.stringify(r)).not.toContain('23505');
+    expect(JSON.stringify(r)).not.toContain('uidx');
+  });
+
+  // O boleto orfao existe no Asaas e nao tem linha: sem auditoria propria ele
+  // sai do mundo, e o webhook o descarta como 'cobranca_desconhecida'.
+  it('registra auditoria PROPRIA do boleto orfao, com o charge id', async () => {
+    db.erroInsert = erro23505;
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    const a = h.auditorias.find((x) => x.acao === 'cobranca_escritorio.duplicada_bloqueada');
+    expect(a?.meta).toMatchObject({ charge_id: 'pay_0001', honorario_id: HONORARIO });
+    // Acao DIFERENTE de `nao_gravada`: "ja existia" e "nao consegui gravar"
+    // pedem investigacoes opostas.
+    expect(h.auditorias.some((x) => x.acao === 'cobranca_escritorio.nao_gravada')).toBe(false);
+    expect(r.ok).toBe(false);
+  });
+
+  // A linha que bloqueia ja esta no banco e guarda o alvo — o trinco cumpriu o
+  // papel dele.
+  it('devolve o trinco: a partir daqui quem guarda e o indice', async () => {
+    db.erroInsert = erro23505;
+    await emitirCobrancaEscritorio(fakeSb(), pedido({ honorarioId: HONORARIO }));
+    expect(rpcsDe('liberar_reserva_cobranca')).toHaveLength(1);
   });
 });
 
