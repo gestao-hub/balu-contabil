@@ -47,6 +47,8 @@
 
 **Tasks 1–11 do plano fechadas**, cada uma com subagente próprio + revisão de conformidade e de qualidade. Branch `feat/bloco-4b-subcontas`, 32 commits, **não mergeada**. Migrations `0053`, `0054` e `0055` aplicadas em produção.
 
+**Verificação no fecho da sessão** (commit `e1cc9f5`, ambiente limpo, nenhum node vivo): `tsc --noEmit` **0 erros** · vitest **1082 passando / 0 falhando** (27 pulados — os smoke/e2e que exigem credencial) · `next build` **compilado com sucesso, 0 erros**.
+
 > ⚠️ **A sessão foi encerrada com duas frentes em voo**, despachadas e **não commitadas**: a **Task 12** (tela do cliente final, `app/(auth)/(gated)/cobrancas/`) e o **cadastro do webhook na subconta**. Se aparecer arquivo novo não rastreado nessas áreas, é resíduo delas — conferir e decidir se aproveita ou refaz. O último commit da sessão é `74f32fd`.
 
 ### O achado que vale mais que o código desta sessão
