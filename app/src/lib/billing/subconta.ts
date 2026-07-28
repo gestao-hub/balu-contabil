@@ -68,6 +68,56 @@ export function validarDadosSubconta(d: DadosSubconta): ResultadoValidacao {
   return { ok: true };
 }
 
+/**
+ * `birthDate` no formato que o Asaas exige: `YYYY-MM-DD`.
+ *
+ * POR QUE NORMALIZAR EM VEZ DE SO CONFIAR NO FORMULARIO: este repo ja
+ * converte DD/MM/YYYY → YYYY-MM-DD no cliente (HonorarioFormDialog), entao a
+ * data em formato brasileiro e uma entrada real aqui dentro. Um `13/05/1985`
+ * chegando cru ao Asaas volta como recusa em ingles no meio do KYC.
+ *
+ * POR QUE RECUSAR TUDO O QUE NAO FOR ESSES DOIS FORMATOS, em vez de tentar
+ * adivinhar: `birthDate` entra numa submissao de KYC que a guarda de "ja tem
+ * subconta" impede de refazer. Adivinhar errado entre DD/MM e MM/DD nao da
+ * erro — da uma subconta criada com a data errada, que so aparece quando o
+ * Asaas recusa a analise. Melhor uma mensagem em portugues pedindo a data de
+ * novo do que um palpite silencioso.
+ *
+ * Valida calendario de verdade (31/02 nao existe) e faixa plausivel — o
+ * titular nasceu, no minimo, ha 18 anos.
+ */
+export type ResultadoBirthDate = { ok: true; valor: string } | { ok: false; error: string };
+
+const ERRO_BIRTHDATE =
+  'Informe a data de nascimento do responsável no formato AAAA-MM-DD (ou DD/MM/AAAA).';
+
+export function normalizarBirthDate(v: string | null | undefined): ResultadoBirthDate {
+  const s = (v ?? '').trim();
+  if (!s) return { ok: false, error: 'Informe a data de nascimento do responsável.' };
+
+  let ano: string, mes: string, dia: string;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  if (iso) [, ano, mes, dia] = iso;
+  else if (br) [, dia, mes, ano] = br;
+  else return { ok: false, error: ERRO_BIRTHDATE };
+
+  // `new Date('2001-02-31')` nao lanca: rola para 03/03. Comparar de volta e a
+  // unica forma de pegar dia que nao existe no mes.
+  const canonico = `${ano}-${mes}-${dia}`;
+  const d = new Date(`${canonico}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== canonico) {
+    return { ok: false, error: 'Essa data de nascimento não existe no calendário.' };
+  }
+
+  const anoNum = Number(ano);
+  const anoAtual = new Date().getUTCFullYear();
+  if (anoNum < 1900 || anoNum > anoAtual - 18) {
+    return { ok: false, error: 'A data de nascimento do responsável não parece válida.' };
+  }
+  return { ok: true, valor: canonico };
+}
+
 /** Payload já no formato que o Asaas espera: documento, celular e CEP só com
  *  dígitos, e o campo do "outro tipo" ausente em vez de nulo. */
 export function montarPayloadSubconta(d: DadosSubconta): Record<string, unknown> {

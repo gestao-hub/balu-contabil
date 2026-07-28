@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { validarDadosSubconta, montarPayloadSubconta, soDigitos, ehPessoaJuridica } from './subconta';
+import {
+  validarDadosSubconta, montarPayloadSubconta, soDigitos, ehPessoaJuridica,
+  normalizarBirthDate,
+} from './subconta';
 
 const pj = {
   name: 'Escritorio Teste Contabil LTDA', cpfCnpj: '11.222.333/0001-81',
@@ -97,6 +100,49 @@ describe('montarPayloadSubconta', () => {
     expect(p.birthDate).toBe('1985-03-12');
     expect(p.companyType).toBeUndefined();
   });
+});
+
+describe('normalizarBirthDate', () => {
+  it('deixa YYYY-MM-DD como está', () => {
+    expect(normalizarBirthDate('1985-03-12')).toEqual({ ok: true, valor: '1985-03-12' });
+  });
+
+  // Este repo ja converte DD/MM/YYYY → YYYY-MM-DD no cliente
+  // (HonorarioFormDialog): a data em formato brasileiro e entrada real aqui.
+  it('converte DD/MM/YYYY para o formato do Asaas', () => {
+    expect(normalizarBirthDate('12/03/1985')).toEqual({ ok: true, valor: '1985-03-12' });
+  });
+
+  // `new Date('2001-02-31')` NAO lanca: rola para 03/03. Sem a comparacao de
+  // volta, um dia inexistente seguiria para o KYC como outra data.
+  it('recusa dia que não existe no mês em vez de rolar para o mês seguinte', () => {
+    const r = normalizarBirthDate('2001-02-31');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('calendário');
+  });
+
+  it.each([
+    ['formato americano', '03/12/1985 00:00'],
+    ['texto livre', '12 de março de 1985'],
+    ['ano com 2 dígitos', '12/03/85'],
+    ['timestamp ISO completo', '1985-03-12T00:00:00Z'],
+    ['vazio', ''],
+  ])('recusa %s com mensagem em português', (_r, v) => {
+    const r = normalizarBirthDate(v);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/data de nascimento/i);
+  });
+
+  it('recusa nulo', () => {
+    expect(normalizarBirthDate(null).ok).toBe(false);
+  });
+
+  // Titular de subconta nao nasceu ano passado nem em 1750.
+  it.each(['1899-12-31', `${new Date().getUTCFullYear() - 5}-01-01`])(
+    'recusa ano implausível: %s', (v) => {
+      expect(normalizarBirthDate(v).ok).toBe(false);
+    },
+  );
 });
 
 describe('soDigitos', () => {
