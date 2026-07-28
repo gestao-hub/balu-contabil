@@ -12,7 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
   ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, LayoutDashboard, FilePlus, MessageCircle,
-  CreditCard,
+  CreditCard, Receipt,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -44,7 +44,14 @@ export type MenuLateralProps = {
   userRole: Role;
   companies: { id: string; nome: string }[];
   currentCompanyId: string | null;
+  /** O USUÁRIO é membro de um escritório (papel contador). */
   temEscritorio: boolean;
+  /** A EMPRESA ATIVA é atendida por um escritório (`companies.contabilidade_id`),
+   *  aprovado ou não. Coisa diferente de `escritorio` abaixo, que só existe com
+   *  status 'aprovada' porque exibir a marca de quem não passou pela análise
+   *  seria endossá-lo. Para o item /cobrancas do 4B vale o vínculo cru: o boleto
+   *  na mão do cliente não some quando o escritório é suspenso. */
+  empresaTemEscritorio?: boolean;
   escritorio?: EscritorioBranding | null;
 };
 
@@ -58,6 +65,11 @@ type NavItem = {
    *  o item é escondido em vez de virar beco (o empresário sem empresa nunca chega
    *  aqui: o gate de onboarding o intercepta antes). */
   precisaEmpresa?: boolean;
+  /** Feature que só existe quando a empresa ativa é atendida por um escritório
+   *  (Bloco 4B). Cliente direto da Balu não tem escritório cobrando, e o item
+   *  viraria beco — mesma regra de `precisaEmpresa` acima. A página continua
+   *  acessível por URL e se explica sozinha. */
+  precisaEscritorio?: boolean;
 };
 
 const NAV: NavItem[] = [
@@ -71,6 +83,11 @@ const NAV: NavItem[] = [
   { href: '/contador/equipe',       label: 'Equipe',         Icon: Users, roles: ['contador'] },
   { href: '/contador/configuracoes', label: 'Config. escritório', Icon: Settings, roles: ['contador'] },
   { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, precisaEmpresa: true },
+  // Bloco 4B: as cobranças que o ESCRITÓRIO emitiu pela subconta dele (boleto/
+  // Pix com link de pagamento). Vizinho de Honorários de propósito — as duas
+  // telas falam do mesmo credor, e separá-las faria o cliente procurar o boleto
+  // na tela errada.
+  { href: '/cobrancas',             label: 'Cobranças',      Icon: Receipt, precisaEmpresa: true, precisaEscritorio: true },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings, precisaEmpresa: true },
   // Seção AdminBalu (oversight da plataforma). O admin não tem empresa/escritório
   // próprios, então não vê os itens tenant acima — estas telas são as dele.
@@ -89,7 +106,8 @@ const NAV: NavItem[] = [
 ];
 
 export default function MenuLateral({
-  userName, userRole, companies, currentCompanyId, temEscritorio, escritorio = null,
+  userName, userRole, companies, currentCompanyId, temEscritorio,
+  empresaTemEscritorio = false, escritorio = null,
 }: MenuLateralProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -122,6 +140,10 @@ export default function MenuLateral({
     .filter((i) => i.href === '/contador' || !i.href.startsWith('/contador/') || temEscritorio)
     // Itens de empresa só com empresa própria (contador/admin sem empresa não os vê).
     .filter((i) => !i.precisaEmpresa || userRole === 'empresa' || companies.length > 0)
+    // Vínculo cru da empresa ativa (não exige aprovação — ver o tipo acima).
+    // `escritorio.proprio` é o contador olhando a si mesmo: ele cobra pelo
+    // painel /contador/honorarios, não por esta tela de cliente.
+    .filter((i) => !i.precisaEscritorio || (empresaTemEscritorio && !escritorio?.proprio))
     // Admin usa /admin (Visão geral) como home; o "/" (dashboard de empresa) é beco pra ele.
     .filter((i) => !(userRole === 'adminbalu' && i.href === '/'));
 

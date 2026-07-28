@@ -43,6 +43,14 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   let escritorio: EscritorioBranding | null = null;
   const admin = createAdminClient();   // empresa não tem RLS de leitura em `contabilidades`
 
+  // Vínculo cru da empresa ativa, sem exigir aprovação. Serve a duas coisas
+  // diferentes: o co-branding abaixo (que EXIGE 'aprovada') e o item de menu
+  // /cobrancas do Bloco 4B (que não deve exigir — escritório suspenso continua
+  // tendo boleto em aberto na mão do cliente, e sumir com o link de pagamento
+  // por causa do status do ESCRITÓRIO seria fazer a briga deles respingar nele).
+  const currentCompanyContabilidadeId =
+    (companies ?? []).find((c) => c.id === currentCompany)?.contabilidade_id ?? null;
+
   if (membro?.contabilidade_id) {
     const { data: contab } = await admin
       .from('contabilidades')
@@ -58,8 +66,6 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
       };
     }
   } else {
-    const currentCompanyContabilidadeId =
-      (companies ?? []).find((c) => c.id === currentCompany)?.contabilidade_id ?? null;
     if (currentCompanyContabilidadeId) {
       const { data: contab } = await admin
         .from('contabilidades')
@@ -97,6 +103,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         companies={(companies ?? []).map((c) => ({ id: c.id, nome: c.nome }))}
         currentCompanyId={currentCompany}
         temEscritorio={!!membro}
+        empresaTemEscritorio={!!currentCompanyContabilidadeId}
         escritorio={escritorio}
       />
       <div className="flex-1 overflow-y-auto pt-14 md:pt-0">{children}</div>
