@@ -44,13 +44,15 @@ const BASE_DELAY_MS = 500;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function call<T>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const res = await fetch(`${base()}${path}`, {
         method,
-        headers: { access_token: apiKey(), 'Content-Type': 'application/json' },
+        // Sem token explicito, a conta-mae. Com token, a SUBCONTA — e a
+        // cobranca nasce pertencendo ao escritorio, nao a Balu.
+        headers: { access_token: token ?? apiKey(), 'Content-Type': 'application/json' },
         body: body !== undefined ? JSON.stringify(body) : undefined,
         cache: 'no-store',
       });
@@ -117,3 +119,43 @@ export const asaas = {
   pixDaCobranca: (id: string) =>
     call<{ payload?: string; encodedImage?: string }>('GET', `/v3/payments/${id}/pixQrCode`),
 };
+
+export type AsaasSubconta = {
+  id: string; walletId: string; apiKey: string;
+  name: string; email: string; cpfCnpj: string;
+};
+
+/** Criação de subconta — vai SEMPRE pela conta-mãe. */
+export const asaasContaMae = {
+  criarSubconta: (d: Record<string, unknown>) =>
+    call<AsaasSubconta>('POST', '/v3/accounts', d),
+  listarSubcontas: () =>
+    call<{ totalCount: number; data: { id: string; name: string }[] }>('GET', '/v3/accounts?limit=100'),
+};
+
+/**
+ * Cliente com a identidade da SUBCONTA. Tudo o que emite cobrança do
+ * escritório passa por aqui — o `token` é a apiKey decifrada, e nunca
+ * pode vir do navegador nem aparecer em log.
+ */
+export function asaasSub(token: string) {
+  if (!token) throw new Error('asaasSub: token da subconta ausente');
+  return {
+    criarCliente: (d: { name: string; cpfCnpj: string; email?: string }) =>
+      call<AsaasCliente>('POST', '/v3/customers', d, token),
+
+    criarCobranca: (d: {
+      customer: string; billingType: 'BOLETO' | 'PIX' | 'UNDEFINED';
+      value: number; dueDate: string; description?: string; externalReference?: string;
+    }) => call<AsaasCobranca>('POST', '/v3/payments', d, token),
+
+    consultarCobranca: (id: string) =>
+      call<AsaasCobranca>('GET', `/v3/payments/${id}`, undefined, token),
+
+    listarCobrancas: () =>
+      call<{ data: AsaasCobranca[] }>('GET', '/v3/payments?limit=100', undefined, token),
+
+    pixDaCobranca: (id: string) =>
+      call<{ payload?: string; encodedImage?: string }>('GET', `/v3/payments/${id}/pixQrCode`, undefined, token),
+  };
+}
