@@ -307,7 +307,7 @@ describe('emitirCobrancaEscritorio — a chave nao vaza', () => {
     expect(textoObservado(r)).not.toContain('$aact');
   });
 
-  it('erro do Asaas: a mensagem do fornecedor NAO chega a tela', async () => {
+  it('erro do Asaas: a mensagem do fornecedor NAO chega a tela NEM AO LOG', async () => {
     // Erro de rede carregando o header — o pior caso realista.
     h.estado.erroCobranca = new Error(`fetch failed: access_token=${CHAVE_FALSA}`);
     const r = await emitirCobrancaEscritorio(fakeSb(), pedido());
@@ -315,7 +315,33 @@ describe('emitirCobrancaEscritorio — a chave nao vaza', () => {
       ok: false,
       error: 'Não foi possível emitir a cobrança agora. Tente de novo em instantes.',
     });
-    expect(JSON.stringify(r)).not.toContain(CHAVE_FALSA);
+    // `textoObservado`, e nao `JSON.stringify(r)`: este cenario monta o pior
+    // caso justamente para o LOG — a mensagem do Asaas nunca chegou ao retorno,
+    // que e uma constante. Olhar so o retorno era anunciar a invariante sem
+    // checa-la, e `mensagemCurta` truncava sem redigir.
+    expect(textoObservado(r)).not.toContain(CHAVE_FALSA);
+    expect(textoObservado(r)).not.toContain('$aact');
+    // A mensagem redigida continua util: da para saber O QUE falhou.
+    expect(logs.join(' ')).toContain('fetch failed');
+  });
+
+  // Mesma funcao (`mensagemCurta`), segundo call site: a busca de cliente e
+  // best-effort e loga o erro antes de cair em criar.
+  it('erro da BUSCA de cliente tambem sai redigido do log', async () => {
+    h.estado.erroBusca = new Error(`getaddrinfo ENOTFOUND (access_token=${CHAVE_FALSA})`);
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido());
+    expect(r.ok).toBe(true);
+    expect(textoObservado(r)).not.toContain(CHAVE_FALSA);
+    expect(textoObservado(r)).not.toContain('$aact');
+  });
+
+  // A chave solta, sem o nome do header na frente: truncar em 200 chars deixa
+  // passar (a mensagem inteira cabe), redigir nao.
+  it('chave SOLTA numa mensagem curta tambem e redigida', async () => {
+    h.estado.erroCobranca = new Error(`ECONNRESET ${CHAVE_FALSA}`);
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido());
+    expect(textoObservado(r)).not.toContain(CHAVE_FALSA);
+    expect(textoObservado(r)).not.toContain('$aact');
   });
 
   it('a insercao no banco nao carrega a chave', async () => {

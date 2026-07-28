@@ -85,9 +85,32 @@ async function clienteNaSubconta(
   return criado.id;
 }
 
-/** Texto de erro seguro para log: truncado, e nunca o objeto inteiro. */
+/**
+ * Trechos que so podem ser credencial, redigidos ANTES do corte.
+ *
+ * TRUNCAR NAO E SANITIZAR: a chave costuma vir no COMECO da mensagem (`fetch
+ * failed: access_token=...`), dentro dos 200 caracteres que sobrevivem ao
+ * `.slice`. Cortar o fim so garante que a mensagem e curta, nao que ela e
+ * segura.
+ */
+const PADROES_CREDENCIAL: RegExp[] = [
+  // `access_token=...`, `apiKey: ...`, `authorization=...` — o nome do header
+  // JUNTO com o valor: sem isto sobraria `access_token=` seguido do segredo.
+  /\b(access[_-]?token|api[_-]?key|authorization|token)\b\s*[:=]\s*\S+/gi,
+  // A chave do Asaas tem prefixo proprio e nao aparece em texto legitimo. Pega
+  // tambem a chave SOLTA, sem nome de header na frente — que e como ela sai de
+  // um erro que so ecoa o valor.
+  /\$aact[\w-]*/gi,
+  // Esquemas de Authorization que chegam a aparecer em erro de proxy.
+  /\b(bearer|basic)\s+[\w.\-+/=]+/gi,
+];
+
+/** Texto de erro seguro para log: REDIGIDO primeiro, truncado depois, e nunca
+ *  o objeto inteiro. */
 function mensagemCurta(e: unknown): string {
-  return (e instanceof Error ? e.message : String(e)).slice(0, 200);
+  const bruto = e instanceof Error ? e.message : String(e);
+  const limpo = PADROES_CREDENCIAL.reduce((t, re) => t.replace(re, '[REDIGIDO]'), bruto);
+  return limpo.slice(0, 200);
 }
 
 /**

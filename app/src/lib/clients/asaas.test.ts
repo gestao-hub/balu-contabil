@@ -60,6 +60,22 @@ describe('asaasSub — access_token deve ser o token da SUBCONTA', () => {
     expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
   });
 
+  // Com a chave da conta-mae isto vira uma consulta a agenda de clientes DA
+  // BALU usando o CPF/CNPJ do cliente do escritorio: alem de nunca achar o
+  // cadastro certo (e recriar um a cada emissao), manda documento de terceiro
+  // procurar numa base que nao e a dele.
+  it('buscarClientesPorDocumento', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { data: [] }));
+
+    await asaasSub(SUB_TOKEN).buscarClientesPorDocumento('12345678000195');
+
+    expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+    const [url] = fetchSpy.mock.calls[0]! as [string, unknown];
+    expect(url).toContain('/v3/customers?cpfCnpj=12345678000195');
+  });
+
   it('criarCobranca', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
