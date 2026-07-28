@@ -61,6 +61,25 @@ function statusHttp(bruto: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * Status HTTP de um erro vindo do cliente Asaas — ou `null` quando NAO HOUVE
+ * resposta (timeout, DNS, conexao cortada, corpo ilegivel).
+ *
+ * Essa diferenca decide dinheiro na criacao da subconta: com status 4xx o
+ * Asaas RECUSOU o pedido e nada foi criado; sem status (ou com 5xx) ninguem
+ * sabe se a subconta nasceu do outro lado — e ai a criacao tem de virar
+ * registro de auditoria para busca manual.
+ *
+ * Le o campo `status` que `call` anexa ao erro (clients/asaas.ts) e so cai no
+ * texto para erro que veio de outro caminho — a mesma extracao de cabecalho de
+ * `statusHttp`, sem duplicar o regex.
+ */
+export function statusDoErroAsaas(erro: unknown): number | null {
+  const anexado = (erro as { status?: unknown } | null | undefined)?.status;
+  if (typeof anexado === 'number' && Number.isFinite(anexado)) return anexado;
+  return statusHttp(erro instanceof Error ? erro.message : typeof erro === 'string' ? erro : '');
+}
+
 // A ORDEM IMPORTA. "ja existe ... CPF/CNPJ" tambem casa com a regra de
 // documento invalido; se a duplicidade nao vier primeiro, o escritorio recebe
 // "confira os digitos" para um documento que esta certo — e tenta de novo
@@ -97,7 +116,7 @@ export function traduzirErroAsaas(erro: unknown): string {
   // Classe do status antes do texto: 401/403 e 5xx nao sao culpa do dado
   // digitado, e mandar o escritorio "conferir o CPF" quando a chave da Balu
   // e que esta errada faz ele tentar de novo para sempre.
-  const status = statusHttp(bruto);
+  const status = statusDoErroAsaas(erro);
   if (status === 401 || status === 403) return AUTENTICACAO;
   if (status === 429 || (status !== null && status >= 500)) return INDISPONIVEL;
 

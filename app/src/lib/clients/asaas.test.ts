@@ -161,6 +161,62 @@ describe('asaasContaMae — criação e listagem de subconta vão pela conta-mã
   });
 });
 
+// A subconta so mostra a `apiKey` na resposta da criacao. Se o Asaas cria a
+// conta e o gateway devolve 504, o retry ou cria uma SEGUNDA subconta ou bate
+// em documento duplicado — nos dois casos a primeira ficou com a chave
+// perdida. `POST /v3/accounts` e a unica chamada nao idempotente cuja resposta
+// carrega um segredo de uma vez so: ela nao pode repetir.
+describe('retry — criarSubconta nao repete, o resto do 4A repete', () => {
+  it('criarSubconta faz UMA tentativa em 504 e propaga o status anexado', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('gateway timeout', { status: 504 }));
+
+    await expect(
+      asaasContaMae.criarSubconta({ name: 'Escritorio X', cpfCnpj: '11222333000144' }),
+    ).rejects.toMatchObject({ status: 504 });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('criarSubconta tambem nao repete em conexao cortada', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('read ECONNRESET'));
+
+    await expect(
+      asaasContaMae.criarSubconta({ name: 'Escritorio X', cpfCnpj: '11222333000144' }),
+    ).rejects.toThrow(/ECONNRESET/);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // REGRESSAO DO 4A: o retry das cobrancas da propria Balu tem de continuar
+  // exatamente como estava. Perder isto e a Balu deixar de cobrar em silencio.
+  it('as demais chamadas continuam repetindo 3x em 502', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('bad gateway', { status: 502 }));
+
+    await expect(asaas.criarCliente({ name: 'Cliente Balu', cpfCnpj: '98765432100' }))
+      .rejects.toThrow(/502/);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  }, 10_000);
+
+  // O status anexado ao erro e o que deixa a action distinguir "o Asaas
+  // recusou o dado" (nada foi criado) de "nao sei se nasceu".
+  it('erro de resposta carrega o status HTTP no proprio erro', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{"errors":[{"code":"invalid_cpfCnpj"}]}', { status: 400 }),
+    );
+
+    await expect(
+      asaasContaMae.criarSubconta({ name: 'Escritorio X', cpfCnpj: '1' }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});
+
 describe('asaasSub — guarda contra token ausente', () => {
   it("asaasSub('') lança antes de qualquer fetch", async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');

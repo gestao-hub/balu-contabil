@@ -27,12 +27,20 @@ import { asaasContaMae, asaasSub } from '@/lib/clients/asaas';
 import { guardarCredencial, lerCredencial, mascarar } from '@/lib/billing/credencial-subconta';
 import {
   validarDadosSubconta, montarPayloadSubconta, ehPessoaJuridica,
-  normalizarBirthDate, type DadosSubconta,
+  normalizarBirthDate, soDigitos, type DadosSubconta,
 } from '@/lib/billing/subconta';
-import { traduzirErroAsaas } from '@/lib/billing/subconta-erros';
+import { traduzirErroAsaas, statusDoErroAsaas } from '@/lib/billing/subconta-erros';
 import { mapearStatusSubconta } from '@/lib/billing/status-subconta';
 
 type ActionResult = { ok: true } | { ok: false; error: string };
+
+// A subconta pode ter nascido no Asaas sem que a resposta chegasse — e a
+// `apiKey`, que so aparece nessa resposta, se perdeu junto. Repetir o pedido
+// criaria uma SEGUNDA conta (ou bateria em documento duplicado) sem resolver a
+// primeira: quem resolve e o suporte, procurando pelo documento no painel da
+// conta-mae com o registro `subconta.possivel_orfa` em maos.
+const ERRO_POSSIVEL_ORFA =
+  'A Balu não conseguiu confirmar se a conta foi criada no Asaas. Fale com o suporte da Balu para conferir — não tente de novo.';
 
 /** Sessão válida + escritório aprovado, ou o erro pronto pra devolver.
  *  Mesmo padrão de honorarios/actions.ts — local ao arquivo porque nada de
@@ -86,6 +94,36 @@ export async function criarSubcontaAction(dados: DadosSubconta): Promise<ActionR
     // casamento e devolve constante propria — o texto cru NUNCA vai para a
     // tela, e nem para o `console.error` daqui.
     console.error('[4b] criar subconta falhou:', traduzirErroAsaas(e));
+
+    // "NAO SEI SE NASCEU" vs "COMPROVADAMENTE NAO NASCEU".
+    //
+    // 4xx e recusa DETERMINISTICA: o Asaas leu o pedido, respondeu que nao, e
+    // nenhuma conta foi criada — corrigir o dado e tentar de novo e o caminho
+    // certo, e registrar orfandade aqui seria alarme falso em todo erro de
+    // digitacao. Ja 5xx e a AUSENCIA de resposta (timeout, conexao cortada,
+    // corpo ilegivel) deixam a duvida em pe: a subconta pode ter nascido do
+    // outro lado carregando a `apiKey` que so aparece uma vez.
+    //
+    // Como `criarSubconta` nao tem retry (ver clients/asaas.ts), existe no
+    // maximo UMA candidata — e a unica forma de acha-la depois e procurar o
+    // documento no painel da conta-mae. Sem este registro, ninguem sabe
+    // sequer que ha o que procurar.
+    const status = statusDoErroAsaas(e);
+    if (status === null || status >= 500) {
+      await registrarAuditoria({
+        actorUserId: ctx.userId, acao: 'subconta.possivel_orfa',
+        alvoTipo: 'contabilidade', alvoId: ctx.id, contabilidadeId: ctx.id,
+        // O documento e a CHAVE DE BUSCA no painel do Asaas. Credencial nao
+        // entra aqui — e nem existiria: quando esta falha acontece, a resposta
+        // que traria a `apiKey` nao chegou.
+        meta: {
+          cpf_cnpj: soDigitos(aEnviar.cpfCnpj),
+          status_http: status,
+          motivo: traduzirErroAsaas(e),
+        },
+      });
+      return { ok: false, error: ERRO_POSSIVEL_ORFA };
+    }
     return { ok: false, error: traduzirErroAsaas(e) };
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { traduzirErroAsaas, MENSAGENS_SUBCONTA } from './subconta-erros';
+import { traduzirErroAsaas, statusDoErroAsaas, MENSAGENS_SUBCONTA } from './subconta-erros';
 
 /** Formato exato que `call` (clients/asaas.ts) monta ao receber !res.ok. */
 const doAsaas = (status: number, corpo: string) =>
@@ -7,6 +7,42 @@ const doAsaas = (status: number, corpo: string) =>
 
 const erroAsaas = (code: string, description: string) =>
   JSON.stringify({ errors: [{ code, description }] });
+
+/** Como `call` lanca de verdade: mensagem formatada E status anexado. */
+const doAsaasComStatus = (status: number, corpo: string) => {
+  const e = doAsaas(status, corpo) as Error & { status: number };
+  e.status = status;
+  return e;
+};
+
+// Esta funcao decide se a criacao da subconta vira registro de possivel
+// orfandade: com status 4xx o Asaas RECUSOU e nada nasceu; sem status, ninguem
+// sabe o que aconteceu do outro lado.
+describe('statusDoErroAsaas', () => {
+  it('le o status anexado pelo cliente', () => {
+    expect(statusDoErroAsaas(doAsaasComStatus(400, 'x'))).toBe(400);
+    expect(statusDoErroAsaas(doAsaasComStatus(504, 'x'))).toBe(504);
+  });
+
+  it('cai no texto quando o erro nao traz o campo', () => {
+    expect(statusDoErroAsaas(doAsaas(422, 'x'))).toBe(422);
+  });
+
+  it('devolve null quando nao houve resposta HTTP', () => {
+    expect(statusDoErroAsaas(new Error('fetch failed'))).toBeNull();
+    expect(statusDoErroAsaas(new Error('read ECONNRESET'))).toBeNull();
+    expect(statusDoErroAsaas(new TypeError('terminated'))).toBeNull();
+    expect(statusDoErroAsaas(null)).toBeNull();
+    expect(statusDoErroAsaas(undefined)).toBeNull();
+    expect(statusDoErroAsaas({ qualquer: 'coisa' })).toBeNull();
+  });
+
+  // Mesma armadilha do `statusHttp`: o corpo carrega numeros do cadastro.
+  it('não confunde número do cadastro com status HTTP', () => {
+    const e = doAsaas(400, erroAsaas('invalid_incomeValue', 'incomeValue 500000 acima de 502000'));
+    expect(statusDoErroAsaas(e)).toBe(400);
+  });
+});
 
 describe('traduzirErroAsaas', () => {
   it.each([

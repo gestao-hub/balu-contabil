@@ -44,9 +44,37 @@ const BASE_DELAY_MS = 500;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-async function call<T>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
+/**
+ * `semRetry`: UMA tentativa e mais nenhuma.
+ *
+ * O retry deste cliente pressupoe chamada idempotente — repetir um GET, ou um
+ * POST cuja repeticao o Asaas trata como a mesma cobranca, no maximo custa
+ * tempo. `POST /v3/accounts` quebra as duas premissas ao mesmo tempo: cria
+ * pessoa juridica nova a cada chamada E devolve a `apiKey` UMA UNICA VEZ. Um
+ * 504 do gateway depois da subconta ja criada faz o retry ou criar uma
+ * SEGUNDA subconta, ou bater em "documento duplicado" — nos dois casos a
+ * primeira nasceu com a chave perdida, e ninguem consegue opera-la.
+ *
+ * Sem retry, a duvida continua existindo (o 504 pode ter chegado depois da
+ * criacao), mas ela fica com UM candidato a subconta orfa em vez de dois, e
+ * quem chama registra a duvida em auditoria. Ver
+ * `criarSubcontaAction` (contador/configuracoes/subconta/actions.ts).
+ */
+type OpcoesCall = { semRetry?: boolean };
+
+/** Erro de resposta HTTP do Asaas, com o status ANEXADO. Quem esta no `catch`
+ *  precisa distinguir "o Asaas recusou o dado" (4xx — nada foi criado) de
+ *  "nao sei o que aconteceu do outro lado" (5xx), e ler isso do texto da
+ *  mensagem e mais fragil do que ler de um campo. Ver
+ *  `statusDoErroAsaas` em `@/lib/billing/subconta-erros`. */
+export type AsaasHttpError = Error & { status: number };
+
+async function call<T>(
+  method: string, path: string, body?: unknown, token?: string, opts?: OpcoesCall,
+): Promise<T> {
+  const tentativas = opts?.semRetry ? 1 : MAX_RETRIES;
   let lastErr: unknown;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt < tentativas; attempt++) {
     try {
       const res = await fetch(`${base()}${path}`, {
         method,
@@ -57,14 +85,16 @@ async function call<T>(method: string, path: string, body?: unknown, token?: str
         cache: 'no-store',
       });
       if (!res.ok) {
-        if (RETRYABLE.has(res.status) && attempt < MAX_RETRIES - 1) {
+        if (RETRYABLE.has(res.status) && attempt < tentativas - 1) {
           await sleep(BASE_DELAY_MS * 2 ** attempt);
           continue;
         }
         // Truncado de proposito: o corpo de erro do Asaas pode trazer dado
         // do cliente, e esta mensagem acaba em log.
         const txt = (await res.text()).slice(0, 500);
-        throw new Error(`Asaas ${method} ${path} → ${res.status}: ${txt}`);
+        const err = new Error(`Asaas ${method} ${path} → ${res.status}: ${txt}`) as AsaasHttpError;
+        err.status = res.status;
+        throw err;
       }
       return (await res.json()) as T;
     } catch (err) {
@@ -72,14 +102,14 @@ async function call<T>(method: string, path: string, body?: unknown, token?: str
       const isTimeout =
         err instanceof Error &&
         (err.name === 'AbortError' || /timeout|ETIMEDOUT|ECONNRESET/i.test(err.message));
-      if (isTimeout && attempt < MAX_RETRIES - 1) {
+      if (isTimeout && attempt < tentativas - 1) {
         await sleep(BASE_DELAY_MS * 2 ** attempt);
         continue;
       }
       throw err;
     }
   }
-  throw lastErr ?? new Error(`Asaas ${method} ${path} → falhou apos ${MAX_RETRIES} tentativas`);
+  throw lastErr ?? new Error(`Asaas ${method} ${path} → falhou apos ${tentativas} tentativas`);
 }
 
 export type AsaasCliente = { id: string; name: string; cpfCnpj: string };
@@ -140,8 +170,13 @@ export type AsaasStatusConta = {
 
 /** Criação de subconta — vai SEMPRE pela conta-mãe. */
 export const asaasContaMae = {
+  /**
+   * SEM RETRY, de propósito (ver `OpcoesCall` acima). É a única chamada do
+   * cliente que não é idempotente E cuja resposta traz um segredo que só
+   * aparece uma vez. Repetir aqui é criar subconta a mais com chave perdida.
+   */
   criarSubconta: (d: Record<string, unknown>) =>
-    call<AsaasSubconta>('POST', '/v3/accounts', d),
+    call<AsaasSubconta>('POST', '/v3/accounts', d, undefined, { semRetry: true }),
   listarSubcontas: () =>
     call<{ totalCount: number; data: { id: string; name: string }[] }>('GET', '/v3/accounts?limit=100'),
 };
