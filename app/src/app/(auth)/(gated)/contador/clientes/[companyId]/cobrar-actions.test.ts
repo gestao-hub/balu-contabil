@@ -371,9 +371,10 @@ describe('cobrarClienteAction — fronteira e vencimento', () => {
     expect(h.emitirCobrancaEscritorio).not.toHaveBeenCalled();
   });
 
-  // A TELA AINDA NAO EXISTE (Task 10). Enquanto ela nao mandar a chave, este
-  // caminho segue SEM TRAVA contra duplo clique — declarado aqui para nao virar
-  // surpresa, e nao para ser aceito para sempre.
+  // A TELA JA MANDA A CHAVE (`CobrarDialog.tsx`, Task 10). O schema segue
+  // aceitando ausencia, e quem nao a mandar emite SEM TRAVA contra duplo
+  // clique — declarado aqui para nao virar surpresa, e nao para ser aceito
+  // para sempre.
   it('sem chave a action ainda emite, e o motor recebe null', async () => {
     const r = await cobrarClienteAction(entrada());
     expect(r).toMatchObject({ ok: true });

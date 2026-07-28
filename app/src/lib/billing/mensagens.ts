@@ -9,3 +9,11 @@
 
 export const MSG_ASSINATURA_PENDENTE =
   'Sua assinatura está com pendência. Regularize em Assinatura para voltar a usar esta função.';
+
+// Bloco 4B — o outro motivo pelo qual as telas de emissão ficam indisponíveis.
+// Mesma razão de morar aqui: `emitir-cobranca.ts` é `server-only` e diz a frase
+// curta DEPOIS do envio; as telas precisam dizê-la ANTES, na entrada, com o
+// caminho de saída junto.
+export const MSG_SUBCONTA_NAO_APROVADA =
+  'A conta de recebimento do escritório ainda não está aprovada — sem ela não há para onde o '
+  + 'dinheiro do cliente ir.';

@@ -208,9 +208,10 @@ const pedido = (over: Partial<PedidoEmissao> = {}): PedidoEmissao => ({
   vencimento: '2026-08-10',
   servicoAvulsoId: null,
   honorarioId: null,
-  // O default e o caminho SEM chave nenhuma — o do avulso de hoje, cuja tela
-  // ainda nao existe (Task 10). Ele nao toma trinco: e o unico caminho sem
-  // trava, e a secao 9 prova que ele continua assim de proposito.
+  // O default e o caminho SEM chave nenhuma. A tela do avulso (`CobrarDialog`,
+  // Task 10) ja manda a sua, mas o motor continua aceitando chamador que nao
+  // mande — e esse chamador nao toma trinco: e o unico caminho sem trava, e a
+  // secao 9 prova que ele continua assim de proposito.
   idempotencyKey: null,
   ...over,
 });
@@ -571,8 +572,10 @@ describe('emitirCobrancaEscritorio — a reserva vem ANTES do Asaas', () => {
     expect(h.criarCobranca).not.toHaveBeenCalled();
   });
 
-  // Sem chave nenhuma nao ha o que trancar. Esta e a lacuna conhecida do avulso
-  // ate a tela existir (Task 10) — declarada aqui para nao virar surpresa.
+  // Sem chave nenhuma nao ha o que trancar. A TELA JA MANDA A CHAVE (Task 10),
+  // entao esta lacuna nao alcanca mais o contador — ela sobra para quem chamar
+  // o motor sem chave (script, teste, tela nova que esqueca), e fica declarada
+  // aqui para nao virar surpresa.
   it('sem honorario e sem chave NAO ha reserva (lacuna conhecida do avulso)', async () => {
     const r = await emitirCobrancaEscritorio(fakeSb(), pedido());
     expect(r.ok).toBe(true);

@@ -99,18 +99,20 @@ export async function cobrarClienteAction(entrada: unknown): Promise<CobrarResul
     vencimento: dados.vencimento,
     servicoAvulsoId: servicoId,
     honorarioId: null,
-    // ┌─ A TELA PRECISA MANDAR ISTO (Task 10) ────────────────────────────┐
+    // ┌─ QUEM MANDA ISTO E A TELA (`CobrarDialog.tsx`, Task 10) ──────────┐
     // │ O avulso NAO TEM chave natural: cobrar duas vezes o mesmo servico │
     // │ do mesmo cliente e legitimo. Quem separa "duplo clique" de        │
-    // │ "cobrar de novo" e um UUID gerado no navegador com                │
-    // │ `crypto.randomUUID()` UMA VEZ POR ABERTURA DO FORMULARIO, mantido │
-    // │ em estado e RENOVADO SO APOS UMA EMISSAO BEM-SUCEDIDA.            │
+    // │ "cobrar de novo" e um UUID gerado no navegador                    │
+    // │ (`novaChaveEmissao`, em lib/billing/chave-emissao) UMA VEZ POR    │
+    // │ ABERTURA DO FORMULARIO, mantido em estado e RENOVADO SO APOS UMA  │
+    // │ EMISSAO BEM-SUCEDIDA.                                             │
     // │                                                                   │
-    // │ Enquanto o formulario nao existir e nao mandar a chave, este      │
-    // │ caminho segue SEM TRAVA contra duplo clique simultaneo: sem chave │
-    // │ nao ha reserva a tomar antes do Asaas nem indice unico a violar   │
-    // │ depois. O caminho do honorario nao depende disto — ele tem chave  │
-    // │ natural (`honorarioId`).                                          │
+    // │ A chave segue OPCIONAL no schema: chamador que nao a mande        │
+    // │ (script, teste, uma tela nova que esqueca) ainda emite, e ai      │
+    // │ segue SEM TRAVA contra duplo clique simultaneo — sem chave nao ha │
+    // │ reserva a tomar antes do Asaas nem indice unico a violar depois.  │
+    // │ O caminho do honorario nao depende disto: ele tem chave natural   │
+    // │ (`honorarioId`).                                                  │
     // └───────────────────────────────────────────────────────────────────┘
     idempotencyKey: dados.idempotencyKey,
   });

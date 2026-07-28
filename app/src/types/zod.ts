@@ -295,11 +295,12 @@ export const CobrarClienteSchema = z.object({
   // A CHAVE DE IDEMPOTENCIA DA SUBMISSAO (0055). O avulso nao tem chave
   // natural — cobrar duas vezes o mesmo servico do mesmo cliente e legitimo —
   // entao quem separa "duplo clique" de "cobrar de novo" e este UUID, gerado
-  // com `crypto.randomUUID()` UMA VEZ POR ABERTURA DO FORMULARIO e renovado so
-  // apos uma emissao bem-sucedida.
+  // por `novaChaveEmissao` (lib/billing/chave-emissao) UMA VEZ POR ABERTURA DO
+  // FORMULARIO e renovado so apos uma emissao bem-sucedida. `CobrarDialog.tsx`
+  // e quem o manda hoje.
   //
-  // OPCIONAL SO ENQUANTO A TELA NAO EXISTE (Task 10). Sem ela NAO HA TRAVA
-  // NENHUMA contra duplo clique no avulso: nem reserva, nem indice unico.
+  // SEGUE OPCIONAL: quem nao a mandar ainda emite, e ai NAO HA TRAVA NENHUMA
+  // contra duplo clique no avulso — nem reserva, nem indice unico.
   //
   // `.toLowerCase()` porque `z.string().uuid()` aceita hexadecimal MAIUSCULO e
   // o CHECK de formato da 0055 (`[0-9a-f]`) nao — sem isto, uma chave em
