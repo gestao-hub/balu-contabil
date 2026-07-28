@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-28 (sessão 14 — **Bloco 4B em execução, subagent-driven.** Branch `feat/bloco-4b-subcontas`, 32 commits, **NÃO mergeada**. Tasks 1–11 do plano fechadas; a 12 ficou em voo. Falta **12, 13, 14, cadastro do webhook na subconta, navegação** e o **smoke manual**. Migrations `0053`, `0054` e `0055` **aplicadas em produção**. Dois bugs de produção corrigidos no caminho. **Blocos 1, 2, 3 e 4A em `main` e no ar.**)
+> **Última atualização:** 2026-07-28 (sessão 14 — **Bloco 4B em execução, subagent-driven.** Branch `feat/bloco-4b-subcontas`, 36 commits, **NÃO mergeada**. Tasks 1–12 do plano fechadas. Falta **13, 14, cadastro do webhook na subconta, navegação** e o **smoke manual**. Migrations `0053`, `0054` e `0055` **aplicadas em produção**. Dois bugs de produção corrigidos no caminho. **Blocos 1, 2, 3 e 4A em `main` e no ar.**)
 
 > ## ▶ AO RETOMAR: começar pela Task 13 do 4B
 > **Pedido explícito do usuário ao encerrar a sessão 14:** parar antes da
@@ -45,18 +45,19 @@
 
 ## Sessão 14 (2026-07-28) — Bloco 4B em execução (subagent-driven)
 
-**Tasks 1–11 do plano fechadas**, cada uma com subagente próprio + revisão de conformidade e de qualidade. Branch `feat/bloco-4b-subcontas`, 32 commits, **não mergeada**. Migrations `0053`, `0054` e `0055` aplicadas em produção.
+**Tasks 1–12 do plano fechadas**, cada uma com subagente próprio + revisão de conformidade e de qualidade. Branch `feat/bloco-4b-subcontas`, 36 commits, **não mergeada**. Migrations `0053`, `0054` e `0055` aplicadas em produção.
 
 **Verificação no fecho da sessão** (commit `e1cc9f5`, ambiente limpo, nenhum node vivo): `tsc --noEmit` **0 erros** · vitest **1082 passando / 0 falhando** (27 pulados — os smoke/e2e que exigem credencial) · `next build` **compilado com sucesso, 0 erros**.
 
-> ⚠️ **A sessão foi encerrada com duas frentes em voo, e elas deixaram trabalho NÃO COMMITADO na árvore.** O último commit de código é `74f32fd` (os dois seguintes são só CHECKPOINT).
+> ⚠️ **A sessão foi encerrada com UMA frente em voo, que deixou trabalho NÃO COMMITADO na árvore.** A Task 12 pousou e está commitada (`34a9a62`); o **cadastro do webhook na subconta**, não.
 >
-> **O que ficou por commitar, e de quem é:**
-> - `app/src/app/(auth)/(gated)/cobrancas/` (novo, não rastreado) — **Task 12**, a tela em que o cliente final vê as cobranças do escritório.
-> - `app/src/components/MenuLateral.tsx` (modificado) — provavelmente o link para a tela acima. **Cuidado:** a decisão do usuário é uma seção **"Cobranças" no menu do contador** agrupando conta de recebimento + catálogo + cobranças, a ser montada de uma vez só depois da Task 12. Conferir se o que está aí é isso ou só um link solto.
-> - `app/src/lib/clients/asaas.ts` (modificado) — **cadastro do webhook na subconta** (método novo em `asaasSub`). Se um método novo entrou ali, **tem de entrar também o caso em `app/src/lib/clients/asaas.test.ts`** — esse arquivo existe porque apagar `, token` faz a chamada sair com a chave da conta-mãe, compilando limpo.
+> **O que ficou por commitar:**
+> - `app/src/lib/billing/webhook-subconta.ts` e `webhook-subconta-asaas.ts` (novos, não rastreados)
+> - `app/src/lib/clients/asaas.ts` e `contador/configuracoes/subconta/actions.ts` (modificados)
 >
-> **Ao retomar, primeiro:** `git status`, ler o que está aí, rodar `npx tsc --noEmit` e a suíte, e decidir **aproveitar ou descartar** antes de começar a Task 13. Não presumir que está pronto — nenhuma das duas passou por revisão.
+> **Ao retomar, ANTES da Task 13:** `git status`, ler o que está aí, rodar `npx tsc --noEmit` e a suíte, e decidir **aproveitar ou descartar**. **Não presumir que está pronto — não passou por revisão.** Dois pontos a conferir em especial: (a) se entrou método novo em `asaasSub`, **tem de entrar o caso em `app/src/lib/clients/asaas.test.ts`** (esse arquivo existe porque apagar `, token` faz a chamada sair com a chave da conta-mãe, compilando limpo); (b) `criarSubcontaAction` tem **ordem de operações crítica** — cadastrar webhook não pode entrar antes da gravação da `apiKey`, nem fazer a criação da subconta parecer que falhou.
+>
+> **Nota da Task 12, decisão de produto pendente:** o empresário passou a ter **dois itens de menu concorrentes** — `/honorarios` (razão manual de mensalidades, sem link de pagamento, status calculado por data) e `/cobrancas` (boleto real da subconta, status do Asaas). Um honorário cobrado aparece **nas duas telas, com status calculado por caminhos diferentes**. Isso vai gerar pergunta no smoke. Decidir se `/honorarios` vira aba de `/cobrancas`, ou se some do menu quando o escritório usa subconta.
 
 ### O achado que vale mais que o código desta sessão
 
