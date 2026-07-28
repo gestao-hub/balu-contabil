@@ -68,7 +68,36 @@ export type ResumoSincronizacaoEscritorio = {
   erros: number;
   /** Escritorios cuja lista bateu no teto de paginas — ver `MAX_PAGINAS`. */
   truncados: number;
+  /** BOLETOS ORFAOS: existem no Asaas com o nosso `externalReference` e NAO tem
+   *  linha no banco. Cada um e um cliente com boleto na mao que o painel do
+   *  escritorio nunca mostrou. Ver `ehOrfaNossa` abaixo. */
+  orfaos: number;
 };
+
+/**
+ * A cobranca e NOSSA e sumiu do banco?
+ *
+ * `emitir-cobranca.ts` ja sabe que este estado pode nascer: a cobranca e criada
+ * no Asaas e o INSERT falha (registro `cobranca_escritorio.nao_gravada`, trinco
+ * mantido, mensagem mandando conferir). Mas dali em diante NINGUEM voltava a
+ * procurar por ela — o webhook a descarta como 'cobranca_desconhecida' e as
+ * telas so leem a nossa tabela. O cliente fica com um boleto na mao que o painel
+ * do escritorio nunca mostra.
+ *
+ * A varredura e o unico componente que enxerga OS DOIS LADOS. E o
+ * `externalReference` que a emissao escreve torna o reconhecimento EXATO, nao
+ * heuristico: cobranca com o id DESTE escritorio no campo, sem linha aqui, so
+ * pode ser orfa nossa. Sem o campo, foi o escritorio que emitiu pelo painel do
+ * Asaas — direito dele, e logar isso encheria o log de linhas normais e
+ * esconderia o orfao de verdade.
+ *
+ * NAO INSERE. Uma linha inventada a partir do payload nasceria sem cliente e sem
+ * valor conferido — mesma regra do webhook. O conserto e humano, e o que falta
+ * para ele acontecer e alguem SABER.
+ */
+function ehOrfaNossa(externalReference: string | null | undefined, contabilidadeId: string): boolean {
+  return typeof externalReference === 'string' && externalReference.startsWith(`${contabilidadeId}:`);
+}
 
 /**
  * Teto de paginas por escritorio. 100 cobrancas por pagina ⇒ 5.000 por dia.
@@ -102,7 +131,7 @@ const MAX_PAGINAS = 50;
 export async function sincronizarCobrancasEscritorio(): Promise<ResumoSincronizacaoEscritorio> {
   const sb = createAdminClient();
   const r: ResumoSincronizacaoEscritorio = {
-    escritorios: 0, atualizadas: 0, erros: 0, truncados: 0,
+    escritorios: 0, atualizadas: 0, erros: 0, truncados: 0, orfaos: 0,
   };
 
   const { data: escritorios, error } = await sb
@@ -129,6 +158,7 @@ export async function sincronizarCobrancasEscritorio(): Promise<ResumoSincroniza
       if (!token) continue;
       const s = await sincronizarUmEscritorio(sb, e.id as string, token);
       r.atualizadas += s.atualizadas;
+      r.orfaos += s.orfaos;
       if (s.truncado) r.truncados++;
     } catch (err) {
       r.erros++;
@@ -153,15 +183,16 @@ async function sincronizarUmEscritorio(
   sb: ReturnType<typeof createAdminClient>,
   contabilidadeId: string,
   token: string,
-): Promise<{ atualizadas: number; truncado: boolean }> {
+): Promise<{ atualizadas: number; truncado: boolean; orfaos: number }> {
   const cliente = asaasSub(token);
   let atualizadas = 0;
+  let orfaos = 0;
   let offset = 0;
 
   for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
     const lista = await cliente.listarCobrancas(offset);
     const pagamentos = lista.data ?? [];
-    if (pagamentos.length === 0) return { atualizadas, truncado: false };
+    if (pagamentos.length === 0) return { atualizadas, truncado: false, orfaos };
 
     // UMA leitura por pagina, nao uma por pagamento. O `.eq('contabilidade_id')`
     // e o mesmo anti-IDOR do webhook: o admin client ignora RLS, e uma cobranca
@@ -184,11 +215,23 @@ async function sincronizarUmEscritorio(
 
     for (const p of pagamentos) {
       const cob = porCharge.get(p.id);
-      // Cobranca que o proprio escritorio criou pelo painel do Asaas nao esta na
-      // nossa tabela. Nao e erro, e NUNCA vira INSERT: uma linha inventada a
-      // partir do payload nasceria sem cliente e sem valor conferido. Mesma
-      // regra do webhook.
-      if (!cob) continue;
+      if (!cob) {
+        // Nao esta na nossa tabela. Duas causas MUITO diferentes, e so o
+        // `externalReference` as separa — ver `ehOrfaNossa`.
+        if (ehOrfaNossa(p.externalReference, contabilidadeId)) {
+          orfaos++;
+          console.error(
+            '[cron 4b] BOLETO ORFAO — existe no Asaas e nao existe no banco:',
+            p.id, `(${p.externalReference})`,
+            'o cliente tem o boleto na mao e o painel do escritorio nao o mostra',
+          );
+        }
+        // Sem `externalReference` foi o escritorio que emitiu pelo painel do
+        // Asaas: normal, e nao vira log. E NUNCA vira INSERT nos dois casos —
+        // linha inventada a partir do payload nasceria sem cliente e sem valor
+        // conferido. Mesma regra do webhook.
+        continue;
+      }
 
       // A MESMA escrita do webhook, byte a byte — inclusive o desfazer do
       // semaforo do honorario no estorno. Ver o cabecalho de
@@ -197,12 +240,12 @@ async function sincronizarUmEscritorio(
       if (res.ok && res.mudou) atualizadas++;
     }
 
-    if (!lista.hasMore) return { atualizadas, truncado: false };
+    if (!lista.hasMore) return { atualizadas, truncado: false, orfaos };
     offset += pagamentos.length;
   }
 
   console.error('[cron 4b] varredura truncada no teto de paginas', contabilidadeId, MAX_PAGINAS);
-  return { atualizadas, truncado: true };
+  return { atualizadas, truncado: true, orfaos };
 }
 
 export async function rodarBilling(): Promise<ResumoBilling> {
@@ -210,7 +253,7 @@ export async function rodarBilling(): Promise<ResumoBilling> {
   const hoje = ymdBrt();
   const resumo: ResumoBilling = {
     reconciliadas: 0, faixasAtualizadas: 0, avisos: 0, erros: 0, hoje,
-    escritorio: { escritorios: 0, atualizadas: 0, erros: 0, truncados: 0 },
+    escritorio: { escritorios: 0, atualizadas: 0, erros: 0, truncados: 0, orfaos: 0 },
   };
 
   // ─────────────────────────────────────────────── 1. reconciliacao

@@ -1,5 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { rotuloStatus, corStatus, estaEmAberto, podePagar, totalEmAberto } from './cobranca-escritorio-vm';
+import {
+  rotuloStatus, corStatus, estaEmAberto, podePagar, totalEmAberto, mostrarItemCobrancas,
+} from './cobranca-escritorio-vm';
+
+// O item de menu do empresário. A regra que importa é a de ERRO: esconder o
+// item por falha de leitura faz o cliente concluir que não tem cobrança, e no
+// menu não há onde escrever "não deu para conferir".
+describe('mostrarItemCobrancas', () => {
+  it('some quando não há boleto — nem todo escritório cobra pela Balu', () => {
+    expect(mostrarItemCobrancas({ erro: false, quantidade: 0 })).toBe(false);
+  });
+
+  it('aparece com um boleto que seja', () => {
+    expect(mostrarItemCobrancas({ erro: false, quantidade: 1 })).toBe(true);
+  });
+
+  it('FALHA ABERTA: erro de leitura mostra o item, não o esconde', () => {
+    // Errar para este lado custa uma tela que se explica sozinha. Errar para o
+    // outro custa um boleto vencendo sem o cliente nunca ter visto.
+    expect(mostrarItemCobrancas({ erro: true, quantidade: 0 })).toBe(true);
+  });
+});
 
 // Os quatro do CHECK `cobrancas_escritorio_status_check` (migration 0053).
 const STATUS = ['pendente', 'paga', 'vencida', 'estornada'] as const;

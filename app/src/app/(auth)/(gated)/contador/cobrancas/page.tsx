@@ -8,11 +8,19 @@
 // tinha onde perguntar "o que está em aberto comigo?" — que é a única pergunta
 // que ele faz toda semana.
 //
-// LEITURA PELA SESSÃO, não por service role: a policy
+// O DINHEIRO É LIDO PELA SESSÃO, não por service role: a policy
 // `cobrancas_escritorio_select` (0053) tem duas pernas, e a primeira é
 // literalmente esta tela (`contabilidade_id = minha_contabilidade_membro()`).
 // Ler daqui pelo admin client deixaria a policy como código morto e trocaria
 // uma barreira do banco por um `.eq()` que alguém precisa lembrar de escrever.
+//
+// O NOME DO CLIENTE é a única coisa que vem pelo admin client, e por um motivo
+// específico: cliente que SAIU do escritório tem `companies.contabilidade_id`
+// zerado, então nem o embed nem uma consulta pela sessão o alcançam — e as
+// cobranças dele, inclusive as ainda em aberto, ficariam sem nome nenhum na
+// tela de quem precisa cobrá-las. O recorte é a lista de ids que a RLS já
+// liberou na consulta do dinheiro; mesmo padrão pontual de
+// `configuracoes/page.tsx` e `honorarios/page.tsx`.
 //
 // SEM GATE DE INADIMPLÊNCIA. Decidido em 28/07: o gate do 4A alcança apenas
 // CRIAR cobrança nova pela subconta — nunca ver, sincronizar ou receber as já
@@ -27,6 +35,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Receipt, ExternalLink } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { formatBRL } from '@/lib/format/dinheiro';
 import { rotuloStatus, corStatus, estaEmAberto } from '@/lib/billing/cobranca-escritorio-vm';
@@ -51,14 +60,23 @@ const ABAS = [
   { chave: 'estornadas', label: 'Estornadas', status: 'estornada' },
 ] as const;
 
-type Chave = (typeof ABAS)[number]['chave'];
-
 /** Aba desconhecida na URL cai em `todas` — mostrar tudo nunca esconde dinheiro,
  *  e uma tela vazia por causa de um parâmetro digitado errado pareceria "não há
  *  cobrança nenhuma". */
 function abaDe(v: string | undefined): (typeof ABAS)[number] {
   return ABAS.find((a) => a.chave === v) ?? ABAS[0];
 }
+
+/**
+ * Teto EXPLÍCITO da lista.
+ *
+ * Sem ele vale o "Max rows" do projeto Supabase (1000 por padrão), que corta a
+ * lista **em silêncio** — e os dois totais abaixo são somados sobre o que
+ * voltou. A tela avisaria "A receber: R$ X" com X faltando tudo o que passou do
+ * corte, enquanto o cabeçalho dela manda não ler lista curta como "nada a
+ * receber". Cap existe; o que não pode existir é cap calado.
+ */
+const LIMITE = 200;
 
 type Row = {
   id: string;
@@ -70,7 +88,6 @@ type Row = {
   link_fatura: string | null;
   honorario_id: string | null;
   empresa_cliente_id: string;
-  companies: unknown;
 };
 
 export default async function ContadorCobrancasPage({
@@ -88,18 +105,23 @@ export default async function ContadorCobrancasPage({
   const aba = abaDe((await searchParams).situacao);
   const supabase = await createServerClient();
 
-  // O JOIN é FK-desambiguado pelo mesmo motivo de `/contador/honorarios`: há
-  // mais de uma FK para `companies` no grafo, e sem o nome da constraint o
-  // PostgREST recusa a consulta.
+  // SEM o join embutido em `companies`, de propósito. Esta leitura é pela
+  // SESSÃO, e o embed herdaria a policy `companies_select_contador` (0033), que
+  // exige o vínculo ATUAL (`companies.contabilidade_id = minha_contabilidade()`).
+  // Cliente que saiu do escritório tem esse vínculo zerado — e então TODA
+  // cobrança histórica dele, inclusive as ainda EM ABERTO que o escritório
+  // precisa cobrar, apareceria como "Cliente sem nome", sem nenhum outro campo
+  // que a identificasse. O nome vem separado, pelo admin client, e só para ids
+  // que a RLS já liberou nesta consulta.
   let q = supabase
     .from('cobrancas_escritorio')
     .select(`
       id, descricao, status, valor_centavos, vencimento, pago_em, link_fatura,
-      honorario_id, empresa_cliente_id,
-      companies!cobrancas_escritorio_empresa_cliente_id_fkey ( nome )
+      honorario_id, empresa_cliente_id
     `)
     .eq('contabilidade_id', ctx.contabilidade.id)
-    .order('vencimento', { ascending: false });
+    .order('vencimento', { ascending: false })
+    .limit(LIMITE);
   if (aba.status) q = q.eq('status', aba.status);
 
   const { data, error } = await q;
@@ -108,14 +130,27 @@ export default async function ContadorCobrancasPage({
   if (error) console.error('[4b] ler cobrancas do escritorio (painel) falhou:', error.message);
 
   const rows = (data ?? []) as unknown as Row[];
-  const nomeDoCliente = (c: unknown): string => {
-    const obj = Array.isArray(c) ? (c[0] ?? null) : (c ?? null);
-    return ((obj as { nome?: string } | null)?.nome ?? '').trim() || 'Cliente sem nome';
-  };
+  const truncada = rows.length === LIMITE;
+
+  // Nome do cliente pelo admin client — ver o comentário da consulta acima. O
+  // `.eq('contabilidade_id')` NÃO serve aqui, justamente porque o ex-cliente já
+  // não o tem; o recorte é a lista de ids que a RLS liberou logo acima.
+  const nomePorEmpresa: Record<string, string> = {};
+  const idsEmpresas = Array.from(new Set(rows.map((r) => r.empresa_cliente_id)));
+  if (idsEmpresas.length > 0) {
+    const { data: empresas } = await createAdminClient()
+      .from('companies').select('id, nome').in('id', idsEmpresas);
+    for (const e of empresas ?? []) nomePorEmpresa[e.id as string] = ((e.nome as string) ?? '').trim();
+  }
+  const nomeDoCliente = (empresaId: string): string =>
+    nomePorEmpresa[empresaId] || 'Cliente sem nome';
 
   // Os dois totais que importam para quem cobra, e só sobre o RECORTE ATUAL —
   // um total "de tudo" mostrado sob uma aba filtrada seria lido como o total da
   // aba. Estornada fica de fora dos dois: o dinheiro voltou.
+  //
+  // Quando a lista bate no teto, estes totais passam a ser PARCIAIS — e é por
+  // isso que `truncada` vira aviso na tela em vez de ficar só no comentário.
   const emAberto = rows.reduce((t, r) => (estaEmAberto(r.status) ? t + r.valor_centavos : t), 0);
   const recebido = rows.reduce((t, r) => (r.status === 'paga' ? t + r.valor_centavos : t), 0);
 
@@ -162,16 +197,28 @@ export default async function ContadorCobrancasPage({
         ))}
       </nav>
 
+      {/* CAP EXPLÍCITO. Só aparece quando a lista realmente bateu no teto — e
+          aparece ANTES dos totais, porque é sobre eles que ele muda a leitura. */}
+      {truncada && (
+        <p className="mb-4 rounded-md border border-alert/40 bg-alert/10 px-3 py-2 text-sm text-foreground">
+          Mostrando as <strong>{LIMITE}</strong> cobranças mais recentes desta situação. Há mais
+          além destas, e <strong>os totais abaixo somam só o que está na lista</strong>. Use as
+          abas para estreitar o recorte.
+        </p>
+      )}
+
       {rows.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2 text-sm">
           {emAberto > 0 && (
             <p className="rounded-md border border-border bg-surface px-3 py-2 text-foreground">
-              A receber: <strong className="tabular-nums">{formatBRL(emAberto)}</strong>
+              {truncada ? 'A receber (parcial)' : 'A receber'}:{' '}
+              <strong className="tabular-nums">{formatBRL(emAberto)}</strong>
             </p>
           )}
           {recebido > 0 && (
             <p className="rounded-md border border-border bg-surface px-3 py-2 text-foreground">
-              Recebido: <strong className="tabular-nums">{formatBRL(recebido)}</strong>
+              {truncada ? 'Recebido (parcial)' : 'Recebido'}:{' '}
+              <strong className="tabular-nums">{formatBRL(recebido)}</strong>
             </p>
           )}
         </div>
@@ -200,7 +247,7 @@ export default async function ContadorCobrancasPage({
             >
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-2 text-sm text-foreground">
-                  <span className="font-medium">{nomeDoCliente(r.companies)}</span>
+                  <span className="font-medium">{nomeDoCliente(r.empresa_cliente_id)}</span>
                   <span className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${corStatus(r.status)}`}>
                     {rotuloStatus(r.status)}
                   </span>

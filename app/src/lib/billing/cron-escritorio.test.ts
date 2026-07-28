@@ -66,6 +66,8 @@ const h = vi.hoisted(() => {
     /** Páginas devolvidas por `listarCobrancas`, por token. */
     paginas: {} as Record<string, Array<{ data: unknown[]; hasMore?: boolean }>>,
     erroAsaas: null as unknown,
+    /** O webhook chegando ENTRE a leitura da pagina e o UPDATE da varredura. */
+    aoAplicar: null as null | (() => void),
   };
 
   /** Toda chamada a `listarCobrancas`, com o token usado — é o que prova que
@@ -117,11 +119,29 @@ const h = vi.hoisted(() => {
       },
       update: (valores: Record<string, unknown>) => {
         const op = novaOp('update', valores);
+        // O UPDATE aplica as condições `.eq` sobre o estado ATUAL da linha, e
+        // devolve as linhas afetadas. Sem isto o mock aceitaria qualquer UPDATE
+        // e um compare-and-swap quebrado passaria despercebido — o mock estaria
+        // provando a si mesmo.
+        const resultado = () => {
+          if (tabela !== 'cobrancas_escritorio') return { data: [{ id: 'x' }], error: null };
+          // `aoAplicar` é o webhook chegando ENTRE a leitura da página e este
+          // UPDATE. É a única forma de reproduzir a corrida num teste.
+          estado.aoAplicar?.();
+          const todas = Object.values(estado.cobrancas).flat();
+          const alvo = todas.find((l) => l.id === op.eq.find(([c]) => c === 'id')?.[1]);
+          if (!alvo) return { data: [], error: null };
+          const casa = op.eq.every(([col, val]) => col === 'id' || alvo[col] === val);
+          if (!casa) return { data: [], error: null };
+          Object.assign(alvo, valores);   // a escrita é visível para o próximo
+          return { data: [{ id: alvo.id }], error: null };
+        };
         const b: Record<string, unknown> = {
           eq: (c: string, v: unknown) => { op.eq.push([c, v]); return b; },
           not: (...a: unknown[]) => { op.not.push(a); return b; },
+          select: (_c: string) => b,
           then: (ok: (v: unknown) => unknown, falhou?: (e: unknown) => unknown) =>
-            Promise.resolve({ data: null, error: null }).then(ok, falhou),
+            Promise.resolve(resultado()).then(ok, falhou),
         };
         return b;
       },
@@ -191,6 +211,7 @@ beforeEach(() => {
   h.estado.erroSelectContabilidades = null;
   h.estado.erroSelectCobrancas = null;
   h.estado.erroAsaas = null;
+  h.estado.aoAplicar = null;
   erros = [];
   vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { erros.push(a); });
 });
@@ -419,7 +440,10 @@ describe('a varredura não inventa nem mistura dinheiro', () => {
     h.estado.escritorios = [{ id: ESC_A, asaas_api_key_cifrada: guardarCredencial(CHAVE_A) }];
   });
 
-  it('cobrança criada pelo painel do Asaas NÃO vira linha nova', async () => {
+  it('cobrança criada pelo painel do Asaas NÃO vira linha nova, nem vira ruído', async () => {
+    // Sem `externalReference`: não é nossa. O escritório emitiu direto no painel
+    // do Asaas, o que ele tem todo o direito de fazer. Logar isso como problema
+    // encheria o log de linhas normais e esconderia o órfão de verdade.
     h.estado.paginas[CHAVE_A] = [{
       data: [pagamento({ id: 'pay_feito_no_painel', status: 'RECEIVED', paymentDate: '2026-08-09' })],
       hasMore: false,
@@ -431,6 +455,51 @@ describe('a varredura não inventa nem mistura dinheiro', () => {
     expect(inserts()).toHaveLength(0);
     expect(r.atualizadas).toBe(0);
     expect(r.erros).toBe(0);
+    expect(r.orfaos).toBe(0);
+    expect(JSON.stringify(erros)).not.toContain('pay_feito_no_painel');
+  });
+
+  // ─── O BOLETO ÓRFÃO ──────────────────────────────────────────────────────
+  // `emitir-cobranca.ts` já sabe que ele pode nascer: a cobrança é criada no
+  // Asaas e o INSERT falha (registro `cobranca_escritorio.nao_gravada`). O
+  // cliente fica com um boleto na mão que o painel do escritório NUNCA mostra —
+  // e nada, em lugar nenhum, voltava a procurar por ele: o webhook o descarta
+  // como 'cobranca_desconhecida' e a tela só lê a nossa tabela.
+  //
+  // A varredura é o único componente que enxerga OS DOIS LADOS, e o
+  // `externalReference` que a emissão escreve (`<contabilidade>:<cliente>`) o
+  // torna identificável com certeza — não é heurística.
+  it('boleto ÓRFÃO (nosso, sem linha no banco) é contado e logado', async () => {
+    h.estado.paginas[CHAVE_A] = [{
+      data: [pagamento({
+        id: 'pay_orfao', status: 'RECEIVED', paymentDate: '2026-08-09',
+        externalReference: `${ESC_A}:${'empresa-1'}`,
+      })],
+      hasMore: false,
+    }];
+    h.estado.cobrancas[ESC_A] = [];
+
+    const r = await sincronizarCobrancasEscritorio();
+
+    expect(r.orfaos).toBe(1);
+    // NUNCA vira linha: uma cobrança inventada a partir do payload nasceria sem
+    // cliente e sem valor conferido — a mesma regra do webhook.
+    expect(inserts()).toHaveLength(0);
+    expect(JSON.stringify(erros)).toContain('pay_orfao');
+  });
+
+  it('externalReference de OUTRO escritório não é contado como órfão nosso', async () => {
+    // Só pode acontecer com dado corrompido, mas o recorte tem de ser exato:
+    // contar o de outro como nosso mandaria o suporte caçar boleto que não existe.
+    h.estado.paginas[CHAVE_A] = [{
+      data: [pagamento({ id: 'pay_de_outro', externalReference: `${ESC_B}:empresa-9` })],
+      hasMore: false,
+    }];
+    h.estado.cobrancas[ESC_A] = [];
+
+    const r = await sincronizarCobrancasEscritorio();
+
+    expect(r.orfaos).toBe(0);
   });
 
   it('a leitura das cobranças é recortada pela contabilidade dona da chave', async () => {
@@ -445,6 +514,57 @@ describe('a varredura não inventa nem mistura dinheiro', () => {
     expect(sel[0].eq).toContainEqual(['contabilidade_id', ESC_A]);
     expect(r.atualizadas).toBe(0);
     expect(updatesDe('cobrancas_escritorio')).toHaveLength(0);
+  });
+
+  // ─── A CORRIDA ENTRE OS DOIS ESCRITORES ──────────────────────────────────
+  // Até esta sessão o webhook era o ÚNICO escritor de `cobrancas_escritorio`.
+  // Agora são dois, e a varredura lê uma PÁGINA INTEIRA (até 100 linhas) antes
+  // de aplicar uma a uma — o snapshot da última linha da página pode estar
+  // dezenas de round-trips velho.
+  //
+  // `aplicarEventoNaCobranca` decide contra esse snapshot. Sem um
+  // compare-and-swap no UPDATE, a decisão "estorno é terminal" é tomada sobre
+  // um estado que já não existe, e a varredura ressuscita um pagamento que o
+  // webhook acabou de estornar. É a MESMA classe de bug do 4A, entrando por
+  // outra porta.
+  it('estorno que chega DURANTE a varredura não é desfeito pelo snapshot velho', async () => {
+    h.estado.paginas[CHAVE_A] = [{
+      data: [pagamento({ status: 'RECEIVED', paymentDate: '2026-08-09' })],
+      hasMore: false,
+    }];
+    const linhaViva = linha({ status: 'pendente', honorario_id: HONORARIO_ID });
+    h.estado.cobrancas[ESC_A] = [linhaViva];
+
+    // O webhook do estorno chega DEPOIS da leitura da página e ANTES do UPDATE.
+    h.estado.aoAplicar = () => {
+      linhaViva.status = 'estornada';
+      linhaViva.pago_em = null;
+      h.estado.aoAplicar = null;   // só uma vez
+    };
+
+    const r = await sincronizarCobrancasEscritorio();
+
+    // A cobrança tem de CONTINUAR estornada: quem chegou depois perde.
+    expect(linhaViva.status).toBe('estornada');
+    expect(r.atualizadas).toBe(0);
+    // E o honorário NUNCA pode ser marcado pago a partir de uma corrida perdida
+    // — seria o painel do escritório afirmando que entrou dinheiro devolvido.
+    expect(updatesDe('honorarios')).toHaveLength(0);
+  });
+
+  it('o UPDATE da cobrança carrega a condição de status (compare-and-swap)', async () => {
+    h.estado.paginas[CHAVE_A] = [{
+      data: [pagamento({ status: 'RECEIVED', paymentDate: '2026-08-09' })],
+      hasMore: false,
+    }];
+    h.estado.cobrancas[ESC_A] = [linha({ status: 'pendente' })];
+
+    await sincronizarCobrancasEscritorio();
+
+    const up = updatesDe('cobrancas_escritorio');
+    expect(up).toHaveLength(1);
+    // Sem esta condição o UPDATE é cego e sobrescreve quem escreveu no meio.
+    expect(up[0].eq).toContainEqual(['status', 'pendente']);
   });
 
   it('erro de LEITURA das cobranças vira erro contado, não "nenhuma cobrança"', async () => {

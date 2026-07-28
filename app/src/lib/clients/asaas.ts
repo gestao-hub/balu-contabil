@@ -127,6 +127,11 @@ export type AsaasCobranca = {
    *  nao liquidado) o `paymentDate` vem nulo. */
   paymentDate?: string | null;
   confirmedDate?: string | null;
+  /** `<contabilidadeId>:<clienteId>`, escrito por `emitir-cobranca.ts`. NAO
+   *  serve para decidir DONO (e campo que o remetente escolhe, e por isso o
+   *  roteamento do webhook o rejeitou) — serve para RECONHECER como nossa uma
+   *  cobranca que ja esta na conta certa, que e outra pergunta. */
+  externalReference?: string | null;
 };
 
 /** Envelope das listas paginadas do Asaas — observado em `GET /v3/payments`:
@@ -299,15 +304,26 @@ export function asaasSub(token: string) {
      * mais dinheiro em jogo. O `hasMore` do envelope diz quando parar, e por
      * isso NAO e preciso conhecer a ordenacao padrao do Asaas.
      *
+     * ORDEM EXPLICITA (`sort=dateCreated&order=desc`), e nao por confiar no
+     * default. O `hasMore` torna a ordem irrelevante para uma varredura que roda
+     * ATE O FIM — mas so para essa. No dia em que o teto de paginas (ou um
+     * timeout) cortar a varredura no meio, e a ORDEM que decide qual ponta fica
+     * de fora. Com `desc`, o que se perde sao as mais ANTIGAS, ja liquidadas;
+     * sem a clausula, quem decide isso e um default nao documentado do Asaas.
+     * Sondado no sandbox: `order` e honrado de verdade (asc devolve exatamente o
+     * inverso de desc), e o default hoje ja e desc — o que nao e promessa.
+     *
      * ⚠️ NAO ha filtro de status aqui, e nao e esquecimento: o Asaas IGNORA EM
-     * SILENCIO um `status` que nao conhece (provado no sandbox — `status=BANANA`
+     * SILENCIO um parametro que nao conhece (provado no sandbox — `status=BANANA`
      * devolveu a lista inteira, HTTP 200). Um filtro com erro de digitacao nao
      * falha: ele varre tudo parecendo que filtrou. Como a varredura completa e o
-     * que queremos mesmo, nao ha por que correr o risco.
+     * que queremos mesmo, nao ha por que correr o risco. (Foi esse mesmo achado
+     * que obrigou a PROVAR o `order` acima em vez de assumi-lo.)
      */
     listarCobrancas: (offset = 0) =>
       call<ListaAsaas<AsaasCobranca>>(
-        'GET', `/v3/payments?limit=100&offset=${offset}`, undefined, token,
+        'GET', `/v3/payments?limit=100&offset=${offset}&sort=dateCreated&order=desc`,
+        undefined, token,
       ),
 
     pixDaCobranca: (id: string) =>

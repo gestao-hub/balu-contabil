@@ -122,6 +122,11 @@ describe('asaasSub — access_token deve ser o token da SUBCONTA', () => {
     const url = String((fetchSpy.mock.calls[0] as unknown[])[0]);
     expect(url).toContain('offset=300');
     expect(url).toContain('limit=100');
+    // Ordem EXPLICITA: e ela que decide qual ponta o teto de paginas descarta
+    // quando a varredura nao chega ao fim. `desc` descarta as mais antigas, ja
+    // liquidadas. Sem a clausula, quem decide e um default nao documentado.
+    expect(url).toContain('sort=dateCreated');
+    expect(url).toContain('order=desc');
     // Sem filtro de status de proposito: o Asaas IGNORA EM SILENCIO um status
     // que nao conhece (provado no sandbox), entao um filtro com typo varreria
     // tudo parecendo que filtrou.

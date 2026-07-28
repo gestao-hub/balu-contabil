@@ -84,13 +84,22 @@ const h = vi.hoisted(() => {
     update: (valores: Record<string, unknown>) => {
       const op = { tabela, kind: 'update' as const, valores, eq: [] as [string, unknown][], not: [] as unknown[][] };
       ops.push(op);
-      const resultado = () =>
-        tabela === 'cobrancas_escritorio' && estado.erroUpdateEscritorio
-          ? { data: null, error: estado.erroUpdateEscritorio }
-          : { data: null, error: null };
+      // O UPDATE de `cobrancas_escritorio` e um COMPARE-AND-SWAP desde a Task 13
+      // (dois escritores: este webhook e a varredura diaria). O fake HONRA as
+      // condicoes `.eq` contra a linha guardada e devolve as LINHAS AFETADAS —
+      // um fake que respondesse sempre "afetou" faria o CAS parecer funcionar
+      // mesmo quebrado, que e o mock provando a si mesmo.
+      const resultado = () => {
+        if (tabela !== 'cobrancas_escritorio') return { data: [{ id: 'x' }], error: null };
+        if (estado.erroUpdateEscritorio) return { data: null, error: estado.erroUpdateEscritorio };
+        const alvo = estado.cobrancaEscritorio;
+        const casa = !!alvo && op.eq.every(([col, val]) => col === 'id' || alvo[col] === val);
+        return { data: casa ? [{ id: alvo!.id }] : [], error: null };
+      };
       const b = {
         eq: (c: string, v: unknown) => { op.eq.push([c, v]); return b; },
         not: (...a: unknown[]) => { op.not.push(a); return b; },
+        select: (_c: string) => b,
         then: (ok: (v: unknown) => unknown, falhou?: (e: unknown) => unknown) =>
           Promise.resolve(resultado()).then(ok, falhou),
       };
@@ -242,7 +251,11 @@ describe('subconta (4B): evento SEM assinatura vai para `cobrancas_escritorio`',
     expect(up).toHaveLength(1);
     expect(up[0].valores?.status).toBe('paga');
     expect(up[0].valores?.pago_em).toBe('2026-07-28');
-    expect(up[0].eq).toEqual([['id', COBRANCA_ID]]);
+    // `id` + COMPARE-AND-SWAP no status. O CAS entrou na Task 13, quando a
+    // varredura diaria virou um SEGUNDO escritor desta tabela: sem ele, um
+    // UPDATE cego por `id` sobrescreve quem escreveu entre a leitura e a
+    // escrita — e o caso caro e a varredura ressuscitando um estorno.
+    expect(up[0].eq).toEqual([['id', COBRANCA_ID], ['status', 'pendente']]);
 
     // NUNCA pela porta do 4A: este dinheiro nao e da Balu.
     expect(h.persistirCobranca).not.toHaveBeenCalled();

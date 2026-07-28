@@ -80,6 +80,27 @@ export function podePagar(c: { status: string; linkFatura: string | null }): boo
   return estaEmAberto(c.status) && !!c.linkFatura;
 }
 
+/**
+ * O item "Cobranças" entra no menu do empresário?
+ *
+ * Ele aparece quando EXISTE boleto (decisão de 28/07): escritório vinculado não
+ * basta, porque a maioria cobra fora da Balu e o item seria uma tela vazia
+ * permanente ao lado de "Honorários", que fala da mesma dívida.
+ *
+ * **FALHA ABERTA, e isto é o ponto desta função.** Se a consulta falhar, o item
+ * APARECE. Esconder por erro de leitura é a mesma falha que a tela do cliente
+ * existe para evitar — lá, lista vazia não pode ser lida como "não devo nada";
+ * aqui, item ausente não pode ser lido como "não tenho cobrança". Um nível acima
+ * e mais silencioso: no menu não há onde escrever "não deu para conferir".
+ *
+ * O custo de errar para este lado é o usuário abrir uma tela que se explica
+ * sozinha ("não foi possível carregar, recarregue"). O custo de errar para o
+ * outro é um boleto vencer sem ele nunca ter visto.
+ */
+export function mostrarItemCobrancas(r: { erro: boolean; quantidade: number }): boolean {
+  return r.erro || r.quantidade > 0;
+}
+
 /** Soma do que continua na mão do cliente, em centavos. */
 export function totalEmAberto(cs: Array<{ status: string; valorCentavos: number }>): number {
   return cs.reduce((t, c) => (estaEmAberto(c.status) ? t + c.valorCentavos : t), 0);

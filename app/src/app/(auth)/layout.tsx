@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getGateContext } from '@/lib/auth/gate-context';
+import { mostrarItemCobrancas } from '@/lib/billing/cobranca-escritorio-vm';
 import { signedUrlBranding } from '@/lib/clients/supabase-storage';
 import MenuLateral, { type EscritorioBranding } from '@/components/MenuLateral';
 
@@ -19,7 +20,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   const { user, currentCompany, normalizedRole } = ctx;
 
   const supabase = await createServerClient();
-  const [{ data: companies }, { data: membro }, { data: cobrancasDoEscritorio }] = await Promise.all([
+  const [{ data: companies }, { data: membro }, cobrancasDoEscritorio] = await Promise.all([
     // contabilidade_id junto — evita 1 query extra pra descobrir se a empresa
     // ativa tem escritório (co-branding, Task 18).
     supabase.from('companies').select('id, nome, contabilidade_id').eq('user_id', user.id).is('deleted_at', null).order('nome'),
@@ -35,7 +36,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
     // Sem empresa ativa a consulta nem sai (o item já não apareceria).
     currentCompany
       ? supabase.from('cobrancas_escritorio').select('id').eq('empresa_cliente_id', currentCompany).limit(1)
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   // Marca do menu. Duas origens, com precedências diferentes:
@@ -66,7 +67,20 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   // link de pagamento por causa do status DO ESCRITÓRIO seria fazer a briga
   // deles respingar nele. Uma vez emitido, o item nunca mais some: a tela é
   // também o histórico do que o cliente pagou.
-  const temCobrancasDoEscritorio = (cobrancasDoEscritorio ?? []).length > 0;
+  //
+  // FALHA ABERTA em erro de leitura — a regra e o porquê moram em
+  // `mostrarItemCobrancas`. Esconder o item por um blip de rede faria o cliente
+  // concluir que não tem cobrança, e no menu não há onde escrever "não deu para
+  // conferir". Isto roda em TODA página autenticada, então "um blip" não é
+  // hipótese remota.
+  if (cobrancasDoEscritorio.error) {
+    console.error('[4b] existência de cobranças do escritório não pôde ser lida:',
+      cobrancasDoEscritorio.error.message);
+  }
+  const temCobrancasDoEscritorio = mostrarItemCobrancas({
+    erro: !!cobrancasDoEscritorio.error,
+    quantidade: (cobrancasDoEscritorio.data ?? []).length,
+  });
 
   if (membro?.contabilidade_id) {
     const { data: contab } = await admin

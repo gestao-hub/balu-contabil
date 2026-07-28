@@ -49,7 +49,7 @@ export type PagamentoDoAsaas = {
 };
 
 export type ResultadoAplicacao =
-  | { ok: true; mudou: false }
+  | { ok: true; mudou: false; motivo: 'sem_efeito' | 'perdeu_corrida' }
   | { ok: true; mudou: true; status: StatusCobranca }
   | { ok: false; erro: 'update_falhou' };
 
@@ -84,14 +84,44 @@ export async function aplicarPagamentoNaCobranca(
     { status: String(cob.status), pago_em: cob.pago_em ?? null },
     { status: statusEvento, pagoEm },
   );
-  if (!novo) return { ok: true, mudou: false };
+  if (!novo) return { ok: true, mudou: false, motivo: 'sem_efeito' };
 
-  const { error: erroUpdate } = await sb.from('cobrancas_escritorio')
+  // ─── COMPARE-AND-SWAP: `.eq('status', cob.status)` ────────────────────────
+  //
+  // Não é zelo: sem isto há um LOST UPDATE de verdade, e ele nasceu junto com a
+  // varredura. Até a Task 13 o webhook era o ÚNICO escritor desta tabela, e um
+  // UPDATE cego por `id` bastava. Agora são DOIS escritores — e a varredura lê
+  // uma PÁGINA INTEIRA (até 100 linhas) antes de aplicar uma a uma, então o
+  // snapshot da última linha pode estar dezenas de round-trips velho.
+  //
+  // O estrago concreto: a varredura lê `pay_x` como `pendente`; um
+  // PAYMENT_REFUNDED chega e põe a linha em `estornada`, reabrindo o honorário;
+  // a varredura então avalia a trava "estorno é terminal" contra o snapshot
+  // ANTIGO — onde não havia estorno nenhum — e regrava `paga`, marcando o
+  // honorário como pago. O painel do escritório passa a afirmar que entrou
+  // dinheiro que já tinha voltado. É exatamente o que
+  // `aplicarEventoNaCobranca` existe para impedir, escapando por fora dela:
+  // a função decide certo sobre um estado que já não é o do banco.
+  //
+  // Com a condição, quem chega com snapshot velho afeta ZERO linhas e desiste.
+  // O `status` sozinho basta: toda transição perigosa muda o status, e as que
+  // mexem só em `pago_em` já são recusadas pela guarda `atual.status === 'paga'`.
+  const { data: afetadas, error: erroUpdate } = await sb.from('cobrancas_escritorio')
     .update({ ...novo, updated_at: new Date().toISOString() })
-    .eq('id', cob.id);
+    .eq('id', cob.id)
+    .eq('status', cob.status)
+    .select('id');
   if (erroUpdate) {
     console.error(`[4b ${origem}] cobranca nao atualizada`, cob.id, erroUpdate.message);
     return { ok: false, erro: 'update_falhou' };
+  }
+  if (!afetadas || afetadas.length === 0) {
+    // Outro escritor moveu a linha entre a leitura e este UPDATE. Não é erro, e
+    // NÃO se reconsulta para tentar de novo: quem escreveu por último tinha o
+    // estado mais novo, e o webhook dele já cuidou do honorário. A próxima
+    // varredura reconcilia se ainda houver o que reconciliar.
+    console.warn(`[4b ${origem}] cobranca mudou durante a leitura, aplicacao descartada`, cob.id);
+    return { ok: true, mudou: false, motivo: 'perdeu_corrida' };
   }
 
   // ─── O SEMÁFORO DO HONORÁRIO (decisão 7.4) ────────────────────────────────
