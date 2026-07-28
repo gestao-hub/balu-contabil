@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { EmpresaFiscalSchema, CompanySchema, CompanyCreateSchema, AberturaCreateSchema, HonorarioSchema, SubcontaSchema } from './zod';
+import { EmpresaFiscalSchema, CompanySchema, CompanyCreateSchema, AberturaCreateSchema, HonorarioSchema, SubcontaSchema, ServicoAvulsoSchema } from './zod';
 import { EMPTY_ABERTURA } from '@/types/abertura';
 
 describe('EmpresaFiscalSchema', () => {
@@ -217,5 +217,81 @@ describe('SubcontaSchema', () => {
     const r = SubcontaSchema.safeParse(sem);
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.errors[0]?.message).toContain('CEP');
+  });
+});
+
+// Bloco 4B — a fronteira de `salvarServicoAction`. O tipo `ServicoAvulso` some
+// na compilacao: quem chama a action manda o que quiser.
+describe('ServicoAvulsoSchema', () => {
+  const base = {
+    id: null,
+    nome: 'Abertura de empresa',
+    categoria: 'Societário',
+    tipoValor: 'fixo',
+    valorCentavos: 90000,
+    percentual: null,
+    ativo: true,
+  };
+
+  it('aceita um serviço de valor fixo', () => {
+    const r = ServicoAvulsoSchema.safeParse(base);
+    expect(r.success).toBe(true);
+  });
+
+  // O caso que motiva o schema: "900" viraria preço errado no INSERT.
+  it('rejeita valorCentavos em string', () => {
+    const r = ServicoAvulsoSchema.safeParse({ ...base, valorCentavos: '90000' });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.errors[0]?.message).toContain('valor do serviço');
+  });
+
+  it('rejeita valorCentavos fracionário (a coluna é integer)', () => {
+    expect(ServicoAvulsoSchema.safeParse({ ...base, valorCentavos: 900.5 }).success).toBe(false);
+  });
+
+  it('rejeita valor acima do teto do integer do Postgres', () => {
+    expect(ServicoAvulsoSchema.safeParse({ ...base, valorCentavos: 2_147_483_648 }).success).toBe(false);
+  });
+
+  it('rejeita tipoValor fora do CHECK do banco', () => {
+    expect(ServicoAvulsoSchema.safeParse({ ...base, tipoValor: 'gratis' }).success).toBe(false);
+  });
+
+  it('rejeita nome que não é string, com mensagem em português', () => {
+    const r = ServicoAvulsoSchema.safeParse({ ...base, nome: { toString: 'nao sou string' } });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.errors[0]?.message).toContain('nome do serviço');
+  });
+
+  it('rejeita nome só de espaços', () => {
+    expect(ServicoAvulsoSchema.safeParse({ ...base, nome: '   ' }).success).toBe(false);
+  });
+
+  // O id vai direto para o `.eq('id', ...)` da action.
+  it('rejeita id que não é uuid, e aceita ausente como criação', () => {
+    expect(ServicoAvulsoSchema.safeParse({ ...base, id: 'nao-e-uuid' }).success).toBe(false);
+    const { id, ...sem } = base;
+    const r = ServicoAvulsoSchema.safeParse(sem);
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.id).toBeNull();
+  });
+
+  it('normaliza categoria vazia/ausente para null e apara os espaços', () => {
+    const vazia = ServicoAvulsoSchema.safeParse({ ...base, categoria: '   ' });
+    expect(vazia.success && vazia.data.categoria).toBeNull();
+    const comEspaco = ServicoAvulsoSchema.safeParse({ ...base, categoria: ' Fiscal ' });
+    expect(comEspaco.success && comEspaco.data.categoria).toBe('Fiscal');
+  });
+
+  it('trata ativo ausente como true (criação)', () => {
+    const { ativo, ...sem } = base;
+    const r = ServicoAvulsoSchema.safeParse(sem);
+    expect(r.success && r.data.ativo).toBe(true);
+  });
+
+  it('aceita percentual e recusa percentual não-numérico', () => {
+    const pct = { ...base, tipoValor: 'percentual', valorCentavos: null, percentual: 20 };
+    expect(ServicoAvulsoSchema.safeParse(pct).success).toBe(true);
+    expect(ServicoAvulsoSchema.safeParse({ ...pct, percentual: '20%' }).success).toBe(false);
   });
 });

@@ -8,7 +8,12 @@
 // modulo e importado por Client Component (tela da Task 8) e por Server
 // Action — zero import, zero I/O, zero env, zero `server-only`.
 
-export type TipoValor = 'fixo' | 'percentual';
+// Lista, e nao union escrita a mao, porque o schema zod da fronteira
+// (`ServicoAvulsoSchema`) monta o enum a partir DELA: assim o que o tipo aceita
+// e o que a fronteira aceita nao podem divergir em silencio — mesmo arranjo de
+// `COMPANY_TYPES` em subconta.ts.
+export const TIPOS_VALOR = ['fixo', 'percentual'] as const;
+export type TipoValor = (typeof TIPOS_VALOR)[number];
 
 export type ServicoAvulso = {
   nome: string;

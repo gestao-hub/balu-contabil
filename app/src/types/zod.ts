@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { isValidCnpj } from '@/lib/validators/cnpj';
 import { normalizarValorBRL } from '@/lib/format/dinheiro';
 import { COMPANY_TYPES } from '@/lib/billing/subconta';
+import { TIPOS_VALOR } from '@/lib/billing/avulso';
 import { EMPRESA_TIPOS, REGIMES, SEDE_TIPOS } from '@/types/abertura';
 
 export const ClienteSchema = z.object({
@@ -194,6 +195,57 @@ export const SubcontaSchema = z.object({
     .transform((v) => v ?? null),
 });
 export type SubcontaInput = z.infer<typeof SubcontaSchema>;
+
+/**
+ * Bloco 4B — a fronteira de entrada de `salvarServicoAction` (catalogo de
+ * avulsos do escritorio).
+ *
+ * Mesmo motivo do `SubcontaSchema`: o tipo `ServicoAvulso` some na compilacao e
+ * a action e um endpoint HTTP — quem chama pode mandar `valorCentavos: "900"`,
+ * `tipoValor: 'gratis'` ou `nome: {}`. Sem schema, a string de valor chegaria
+ * ate o INSERT (onde vira preco errado ou erro cru de Postgres na tela) e o
+ * `{}` estouraria `TypeError` no `.trim()` de `validarServicoAvulso`.
+ *
+ * So checagem de FORMA. As REGRAS — fixo exige valor e proibe percentual, e
+ * vice-versa — continuam em `validarServicoAvulso`, que espelha o CHECK
+ * `servicos_avulsos_valor_check` da 0053 e e a mesma funcao que a tela chama
+ * antes do round-trip.
+ *
+ * `valorCentavos` inteiro e limitado ao teto do `integer` do Postgres: acima
+ * disso o banco responde "value out of range", que chegaria ao escritorio como
+ * erro tecnico em ingles no meio do cadastro.
+ */
+export const ServicoAvulsoSchema = z.object({
+  // `null` = criar; uuid = editar aquele servico. String qualquer nao entra:
+  // o id vai direto para o `.eq('id', ...)` da action.
+  id: z.string().uuid('Serviço inválido.').nullish().transform((v) => v ?? null),
+  nome: z
+    .string({ required_error: 'Informe o nome do serviço.', invalid_type_error: 'Informe o nome do serviço.' })
+    .trim()
+    .min(1, 'Informe o nome do serviço.')
+    .max(200, 'Nome do serviço longo demais.'),
+  categoria: z
+    .string({ invalid_type_error: 'Categoria inválida.' })
+    .max(100, 'Categoria longa demais.')
+    .nullish()
+    .transform((v) => v?.trim() || null),
+  tipoValor: z.enum(TIPOS_VALOR, {
+    errorMap: () => ({ message: 'Escolha entre valor fixo e percentual.' }),
+  }),
+  valorCentavos: z
+    .number({ invalid_type_error: 'Informe o valor do serviço em números.' })
+    .int('Informe o valor do serviço em números.')
+    .max(2_147_483_647, 'Valor alto demais.')
+    .nullish()
+    .transform((v) => v ?? null),
+  percentual: z
+    .number({ invalid_type_error: 'Informe o percentual em números.' })
+    .finite('Informe o percentual em números.')
+    .nullish()
+    .transform((v) => v ?? null),
+  ativo: z.boolean({ invalid_type_error: 'Situação inválida.' }).nullish().transform((v) => v ?? true),
+});
+export type ServicoAvulsoInput = z.infer<typeof ServicoAvulsoSchema>;
 
 export const AberturaCreateSchema = z.object({
   // required
