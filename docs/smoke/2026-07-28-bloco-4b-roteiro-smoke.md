@@ -1,9 +1,48 @@
 # Roteiro do smoke manual — Bloco 4B (o escritório cobrando pela subconta)
 
-> **Status:** ⏳ **PENDENTE** · **Escrito em:** 2026-07-28
+> **Status:** ✅ **CONCLUÍDO em 2026-07-28** — §1 a §10, todas passaram · **Escrito em:** 2026-07-28
 > **Branch:** `feat/bloco-4b-subcontas` (não mergeada) · **Plano:** `docs/superpowers/plans/2026-07-27-bloco-4b-subcontas-escritorio.md`
 > **Verificação automática:** `tsc` 0 · vitest **1142/1142** (27 pulados) · `next build` **0 erros / 56 rotas**
 > **Passou por `/code-review` + `/systematic-debugging` antes do smoke** — 6 achados, 5 corrigidos (commit `7b4a233`). O mais sério: corrida de lost-update entre o webhook e a varredura, que ressuscitava um estorno. Ver §7, que agora a exercita de propósito.
+
+## ✅ SMOKE CONCLUÍDO — o que ficou provado ao vivo
+
+**Nenhum bug novo.** É o primeiro bloco do projeto em que o smoke não achou
+defeito — e a explicação não é sorte: o `/code-review` + `/systematic-debugging`
+rodados **antes** do smoke acharam 6 problemas (commit `7b4a233`), incluindo uma
+corrida de lost-update que teria aparecido justamente no §7.
+
+| Seção | O que foi provado contra o Asaas real |
+|---|---|
+| §1 | Subconta criada; KYC lido com os **4 eixos** `APPROVED`; chave gravada **cifrada** (`enc:v1:`) e **mascarada** na auditoria |
+| §1-bis | **CNPJ duplicado → 400**: nada criado, sem retry, sem `possivel_orfa`. O caminho mais caro do bloco, exercitado de graça |
+| §2 | Apagar do catálogo **persiste** (não é trava só de tela) |
+| §3–§4 | Trinco recusou a emissão **sem tocar no Asaas** (3 pagamentos antes, 3 depois) e soltou em seguida |
+| §5 | Item de menu nasce com o primeiro boleto; cliente vê a dívida **sem tarja nenhuma** |
+| §6 | **Reconciliação sem webhook**: pagamento apareceu sozinho; `confirmedDate` salvou a data em `CONFIRMED` |
+| §7 | Estorno desfez o semáforo e **liberou recobrar**; **3 rodadas** do cron não o ressuscitaram |
+| §8 | Realce do menu acende **um** item só; filtro sobrevive ao F5; totais seguem a aba |
+| **§9** | **As 4 cobranças: 200 pela subconta, 404 pela conta-mãe** |
+| §10 | Gate alcança **criar**; **ver**, **receber** e o cliente final **não** |
+
+**Achado de processo:** o retorno do cron acusou `faixasAtualizadas: 1` durante o
+§10 — a rotina do 4A atribuiu um plano à assinatura suspensa. O arquivo de
+restauração só previa o `status`. **Conferir o banco antes de dizer "restaurei"**
+foi o que pegou.
+
+**Duas imprecisões do próprio roteiro, corrigidas no caminho** (`b300943`): o CNPJ
+do escritório não serve no sandbox compartilhado, e a mensagem de impedimento do
+webhook é a de `sem_segredo`, não a de URL — `precondicoes()` confere o segredo
+primeiro.
+
+> **Cenário deixado VIVO por decisão do usuário** (28/07): as 4 cobranças, o
+> catálogo, os 2 honorários de teste e a subconta ficam no banco **como prova de
+> que o teste foi feito**. A limpeza acontece antes da entrega ao dono do
+> produto. A suíte foi rodada assim mesmo e passou — `vitest.config.ts` não
+> carrega `.env.local`, então os testes que escrevem no banco real caem no
+> `describe.skipIf` (são os 27 pulados) e nada foi destruído.
+
+---
 
 O princípio que o bloco inteiro existe para proteger: **a Balu não intermedia
 dinheiro de terceiro.** A cobrança do escritório nasce na subconta Asaas dele e

@@ -1,9 +1,29 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4B com o CÓDIGO COMPLETO.** Branch `feat/bloco-4b-subcontas`, 41 commits, **NÃO mergeada**. Tasks 13 e 14 fechadas + a navegação + a tela consolidada do contador. **Só falta o SMOKE MANUAL.** Migrations `0053`, `0054` e `0055` **aplicadas em produção**. **Blocos 1, 2, 3 e 4A em `main` e no ar.**)
+> **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4B COMPLETO e com o SMOKE CONCLUÍDO.** Branch `feat/bloco-4b-subcontas`, 41 commits, **NÃO mergeada**. Tasks 13 e 14 fechadas, navegação, tela consolidada do contador, rodada de code-review + systematic-debugging, e o **SMOKE MANUAL CONCLUÍDO** (§1–§10, nenhum bug novo). **Pronto para merge.** Migrations `0053`, `0054` e `0055` **aplicadas em produção**. **Blocos 1, 2, 3 e 4A em `main` e no ar.**)
 
-> ## ⛔ AO RETOMAR: o SMOKE MANUAL do 4B é a única coisa que falta
+> ## ✅ SMOKE DO 4B CONCLUÍDO (2026-07-28) — §1 a §10, todas passaram
+> **Nenhum bug novo** — o primeiro bloco do projeto em que isso acontece. Não é
+> sorte: o `/code-review` + `/systematic-debugging` rodados **antes** do smoke
+> acharam 6 problemas (`7b4a233`), incluindo a corrida de lost-update que teria
+> aparecido justamente no §7.
+>
+> **Provado ao vivo contra o Asaas:** as 4 cobranças dão **200 pela subconta e
+> 404 pela conta-mãe**; o trinco recusa emissão **sem tocar no Asaas**; a
+> reconciliação faz o pagamento aparecer **sem webhook nenhum**; o estorno
+> desfaz o semáforo e **3 rodadas** do cron não o ressuscitam; o gate alcança
+> **criar** mas não **ver**, **receber** nem o cliente final.
+>
+> ⚠️ **CENÁRIO DEIXADO VIVO por decisão do usuário:** 4 cobranças, 1 serviço
+> avulso, 2 honorários de teste e a subconta ficam no banco **como prova de que
+> o teste foi feito**. **A limpeza acontece antes da entrega ao dono do
+> produto** — é uma pendência real, não lixo esquecido. A assinatura do
+> escritório JÁ foi restaurada (`cortesia`, `plano_id` nulo).
+>
+> Roteiro completo com os resultados: `docs/smoke/2026-07-28-bloco-4b-roteiro-smoke.md`.
+
+> ## ⛔ HISTÓRICO: o que faltava antes do smoke
 > **Roteiro pronto e renderizado:** `docs/smoke/2026-07-28-bloco-4b-roteiro-smoke.md`
 > (10 seções). **Mostrá-lo na conversa é a primeira coisa a fazer**, sem esperar
 > o usuário pedir.
