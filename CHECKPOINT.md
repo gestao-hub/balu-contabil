@@ -1,18 +1,17 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4 FECHADO: 4A + 4B mergeados (`1199a1e`), empurrados e no ar.** Smoke §1–§10 sem nenhum bug novo. Migrations até `0055` em produção. **Bloco 6A (explicação de imposto com IA) desenhado e planejado**, zero linha de código — a spec ainda não foi lida pelo usuário. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
+> **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4 FECHADO: 4A + 4B mergeados (`1199a1e`), empurrados e no ar.** Smoke §1–§10 sem nenhum bug novo. Migrations até `0055` em produção. **Bloco 6A (explicação de imposto com IA) desenhado e planejado**, zero linha de código — spec aprovada, execução liberada. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
 
-> ## ▶ AO RETOMAR: executar o Bloco 6A (spec e plano prontos, nenhuma linha de código)
-> **O Bloco 4 está FECHADO e no ar** (ver abaixo). O 6A foi desenhado e planejado
-> na mesma sessão, com o usuário ausente no fim — então **a spec ainda não foi
-> lida por ele**.
+> ## ▶ AO RETOMAR: executar o Bloco 6A pela Task 1
+> **O Bloco 4 está FECHADO e no ar** (ver abaixo). O 6A foi desenhado e planejado,
+> e a **spec foi lida e APROVADA pelo usuário em 2026-07-28**. O portão do fluxo
+> está liberado: começar pela **Task 1** do plano.
 >
-> **Primeira coisa ao retomar: pedir que ele leia a spec**
-> (`docs/superpowers/specs/2026-07-28-bloco-6a-explicacao-ia-design.md`), porque o
-> fluxo do projeto prevê aprovação dele antes da execução, e essa etapa ficou
-> pendente. Só depois começar a Task 1 do plano
-> (`docs/superpowers/plans/2026-07-28-bloco-6a-explicacao-ia.md`, 12 tasks).
+> - spec (aprovada): `docs/superpowers/specs/2026-07-28-bloco-6a-explicacao-ia-design.md`
+> - plano: `docs/superpowers/plans/2026-07-28-bloco-6a-explicacao-ia.md` (12 tasks)
+>
+> **Nenhuma linha de código escrita ainda.**
 >
 > **O que é o 6A.** O Bloco 6 do Master PRD junta IA e WhatsApp; virou **6A (IA)**
 > e **6B (WhatsApp)**, pela mesma lógica que dividiu o 4. E dentro do 6A, apenas a
