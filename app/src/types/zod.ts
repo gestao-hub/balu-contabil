@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { isValidCnpj } from '@/lib/validators/cnpj';
 import { normalizarValorBRL } from '@/lib/format/dinheiro';
+import { COMPANY_TYPES } from '@/lib/billing/subconta';
 import { EMPRESA_TIPOS, REGIMES, SEDE_TIPOS } from '@/types/abertura';
 
 export const ClienteSchema = z.object({
@@ -147,6 +148,52 @@ export const HonorarioV2Schema = z.object({
 }).refine((h) => !h.recorrente || h.recorrencia_dia != null,
   { message: 'Informe o dia da recorrência (1–28).' });
 export type HonorarioV2Input = z.infer<typeof HonorarioV2Schema>;
+
+/**
+ * Bloco 4B — a fronteira de entrada de `criarSubcontaAction`.
+ *
+ * O tipo `DadosSubconta` e apagado na compilacao: quem chama a action pode
+ * mandar QUALQUER coisa. Sem este schema, `incomeValue: "25000"` passava como
+ * string para um KYC IRREVERSIVEL, `name` nao-string estourava `TypeError` no
+ * `.trim()` (500 em vez de mensagem em portugues) e `companyType` nao era
+ * conferido contra o enum do Asaas.
+ *
+ * Aqui e so a checagem de FORMA. As regras do cadastro (documento com 11 ou 14
+ * digitos, CEP com 8, PJ pede tipo e PF pede nascimento) continuam em
+ * `validarDadosSubconta`, que a action chama logo depois — elas sao as mesmas
+ * que o formulario aplica antes do round-trip.
+ *
+ * `incomeValue` SEM `z.coerce`, de proposito: coagir "25000" e justamente o que
+ * deixava o valor errado entrar no KYC. Numero tem de chegar numero.
+ */
+const textoObrigatorio = (mensagem: string) =>
+  z.string({ required_error: mensagem, invalid_type_error: mensagem });
+
+export const SubcontaSchema = z.object({
+  name: textoObrigatorio('Informe o nome do escritório.'),
+  cpfCnpj: textoObrigatorio('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.'),
+  email: textoObrigatorio('Informe o e-mail do responsável.'),
+  mobilePhone: textoObrigatorio('Informe o celular com DDD.'),
+  incomeValue: z
+    .number({
+      required_error: 'Informe o faturamento mensal estimado.',
+      invalid_type_error: 'Informe o faturamento mensal estimado como número.',
+    })
+    .finite('Informe o faturamento mensal estimado como número.'),
+  address: textoObrigatorio('Informe endereço, número e bairro.'),
+  addressNumber: textoObrigatorio('Informe endereço, número e bairro.'),
+  province: textoObrigatorio('Informe endereço, número e bairro.'),
+  postalCode: textoObrigatorio('Informe o CEP com 8 dígitos.'),
+  birthDate: z
+    .string({ invalid_type_error: 'Informe a data de nascimento do responsável.' })
+    .nullish()
+    .transform((v) => v ?? null),
+  companyType: z
+    .enum(COMPANY_TYPES, { errorMap: () => ({ message: 'Informe o tipo da empresa.' }) })
+    .nullish()
+    .transform((v) => v ?? null),
+});
+export type SubcontaInput = z.infer<typeof SubcontaSchema>;
 
 export const AberturaCreateSchema = z.object({
   // required

@@ -8,7 +8,11 @@
 // `birthDate` e obrigatorio so para CPF; com `companyType` de PJ o validador
 // do Asaas deixa de pedir.
 
-export type CompanyType = 'MEI' | 'LIMITED' | 'INDIVIDUAL' | 'ASSOCIATION';
+/** Os quatro valores que o Asaas aceita em `companyType`. Lista (e nao union
+ *  solta) porque `SubcontaSchema` (@/types/zod) confere a entrada da action
+ *  contra ela em RUNTIME — union de tipo some na compilacao. */
+export const COMPANY_TYPES = ['MEI', 'LIMITED', 'INDIVIDUAL', 'ASSOCIATION'] as const;
+export type CompanyType = (typeof COMPANY_TYPES)[number];
 
 export type DadosSubconta = {
   name: string;
@@ -25,6 +29,24 @@ export type DadosSubconta = {
 };
 
 export type ResultadoValidacao = { ok: true } | { ok: false; error: string };
+
+/**
+ * Retorno de `criarSubcontaAction`.
+ *
+ * MORA AQUI, e nao no `actions.ts`, porque arquivo `'use server'` so pode
+ * exportar funcao async — exportar o tipo de la quebra no `next build` sem o
+ * `tsc --noEmit` reclamar.
+ *
+ * `terminal` marca os caminhos em que UMA SEGUNDA TENTATIVA criaria outra
+ * subconta no Asaas: a subconta ja nasceu (ou pode ter nascido) e a chave se
+ * perdeu, entao o banco continua sem `asaas_subconta_id` e nada no servidor
+ * barra o proximo clique. Quem barra e a tela — pelo CAMPO, nunca pelo texto
+ * da mensagem: casamento por trecho de frase quebra em silencio na primeira
+ * vez que alguem reescreve a mensagem.
+ */
+export type ResultadoCriarSubconta =
+  | { ok: true }
+  | { ok: false; error: string; terminal?: boolean };
 
 export const soDigitos = (v: string): string => (v ?? '').replace(/\D+/g, '');
 

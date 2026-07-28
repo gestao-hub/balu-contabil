@@ -27,10 +27,12 @@ import { asaasContaMae, asaasSub } from '@/lib/clients/asaas';
 import { guardarCredencial, lerCredencial, mascarar } from '@/lib/billing/credencial-subconta';
 import {
   validarDadosSubconta, montarPayloadSubconta, ehPessoaJuridica,
-  normalizarBirthDate, soDigitos, type DadosSubconta,
+  normalizarBirthDate, soDigitos,
+  type DadosSubconta, type ResultadoCriarSubconta,
 } from '@/lib/billing/subconta';
 import { traduzirErroAsaas, statusDoErroAsaas } from '@/lib/billing/subconta-erros';
 import { mapearStatusSubconta } from '@/lib/billing/status-subconta';
+import { SubcontaSchema } from '@/types/zod';
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -42,9 +44,21 @@ type ActionResult = { ok: true } | { ok: false; error: string };
 const ERRO_POSSIVEL_ORFA =
   'A Balu não conseguiu confirmar se a conta foi criada no Asaas. Fale com o suporte da Balu para conferir — não tente de novo.';
 
-export async function criarSubcontaAction(dados: DadosSubconta): Promise<ActionResult> {
+export async function criarSubcontaAction(entrada: unknown): Promise<ResultadoCriarSubconta> {
   const ctx = await requireEscritorioAprovado();
   if (!ctx.ok) return ctx;
+
+  // FRONTEIRA DE ENTRADA — a unica do bloco que estava sem schema. O tipo
+  // `DadosSubconta` some na compilacao; quem chama a action pode mandar
+  // qualquer coisa, e daqui os dados seguem para um KYC IRREVERSIVEL. O
+  // `SubcontaSchema` confere FORMA (numero e numero, `companyType` esta no enum
+  // do Asaas); as regras do cadastro continuam logo abaixo, em
+  // `validarDadosSubconta`, com as mesmas mensagens que o formulario mostra.
+  const parsed = SubcontaSchema.safeParse(entrada);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
+  // A anotacao e a prova de que o schema cobre `DadosSubconta` inteiro: campo
+  // que sumir do schema (ou mudar de tipo) quebra aqui, no `tsc`.
+  const dados: DadosSubconta = parsed.data;
 
   const v = validarDadosSubconta(dados);
   if (!v.ok) return { ok: false, error: v.error };
@@ -112,7 +126,9 @@ export async function criarSubcontaAction(dados: DadosSubconta): Promise<ActionR
           motivo: traduzirErroAsaas(e),
         },
       });
-      return { ok: false, error: ERRO_POSSIVEL_ORFA };
+      // `terminal`: a proxima tentativa criaria OUTRA subconta no Asaas sem
+      // resolver esta. Ver `ResultadoCriarSubconta` em @/lib/billing/subconta.
+      return { ok: false, error: ERRO_POSSIVEL_ORFA, terminal: true };
     }
     return { ok: false, error: traduzirErroAsaas(e) };
   }
@@ -168,6 +184,7 @@ export async function criarSubcontaAction(dados: DadosSubconta): Promise<ActionR
     return {
       ok: false,
       error: 'A subconta foi criada no Asaas mas não pôde ser vinculada. Fale com o suporte da Balu — não tente de novo.',
+      terminal: true,
     };
   }
 

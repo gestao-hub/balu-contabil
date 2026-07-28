@@ -78,14 +78,6 @@ const PAINEL: Record<Exclude<StatusSubconta, 'ausente'>, {
   },
 };
 
-// Marca do ÚNICO erro em que tentar de novo faz estrago: a subconta foi criada
-// no Asaas e a chave se perdeu antes de ser vinculada (`subconta.orfa` em
-// actions.ts). Nesse caso o banco continua sem `asaas_subconta_id`, então nada
-// no servidor impede um segundo clique de criar uma SEGUNDA conta no Asaas — o
-// bloqueio precisa ser aqui. Casamento por trecho da mensagem daquela action:
-// se ela mudar, isto para de bloquear (falha aberta), nunca bloqueia demais.
-const MARCA_ERRO_TERMINAL = 'não tente de novo';
-
 const rotuloCampo = 'text-xs font-medium text-muted-foreground-2';
 const campo = 'rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm';
 
@@ -144,7 +136,13 @@ export default function SubcontaForm({
       if (!r.ok) {
         setErro(r.error);
         toast('error', r.error);
-        if (r.error.includes(MARCA_ERRO_TERMINAL)) setBloqueado(true);
+        // ÚNICO caso em que tentar de novo faz estrago: a subconta já nasceu
+        // (ou pode ter nascido) no Asaas e a chave se perdeu, então o banco
+        // continua sem `asaas_subconta_id` e nada no servidor impede um segundo
+        // clique de criar OUTRA conta. O bloqueio precisa ser aqui — e vem do
+        // campo `terminal` da action, não de casamento com o texto da mensagem,
+        // que quebrava em silêncio na primeira vez que a frase mudasse.
+        if (r.terminal) setBloqueado(true);
         return;
       }
       toast('success', 'Conta de recebimento criada. O Asaas vai analisar os dados.');
