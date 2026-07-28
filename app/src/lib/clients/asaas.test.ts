@@ -101,11 +101,31 @@ describe('asaasSub — access_token deve ser o token da SUBCONTA', () => {
   it('listarCobrancas', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(mockJsonResponse(200, { data: [] }));
+      .mockResolvedValueOnce(mockJsonResponse(200, { data: [], hasMore: false }));
 
     await asaasSub(SUB_TOKEN).listarCobrancas();
 
     expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+  });
+
+  // A reconciliacao diaria (lib/billing/cron.ts) varre pagina a pagina ate o
+  // `hasMore` descer. Um `offset` que nao chega na URL faria o laco reler a
+  // PRIMEIRA pagina para sempre — e a varredura pareceria completa enquanto
+  // nunca veria a segunda. Nem `tsc` nem o laco pegam isso: so a URL.
+  it('listarCobrancas leva o offset para a URL', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { data: [], hasMore: false }));
+
+    await asaasSub(SUB_TOKEN).listarCobrancas(300);
+
+    const url = String((fetchSpy.mock.calls[0] as unknown[])[0]);
+    expect(url).toContain('offset=300');
+    expect(url).toContain('limit=100');
+    // Sem filtro de status de proposito: o Asaas IGNORA EM SILENCIO um status
+    // que nao conhece (provado no sandbox), entao um filtro com typo varreria
+    // tudo parecendo que filtrou.
+    expect(url).not.toContain('status=');
   });
 
   it('pixDaCobranca', async () => {

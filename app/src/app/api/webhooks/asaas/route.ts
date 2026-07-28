@@ -35,8 +35,7 @@ import { limitar, ipDe } from '@/lib/security/rate-limit';
 import { segredoDoHeader } from '../segredo';
 import { traduzirEvento } from '@/lib/billing/eventos';
 import { persistirCobranca, type PagamentoAsaas } from '@/lib/billing/cobranca';
-import { aplicarEventoNaCobranca, statusDoAsaas } from '@/lib/billing/cobranca-escritorio';
-import { ymdBrt } from '@/lib/fiscal/tempo-brt';
+import { aplicarPagamentoNaCobranca, type CobrancaDoEscritorio } from '@/lib/billing/aplicar-cobranca-escritorio';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,11 +62,15 @@ type PagamentoDoEvento = PagamentoAsaas & { confirmedDate?: string };
  * Nao e `export` de proposito — `route.ts` so pode exportar handler HTTP, e o
  * `next build` recusa o resto (o `tsc --noEmit` nao pega).
  *
- * A DECISAO sobre o efeito do evento NAO mora aqui: e de
- * `aplicarEventoNaCobranca` (lib/billing/cobranca-escritorio), o modulo puro que
- * o webhook, a reconciliacao e a tela compartilham. Reimplementa-la aqui seria
- * o terceiro relogio marcando outra hora — e a regra "evento fora de ordem nao
- * desfaz pagamento" e sutil demais para existir em tres versoes.
+ * A DECISAO sobre o efeito do evento NAO mora aqui, e a ESCRITA tambem nao: as
+ * duas sao de `aplicarPagamentoNaCobranca` (lib/billing/aplicar-cobranca-
+ * escritorio), compartilhado com a varredura diaria da Task 13. Este ramo faz
+ * so o que e do webhook: achar a linha pelo `asaas_charge_id`, distinguir os
+ * motivos de nao achar, e traduzir o resultado em resposta HTTP.
+ *
+ * Antes da extracao, a escrita morava aqui e a varredura teria a sua propria
+ * copia — e a copia que o plano do 4B trazia perdia justamente o desfazer do
+ * honorario no estorno.
  */
 async function cobrancaDoEscritorio(
   sb: SupabaseClient,
@@ -116,70 +119,11 @@ async function cobrancaDoEscritorio(
     return NextResponse.json({ ok: true, ignored: 'cobranca_desconhecida' }, { status: 200 });
   }
 
-  const statusEvento = statusDoAsaas(pay.status ?? '');
-  // `pago_em` so nasce quando o evento afirma pagamento — e nunca nulo nesse
-  // caso. Mesmo fallback do 4A (`persistirCobranca`): melhor a data de hoje em
-  // BRT do que uma cobranca "paga" sem data no painel do escritorio.
-  const pagoEm = statusEvento === 'paga'
-    ? (pay.paymentDate ?? pay.confirmedDate ?? ymdBrt())
-    : null;
-
-  const novo = aplicarEventoNaCobranca(
-    { status: String(cob.status), pago_em: (cob.pago_em as string | null) ?? null },
-    { status: statusEvento, pagoEm },
-  );
-  // `null` = reentrega ou evento fora de ordem. Nada a escrever, e o 200 fecha
-  // a fila do Asaas.
-  if (!novo) return NextResponse.json({ ok: true, escritorio: true, mudou: false }, { status: 200 });
-
-  const { error: erroUpdate } = await sb.from('cobrancas_escritorio')
-    .update({ ...novo, updated_at: new Date().toISOString() })
-    .eq('id', cob.id);
-  if (erroUpdate) {
-    console.error('[webhook asaas 4b] cobranca nao atualizada', efeito.chargeId, erroUpdate.message);
-    return NextResponse.json({ ok: false, reason: 'update_falhou' }, { status: 200 });
-  }
-
-  // ─── O SEMAFORO DO HONORARIO (decisao 7.4) ────────────────────────────────
-  // Onde ha cobranca pela subconta, quem move o semaforo e o Asaas — e fica
-  // MARCADO como tal, para nao se confundir com a marcacao manual do contador.
-  // `honorario_id` (em `cobrancas_escritorio`) e a ligacao CANONICA; o
-  // back-pointer `honorarios.cobranca_escritorio_id` nao decide nada aqui.
-  //
-  // O `.eq('contabilidade_id')` e anti-IDOR: o admin client ignora RLS, e sem
-  // ele uma linha com `honorario_id` apontando para fora do escritorio dono da
-  // cobranca marcaria pago o honorario de outra empresa.
-  if (!cob.honorario_id) return NextResponse.json({ ok: true, escritorio: true, mudou: true }, { status: 200 });
-
-  if (novo.status === 'paga') {
-    const { error } = await sb.from('honorarios').update({
-      status: 'pago', data_pagamento: novo.pago_em,
-      pagamento_origem: 'asaas', updated_at: new Date().toISOString(),
-    }).eq('id', cob.honorario_id).eq('contabilidade_id', cob.contabilidade_id);
-    if (error) console.error('[webhook asaas 4b] honorario nao marcado como pago', cob.honorario_id, error.message);
-  } else if (novo.status === 'estornada') {
-    // O DINHEIRO VOLTOU: o honorario nao esta pago.
-    //
-    // Sem isto o webhook so sabe ACENDER o semaforo. `aplicarEventoNaCobranca`
-    // ja liberou a cobranca (estornada e status MORTO), mas
-    // `cobrarHonorarioAction` recusa emitir com `hon.status === 'pago'` — o
-    // honorario estornado ficaria impossivel de recobrar pela tela, que e
-    // exatamente o que a decisao de 28/07 quis evitar.
-    //
-    // `.eq('pagamento_origem', 'asaas')` e a guarda que faz isto ser seguro: o
-    // webhook so desfaz o que O PROPRIO webhook escreveu. Honorario marcado a
-    // mao pelo contador (origem 'manual', ou nula) fica intocado — um estorno
-    // no Asaas nao pode apagar a baixa manual dele.
-    const { error } = await sb.from('honorarios').update({
-      status: 'pendente', data_pagamento: null,
-      pagamento_origem: null, updated_at: new Date().toISOString(),
-    })
-      .eq('id', cob.honorario_id).eq('contabilidade_id', cob.contabilidade_id)
-      .eq('pagamento_origem', 'asaas');
-    if (error) console.error('[webhook asaas 4b] honorario nao reaberto apos estorno', cob.honorario_id, error.message);
-  }
-
-  return NextResponse.json({ ok: true, escritorio: true, mudou: true }, { status: 200 });
+  const r = await aplicarPagamentoNaCobranca(sb, cob as CobrancaDoEscritorio, pay, 'webhook');
+  if (!r.ok) return NextResponse.json({ ok: false, reason: r.erro }, { status: 200 });
+  // `mudou: false` = reentrega ou evento fora de ordem. Nada foi escrito, e o
+  // 200 fecha a fila do Asaas do mesmo jeito.
+  return NextResponse.json({ ok: true, escritorio: true, mudou: r.mudou }, { status: 200 });
 }
 
 export async function POST(req: Request) {

@@ -120,6 +120,24 @@ export type AsaasAssinatura = {
 export type AsaasCobranca = {
   id: string; subscription?: string; value: number; dueDate: string;
   status: string; invoiceUrl?: string; billingType?: string;
+  /** Quando o dinheiro entrou. Levantado contra o sandbox em 28/07: o item da
+   *  LISTA (`GET /v3/payments`) traz os dois campos, iguais aos do corpo do
+   *  webhook — por isso a reconciliacao consegue reusar a mesma escrita.
+   *  `confirmedDate` importa porque em CONFIRMED (cartao/Pix confirmado, ainda
+   *  nao liquidado) o `paymentDate` vem nulo. */
+  paymentDate?: string | null;
+  confirmedDate?: string | null;
+};
+
+/** Envelope das listas paginadas do Asaas — observado em `GET /v3/payments`:
+ *  `{ object, hasMore, totalCount, limit, offset, data }`. `hasMore` e o que
+ *  permite varrer ate o fim sem depender de conhecer a ordenacao. */
+export type ListaAsaas<T> = {
+  data: T[];
+  hasMore?: boolean;
+  totalCount?: number;
+  limit?: number;
+  offset?: number;
 };
 
 export const asaas = {
@@ -271,8 +289,26 @@ export function asaasSub(token: string) {
     consultarCobranca: (id: string) =>
       call<AsaasCobranca>('GET', `/v3/payments/${id}`, undefined, token),
 
-    listarCobrancas: () =>
-      call<{ data: AsaasCobranca[] }>('GET', '/v3/payments?limit=100', undefined, token),
+    /**
+     * Cobrancas DA PROPRIA SUBCONTA, uma pagina por chamada.
+     *
+     * PAGINA de proposito, em vez de ler so as 100 primeiras: a reconciliacao
+     * diaria (lib/billing/cron.ts) e a rede de seguranca para o webhook que nao
+     * chegou, e uma janela fixa transformaria essa rede num buraco silencioso
+     * assim que o escritorio passasse de 100 cobrancas — justo o escritorio com
+     * mais dinheiro em jogo. O `hasMore` do envelope diz quando parar, e por
+     * isso NAO e preciso conhecer a ordenacao padrao do Asaas.
+     *
+     * ⚠️ NAO ha filtro de status aqui, e nao e esquecimento: o Asaas IGNORA EM
+     * SILENCIO um `status` que nao conhece (provado no sandbox — `status=BANANA`
+     * devolveu a lista inteira, HTTP 200). Um filtro com erro de digitacao nao
+     * falha: ele varre tudo parecendo que filtrou. Como a varredura completa e o
+     * que queremos mesmo, nao ha por que correr o risco.
+     */
+    listarCobrancas: (offset = 0) =>
+      call<ListaAsaas<AsaasCobranca>>(
+        'GET', `/v3/payments?limit=100&offset=${offset}`, undefined, token,
+      ),
 
     pixDaCobranca: (id: string) =>
       call<{ payload?: string; encodedImage?: string }>('GET', `/v3/payments/${id}/pixQrCode`, undefined, token),

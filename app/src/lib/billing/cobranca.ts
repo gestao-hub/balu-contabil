@@ -18,7 +18,12 @@ import { efeitoDoStatusCobranca, type EfeitoEvento } from './eventos';
 
 export type PagamentoAsaas = {
   value?: number; dueDate?: string; status?: string;
-  invoiceUrl?: string; paymentDate?: string;
+  invoiceUrl?: string;
+  /** `string | null` porque e o que o Asaas devolve de verdade: em cobranca nao
+   *  paga o campo vem `null`, nao ausente (observado no sandbox em 28/07). O
+   *  tipo dizia so `string | undefined`, e o `??` abaixo ja tratava os dois —
+   *  era o TIPO que estava mentindo, nao o codigo. */
+  paymentDate?: string | null;
 };
 
 export type ResultadoPersistencia =
