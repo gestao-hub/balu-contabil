@@ -97,7 +97,17 @@ export async function criarSubcontaAction(entrada: unknown): Promise<ResultadoCr
     // escritorio que nao consegue se cadastrar abre chamado de suporte sem
     // nenhuma pista de qual campo o Asaas recusou. `call` ja trunca o corpo em
     // 500 chars.
-    console.error('[4b] criar subconta falhou:', e instanceof Error ? e.message : String(e));
+    //
+    // A UNICA excecao e `SyntaxError`: ele vem de `res.json()` sobre uma
+    // resposta que o fetch considerou BEM-SUCEDIDA, e a mensagem do V8 embute
+    // um pedaco do corpo — que numa criacao de subconta e o unico corpo do
+    // sistema que carrega a `apiKey`. Erro de corpo ilegivel volta traduzido; a
+    // pista de "qual campo o Asaas recusou" nao mora nele de qualquer forma.
+    const ehCorpoIlegivel = e instanceof SyntaxError;
+    console.error(
+      '[4b] criar subconta falhou:',
+      e instanceof Error && !ehCorpoIlegivel ? e.message : traduzirErroAsaas(e),
+    );
 
     // "NAO SEI SE NASCEU" vs "COMPROVADAMENTE NAO NASCEU".
     //
