@@ -118,3 +118,83 @@ CREATE POLICY cobrancas_escritorio_select ON public.cobrancas_escritorio
        WHERE c.id = cobrancas_escritorio.empresa_cliente_id AND c.user_id = auth.uid()
     )
   );
+
+-- ------------------------------------------------ blindagem das colunas da subconta
+-- A 0035 (linhas 20-27) da a QUALQUER membro do escritorio SELECT e UPDATE em
+-- public.contabilidades sem restricao de coluna. As colunas asaas* acima caem
+-- debaixo dessas policies: pela anon key, do navegador, um membro poderia
+-- autoaprovar o proprio KYC ('aprovada'), repontar a carteira para outra, ou
+-- ZERAR asaas_api_key_cifrada — que o Asaas devolve uma unica vez, tornando a
+-- subconta inoperavel sem volta. RLS decide QUAIS LINHAS; so o GRANT decide
+-- QUAIS COLUNAS. Por isso o corte e por privilegio de coluna.
+--
+-- A leitura da chave e revogada porque o COMMENT dela promete "nunca sai para
+-- o cliente" — sem isto a promessa era so um comentario. O service role bypassa
+-- RLS e nao e alcancado por REVOKE em anon/authenticated, entao as Server
+-- Actions seguem lendo e escrevendo normalmente. Mesmo espirito de
+-- serpro_contratante (0017:25), a outra tabela de credencial cifrada da casa.
+-- ATENCAO ao idioma abaixo. `REVOKE UPDATE (coluna)` NAO funciona aqui, e o
+-- silencio engana: o privilegio efetivo e a UNIAO do grant de tabela com o de
+-- coluna, entao revogar a coluna enquanto anon/authenticated tem UPDATE de
+-- TABELA nao tira nada e nao levanta erro. Provado contra o banco em 28/07:
+-- com o REVOKE de coluna aplicado, um membro simulado ainda zerava
+-- asaas_api_key_cifrada. So revogar no nivel da tabela e reconceder as colunas
+-- permitidas corta de verdade.
+--
+-- O grant de TABELA nem foi pedido por este projeto: veio do
+-- ALTER DEFAULT PRIVILEGES do Supabase, que concede tudo em public para
+-- anon/authenticated e assim anulou, calado, o GRANT por coluna da 0030:84.
+-- A lista reconcedida abaixo e exatamente a de la — as unicas colunas que o
+-- app escreve com cliente autenticado (contador/actions.ts:193-197 e
+-- api/contador/logo/route.ts:88-90). Um `GRANT ALL ON ALL TABLES` futuro
+-- reabre isto sem avisar.
+REVOKE UPDATE ON public.contabilidades FROM anon, authenticated;
+GRANT UPDATE (nome, logo_url, whatsapp_suporte, email_remetente_nome)
+  ON public.contabilidades TO authenticated;
+
+-- SELECT: mesmo motivo, mesma forma. Subtrai SO a chave cifrada e reconcede o
+-- resto para os dois papeis, para nao mudar nada alem do pretendido. Dinamico
+-- porque uma lista fixa apodrece a cada coluna nova; ainda assim, coluna nova
+-- em contabilidades so passa a ser legivel depois de reaplicar este bloco.
+DO $$
+DECLARE cols text;
+BEGIN
+  SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position)
+    INTO cols FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'contabilidades'
+     AND column_name <> 'asaas_api_key_cifrada';
+  EXECUTE 'REVOKE SELECT ON public.contabilidades FROM anon, authenticated';
+  EXECUTE format('GRANT SELECT (%s) ON public.contabilidades TO anon, authenticated', cols);
+END $$;
+
+-- Duas contabilidades apontando para a mesma subconta e dinheiro liquidando na
+-- conta do escritorio errado. Parcial porque 'ausente' e o estado normal de
+-- quem ainda nao fez o onboarding. Padrao da 0050:50-53.
+CREATE UNIQUE INDEX IF NOT EXISTS contabilidades_asaas_subconta_uidx
+  ON public.contabilidades(asaas_subconta_id) WHERE asaas_subconta_id IS NOT NULL;
+
+-- ------------------------------------------------ integridade das cobrancas
+-- statusDoAsaas() normaliza todo status do Asaas para um destes quatro e nunca
+-- emite outro. Deixar so o TypeScript garantir isso seria incoerente com os
+-- outros dois conjuntos fechados deste mesmo arquivo.
+ALTER TABLE public.cobrancas_escritorio
+  DROP CONSTRAINT IF EXISTS cobrancas_escritorio_status_check;
+ALTER TABLE public.cobrancas_escritorio
+  ADD CONSTRAINT cobrancas_escritorio_status_check
+  CHECK (status IN ('pendente','paga','vencida','estornada'));
+
+-- Cobranca de zero ou negativa nao e cobranca. servicos_avulsos ja exige.
+ALTER TABLE public.cobrancas_escritorio
+  DROP CONSTRAINT IF EXISTS cobrancas_escritorio_valor_check;
+ALTER TABLE public.cobrancas_escritorio
+  ADD CONSTRAINT cobrancas_escritorio_valor_check
+  CHECK (valor_centavos > 0);
+
+-- Cada ON DELETE SET NULL varre a filha atras das linhas a anular; sem indice
+-- na coluna, apagar um honorario ou um item do catalogo vira seq scan.
+CREATE INDEX IF NOT EXISTS cobrancas_escritorio_honorario_idx
+  ON public.cobrancas_escritorio(honorario_id) WHERE honorario_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS cobrancas_escritorio_servico_idx
+  ON public.cobrancas_escritorio(servico_avulso_id) WHERE servico_avulso_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS honorarios_cobranca_escritorio_idx
+  ON public.honorarios(cobranca_escritorio_id) WHERE cobranca_escritorio_id IS NOT NULL;
