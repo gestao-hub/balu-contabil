@@ -65,6 +65,10 @@ export async function salvarServicoAction(entrada: unknown): Promise<ActionResul
     updated_at: new Date().toISOString(),
   };
 
+  // `alvoId` comeca no id de edicao e so muda no ramo de criacao, onde o banco
+  // devolve o id novo — sem isso a auditoria de criacao mandaria `alvoId: null`
+  // e o evento ficaria sem como ligar de volta a linha criada.
+  let alvoId = dados.id;
   if (dados.id) {
     // `update`, nunca `upsert`: o upsert do PostgREST manda NULL nas colunas
     // ausentes do payload — armadilha ja provada contra o banco neste repo.
@@ -74,18 +78,32 @@ export async function salvarServicoAction(entrada: unknown): Promise<ActionResul
       .eq('id', dados.id)
       .eq('contabilidade_id', ctx.id)
       .select('id');
-    if (error) return { ok: false, error: 'Não foi possível salvar o serviço. Tente de novo.' };
+    if (error) {
+      console.error('[4b] avulsos.salvarServicoAction update falhou:', {
+        id: dados.id,
+        contabilidade_id: ctx.id,
+        erro: error.message,
+      });
+      return { ok: false, error: 'Não foi possível salvar o serviço. Tente de novo.' };
+    }
     if ((data?.length ?? 0) === 0) return { ok: false, error: 'Serviço não encontrado neste escritório.' };
   } else {
-    const { error } = await sb.from('servicos_avulsos').insert(linha);
-    if (error) return { ok: false, error: 'Não foi possível salvar o serviço. Tente de novo.' };
+    const { data, error } = await sb.from('servicos_avulsos').insert(linha).select('id');
+    if (error) {
+      console.error('[4b] avulsos.salvarServicoAction insert falhou:', {
+        contabilidade_id: ctx.id,
+        erro: error.message,
+      });
+      return { ok: false, error: 'Não foi possível salvar o serviço. Tente de novo.' };
+    }
+    alvoId = data?.[0]?.id ?? null;
   }
 
   await registrarAuditoria({
     actorUserId: ctx.userId,
     acao: dados.id ? 'avulso.editado' : 'avulso.criado',
     alvoTipo: 'servico_avulso',
-    alvoId: dados.id,
+    alvoId,
     contabilidadeId: ctx.id,
     meta: {
       nome: linha.nome,
@@ -125,7 +143,14 @@ export async function definirAtivoServicoAction(id: unknown, ativo: unknown): Pr
     .eq('id', idOk.data)
     .eq('contabilidade_id', ctx.id)
     .select('id');
-  if (error) return { ok: false, error: 'Não foi possível mudar a situação do serviço. Tente de novo.' };
+  if (error) {
+    console.error('[4b] avulsos.definirAtivoServicoAction update falhou:', {
+      id: idOk.data,
+      contabilidade_id: ctx.id,
+      erro: error.message,
+    });
+    return { ok: false, error: 'Não foi possível mudar a situação do serviço. Tente de novo.' };
+  }
   if ((data?.length ?? 0) === 0) return { ok: false, error: 'Serviço não encontrado neste escritório.' };
 
   await registrarAuditoria({
@@ -141,15 +166,26 @@ export async function definirAtivoServicoAction(id: unknown, ativo: unknown): Pr
 }
 
 /**
- * DELETE de verdade — só para serviço que NUNCA foi cobrado.
+ * DELETE de verdade — só para serviço NUNCA cobrado e já DESATIVADO.
  *
  * Serve ao caso real de quem errou o cadastro e não quer o item morto na lista
  * para sempre. A checagem em `cobrancas_escritorio` é a linha que separa isso
  * de destruir histórico: havendo QUALQUER cobrança apontando para o serviço, o
  * DELETE viraria `servico_avulso_id = NULL` naquela cobrança (ON DELETE SET
- * NULL da 0053) e ninguém saberia mais de onde ela veio. A busca é pelo id sem
- * filtrar por escritório de propósito: a pergunta é "alguém já usou isto?", e
- * qualquer resposta positiva basta para recusar.
+ * NULL da 0053). Isso NÃO apaga o registro do que foi cobrado: `descricao` e
+ * `valor_centavos` em `cobrancas_escritorio` são `NOT NULL` (migration 0053), e
+ * o histórico continua dizendo o que foi cobrado e por quanto. O que se perde é
+ * só a chave estrangeira de volta ao catálogo, não o registro. A busca é pelo
+ * id sem filtrar por escritório de propósito: a pergunta é "alguém já usou
+ * isto?", e qualquer resposta positiva basta para recusar.
+ *
+ * SEGUNDA TRAVA — `.eq('ativo', false)` no DELETE abaixo, e a única que vale de
+ * verdade: a tela só mostra o botão "Apagar" depois que o item está
+ * desativado, mas isso é só interface. Server Action é endpoint público — sem
+ * este filtro, um POST direto apagaria um serviço ainda ativo. Exigir
+ * `ativo = false` também esvazia a corrida com a emissão de cobrança (task
+ * seguinte, que só lista `ativo = true`): para apagar, o serviço já precisa
+ * estar fora da lista de emissão.
  */
 export async function apagarServicoAction(id: unknown): Promise<ActionResult> {
   const ctx = await requireEscritorioAprovado();
@@ -165,7 +201,13 @@ export async function apagarServicoAction(id: unknown): Promise<ActionResult> {
     .eq('servico_avulso_id', idOk.data);
   // Erro na CHECAGEM não pode virar permissão para apagar: sem saber se houve
   // cobrança, a resposta segura é não apagar.
-  if (erroUso) return { ok: false, error: 'Não foi possível conferir o histórico do serviço. Tente de novo.' };
+  if (erroUso) {
+    console.error('[4b] avulsos.apagarServicoAction checagem de uso falhou:', {
+      id: idOk.data,
+      erro: erroUso.message,
+    });
+    return { ok: false, error: 'Não foi possível conferir o histórico do serviço. Tente de novo.' };
+  }
   if ((count ?? 0) > 0) {
     return {
       ok: false,
@@ -178,9 +220,22 @@ export async function apagarServicoAction(id: unknown): Promise<ActionResult> {
     .delete()
     .eq('id', idOk.data)
     .eq('contabilidade_id', ctx.id)
+    .eq('ativo', false)
     .select('id, nome');
-  if (error) return { ok: false, error: 'Não foi possível apagar o serviço. Tente de novo.' };
-  if ((data?.length ?? 0) === 0) return { ok: false, error: 'Serviço não encontrado neste escritório.' };
+  if (error) {
+    console.error('[4b] avulsos.apagarServicoAction delete falhou:', {
+      id: idOk.data,
+      contabilidade_id: ctx.id,
+      erro: error.message,
+    });
+    return { ok: false, error: 'Não foi possível apagar o serviço. Tente de novo.' };
+  }
+  if ((data?.length ?? 0) === 0) {
+    return {
+      ok: false,
+      error: 'Serviço não encontrado neste escritório, ou ainda está ativo — desative-o antes de apagar.',
+    };
+  }
 
   await registrarAuditoria({
     actorUserId: ctx.userId,
@@ -202,9 +257,15 @@ export async function apagarServicoAction(id: unknown): Promise<ActionResult> {
  * Só roda em catálogo vazio, senão cada clique duplicaria a lista inteira. A
  * contagem e o INSERT não são atômicos (não há índice único de nome por
  * escritório para apoiar um upsert), então dois cliques SIMULTÂNEOS ainda
- * poderiam semear duas vezes; quem fecha essa janela hoje é o botão desabilitado
- * durante o envio, na tela. Duplicata é ruído editável — não é dinheiro emitido
- * — e por isso não vale uma migration só para isso agora.
+ * poderiam semear duas vezes. O `disabled={pending}` da tela fecha o duplo
+ * clique NAQUELA instância do componente — não fecha duas abas abertas, nem um
+ * clique antes da hidratação, nem um POST direto na action. O risco que sobra é
+ * baixo e reversível: no máximo as 13 linhas do catálogo sugerido duplicadas, e
+ * cada uma delas editável e apagável (nunca foram cobradas, então
+ * `apagarServicoAction` aceita), zero dinheiro emitido. Um
+ * `UNIQUE (contabilidade_id, lower(nome))` fecharia essa janela de vez — fica
+ * para quando houver outra migration neste bloco; não vale uma só para isso
+ * agora.
  */
 export async function semearCatalogoAction(): Promise<ActionResult> {
   const ctx = await requireEscritorioAprovado();
@@ -215,7 +276,13 @@ export async function semearCatalogoAction(): Promise<ActionResult> {
     .from('servicos_avulsos')
     .select('id', { count: 'exact', head: true })
     .eq('contabilidade_id', ctx.id);
-  if (erroContagem) return { ok: false, error: 'Não foi possível ler o catálogo. Tente de novo.' };
+  if (erroContagem) {
+    console.error('[4b] avulsos.semearCatalogoAction contagem falhou:', {
+      contabilidade_id: ctx.id,
+      erro: erroContagem.message,
+    });
+    return { ok: false, error: 'Não foi possível ler o catálogo. Tente de novo.' };
+  }
   if ((count ?? 0) > 0) return { ok: false, error: 'O catálogo já tem serviços.' };
 
   const { error } = await sb.from('servicos_avulsos').insert(
@@ -229,7 +296,13 @@ export async function semearCatalogoAction(): Promise<ActionResult> {
       ativo: true,
     })),
   );
-  if (error) return { ok: false, error: 'Não foi possível criar a lista sugerida. Tente de novo.' };
+  if (error) {
+    console.error('[4b] avulsos.semearCatalogoAction insert falhou:', {
+      contabilidade_id: ctx.id,
+      erro: error.message,
+    });
+    return { ok: false, error: 'Não foi possível criar a lista sugerida. Tente de novo.' };
+  }
 
   await registrarAuditoria({
     actorUserId: ctx.userId,
