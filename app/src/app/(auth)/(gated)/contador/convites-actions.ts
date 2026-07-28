@@ -4,7 +4,7 @@ import { randomBytes } from 'crypto';
 import { headers } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getContabilidadeCtx, type ContabilidadeCtx } from '@/lib/contador/guards';
+import { requireEscritorioAprovado } from '@/lib/contador/guards';
 import { sendEmail } from '@/lib/clients/email';
 import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 import { limitar, ipDe } from '@/lib/security/rate-limit';
@@ -31,46 +31,34 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-// Anotação de retorno explícita: sem ela, o TS infere os dois ramos do union
-// preenchendo as chaves ausentes de um com `?: undefined` do outro (quirk de
-// inferência de retorno multi-`return`), o que faz `'error' in g` não eliminar
-// o ramo `{ ctx }` e `g.error` tipar como `string | undefined` nas actions abaixo.
-async function requireEscritorioAprovado(): Promise<{ error: string } | { ctx: ContabilidadeCtx }> {
-  const ctx = await getContabilidadeCtx();
-  if ('error' in ctx) return { error: ctx.error };
-  if (!ctx.contabilidade) return { error: 'Você não faz parte de um escritório.' };
-  if (ctx.contabilidade.status !== 'aprovada') return { error: 'Escritório ainda não aprovado.' };
-  return { ctx };
-}
-
 export async function convidarClienteAction(
   email: string, companyId: string,
 ): Promise<ActionResult<{ url: string }>> {
   const g = await requireEscritorioAprovado();
-  if ('error' in g) return { ok: false, error: g.error };
-  const assinatura = await assertAssinaturaEscritorio(g.ctx.contabilidade!.id);
+  if (!g.ok) return g;
+  const assinatura = await assertAssinaturaEscritorio(g.contabilidade.id);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
   const admin = createAdminClient();
   // empresa precisa ser do escritório e não ter dono ainda
   const { data: comp } = await admin.from('companies')
     .select('id, nome, user_id, contabilidade_id').eq('id', companyId).maybeSingle();
-  if (!comp || comp.contabilidade_id !== g.ctx.contabilidade!.id)
+  if (!comp || comp.contabilidade_id !== g.contabilidade.id)
     return { ok: false, error: 'Empresa não encontrada na sua carteira.' };
   if (comp.user_id) return { ok: false, error: 'Esta empresa já tem um responsável no Balu.' };
   const token = novoToken();
   const expira = new Date(Date.now() + 7 * 86_400_000).toISOString();
   const { error } = await admin.from('convites').insert({
-    contabilidade_id: g.ctx.contabilidade!.id, tipo: 'cliente',
+    contabilidade_id: g.contabilidade.id, tipo: 'cliente',
     email, token, company_id: companyId, expira_em: expira,
   });
   if (error) return { ok: false, error: error.message };
   const url = `${siteUrl()}/convite/${token}`;
-  const nomeEscritorioHtml = escapeHtml(g.ctx.contabilidade!.nome);
+  const nomeEscritorioHtml = escapeHtml(g.contabilidade.nome);
   const nomeEmpresaHtml = escapeHtml(comp.nome ?? '');
   await sendEmail({
     to: email,
-    fromName: g.ctx.contabilidade!.email_remetente_nome ?? g.ctx.contabilidade!.nome,
-    subject: `${g.ctx.contabilidade!.nome} convidou você para o Balu`,
+    fromName: g.contabilidade.email_remetente_nome ?? g.contabilidade.nome,
+    subject: `${g.contabilidade.nome} convidou você para o Balu`,
     html: `<p>O escritório <b>${nomeEscritorioHtml}</b> cadastrou a empresa <b>${nomeEmpresaHtml}</b> no Balu.</p>
            <p>Pelo link abaixo você cria seu acesso e assume a empresa. O escritório poderá <b>visualizar</b> suas notas,
            impostos e guias — ele <b>não pode</b> emitir nem alterar nada.</p>
@@ -78,8 +66,8 @@ export async function convidarClienteAction(
   });
 
   await registrarAuditoria({
-    actorUserId: g.ctx.userId, acao: 'convite.criar',
-    meta: { tipo: 'cliente' }, contabilidadeId: g.ctx.contabilidade!.id,
+    actorUserId: g.userId, acao: 'convite.criar',
+    meta: { tipo: 'cliente' }, contabilidadeId: g.contabilidade.id,
   });
 
   return { ok: true, data: { url } };
@@ -87,15 +75,15 @@ export async function convidarClienteAction(
 
 export async function gerarLinkEscritorioAction(): Promise<ActionResult<{ url: string }>> {
   const g = await requireEscritorioAprovado();
-  if ('error' in g) return { ok: false, error: g.error };
+  if (!g.ok) return g;
   const admin = createAdminClient();
   const { data: existente } = await admin.from('convites')
-    .select('token').eq('contabilidade_id', g.ctx.contabilidade!.id)
+    .select('token').eq('contabilidade_id', g.contabilidade.id)
     .eq('tipo', 'cliente').is('email', null).is('revogado_em', null).maybeSingle();
   if (existente) return { ok: true, data: { url: `${siteUrl()}/r/${existente.token}` } };
   const token = novoToken();
   const { error } = await admin.from('convites').insert({
-    contabilidade_id: g.ctx.contabilidade!.id, tipo: 'cliente', token, email: null, expira_em: null,
+    contabilidade_id: g.contabilidade.id, tipo: 'cliente', token, email: null, expira_em: null,
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: { url: `${siteUrl()}/r/${token}` } };
@@ -103,35 +91,35 @@ export async function gerarLinkEscritorioAction(): Promise<ActionResult<{ url: s
 
 export async function revogarLinkEscritorioAction(): Promise<ActionResult> {
   const g = await requireEscritorioAprovado();
-  if ('error' in g) return { ok: false, error: g.error };
+  if (!g.ok) return g;
   const admin = createAdminClient();
   const { error } = await admin.from('convites')
     .update({ revogado_em: new Date().toISOString() })
-    .eq('contabilidade_id', g.ctx.contabilidade!.id)
+    .eq('contabilidade_id', g.contabilidade.id)
     .eq('tipo', 'cliente').is('email', null).is('revogado_em', null);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 export async function convidarMembroAction(email: string): Promise<ActionResult<{ url: string }>> {
   const g = await requireEscritorioAprovado();
-  if ('error' in g) return { ok: false, error: g.error };
-  const assinatura = await assertAssinaturaEscritorio(g.ctx.contabilidade!.id);
+  if (!g.ok) return g;
+  const assinatura = await assertAssinaturaEscritorio(g.contabilidade.id);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
   const admin = createAdminClient();
   const token = novoToken();
   const { error } = await admin.from('convites').insert({
-    contabilidade_id: g.ctx.contabilidade!.id, tipo: 'membro', email, token,
+    contabilidade_id: g.contabilidade.id, tipo: 'membro', email, token,
     expira_em: new Date(Date.now() + 7 * 86_400_000).toISOString(),
   });
   if (error) return { ok: false, error: error.message };
   const url = `${siteUrl()}/convite/${token}`;
-  const nomeEscritorioHtml = escapeHtml(g.ctx.contabilidade!.nome);
-  await sendEmail({ to: email, subject: `Convite para a equipe de ${g.ctx.contabilidade!.nome} no Balu`,
+  const nomeEscritorioHtml = escapeHtml(g.contabilidade.nome);
+  await sendEmail({ to: email, subject: `Convite para a equipe de ${g.contabilidade.nome} no Balu`,
     html: `<p>Você foi convidado(a) para a equipe do escritório <b>${nomeEscritorioHtml}</b>.</p><p><a href="${url}">${url}</a> (7 dias)</p>` });
 
   await registrarAuditoria({
-    actorUserId: g.ctx.userId, acao: 'convite.criar',
-    meta: { tipo: 'membro' }, contabilidadeId: g.ctx.contabilidade!.id,
+    actorUserId: g.userId, acao: 'convite.criar',
+    meta: { tipo: 'membro' }, contabilidadeId: g.contabilidade.id,
   });
 
   return { ok: true, data: { url } };

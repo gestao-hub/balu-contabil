@@ -21,7 +21,7 @@
 // `normalizarBirthDate` vivem em `@/lib/billing/`.
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getContabilidadeCtx } from '@/lib/contador/guards';
+import { requireEscritorioAprovado } from '@/lib/contador/guards';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { asaasContaMae, asaasSub } from '@/lib/clients/asaas';
 import { guardarCredencial, lerCredencial, mascarar } from '@/lib/billing/credencial-subconta';
@@ -41,19 +41,6 @@ type ActionResult = { ok: true } | { ok: false; error: string };
 // conta-mae com o registro `subconta.possivel_orfa` em maos.
 const ERRO_POSSIVEL_ORFA =
   'A Balu não conseguiu confirmar se a conta foi criada no Asaas. Fale com o suporte da Balu para conferir — não tente de novo.';
-
-/** Sessão válida + escritório aprovado, ou o erro pronto pra devolver.
- *  Mesmo padrão de honorarios/actions.ts — local ao arquivo porque nada de
- *  síncrono pode ser exportado daqui. */
-async function requireEscritorioAprovado(): Promise<
-  { ok: true; id: string; userId: string } | { ok: false; error: string }
-> {
-  const g = await getContabilidadeCtx();
-  if ('error' in g) return { ok: false, error: g.error };
-  if (!g.contabilidade) return { ok: false, error: 'Você não faz parte de um escritório.' };
-  if (g.contabilidade.status !== 'aprovada') return { ok: false, error: 'Escritório não aprovado.' };
-  return { ok: true, id: g.contabilidade.id, userId: g.userId };
-}
 
 export async function criarSubcontaAction(dados: DadosSubconta): Promise<ActionResult> {
   const ctx = await requireEscritorioAprovado();
@@ -89,11 +76,14 @@ export async function criarSubcontaAction(dados: DadosSubconta): Promise<ActionR
   try {
     criada = await asaasContaMae.criarSubconta(montarPayloadSubconta(aEnviar));
   } catch (e) {
-    // A mensagem do Asaas pode trazer dado do titular; o `call` ja trunca em
-    // 500 chars, mas truncar nao e sanitizar. `traduzirErroAsaas` decide por
-    // casamento e devolve constante propria — o texto cru NUNCA vai para a
-    // tela, e nem para o `console.error` daqui.
-    console.error('[4b] criar subconta falhou:', traduzirErroAsaas(e));
+    // BRUTO NO LOG, TRADUZIDO NA TELA. A regra e nunca mandar `err.message`
+    // cru PARA A TELA — o corpo de erro do Asaas pode trazer nome, documento e
+    // e-mail do titular, e quem cuida disso e o `traduzirErroAsaas` do retorno.
+    // O log do servidor e o trilho forense oposto: sem o texto cru, um
+    // escritorio que nao consegue se cadastrar abre chamado de suporte sem
+    // nenhuma pista de qual campo o Asaas recusou. `call` ja trunca o corpo em
+    // 500 chars.
+    console.error('[4b] criar subconta falhou:', e instanceof Error ? e.message : String(e));
 
     // "NAO SEI SE NASCEU" vs "COMPROVADAMENTE NAO NASCEU".
     //
