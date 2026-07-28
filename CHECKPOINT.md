@@ -49,7 +49,14 @@
 
 **Verificação no fecho da sessão** (commit `e1cc9f5`, ambiente limpo, nenhum node vivo): `tsc --noEmit` **0 erros** · vitest **1082 passando / 0 falhando** (27 pulados — os smoke/e2e que exigem credencial) · `next build` **compilado com sucesso, 0 erros**.
 
-> ⚠️ **A sessão foi encerrada com duas frentes em voo**, despachadas e **não commitadas**: a **Task 12** (tela do cliente final, `app/(auth)/(gated)/cobrancas/`) e o **cadastro do webhook na subconta**. Se aparecer arquivo novo não rastreado nessas áreas, é resíduo delas — conferir e decidir se aproveita ou refaz. O último commit da sessão é `74f32fd`.
+> ⚠️ **A sessão foi encerrada com duas frentes em voo, e elas deixaram trabalho NÃO COMMITADO na árvore.** O último commit de código é `74f32fd` (os dois seguintes são só CHECKPOINT).
+>
+> **O que ficou por commitar, e de quem é:**
+> - `app/src/app/(auth)/(gated)/cobrancas/` (novo, não rastreado) — **Task 12**, a tela em que o cliente final vê as cobranças do escritório.
+> - `app/src/components/MenuLateral.tsx` (modificado) — provavelmente o link para a tela acima. **Cuidado:** a decisão do usuário é uma seção **"Cobranças" no menu do contador** agrupando conta de recebimento + catálogo + cobranças, a ser montada de uma vez só depois da Task 12. Conferir se o que está aí é isso ou só um link solto.
+> - `app/src/lib/clients/asaas.ts` (modificado) — **cadastro do webhook na subconta** (método novo em `asaasSub`). Se um método novo entrou ali, **tem de entrar também o caso em `app/src/lib/clients/asaas.test.ts`** — esse arquivo existe porque apagar `, token` faz a chamada sair com a chave da conta-mãe, compilando limpo.
+>
+> **Ao retomar, primeiro:** `git status`, ler o que está aí, rodar `npx tsc --noEmit` e a suíte, e decidir **aproveitar ou descartar** antes de começar a Task 13. Não presumir que está pronto — nenhuma das duas passou por revisão.
 
 ### O achado que vale mais que o código desta sessão
 
