@@ -288,12 +288,17 @@ export default function SubcontaForm({
           />
         </label>
 
+        {/* O .slice(0, 11) do celular e irmao dos do documento e do CEP: sem ele
+            o 12o digito entra no estado SEM aparecer na tela (o display
+            mascarado ja esgotou o maxLength) e segue para um KYC irreversivel,
+            voltando como recusa em ingles — o modo de falha que subconta.ts
+            existe para evitar. */}
         <label className="flex flex-col gap-1">
           <span className={rotuloCampo}>Celular com DDD<span className="text-destructive"> *</span></span>
           <input
             type="tel"
             value={formatTel(dados.mobilePhone)}
-            onChange={(e) => set('mobilePhone', soDigitos(e.target.value))}
+            onChange={(e) => set('mobilePhone', soDigitos(e.target.value).slice(0, 11))}
             placeholder="(00)0 0000-0000"
             maxLength={16}
             required

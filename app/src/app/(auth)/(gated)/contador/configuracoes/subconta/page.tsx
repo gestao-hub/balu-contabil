@@ -2,14 +2,17 @@
 // Bloco 4B — onboarding da subconta Asaas do escritório. É a porta de entrada
 // do bloco: sem subconta aprovada o escritório não cobra ninguém.
 //
-// LEITURA PELO SERVICE ROLE, DE PROPÓSITO: a 0053 revogou o SELECT de tabela de
-// `public.contabilidades` para anon/authenticated e reconcedeu coluna a coluna,
-// de fora `asaas_api_key_cifrada`. Pela sessão do usuário este select falharia —
-// isso é a migration funcionando, não bug. E o `select` abaixo NÃO traz a chave
-// cifrada: nada dela pode chegar ao componente cliente.
+// LEITURA PELA SESSÃO DO USUÁRIO, e não pelo service role: a 0053 revogou o
+// SELECT de tabela de `public.contabilidades` mas RECONCEDEU todas as colunas
+// menos `asaas_api_key_cifrada` — então o select abaixo passa pela sessão, e a
+// policy `contabilidades_select_membro` garante que só o próprio escritório se
+// vê. Usar service role aqui seria dispensar a RLS sem precisar, e deixar a
+// segurança do isolamento por conta de lembrar do `.eq('id', ...)`.
+// A chave cifrada não está no select nem poderia estar: é a única coluna cuja
+// leitura continua revogada.
 import { redirect } from 'next/navigation';
 import { Landmark } from 'lucide-react';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { createServerClient } from '@/lib/supabase/server';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { soDigitos } from '@/lib/billing/subconta';
 import type { StatusSubconta } from '@/lib/billing/status-subconta';
@@ -25,8 +28,8 @@ export default async function ContadorSubcontaPage() {
   if (ctx.contabilidade.status === 'pendente') redirect('/contador/aguardando');
   if (ctx.contabilidade.status === 'suspensa') redirect('/contador/aguardando');
 
-  const admin = createAdminClient();
-  const { data: cont } = await admin
+  const sb = await createServerClient();
+  const { data: cont } = await sb
     .from('contabilidades')
     .select('nome, cnpj, asaas_subconta_id, asaas_wallet_id, asaas_subconta_status, asaas_subconta_criada_em')
     .eq('id', ctx.contabilidade.id)
