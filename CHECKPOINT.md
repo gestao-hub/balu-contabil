@@ -41,6 +41,11 @@
 
 > Seção em construção — atualizar ao fim da sessão.
 
+**Decisões tomadas durante a execução (além das duas da retomada):**
+- **Status do KYC vem do Asaas**, via `GET /v3/myAccount/status` com o token da própria subconta — nenhuma outra fonte é verdade sobre KYC.
+- **Navegação: seção "Cobranças" no menu lateral do contador**, agrupando conta de recebimento, catálogo de avulsos e cobranças emitidas. É módulo novo do produto, não ajuste de configuração, e o escritório volta nele toda semana. Fazer **depois da Task 12**, com todas as telas prontas.
+- **Modelo de papéis fica como dívida registrada** (ver §papéis abaixo), não interrompe o 4B.
+
 **Duas decisões tomadas na retomada:** execução **subagent-driven** (um subagente por task + revisão de spec e de qualidade entre elas), e o **gate de inadimplência do 4A bloqueia apenas *criar* cobrança nova pela subconta** — nunca alcança ver, sincronizar ou receber as já emitidas, porque é com esse dinheiro que o escritório paga a Balu. Mesma forma das duas fronteiras do 4A.
 
 ### Duas landmines novas, ambas em `contabilidades`
@@ -63,9 +68,23 @@ No caminho, `lerCredencial` foi endurecida: **lança** quando falta o prefixo `e
 
 O literal `'enc:v1:'` foi eliminado da duplicação: `envelope.ts` passou a exportar `PREFIXO`. Sem isso, uma futura `enc:v2:` faria `lerCredencial` acusar "gravação corrompida" em credencial perfeitamente válida — a falha mais enganosa possível, porque aponta o dado bom.
 
-### Buraco no plano do 4B, a decidir na Task 9
+### O plano do 4B tem código escrito contra APIs que não existem
 
-A tabela de arquivos a modificar do plano (linha 65) promete **"Gerar cobrança" no honorário**, e o webhook (linha 1910) e a sincronização (2110) já tratam `cob.honorario_id` — mas **nenhuma task preenche `honorario_id`**. O único caminho de emissão escrito é o de **serviço avulso**. Do jeito que está, o 4B entregaria o avulso e deixaria de fora a **mensalidade**, que é o principal que um escritório cobra. Decidir ao chegar na Task 9.
+Padrão que apareceu em três tasks seguidas e que nenhuma verificação automática pega: o plano traz código pronto, mas parte dele foi escrita contra funções inventadas. `requireContadorAction`, `requireContadorPage` e `exigirAcessoContador` (linha 1637) **não existem no repo** — o real é `getContabilidadeCtx()` em `@/lib/contador/guard**s**` (plural), com forma de retorno diferente. `tsc` não pega (o arquivo nem chega a existir), teste não pega. Só pega quem abre o arquivo real. **Toda task do 4B daqui em diante manda o subagente conferir as suposições do plano antes de usá-las e reportar as divergências, em vez de contorná-las em silêncio.**
+
+O mesmo padrão produziu o defeito de fluxo do §KYC acima: `'aprovada'` gateava tudo e ninguém escrevia.
+
+### Sem modelo de papéis, qualquer membro decide onde o dinheiro do escritório liquida
+
+`contabilidade_membros` não tem coluna de papel (`0030_contabilidades.sql:24-32`, com o TODO "dropar na V2/papéis"). Então **qualquer membro convidado** pode criar a subconta — isto é, escolher em qual CPF/CNPJ vai liquidar o dinheiro que os clientes do escritório pagam — e a guarda de "já tem subconta" torna a escolha **irreversível pela UI**. É coerente com o resto do produto hoje; o 4B é apenas a primeira ação em que a ausência de papéis custa dinheiro. **Decisão do usuário: registrar e seguir** — dívida conhecida, bloco próprio depois, feito direito e alcançando todas as ações sensíveis, não só esta. Hoje só existe um escritório e ele tem um dono; o risco vira real quando escritórios começarem a convidar equipe.
+
+### Buraco no plano do 4B: a cobrança de honorário nunca era emitida
+
+A tabela de arquivos a modificar do plano (linha 65) promete **"Gerar cobrança" no honorário**, e o webhook (linha 1910) e a sincronização (2110) já tratam `cob.honorario_id` — mas **nenhuma task preenchia `honorario_id`**. O único caminho de emissão escrito era o de **serviço avulso**, o que deixaria de fora a **mensalidade**, o principal que um escritório cobra. O módulo de honorários já tinha sido construído esperando isso: a `0032` criou `asaas_charge_id` e `asaas_customer_id` com o comentário literal `-- gancho Bloco B`.
+
+**Decisão do usuário: emitir por clique, dentro do 4B** — os dois caminhos (avulso e honorário), sempre por ação do contador. **Nada de cron nem emissão automática**: dinheiro emitido sem humano no laço é outro perfil de risco, e um cron errado emite para a carteira inteira.
+
+**Cuidado herdado:** passaram a existir **três** ligações honorário↔cobrança (`honorarios.asaas_charge_id`, `honorarios.cobranca_escritorio_id`, `cobrancas_escritorio.honorario_id`). A Task 9 tinha de eleger **uma canônica** e deixar as outras consistentes — três meio preenchidas é pior que nenhuma, porque cada leitor confia na que achar primeiro.
 
 ---
 
