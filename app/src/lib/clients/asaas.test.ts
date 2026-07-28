@@ -1,0 +1,152 @@
+// Bloco 4B — testes do cliente Asaas: garantem que `asaasSub` sempre manda o
+// header `access_token` do TOKEN DA SUBCONTA, e que a conta-mãe (`asaas` e
+// `asaasContaMae`) sempre manda a chave da Balu lida do ambiente.
+//
+// Existem porque `, token` é fácil demais de apagar num método de `asaasSub`
+// sem quebrar tsc nem os outros testes — e o efeito é a cobrança do
+// escritório nascer na conta da Balu, em silêncio. Ver asaas.ts:47-55.
+//
+// Espelha o padrão de focus-nfe.test.ts: fetch mockado, headers inspecionados.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const PREV_SANDBOX = process.env.TOKEN_ASAAS_SANDBOX;
+const PREV_ENV = process.env.ASAAS_ENV;
+
+let asaas: typeof import('./asaas')['asaas'];
+let asaasSub: typeof import('./asaas')['asaasSub'];
+let asaasContaMae: typeof import('./asaas')['asaasContaMae'];
+
+const CONTA_MAE_KEY = 'conta-mae-key-999';
+const SUB_TOKEN = 'subconta-token-abc';
+
+beforeEach(async () => {
+  process.env.TOKEN_ASAAS_SANDBOX = CONTA_MAE_KEY;
+  delete process.env.ASAAS_ENV; // ausente => sandbox (ver asaas.ts:14)
+  vi.resetModules();
+  // Reimporta após setar env pra garantir que apiKey() leia o valor de teste.
+  ({ asaas, asaasSub, asaasContaMae } = await import('./asaas'));
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  if (PREV_SANDBOX === undefined) delete process.env.TOKEN_ASAAS_SANDBOX;
+  else process.env.TOKEN_ASAAS_SANDBOX = PREV_SANDBOX;
+  if (PREV_ENV === undefined) delete process.env.ASAAS_ENV;
+  else process.env.ASAAS_ENV = PREV_ENV;
+});
+
+function mockJsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+/** Extrai o header access_token da primeira chamada do fetch mockado. */
+function accessTokenUsado(fetchSpy: { mock: { calls: unknown[][] } }): string {
+  const [, init] = fetchSpy.mock.calls[0]! as [unknown, RequestInit];
+  const headers = init?.headers as Record<string, string>;
+  return headers.access_token;
+}
+
+describe('asaasSub — access_token deve ser o token da SUBCONTA', () => {
+  it('criarCliente', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { id: 'cus_1', name: 'Escritorio X', cpfCnpj: '12345678900' }));
+
+    await asaasSub(SUB_TOKEN).criarCliente({ name: 'Escritorio X', cpfCnpj: '12345678900' });
+
+    expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+  });
+
+  it('criarCobranca', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { id: 'pay_1', value: 100, dueDate: '2026-08-10', status: 'PENDING' }));
+
+    await asaasSub(SUB_TOKEN).criarCobranca({
+      customer: 'cus_1', billingType: 'PIX', value: 100, dueDate: '2026-08-10',
+    });
+
+    expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+  });
+
+  it('consultarCobranca', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { id: 'pay_1', value: 100, dueDate: '2026-08-10', status: 'PENDING' }));
+
+    await asaasSub(SUB_TOKEN).consultarCobranca('pay_1');
+
+    expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+  });
+
+  it('listarCobrancas', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { data: [] }));
+
+    await asaasSub(SUB_TOKEN).listarCobrancas();
+
+    expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+  });
+
+  it('pixDaCobranca', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { payload: 'copia-e-cola', encodedImage: 'base64img' }));
+
+    await asaasSub(SUB_TOKEN).pixDaCobranca('pay_1');
+
+    expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+  });
+});
+
+describe('asaas (conta-mãe) — access_token deve ser a chave da Balu, nunca da subconta', () => {
+  it('criarCliente usa a chave da conta-mãe lida do ambiente', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { id: 'cus_2', name: 'Cliente Balu', cpfCnpj: '98765432100' }));
+
+    await asaas.criarCliente({ name: 'Cliente Balu', cpfCnpj: '98765432100' });
+
+    const token = accessTokenUsado(fetchSpy);
+    expect(token).toBe(CONTA_MAE_KEY);
+    expect(token).not.toBe(SUB_TOKEN);
+  });
+});
+
+describe('asaasContaMae — criação e listagem de subconta vão pela conta-mãe', () => {
+  it('criarSubconta usa a chave da conta-mãe', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        id: 'acc_1', walletId: 'wallet_1', apiKey: 'chave-gerada-pelo-asaas',
+        name: 'Escritorio X', email: 'x@escritorio.com', cpfCnpj: '11222333000144',
+      }),
+    );
+
+    await asaasContaMae.criarSubconta({ name: 'Escritorio X', cpfCnpj: '11222333000144' });
+
+    expect(accessTokenUsado(fetchSpy)).toBe(CONTA_MAE_KEY);
+  });
+
+  it('listarSubcontas usa a chave da conta-mãe', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { totalCount: 0, data: [] }));
+
+    await asaasContaMae.listarSubcontas();
+
+    expect(accessTokenUsado(fetchSpy)).toBe(CONTA_MAE_KEY);
+  });
+});
+
+describe('asaasSub — guarda contra token ausente', () => {
+  it("asaasSub('') lança antes de qualquer fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    expect(() => asaasSub('')).toThrow(/token da subconta ausente/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
