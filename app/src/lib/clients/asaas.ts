@@ -155,6 +155,62 @@ export type AsaasSubconta = {
   name: string; email: string; cpfCnpj: string;
 };
 
+/**
+ * Um webhook cadastrado NA CONTA DO TOKEN (`GET /v3/webhooks`).
+ *
+ * Levantado contra o sandbox em 28/07, nao contra a doc. O item devolvido pela
+ * LISTA e pelo GET por id e:
+ *   {"id","name","url","email","enabled","interrupted","apiVersion":3,
+ *    "hasAuthToken":true,"sendType","penalizedRequestsCount":0,"events":[…]}
+ *
+ * ⚠️ `hasAuthToken` NAO SERVE DE DIAGNOSTICO. Quando o POST vai SEM `authToken`,
+ * o Asaas GERA um (observado: `whsec_…`) e devolve `hasAuthToken: true` do mesmo
+ * jeito. Ou seja: um webhook cadastrado a mao no painel tem `hasAuthToken: true`
+ * com um segredo que a Balu nao conhece, e toda entrega dele morre no
+ * `unauthorized` da nossa rota — indistinguivel, na leitura, de um webhook sadio.
+ * O segredo NUNCA volta na leitura (so no corpo do POST/PUT). Por isso o unico
+ * conserto possivel e reescrever por PUT; ver `webhook-subconta.ts`.
+ */
+export type AsaasWebhook = {
+  id: string;
+  name: string;
+  url: string;
+  email?: string;
+  enabled: boolean;
+  interrupted: boolean;
+  hasAuthToken: boolean;
+  sendType: string;
+  /** Quantas entregas o Asaas ja penalizou. > 0 = ele esta falhando em entregar. */
+  penalizedRequestsCount?: number;
+  events: string[];
+};
+
+/**
+ * Corpo de `POST`/`PUT /v3/webhooks`. TODOS os campos abaixo sao OBRIGATORIOS —
+ * levantado campo a campo contra o sandbox, mandando corpo incompleto ate a
+ * validacao se declarar:
+ *   sem `events` → "É necessário informar no mínimo um evento…"
+ *   sem `name`   → "É necessário informar um nome…"
+ *   sem `sendType` → "É necessário informar um tipo de envio…"
+ *   sem `email`/`enabled`/`url` → "O parâmetro X deve ser informado"
+ *   `interrupted` satisfaz o pedido de `poolInterrupted` (o erro cita o segundo
+ *   nome, o primeiro e aceito).
+ *
+ * `authToken` e opcional PARA O ASAAS — e e justamente por isso que ele nunca
+ * pode faltar aqui (ver o aviso em `AsaasWebhook`). Minimo de 32 caracteres,
+ * tambem observado: "O token deve ter pelo menos 32 caracteres."
+ */
+export type PayloadWebhook = {
+  name: string;
+  url: string;
+  email: string;
+  enabled: boolean;
+  interrupted: boolean;
+  sendType: 'SEQUENTIALLY' | 'NON_SEQUENTIALLY';
+  authToken: string;
+  events: readonly string[];
+};
+
 /** Resposta de `GET /v3/myAccount/status` — os quatro eixos de KYC da conta
  *  cujo token foi usado. Levantado contra o sandbox, nao contra a doc:
  *  {"id","commercialInfo","bankAccountInfo","documentation","general"}, todos
@@ -231,5 +287,43 @@ export function asaasSub(token: string) {
      */
     consultarStatusConta: () =>
       call<AsaasStatusConta>('GET', '/v3/myAccount/status', undefined, token),
+
+    /**
+     * Webhooks DA PROPRIA SUBCONTA. Mesma logica de `consultarStatusConta`: a
+     * rota e "os webhooks da conta do token". Sem o `, token` isto listaria (e
+     * pior, cadastraria) na conta-mae — a Balu passaria a receber os eventos do
+     * dinheiro do escritorio na sua propria conta, e a subconta continuaria
+     * muda. Nao ha rota por subconta pela conta-mae.
+     */
+    listarWebhooks: () =>
+      call<{ data: AsaasWebhook[] }>('GET', '/v3/webhooks?limit=100', undefined, token),
+
+    /**
+     * COM RETRY (ao contrario de `criarSubconta`). As duas premissas que faltavam
+     * la valem aqui: nada de irrecuperavel volta no corpo — o `authToken` e um
+     * segredo que NOS escolhemos e ja temos — e a repeticao e inofensiva porque
+     * o proprio Asaas deduplica: um segundo POST com a MESMA `url` responde 400
+     * "Já existe uma configuração para os eventos com os mesmos atributos"
+     * (observado: nome diferente, subconjunto de eventos e outro `sendType` NAO
+     * escapam da deduplicacao — a chave e so a url).
+     *
+     * ⚠️ O CORPO DA RESPOSTA DE SUCESSO TRAZ O `authToken` EM CLARO. E o unico
+     * corpo do 4B com essa propriedade fora da criacao de subconta. Nao logue o
+     * retorno; leia so o `.id`.
+     */
+    criarWebhook: (d: PayloadWebhook) =>
+      call<AsaasWebhook>('POST', '/v3/webhooks', d, token),
+
+    /**
+     * REESCREVE um webhook existente. E o unico conserto possivel quando o
+     * webhook da url da Balu esta no ar com o segredo ERRADO — estado que a
+     * leitura nao consegue distinguir de saudavel (ver `AsaasWebhook`). Tambem
+     * religa `enabled`, zera `interrupted` e recompoe a lista de eventos.
+     *
+     * Idempotente por construcao: manda sempre a MESMA forma canonica.
+     * Mesma ressalva do `criarWebhook` quanto ao corpo da resposta.
+     */
+    atualizarWebhook: (id: string, d: PayloadWebhook) =>
+      call<AsaasWebhook>('PUT', `/v3/webhooks/${id}`, d, token),
   };
 }

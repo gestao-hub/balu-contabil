@@ -16,6 +16,8 @@ import { createServerClient } from '@/lib/supabase/server';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { soDigitos } from '@/lib/billing/subconta';
 import type { StatusSubconta } from '@/lib/billing/status-subconta';
+import { estadoWebhookDaContabilidade } from '@/lib/billing/webhook-subconta-asaas';
+import { avisoDoDiagnostico } from '@/lib/billing/webhook-subconta';
 import SubcontaForm from './SubcontaForm';
 
 export const dynamic = 'force-dynamic';
@@ -47,6 +49,22 @@ export default async function ContadorSubcontaPage() {
     ? (gravado === 'ausente' ? 'pendente' : gravado)
     : 'ausente';
 
+  // O WEBHOOK É LIDO AO VIVO, e não de uma coluna. A ausência dele é o modo de
+  // falha mais silencioso do 4B — o escritório emite a cobrança, o cliente
+  // paga, e nada nunca chega — então o estado tem de aparecer sozinho, a cada
+  // carregamento, sem depender de o escritório apertar nada. Uma coluna
+  // espelhando isso envelheceria (o webhook pode ser apagado no painel do
+  // Asaas a qualquer momento, sem avisar ninguém) e mentiria justamente no
+  // caso que importa.
+  //
+  // Custa um GET ao Asaas numa tela de configuração pouco visitada, e a função
+  // nunca lança: Asaas fora do ar vira 'indeterminado', não uma página quebrada.
+  const webhook = temSubconta ? await estadoWebhookDaContabilidade(ctx.contabilidade.id) : null;
+  const avisoWebhook =
+    webhook && webhook.estado !== 'impedido' && webhook.estado !== 'indeterminado'
+      ? avisoDoDiagnostico(webhook)
+      : null;
+
   return (
     <main className="p-6 max-w-3xl">
       <header className="mb-6">
@@ -67,6 +85,7 @@ export default async function ContadorSubcontaPage() {
         status={status}
         walletId={cont?.asaas_wallet_id ?? null}
         criadaEm={cont?.asaas_subconta_criada_em ?? null}
+        avisoWebhook={avisoWebhook}
       />
     </main>
   );

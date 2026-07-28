@@ -521,3 +521,66 @@ describe('sincronizarStatusSubcontaAction', () => {
     expect(textoObservado(r)).not.toContain('$aact_gravado_em_claro_por_engano');
   });
 });
+
+// ---------------------------------------------------------------------------
+// 6. WEBHOOK DA SUBCONTA — best-effort, DEPOIS da gravacao, e nunca silencioso
+//
+// A subconta nasce muda: emitir cobranca ja funcionava, mas ninguem cadastrava
+// webhook NA SUBCONTA, e o escritorio nunca ficava sabendo que foi pago. O
+// cadastro entrou em `criarSubcontaAction` — e as tres regras abaixo sao o que
+// impede o conserto de virar um problema pior que o que resolve.
+// ---------------------------------------------------------------------------
+describe('criarSubcontaAction — cadastro do webhook', () => {
+  const PREV = process.env.ASAAS_WEBHOOK_SECRET;
+  afterEach(() => {
+    if (PREV === undefined) delete process.env.ASAAS_WEBHOOK_SECRET;
+    else process.env.ASAAS_WEBHOOK_SECRET = PREV;
+  });
+
+  // A REGRA QUE NAO PODE CAIR. Quando isto roda a subconta JA EXISTE no Asaas e
+  // a chave JA ESTA gravada. Devolver erro faria o escritorio tentar de novo e
+  // criar uma SEGUNDA subconta — o estrago exato que o resto do arquivo evita.
+  it('falha no webhook NAO faz a criacao da subconta parecer que falhou', async () => {
+    delete process.env.ASAAS_WEBHOOK_SECRET;
+    const r = await criarSubcontaAction(DADOS_VALIDOS);
+    expect(r).toEqual({ ok: true });
+    expect(h.updates[0].valores.asaas_subconta_id).toBe(CONTA_CRIADA.id);
+  });
+
+  // Sem webhook o pagamento so aparece na varredura diaria. Isso pode acontecer
+  // — o que nao pode e acontecer CALADO.
+  it('a impossibilidade de cadastrar fica registrada em auditoria', async () => {
+    delete process.env.ASAAS_WEBHOOK_SECRET;
+    await criarSubcontaAction(DADOS_VALIDOS);
+    expect(h.auditorias.find((a) => a.acao === 'subconta.webhook_falhou')?.meta)
+      .toMatchObject({ impedido: 'sem_segredo' });
+  });
+
+  // Mesma ordem de operacoes do resto do arquivo: a `apiKey` so aparece uma vez
+  // e gravar e a PRIMEIRA coisa. Um await de webhook antes do UPDATE seria mais
+  // uma janela para perder o segredo.
+  it('so tenta o webhook DEPOIS do UPDATE que guarda a chave', async () => {
+    delete process.env.ASAAS_WEBHOOK_SECRET;
+    await criarSubcontaAction(DADOS_VALIDOS);
+    expect(h.ordem.indexOf('audit:subconta.webhook_falhou'))
+      .toBeGreaterThan(h.ordem.indexOf('sb.update'));
+  });
+
+  // Segredo curto demais e o mesmo estrago que segredo nenhum: o Asaas recusa o
+  // cadastro com 400 ("pelo menos 32 caracteres") e a subconta segue muda.
+  it('segredo curto demais e tratado como ausente, nao como cadastro feito', async () => {
+    process.env.ASAAS_WEBHOOK_SECRET = 'curto-demais';
+    const r = await criarSubcontaAction(DADOS_VALIDOS);
+    expect(r).toEqual({ ok: true });
+    expect(h.auditorias.find((a) => a.acao === 'subconta.webhook_falhou')?.meta)
+      .toMatchObject({ impedido: 'sem_segredo' });
+  });
+
+  // O segredo do webhook e o mesmo para todos os escritorios; vazado em
+  // auditoria, qualquer um forja evento de pagamento para qualquer subconta.
+  it('o segredo do webhook nunca aparece no que o servidor registra', async () => {
+    process.env.ASAAS_WEBHOOK_SECRET = 'S'.repeat(40);
+    const r = await criarSubcontaAction(DADOS_VALIDOS);
+    expect(textoObservado(r)).not.toContain('S'.repeat(40));
+  });
+});

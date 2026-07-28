@@ -18,7 +18,7 @@
 // no runtime — mordeu o Bloco 4A.
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Landmark, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, BellRing, Landmark, Loader2, RefreshCw } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { formatCep, formatCnpj, formatCpf, formatTel } from '@/lib/format/masks';
 import {
@@ -26,7 +26,9 @@ import {
   type CompanyType, type DadosSubconta,
 } from '@/lib/billing/subconta';
 import type { StatusSubconta } from '@/lib/billing/status-subconta';
-import { criarSubcontaAction, sincronizarStatusSubcontaAction } from './actions';
+import {
+  criarSubcontaAction, sincronizarStatusSubcontaAction, reconfigurarWebhookSubcontaAction,
+} from './actions';
 
 type Props = {
   nomeSugerido: string;
@@ -35,6 +37,11 @@ type Props = {
   status: StatusSubconta;
   walletId: string | null;
   criadaEm: string | null;
+  /**
+   * Aviso sobre os avisos de pagamento (webhook da subconta), lido AO VIVO no
+   * Asaas pela página. `null` = está tudo certo, ou não deu para saber.
+   */
+  avisoWebhook: string | null;
 };
 
 /** O que cada estado da coluna `asaas_subconta_status` significa PARA O
@@ -82,7 +89,7 @@ const rotuloCampo = 'text-xs font-medium text-muted-foreground-2';
 const campo = 'rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm';
 
 export default function SubcontaForm({
-  nomeSugerido, documentoSugerido, status, walletId, criadaEm,
+  nomeSugerido, documentoSugerido, status, walletId, criadaEm, avisoWebhook,
 }: Props) {
   const router = useRouter();
   const toast = useToast();
@@ -120,6 +127,16 @@ export default function SubcontaForm({
       const r = await sincronizarStatusSubcontaAction();
       if (!r.ok) { setErro(r.error); toast('error', r.error); return; }
       toast('success', 'Status consultado no Asaas.');
+      router.refresh();
+    });
+  }
+
+  function handleReconfigurar() {
+    setErro(null);
+    start(async () => {
+      const r = await reconfigurarWebhookSubcontaAction();
+      if (!r.ok) { setErro(r.error); toast('error', r.error); return; }
+      toast('success', 'Avisos de pagamento reconfigurados no Asaas.');
       router.refresh();
     });
   }
@@ -200,10 +217,44 @@ export default function SubcontaForm({
           )}
         </dl>
 
+        {/* O AVISO DO WEBHOOK É SEPARADO DO KYC de propósito: uma conta
+            'aprovada' pode estar sem avisos de pagamento, e é justamente esse
+            o caso perigoso — tudo parece certo e nada chega. */}
+        {avisoWebhook && (
+          <p
+            role="status"
+            className="flex items-start gap-2 rounded-md border border-alert/40 bg-alert/10 px-3 py-2 text-sm text-alert"
+          >
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span>{avisoWebhook}</span>
+          </p>
+        )}
+
         {caixaErro}
-        {botaoSincronizar}
+
+        <div className="flex flex-wrap items-center gap-3">
+          {botaoSincronizar}
+          {/* SEMPRE VISÍVEL, mesmo sem aviso. Um webhook cadastrado com o
+              segredo errado é indistinguível de um saudável na leitura (o Asaas
+              gera um token sozinho quando o cadastro vai sem um, e nunca
+              devolve o valor), então não dá para condicionar o conserto ao
+              diagnóstico: o único caso que ninguém enxerga é o que mais precisa
+              do botão. */}
+          <button
+            type="button"
+            onClick={handleReconfigurar}
+            disabled={pending}
+            className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-muted-foreground-2 hover:bg-surface-2 disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="size-4 animate-spin" /> : <BellRing className="size-4" />}
+            Reconfigurar avisos
+          </button>
+        </div>
+
         <p className="text-xs text-muted-foreground">
           A consulta é feita no Asaas na hora — nenhum status muda sozinho aqui.
+          &quot;Reconfigurar avisos&quot; reinstala o aviso de pagamento na sua conta Asaas; use
+          se um pagamento não aparecer aqui logo depois de pago.
         </p>
       </section>
     );

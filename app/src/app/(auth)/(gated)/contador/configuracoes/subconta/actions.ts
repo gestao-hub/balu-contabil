@@ -32,9 +32,58 @@ import {
 } from '@/lib/billing/subconta';
 import { traduzirErroAsaas, statusDoErroAsaas } from '@/lib/billing/subconta-erros';
 import { mapearStatusSubconta } from '@/lib/billing/status-subconta';
+import { garantirWebhookDaSubconta } from '@/lib/billing/webhook-subconta-asaas';
+import { MENSAGEM_IMPEDIDO } from '@/lib/billing/webhook-subconta';
 import { SubcontaSchema } from '@/types/zod';
 
 type ActionResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Cadastra (ou conserta) o webhook da Balu NA SUBCONTA, sem nunca derrubar a
+ * operacao que chamou.
+ *
+ * POR QUE BEST-EFFORT: quando isto roda, a subconta JA EXISTE no Asaas e a
+ * chave JA ESTA gravada. Propagar uma falha daqui faria a criacao parecer que
+ * falhou, e o escritorio tentaria de novo — criando uma SEGUNDA subconta com a
+ * primeira ja vinculada. O webhook e recuperavel a qualquer momento (botao da
+ * tela e "Atualizar status"); a subconta duplicada, nao.
+ *
+ * Sem webhook, a rede e a reconciliacao por varredura — e o estado fica
+ * VISIVEL na tela da subconta, que le o webhook ao vivo a cada carregamento.
+ *
+ * Auditoria so quando MUDOU ou FALHOU: 'ja_estava' a cada clique em "Atualizar
+ * status" seria ruido que esconde o registro que importa.
+ */
+async function cadastrarWebhookBestEffort(
+  ctx: { userId: string; id: string },
+  chave: string,
+  opts?: { forcar?: boolean },
+) {
+  const r = await garantirWebhookDaSubconta(chave, opts);
+
+  if (r.ok && r.acao === 'ja_estava') return r;
+
+  if (r.ok) {
+    await registrarAuditoria({
+      actorUserId: ctx.userId, acao: 'subconta.webhook',
+      alvoTipo: 'contabilidade', alvoId: ctx.id, contabilidadeId: ctx.id,
+      // O id do webhook nao e segredo; o `authToken` nunca chega aqui.
+      meta: { resultado: r.acao, webhook_id: r.id },
+    });
+    return r;
+  }
+
+  console.error('[4b] webhook da subconta nao cadastrado:', r.impedido);
+  await registrarAuditoria({
+    actorUserId: ctx.userId, acao: 'subconta.webhook_falhou',
+    alvoTipo: 'contabilidade', alvoId: ctx.id, contabilidadeId: ctx.id,
+    meta: {
+      impedido: r.impedido,
+      ...(r.impedido === 'asaas_falhou' ? { detalhe: r.detalhe } : {}),
+    },
+  });
+  return r;
+}
 
 // A subconta pode ter nascido no Asaas sem que a resposta chegasse — e a
 // `apiKey`, que so aparece nessa resposta, se perdeu junto. Repetir o pedido
@@ -204,6 +253,16 @@ export async function criarSubcontaAction(entrada: unknown): Promise<ResultadoCr
     meta: { asaas_account_id: criada.id, wallet_id: criada.walletId, chave: mascarar(criada.apiKey) },
   });
 
+  // DEPOIS DA GRAVACAO, NUNCA ANTES. A ordem de operacoes do topo deste arquivo
+  // continua valendo: a `apiKey` aparece uma unica vez e grava-la e a primeira
+  // coisa a acontecer depois da resposta. So aqui, com a chave a salvo no banco,
+  // o webhook pode ser cadastrado — e usando `criada.apiKey`, que ja esta em
+  // maos, em vez de reler e decifrar a coluna.
+  //
+  // Falha aqui NAO derruba a criacao: a subconta existe. Ver
+  // `cadastrarWebhookBestEffort`.
+  await cadastrarWebhookBestEffort(ctx, criada.apiKey);
+
   revalidatePath('/contador/configuracoes/subconta');
   return { ok: true };
 }
@@ -251,6 +310,13 @@ export async function sincronizarStatusSubcontaAction(): Promise<ActionResult> {
     return { ok: false, error: 'A credencial da subconta não está guardada. Fale com o suporte da Balu.' };
   }
 
+  // RECUPERACAO CARONA. Este botao e o que o escritorio ja aperta enquanto
+  // espera a aprovacao, e e o unico caminho que toda subconta percorre — inclusive
+  // as criadas ANTES de existir cadastro de webhook, que nasceram mudas. Cadastrar
+  // aqui (idempotente: lista antes, e o Asaas ainda deduplica por url) conserta o
+  // passado sem exigir que ninguem descubra um botao novo.
+  await cadastrarWebhookBestEffort(ctx, chave);
+
   let bruto;
   try {
     bruto = await asaasSub(chave).consultarStatusConta();
@@ -276,6 +342,48 @@ export async function sincronizarStatusSubcontaAction(): Promise<ActionResult> {
       },
     });
   }
+
+  revalidatePath('/contador/configuracoes/subconta');
+  return { ok: true };
+}
+
+/**
+ * Reconfigura os avisos de pagamento na subconta — o conserto explícito.
+ *
+ * POR QUE EXISTE SEPARADA, se `sincronizarStatusSubcontaAction` já cadastra de
+ * carona: aquela é best-effort e silenciosa, e reescreve só o que o diagnóstico
+ * acusa. Esta REESCREVE SEMPRE (`forcar: true`) e devolve o erro na tela.
+ *
+ * O caso que só ela resolve é o que a leitura não enxerga: um webhook na URL da
+ * Balu cadastrado com OUTRO segredo. O Asaas gera um `authToken` sozinho quando
+ * o cadastro vai sem um, então esse webhook aparece com `hasAuthToken: true`,
+ * `enabled: true` e os eventos certos — idêntico a um saudável — enquanto todas
+ * as entregas dele morrem no `unauthorized` da nossa rota. Não há como
+ * diagnosticar; há como reescrever.
+ */
+export async function reconfigurarWebhookSubcontaAction(): Promise<ActionResult> {
+  const ctx = await requireEscritorioAprovado();
+  if (!ctx.ok) return ctx;
+
+  const sb = createAdminClient();
+  const { data: cont } = await sb
+    .from('contabilidades').select('id, asaas_subconta_id, asaas_api_key_cifrada')
+    .eq('id', ctx.id).maybeSingle();
+  if (!cont?.asaas_subconta_id) return { ok: false, error: 'Nenhuma subconta para configurar.' };
+
+  let chave: string | null;
+  try {
+    chave = lerCredencial(cont.asaas_api_key_cifrada);
+  } catch {
+    console.error('[4b] credencial da subconta ilegivel', cont.asaas_subconta_id);
+    return { ok: false, error: 'A credencial da subconta está ilegível. Fale com o suporte da Balu.' };
+  }
+  if (!chave) {
+    return { ok: false, error: 'A credencial da subconta não está guardada. Fale com o suporte da Balu.' };
+  }
+
+  const r = await cadastrarWebhookBestEffort(ctx, chave, { forcar: true });
+  if (!r.ok) return { ok: false, error: MENSAGEM_IMPEDIDO[r.impedido] };
 
   revalidatePath('/contador/configuracoes/subconta');
   return { ok: true };

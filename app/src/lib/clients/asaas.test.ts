@@ -122,6 +122,60 @@ describe('asaasSub — access_token deve ser o token da SUBCONTA', () => {
   // QUALQUER token válido. Com a chave da conta-mãe ele devolve o KYC da Balu,
   // que está aprovado — e toda subconta seria marcada 'aprovada' sem que nada
   // quebrasse.
+  // O MESMO ESTRAGO DO `myAccount/status`, com dinheiro do outro lado:
+  // `/v3/webhooks` e "os webhooks da conta do token". Sem o `, token`,
+  // `listarWebhooks` leria os da BALU e concluiria que a subconta ja tem
+  // webhook — o diagnostico da tela diria 'ok' para sempre e o escritorio nunca
+  // receberia um evento.
+  it('listarWebhooks', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { data: [] }));
+
+    await asaasSub(SUB_TOKEN).listarWebhooks();
+
+    expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+    const [url] = fetchSpy.mock.calls[0]! as [string, unknown];
+    expect(url).toContain('/v3/webhooks');
+  });
+
+  // PIOR AINDA: sem o `, token` isto CADASTRA na conta-mae. A Balu passaria a
+  // receber, na propria conta, os eventos das cobrancas do escritorio — e a
+  // subconta continuaria muda.
+  it('criarWebhook', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { id: 'wh_1', name: 'Balu', url: 'https://x.com/w', enabled: true, interrupted: false, hasAuthToken: true, sendType: 'SEQUENTIALLY', events: [] }));
+
+    await asaasSub(SUB_TOKEN).criarWebhook({
+      name: 'Balu', url: 'https://x.com/w', email: 'a@b.com',
+      enabled: true, interrupted: false, sendType: 'SEQUENTIALLY',
+      authToken: 'x'.repeat(32), events: ['PAYMENT_RECEIVED'],
+    });
+
+    expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+    const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
+    expect(url).toContain('/v3/webhooks');
+    expect(init.method).toBe('POST');
+  });
+
+  it('atualizarWebhook', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockJsonResponse(200, { id: 'wh_1', name: 'Balu', url: 'https://x.com/w', enabled: true, interrupted: false, hasAuthToken: true, sendType: 'SEQUENTIALLY', events: [] }));
+
+    await asaasSub(SUB_TOKEN).atualizarWebhook('wh_1', {
+      name: 'Balu', url: 'https://x.com/w', email: 'a@b.com',
+      enabled: true, interrupted: false, sendType: 'SEQUENTIALLY',
+      authToken: 'x'.repeat(32), events: ['PAYMENT_RECEIVED'],
+    });
+
+    expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+    const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
+    expect(url).toContain('/v3/webhooks/wh_1');
+    expect(init.method).toBe('PUT');
+  });
+
   it('consultarStatusConta', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       mockJsonResponse(200, {

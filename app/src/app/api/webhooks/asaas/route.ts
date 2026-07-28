@@ -14,8 +14,19 @@
 // webhook do Asaas, e a subconta so alcanca o ramo do escritorio se o webhook
 // dela for cadastrado com o MESMO segredo. Cadastrada com outro (ou sem), a
 // entrega para no `unauthorized` acima e nada e marcado como pago — falha
-// ruidosa e inofensiva, que e o lado certo do erro. Ver o relatorio da Task 11:
-// hoje NAO ha codigo que cadastre webhook na subconta.
+// ruidosa e inofensiva, que e o lado certo do erro.
+//
+// QUEM CADASTRA O WEBHOOK DA SUBCONTA: `lib/billing/webhook-subconta-asaas.ts`,
+// chamado pela criacao da subconta e pelo botao "Reconfigurar avisos" da tela
+// (contador/configuracoes/subconta). Ele usa `ASAAS_WEBHOOK_SECRET` — o MESMO
+// valor conferido logo abaixo — como `authToken` do cadastro. Trocar o segredo
+// aqui sem reconfigurar o webhook de cada escritorio derruba TODAS as subcontas
+// de uma vez, em silencio: elas continuam emitindo, e nenhum pagamento volta.
+//
+// ⚠️ O Asaas GERA um `authToken` sozinho quando o cadastro vai sem um, e nunca
+// devolve o valor na leitura. Por isso um webhook cadastrado a mao no painel
+// parece saudavel e mesmo assim morre aqui no `unauthorized` — e por isso o
+// conserto da tela e REESCREVER o webhook, nao diagnosticar.
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
