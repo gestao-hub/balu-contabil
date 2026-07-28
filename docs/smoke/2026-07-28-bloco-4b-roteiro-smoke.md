@@ -73,13 +73,24 @@ cd app && npm run dev > scratchpad/dev.log 2>&1
 um com campo condicional — `birthDate` só é exigido para CPF, e com
 `companyType` de PJ o validador do Asaas para de pedir.
 
-4. Criar como **PJ**, com o CNPJ do escritório: `11222333000181`.
+4. Criar como **PJ**. ⚠️ **NÃO use o CNPJ do escritório (`11222333000181`)** — é
+   um documento de teste manjado, e o **sandbox do Asaas é ambiente
+   compartilhado**: ele responde `400 "O CNPJ … já está em uso."`. O campo é
+   editável; use um CNPJ válido gerado ao acaso.
+
+   > Levar esse 400 **não é acidente perdido, é teste**: 4xx significa que nada
+   > foi criado, e é a prova de que o caminho mais delicado do bloco (subconta
+   > órfã com a chave perdida) não dispara à toa — sem retry, sem linha no
+   > banco, sem registro `possivel_orfa`, que só existe para falha *ambígua*.
 
 **Esperado depois de criar:**
 - a tela passa a mostrar a subconta com KYC **pendente**;
-- aparece um aviso sobre os avisos de pagamento dizendo que **este ambiente não
-  tem endereço público** (é o item 1 do §0 — o texto manda falar com o suporte
-  da Balu, e não pede nada ao escritório, porque a culpa é do ambiente da Balu);
+- aparece um aviso sobre os avisos de pagamento — em local a mensagem é
+  **"Os avisos de pagamento não estão configurados nesta instalação da Balu"**,
+  porque `precondicoes()` confere **segredo → e-mail → URL** e o
+  `ASAAS_WEBHOOK_SECRET` falta *antes* de a URL `localhost` ser avaliada (faltam
+  os dois). O texto manda falar com o suporte da Balu e não pede nada ao
+  escritório — a culpa é do ambiente da Balu, não dele;
 - **a chave não aparece em lugar nenhum da tela.**
 
 5. Clicar **Atualizar status**.
