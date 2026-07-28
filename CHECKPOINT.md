@@ -1,45 +1,153 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-28 (sessão 14 — **Bloco 4B em execução, subagent-driven.** Branch `feat/bloco-4b-subcontas`, 38 commits, **NÃO mergeada**. Tasks 1–12 do plano fechadas + o cadastro do webhook na subconta. Falta **13, 14, navegação** e o **smoke manual**. Migrations `0053`, `0054` e `0055` **aplicadas em produção**. Dois bugs de produção corrigidos no caminho. **Blocos 1, 2, 3 e 4A em `main` e no ar.**)
+> **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4B com o CÓDIGO COMPLETO.** Branch `feat/bloco-4b-subcontas`, 41 commits, **NÃO mergeada**. Tasks 13 e 14 fechadas + a navegação + a tela consolidada do contador. **Só falta o SMOKE MANUAL.** Migrations `0053`, `0054` e `0055` **aplicadas em produção**. **Blocos 1, 2, 3 e 4A em `main` e no ar.**)
 
-> ## ▶ AO RETOMAR: começar pela Task 13 do 4B
-> **Pedido explícito do usuário ao encerrar a sessão 14:** parar antes da
-> Task 13 e retomar por ela.
+> ## ⛔ AO RETOMAR: o SMOKE MANUAL do 4B é a única coisa que falta
+> **Roteiro pronto e renderizado:** `docs/smoke/2026-07-28-bloco-4b-roteiro-smoke.md`
+> (10 seções). **Mostrá-lo na conversa é a primeira coisa a fazer**, sem esperar
+> o usuário pedir.
 >
 > **Estado:** branch `feat/bloco-4b-subcontas`, árvore limpa (só os dois
 > untracked de sempre: um PDF na raiz e um `.docx` em `app/`). **Nada pela
-> metade, nada a desfazer.** Migrations 0053/0054/0055 já em produção — o banco
-> está **à frente** do que `main` descreve, como nos blocos anteriores.
+> metade, nada a desfazer.** Nenhum `node` vivo. Cenário do smoke **NÃO montado**
+> — nenhuma subconta, nenhuma cobrança, catálogo vazio; é o próprio smoke que
+> monta, pelas telas.
 >
-> **O que falta, em ordem:**
-> 1. **Task 13 — sincronização** (plano, linhas 2061-2149). ⚠️ Duas correções
->    obrigatórias ao snippet do plano: (a) `lerCredencial` **lança** hoje, e o
->    plano a chama **fora** do `try` com `if (!token) continue` — uma
->    contabilidade corrompida derrubaria a reconciliação de **todas**; (b) tem de
->    usar a **mesma** `aplicarEventoNaCobranca` do webhook **e** repetir o
->    desfazer do honorário no estorno, senão os dois caminhos divergem.
-> 2. **Task 14 — verificação final e roteiro do smoke** (linhas 2151-2300).
->    Inclui o `_probe-4b.mjs`, que consulta a cobrança **pela conta-mãe** e
->    espera **404**. É a única checagem do bloco que não depende de o código
->    estar certo.
-> 3. **Navegação** — seção **"Cobranças"** no menu lateral do contador
->    (decisão do usuário), agrupando conta de recebimento, catálogo de avulsos e
->    cobranças. **Nenhuma tela do 4B é alcançável hoje** — só por URL digitada.
->    Deixado para o fim de propósito, para montar o menu de uma vez.
-> 4. **Smoke manual do usuário** — o gate antes do merge, como nos Blocos 1, 2,
->    3 e 4A.
+> **Verificação no fecho:** `tsc` 0 · vitest **1135/1135** (27 pulados) ·
+> `next build` **0 erros / 56 rotas**.
 >
-> **O que só o smoke pode provar** (levantado pelos subagentes, vale entrar no
-> roteiro): `consultarStatusConta` contra uma subconta **de verdade** (não há
-> nenhuma no sandbox — `GET /v3/accounts` devolve `totalCount: 0`); o ciclo de
-> vida da chave de idempotência na tela (nasce ao abrir, renova só no sucesso —
-> não há jsdom no repo); e o pagamento de verdade fechando webhook → cobrança →
-> honorário.
+> **A seção que decide o merge é a §9:** `node scratchpad/_probe-4b.mjs`. Cada
+> cobrança é consultada pela subconta (tem de dar **200**) e pela conta-mãe da
+> Balu (tem de dar **404**). Se a conta-mãe enxergar qualquer cobrança, o bloco
+> **não vai para `main`** por mais que todas as telas funcionem.
+>
+> **Duas coisas que o smoke local NÃO prova, e não são bug:** (a) o webhook da
+> subconta não pode ser cadastrado em local — `NEXT_PUBLIC_SITE_URL` é
+> `localhost` e `ehUrlEntregavel` recusa `http`/localhost de propósito, e
+> `ASAAS_WEBHOOK_SECRET` nem está no `.env.local`; (b) portanto o pagamento não
+> chega sozinho — quem o faz aparecer é a **reconciliação da Task 13**, e é
+> exatamente isso que o §6 do roteiro testa.
 >
 > Dependências externas que seguem de pé: aprovação comercial do Asaas para
-> criar subconta **em produção** (sandbox já funciona) e as premissas do Michel
-> (§8 da spec).
+> criar subconta **em produção** (sandbox já funciona), o
+> `ASAAS_WEBHOOK_SECRET` (≥32 chars) para o webhook em produção, e as premissas
+> do Michel (§8 da spec).
+
+---
+
+## Sessão 15 (2026-07-28) — Tasks 13 e 14, navegação, e o 4B fica pronto para o smoke
+
+Três commits: `468f8d9` (Task 13), `ebb75dc` (navegação + tela nova), `d6e3877`
+(roteiro do smoke).
+
+### Revisão das duas frentes que a sessão 14 deixou sem revisar
+
+A Task 12 (`34a9a62`) e o cadastro do webhook (`dd6b285`) foram revisadas antes
+de tudo. **Nada a corrigir** — leitura pela sessão com a policy real, chave da
+subconta que entra e não sai, best-effort na criação para não gerar subconta
+duplicada. Um detalhe herdado: as mensagens de `avisoDoDiagnostico` prometem
+"conferência diária", que só passou a existir com a Task 13.
+
+### Task 13 — a varredura, e as quatro decisões do plano que não sobreviveram
+
+Nenhuma das quatro decisões do snippet do plano resistiu ao repo real:
+
+1. **`lerCredencial` FORA do `try`**, com `if (!token) continue` supondo retorno
+   nulável. Ela **lança** desde a sessão 14 — uma contabilidade corrompida
+   derrubaria a reconciliação de **todas**, justo a rede de segurança.
+2. **Perdia o ESTORNO.** O plano copiava só a metade que ACENDE o semáforo do
+   honorário. Em vez de repetir o código, a escrita foi **extraída** para
+   `lib/billing/aplicar-cobranca-escritorio.ts` e **o webhook passou a chamar a
+   mesma função**. Sabotar o ramo do estorno agora derruba **os dois** caminhos
+   ao mesmo tempo — e essa é a prova de que não há como divergirem.
+3. **Filtrava por `asaas_subconta_status = 'aprovada'`.** Emitir exige KYC;
+   reconhecer o pagamento de uma cobrança **já emitida** não pode exigir nada.
+   KYC que regride não apaga os boletos na mão dos clientes.
+4. **Lia só a primeira página.** A rede viraria buraco no escritório com mais de
+   100 cobranças — o que tem mais dinheiro em jogo.
+
+**Levantado contra o sandbox** (`_probe-listar-pagamentos.mjs`): `GET /v3/payments`
+devolve `{ object, hasMore, totalCount, limit, offset, data }`, e o item da
+**lista** traz `paymentDate` **e** `confirmedDate` — iguais aos do corpo do
+webhook, que é o que permite a mesma escrita servir aos dois sem tradução.
+`paymentDate` vem **`null`** em cobrança não paga: o tipo `PagamentoAsaas` dizia
+`string | undefined`, era o **tipo** que mentia.
+
+> ⚠️ **`?status=BANANA` responde 200 e devolve a lista INTEIRA.** Filtro de
+> status com erro de digitação não falha: varre tudo **parecendo** que filtrou.
+> Daí não haver filtro de status na varredura, com teste que morde se aparecer.
+
+Teto de 50 páginas (5.000 cobranças/dia) como freio contra `hasMore` que nunca
+desce. Bater no teto é **contado e logado** — varredura truncada em silêncio é
+pior que varredura nenhuma, porque parece completa.
+
+**Quatro sabotagens provadas**, cada uma falhando no teste certo (credencial
+fora do try; filtro por 'aprovada'; ramo do estorno removido — derrubou webhook
+**e** varredura; leitura de uma página só).
+
+**Vazamento que o teste pegou:** o log de falha da varredura podia carregar o
+token se a mensagem viesse de fora. A mensagem do cliente Asaas hoje não o
+carrega, mas ela é montada longe dali e a regra do módulo é "nunca entra em log,
+**inclusive log de erro**" — agora é redigida com `mascarar` antes de sair.
+
+### Navegação: duas decisões do usuário e um bug que a seção criou
+
+**Decisão 1 — "Cobranças" do empresário aparece quando existe BOLETO**, não
+quando existe escritório. Ele convivia com "Honorários" falando da mesma dívida,
+e a maioria dos escritórios cobra fora da Balu: para esses o item era tela vazia
+permanente. O layout pergunta com `limit(1)`, não `count` (a pergunta é
+"existe?"). Não exige escritório aprovado nem subconta de pé — uma vez emitido,
+o boleto está na mão do cliente.
+
+**Decisão 2 — a tela que não existia.** O CHECKPOINT descrevia a seção
+agrupando três telas; **só duas existiam**. O contador via cobrança dentro de
+`/contador/honorarios` e por cliente, e uma **avulsa vencida não aparecia em
+lugar nenhum** — ele não tinha onde perguntar "o que está em aberto comigo?".
+Criada `/contador/cobrancas`: abas por situação, origem (honorário × avulso),
+totais do recorte atual, link da fatura para reenviar sem entrar no painel do
+Asaas. Leitura pela **sessão** — a primeira perna da policy `cobrancas_escritorio_select`
+é literalmente essa tela.
+
+**O vocabulário de status virou compartilhado.** `cobrancas-vm.ts` saiu da pasta
+da tela do cliente e virou `lib/billing/cobranca-escritorio-vm.ts`: duas telas
+leem a **mesma** cobrança agora, e rótulos separados fariam a conversa entre
+cliente e escritório começar com os dois olhando telas que discordam.
+
+**O bug que a seção criou, e que foi corrigido:** o realce do menu era
+`pathname.startsWith(href)` e funcionava **só porque nenhum href era prefixo de
+outro**. `/contador/configuracoes` é prefixo de `/contador/configuracoes/subconta`
+— os **dois** itens acendiam. A regra virou `components/menu-ativo.ts` (puro, com
+teste, porque **não há jsdom neste repo**): vence o href mais **longo**, e o
+prefixo tem de terminar em `/` — senão `/contador` acenderia numa futura
+`/contadores`.
+
+### Task 14 — o probe e o roteiro
+
+`scratchpad/_probe-4b.mjs`, **somente leitura**, e de propósito **não cria** a
+subconta nem a cobrança: ele audita o caminho de produção, não um caminho
+sintético que só ele percorre. A metade que o plano não tinha: além do **404
+pela conta-mãe**, ele consulta a mesma cobrança **pela subconta e exige 200** —
+sem isso, um `chargeId` errado daria 404 e o probe diria "separado" sem ter
+olhado para nada. **Um 404 sozinho não prova separação; prova ausência.**
+
+Ferramentas novas em `app/scratchpad/`: `_probe-listar-pagamentos.mjs`,
+`_probe-4b.mjs`, `_estado-4b.mjs` (estado do cenário), `_sandbox-pagar.mjs`
+(pagar/estornar no sandbox **sem tocar no banco** — é o banco que a reconciliação
+tem de atualizar sozinha; se o script mexesse na tabela, o smoke provaria a si
+mesmo), `_fk-cobrancas.mjs`.
+
+### Dívidas registradas nesta sessão
+
+- `/honorarios` e `/cobrancas` **continuam convivendo** no menu do cliente por
+  decisão do usuário: um honorário cobrado aparece nas duas telas, com status
+  calculado por caminhos diferentes. Aceito conscientemente; reavaliar se o
+  smoke mostrar que confunde.
+- As duas telas antigas continuam em `/contador/configuracoes/{subconta,avulsos}`
+  na **URL** — só a posição no menu mudou. Mudar a rota quebraria link já mandado.
+- Seguem de pé as da sessão 14: `DROP COLUMN` dos ganchos mortos da `0032`;
+  `UNIQUE (contabilidade_id, lower(nome))` no catálogo; órfão de webhook só em
+  `console.error`; `db_atual.sql` e `types/database.ts` atrasados desde a `0050`.
 
 ---
 
