@@ -14,8 +14,15 @@
 > — nenhuma subconta, nenhuma cobrança, catálogo vazio; é o próprio smoke que
 > monta, pelas telas.
 >
-> **Verificação no fecho:** `tsc` 0 · vitest **1135/1135** (27 pulados) ·
+> **Verificação no fecho:** `tsc` 0 · vitest **1142/1142** (27 pulados) ·
 > `next build` **0 erros / 56 rotas**.
+>
+> **O código passou por `/code-review` + `/systematic-debugging` antes do smoke**
+> (commit `7b4a233`): 6 achados, 5 corrigidos. O grave era uma **corrida de
+> lost-update** nascida na própria Task 13 — a varredura virou o segundo escritor
+> de `cobrancas_escritorio` e um UPDATE cego por `id` deixava um estorno recém-
+> chegado ser sobrescrito por um snapshot velho, marcando pago um honorário cujo
+> dinheiro voltou. Resolvido com compare-and-swap. Detalhes na seção da sessão 15.
 >
 > **A seção que decide o merge é a §9:** `node scratchpad/_probe-4b.mjs`. Cada
 > cobrança é consultada pela subconta (tem de dar **200**) e pela conta-mãe da
@@ -136,6 +143,65 @@ Ferramentas novas em `app/scratchpad/`: `_probe-listar-pagamentos.mjs`,
 (pagar/estornar no sandbox **sem tocar no banco** — é o banco que a reconciliação
 tem de atualizar sozinha; se o script mexesse na tabela, o smoke provaria a si
 mesmo), `_fk-cobrancas.mjs`.
+
+### A rodada de revisão antes do smoke (`7b4a233`)
+
+`/code-review` + `/systematic-debugging`. Seis achados; **cinco viraram
+correção**, e um era assert meu mal calibrado.
+
+**O grave, e ele nasceu na Task 13.** Até esta sessão o webhook era o **único**
+escritor de `cobrancas_escritorio`, e um `UPDATE ... WHERE id` bastava. A
+varredura o tornou o **segundo** — e ela lê uma **página inteira** (até 100
+linhas) antes de aplicar uma a uma, então o snapshot da última linha pode estar
+dezenas de round-trips velho. Um `PAYMENT_REFUNDED` chegando no meio era
+sobrescrito: a varredura reavaliava a trava "estorno é terminal" contra um estado
+que já não existia e regravava `paga`, marcando pago um honorário cujo dinheiro
+tinha voltado. **`aplicarEventoNaCobranca` decidia certo sobre um estado errado**
+— a falha escapava por fora dela. Conserto: **compare-and-swap**
+(`.eq('status', cob.status)` + linhas afetadas); zero linhas = outro escritor
+moveu, descarta sem retentar.
+
+> **A lição, e ela vale para qualquer bloco:** *acrescentar um segundo escritor a
+> uma tabela invalida as travas de concorrência do primeiro.* Nenhum teste do 4B
+> falhou quando a varredura nasceu, porque todos exercitavam um escritor de cada
+> vez. O teste que pegou isso precisou de um gancho (`aoAplicar`) que simula o
+> webhook chegando **entre** a leitura e a escrita — e os dois mocks de UPDATE
+> tiveram de passar a **honrar as condições `.eq`**: mock que responde "afetou"
+> sempre faria um CAS quebrado parecer funcionar.
+
+**Os outros quatro:** (a) **boleto órfão** nunca era detectado depois da emissão —
+a varredura é o único componente que vê os dois lados, e o `externalReference`
+torna o reconhecimento exato; agora é contado (`orfaos`) e logado; (b) **ordem
+explícita** `sort=dateCreated&order=desc` na listagem, porque batendo o teto de
+páginas é a ordem que decide qual ponta fica de fora — e o `order` foi **sondado**,
+não assumido (a lição do `status=BANANA` vale para qualquer parâmetro); (c)
+**`maxDuration = 60`** nas duas rotas de cron, que não declaravam nenhum: timeout
+de wall-clock não é capturável por try/catch, e como a varredura roda por último
+ela seria a primeira sacrificada — em silêncio; (d) **cap calado** em
+`/contador/cobrancas`: sem `.limit()` valia o "Max rows" do Supabase e **os totais
+eram somados sobre o array cortado**; agora `LIMITE=200` com aviso na tela e
+totais rotulados "(parcial)". E (e) o **nome do cliente que saiu do escritório**,
+que o embed pela sessão não alcançava — cobranças em aberto apareciam como
+"Cliente sem nome".
+
+**O achado que não era achado, e o que ele ensinou.** O probe acusou
+`asaas_api_key_cifrada` acessível a `authenticated`: era `INSERT`, e
+`contabilidades` tem RLS ligada e **nenhuma policy de INSERT** — grant de coluna
+inalcançável. Pior: o mesmo probe usava `.includes()` sobre um `array_agg` que o
+driver devolve como **string**, ou seja, fazia *substring match* e dava a resposta
+certa por acidente. **Assert mal calibrado custa o mesmo que teste que não morde:
+some a diferença entre achado e ruído.**
+
+**Confirmado no caminho** (evidência, não suposição): a `0053` funcionou como
+documentado — SELECT em todas as colunas menos a chave, UPDATE só nas 4 previstas;
+e o conjunto `DELETE/TRUNCATE/…` é o **default da plataforma Supabase**, idêntico
+em `companies`, `notifications`, `assinaturas` e `cobrancas`, todas pré-4B.
+
+Probes novos, todos somente leitura: `_probe-fronteiras-4b.mjs` (grants, embed do
+PostgREST, as consultas novas contra o banco real), `_probe-paginacao.mjs` (o laço
+de produção rodado contra o Asaas: 4 voltas em `limit=1`, para sozinho, cobertura
+idêntica a `limit=100`), `_probe-ordem.mjs`. A varredura também foi executada no
+**runtime real** via `/api/cron/billing`.
 
 ### Dívidas registradas nesta sessão
 

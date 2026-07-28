@@ -2,7 +2,8 @@
 
 > **Status:** ⏳ **PENDENTE** · **Escrito em:** 2026-07-28
 > **Branch:** `feat/bloco-4b-subcontas` (não mergeada) · **Plano:** `docs/superpowers/plans/2026-07-27-bloco-4b-subcontas-escritorio.md`
-> **Verificação automática no momento da escrita:** `tsc` 0 · vitest **1135/1135** (27 pulados) · `next build` **0 erros / 56 rotas**
+> **Verificação automática:** `tsc` 0 · vitest **1142/1142** (27 pulados) · `next build` **0 erros / 56 rotas**
+> **Passou por `/code-review` + `/systematic-debugging` antes do smoke** — 6 achados, 5 corrigidos (commit `7b4a233`). O mais sério: corrida de lost-update entre o webhook e a varredura, que ressuscitava um estorno. Ver §7, que agora a exercita de propósito.
 
 O princípio que o bloco inteiro existe para proteger: **a Balu não intermedia
 dinheiro de terceiro.** A cobrança do escritório nasce na subconta Asaas dele e
@@ -191,7 +192,13 @@ cd app && curl -s -H "Authorization: Bearer $(grep '^CRON_SECRET=' .env.local | 
   http://localhost:3000/api/cron/billing
 ```
 
-**Esperado na resposta:** `"escritorio": { "escritorios": 1, "atualizadas": 1, "erros": 0, "truncados": 0 }`.
+**Esperado na resposta:**
+`"escritorio": { "escritorios": 1, "atualizadas": 1, "erros": 0, "truncados": 0, "orfaos": 0 }`
+
+> `orfaos` tem de ser **0**. Diferente de zero significa que existe no Asaas uma
+> cobrança emitida por nós que **não** está no banco — o cliente com um boleto
+> na mão que o painel do escritório nunca mostra. O id sai no log
+> (`scratchpad/dev.log`).
 
 5. Recarregar as duas telas.
 
@@ -225,6 +232,13 @@ cd app && node scratchpad/_sandbox-pagar.mjs estornar <asaas_charge_id>
 
 > Este último ponto é a razão de o estorno existir no código: sem ele o
 > honorário estornado ficaria impossível de recobrar pela tela, para sempre.
+
+4. **Rodar o cron uma SEGUNDA vez**, sem estornar nada de novo.
+
+**Esperado:** `"atualizadas": 0` e a cobrança **continua estornada**. É a trava
+"estorno é terminal": o Asaas ainda lista a cobrança com um status de pagamento,
+e a varredura não pode ressuscitá-la. Se ela voltar para **Paga** aqui, é o bug
+de lost-update de volta.
 
 ---
 
