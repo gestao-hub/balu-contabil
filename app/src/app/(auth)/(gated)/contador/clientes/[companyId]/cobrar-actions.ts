@@ -107,12 +107,13 @@ export async function cobrarClienteAction(entrada: unknown): Promise<CobrarResul
     // │ ABERTURA DO FORMULARIO, mantido em estado e RENOVADO SO APOS UMA  │
     // │ EMISSAO BEM-SUCEDIDA.                                             │
     // │                                                                   │
-    // │ A chave segue OPCIONAL no schema: chamador que nao a mande        │
-    // │ (script, teste, uma tela nova que esqueca) ainda emite, e ai      │
-    // │ segue SEM TRAVA contra duplo clique simultaneo — sem chave nao ha │
-    // │ reserva a tomar antes do Asaas nem indice unico a violar depois.  │
-    // │ O caminho do honorario nao depende disto: ele tem chave natural   │
-    // │ (`honorarioId`).                                                  │
+    // │ A chave e OBRIGATORIA no schema (`CobrarClienteSchema`): Server   │
+    // │ Action e endpoint publico, entao um POST direto sem passar pela   │
+    // │ tela emitia MESMO ASSIM, sem reserva a tomar antes do Asaas nem   │
+    // │ indice unico a violar depois — SEM TRAVA nenhuma contra duplo     │
+    // │ clique. Chamador que nao mandar a chave e recusado no `parse`,    │
+    // │ acima, antes de chegar aqui. O caminho do honorario nao depende   │
+    // │ disto: ele tem chave natural (`honorarioId`) e nunca manda esta.  │
     // └───────────────────────────────────────────────────────────────────┘
     idempotencyKey: dados.idempotencyKey,
   });

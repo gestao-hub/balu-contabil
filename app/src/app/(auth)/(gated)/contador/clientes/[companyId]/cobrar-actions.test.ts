@@ -104,12 +104,19 @@ const consultasDe = (t: string): Consulta[] => h.consultas.filter((c) => c.tabel
 /** O pedido que chegou ao motor de emissao. */
 const pedidoEmitido = () => h.emitirCobrancaEscritorio.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
 
+// Chave valida "de fabrica": a MAIORIA dos testes aqui nao esta testando a
+// chave em si, entao a entrada default precisa de uma para nao cair na
+// recusa por ausencia (28/07, chave obrigatoria) — quem quer testar a
+// ausencia sobrescreve com `idempotencyKey: undefined` explicitamente.
+const IDEMPOTENCY_KEY_PADRAO = '66666666-6666-4666-8666-666666666666';
+
 const entrada = (over: Record<string, unknown> = {}) => ({
   companyId: COMPANY_ID,
   servicoAvulsoId: SERVICO_ID,
   descricaoLivre: null,
   baseCentavos: null,
   vencimento: '2099-12-10',
+  idempotencyKey: IDEMPOTENCY_KEY_PADRAO,
   ...over,
 });
 
@@ -371,14 +378,15 @@ describe('cobrarClienteAction — fronteira e vencimento', () => {
     expect(h.emitirCobrancaEscritorio).not.toHaveBeenCalled();
   });
 
-  // A TELA JA MANDA A CHAVE (`CobrarDialog.tsx`, Task 10). O schema segue
-  // aceitando ausencia, e quem nao a mandar emite SEM TRAVA contra duplo
-  // clique — declarado aqui para nao virar surpresa, e nao para ser aceito
-  // para sempre.
-  it('sem chave a action ainda emite, e o motor recebe null', async () => {
-    const r = await cobrarClienteAction(entrada());
-    expect(r).toMatchObject({ ok: true });
-    expect(pedidoEmitido()).toMatchObject({ idempotencyKey: null });
+  // A TELA JA MANDA A CHAVE (`CobrarDialog.tsx`, Task 10), mas Server Action e
+  // endpoint publico: um POST direto sem passar pela tela nao pode emitir sem
+  // reserva e sem indice — ou seja, SEM TRAVA nenhuma contra duplo clique. Por
+  // isso a chave e OBRIGATORIA no schema (28/07), e a recusa acontece aqui, no
+  // `parse`, antes de qualquer coisa chegar ao motor.
+  it('sem chave a action recusa, sem chegar ao motor', async () => {
+    const r = await cobrarClienteAction(entrada({ idempotencyKey: undefined }));
+    expect(r).toEqual({ ok: false, error: 'Informe a chave de emissão.' });
+    expect(h.emitirCobrancaEscritorio).not.toHaveBeenCalled();
   });
 
   it('vencimento no passado recusa em portugues, em vez de erro do Asaas em ingles', async () => {

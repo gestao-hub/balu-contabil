@@ -299,14 +299,21 @@ export const CobrarClienteSchema = z.object({
   // FORMULARIO e renovado so apos uma emissao bem-sucedida. `CobrarDialog.tsx`
   // e quem o manda hoje.
   //
-  // SEGUE OPCIONAL: quem nao a mandar ainda emite, e ai NAO HA TRAVA NENHUMA
-  // contra duplo clique no avulso — nem reserva, nem indice unico.
+  // OBRIGATORIA (28/07): Server Action e endpoint publico — um POST direto sem
+  // passar pela tela emitia MESMO ASSIM, sem reserva e sem indice unico, ou
+  // seja, SEM TRAVA NENHUMA contra duplo clique. Tornar a chave obrigatoria
+  // aqui, na fronteira do avulso, fecha o buraco sem mexer no motor: o
+  // caminho do honorario usa a chave NATURAL do `honorarioId` (`hon:<id>`),
+  // nunca manda `idempotencyKey`, e `chaveDeReserva` (emitir-cobranca.ts)
+  // resolve essa chave PRIMEIRO — continua emitindo sem esta aqui.
   //
   // `.toLowerCase()` porque `z.string().uuid()` aceita hexadecimal MAIUSCULO e
   // o CHECK de formato da 0055 (`[0-9a-f]`) nao — sem isto, uma chave em
   // maiusculas viraria erro cru de Postgres na tela do contador.
-  idempotencyKey: z.string().uuid('Chave de emissão inválida.')
-    .nullish().transform((v) => v?.toLowerCase() ?? null),
+  idempotencyKey: z.string({
+    required_error: 'Informe a chave de emissão.',
+    invalid_type_error: 'Chave de emissão inválida.',
+  }).uuid('Chave de emissão inválida.').transform((v) => v.toLowerCase()),
 });
 export type CobrarClienteInput = z.infer<typeof CobrarClienteSchema>;
 

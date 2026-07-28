@@ -572,11 +572,18 @@ describe('emitirCobrancaEscritorio — a reserva vem ANTES do Asaas', () => {
     expect(h.criarCobranca).not.toHaveBeenCalled();
   });
 
-  // Sem chave nenhuma nao ha o que trancar. A TELA JA MANDA A CHAVE (Task 10),
-  // entao esta lacuna nao alcanca mais o contador — ela sobra para quem chamar
-  // o motor sem chave (script, teste, tela nova que esqueca), e fica declarada
-  // aqui para nao virar surpresa.
-  it('sem honorario e sem chave NAO ha reserva (lacuna conhecida do avulso)', async () => {
+  // Sem chave nenhuma nao ha o que trancar. Isto e um fato do MOTOR, nao mais
+  // do avulso de producao: desde que `idempotencyKey` virou OBRIGATORIA em
+  // `CobrarClienteSchema` (28/07), a fronteira de `cobrarClienteAction` recusa
+  // ANTES de chamar `emitirCobrancaEscritorio` — ver o teste equivalente em
+  // `cobrar-actions.test.ts`. O motor CONTINUA sem exigir a chave, de
+  // proposito: exigi-la aqui tambem nao tem para quem, porque o unico
+  // chamador do avulso e a action, que ja garante isto na fronteira; e
+  // duplicar a exigencia no motor arriscaria confundir com a chave NATURAL do
+  // honorario, que `chaveDeReserva` resolve primeiro e sozinha basta. Este
+  // teste fica para provar que a trava do avulso mora na fronteira, e o motor
+  // por si so nao a repete.
+  it('sem honorario e sem chave NAO ha reserva no motor — quem trava o avulso agora e a fronteira', async () => {
     const r = await emitirCobrancaEscritorio(fakeSb(), pedido());
     expect(r.ok).toBe(true);
     expect(rpcsDe('reservar_emissao_cobranca')).toHaveLength(0);
