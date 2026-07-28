@@ -70,9 +70,18 @@ export function valorFinalCentavos(
   s: Pick<ServicoAvulso, 'tipoValor' | 'valorCentavos' | 'percentual'>,
   baseCentavos: number | null,
 ): number | null {
-  if (s.tipoValor === 'fixo') return s.valorCentavos ?? null;
-  if (baseCentavos == null || !s.percentual) return null;
-  return Math.round((baseCentavos * s.percentual) / 100);
+  const bruto = s.tipoValor === 'fixo'
+    ? s.valorCentavos
+    : (baseCentavos == null || !s.percentual)
+      ? null
+      : Math.round((baseCentavos * s.percentual) / 100);
+
+  // Zero e negativo saem como `null`, e nao como numero, pelo mesmo motivo do
+  // paragrafo acima: emitir por zero e pior que recusar. Nao e caso teorico —
+  // 0,01% sobre R$ 1,00 arredonda para 0 centavo. Devolver 0 aqui jogaria o
+  // problema no `cobrancas_escritorio_valor_check` da 0053, que barra, mas
+  // como erro de Postgres na cara do escritorio em vez de recusa explicada.
+  return bruto != null && bruto > 0 ? bruto : null;
 }
 
 /** Seed sugerido (spec §5) — editavel pelo escritorio, nunca imposto. */

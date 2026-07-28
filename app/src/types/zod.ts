@@ -241,6 +241,15 @@ export const ServicoAvulsoSchema = z.object({
   percentual: z
     .number({ invalid_type_error: 'Informe o percentual em números.' })
     .finite('Informe o percentual em números.')
+    // A coluna e `numeric(5,2)`: 33.333 seria gravado como 33.33 SEM erro
+    // nenhum. A tela mostraria um numero e o escritorio cobraria outro, e a
+    // diferenca so apareceria na conciliacao. Recusar aqui e a unica forma de
+    // o que se ve ser o que se cobra. Tolerancia porque 33.33*100 nao da
+    // exatamente 3333 em ponto flutuante.
+    .refine(
+      (v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-9,
+      'O percentual aceita no máximo duas casas decimais.',
+    )
     .nullish()
     .transform((v) => v ?? null),
   ativo: z.boolean({ invalid_type_error: 'Situação inválida.' }).nullish().transform((v) => v ?? true),
