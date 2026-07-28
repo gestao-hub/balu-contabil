@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { aplicarEventoNaCobranca, statusDoAsaas } from './cobranca-escritorio';
+import {
+  aplicarEventoNaCobranca, statusDoAsaas, cobrancaViva, STATUS_VIVOS, STATUS_MORTOS,
+} from './cobranca-escritorio';
 
 describe('statusDoAsaas', () => {
   it.each([
@@ -72,5 +74,64 @@ describe('aplicarEventoNaCobranca', () => {
   // revalidacao a toa sobre um fato que ja esta decidido.
   it('segunda confirmacao com data diferente NAO reescreve o pagamento', () => {
     expect(aplicarEventoNaCobranca(paga, { status: 'paga', pagoEm: '2026-07-21' })).toBeNull();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // A DIRECAO QUE FALTAVA: estornada → X.
+  //
+  // Os testes acima cobriam so paga → X. O buraco simetrico era real: com a
+  // cobranca estornada, o `PAYMENT_RECEIVED` reentregue (o evento que o Asaas
+  // mais reentrega) caia direto no `return` final e a linha voltava a "paga" —
+  // o painel afirmando que entrou dinheiro que ja tinha sido devolvido.
+  // ─────────────────────────────────────────────────────────────────────────
+  const estornada = { status: 'estornada', pago_em: null };
+
+  it('PAYMENT_RECEIVED reentregue NAO ressuscita uma cobranca estornada', () => {
+    expect(aplicarEventoNaCobranca(estornada, { status: 'paga', pagoEm: '2026-07-26' })).toBeNull();
+  });
+
+  it.each([
+    ['pendente', null],
+    ['vencida', null],
+    ['paga', '2026-07-26'],
+  ] as const)('evento %s reentregue nao reabre uma cobranca estornada', (status, pagoEm) => {
+    expect(aplicarEventoNaCobranca(estornada, { status, pagoEm })).toBeNull();
+  });
+
+  // O caso perverso: o estorno chegou ANTES do pagamento que ele estorna (o
+  // Asaas nao garante ordem). Mesmo assim o dinheiro voltou — o estorno e o
+  // fato mais recente que se conhece, e o RECEIVED atrasado nao o desfaz.
+  it('estorno que chegou antes do pagamento continua valendo', () => {
+    expect(
+      aplicarEventoNaCobranca({ status: 'estornada', pago_em: '2026-07-20' }, { status: 'paga', pagoEm: '2026-07-20' }),
+    ).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VIVA x MORTA — a particao que a guarda de recobranca e o banco compartilham
+// ---------------------------------------------------------------------------
+describe('cobrancaViva', () => {
+  it('pendente, paga e vencida ainda pesam', () => {
+    for (const s of STATUS_VIVOS) expect(cobrancaViva(s)).toBe(true);
+  });
+
+  it('estornada nao pesa — e o que libera o honorario para nova cobranca', () => {
+    for (const s of STATUS_MORTOS) expect(cobrancaViva(s)).toBe(false);
+  });
+
+  // Sem esta prova, um status novo no CHECK da 0053 ficaria fora das duas
+  // listas e ninguem notaria: a guarda passaria a decidir por acidente.
+  it('as duas listas cobrem, sem sobra, os quatro status do CHECK da 0053', () => {
+    const todos = [...STATUS_VIVOS, ...STATUS_MORTOS].sort();
+    expect(todos).toEqual(['estornada', 'paga', 'pendente', 'vencida']);
+    expect(new Set(todos).size).toBe(todos.length);
+  });
+
+  // Escrito como "nao esta entre os mortos" de proposito: recusar uma emissao
+  // a mais custa um clique; emitir um segundo boleto real custa a relacao do
+  // escritorio com o cliente dele.
+  it('status inesperado conta como VIVO — o lado seguro do erro', () => {
+    expect(cobrancaViva('coisa_nova')).toBe(true);
   });
 });

@@ -23,9 +23,10 @@
 // │    que a impede de divergir da cobranca que ela descreve.               │
 // │                                                                         │
 // │ 2. `honorarios.cobranca_escritorio_id` ← DERIVADA. Escrita so aqui,     │
-// │    logo apos o INSERT, e lida so para responder "este honorario ja tem  │
-// │    cobranca?" (a trava de duplo clique abaixo e o botao da tela).       │
-// │    NENHUMA decisao sobre pagamento passa por ela.                       │
+// │    logo apos o INSERT. Aponta para a cobranca MAIS RECENTE, e serve ao  │
+// │    compare-and-swap que arbitra dois cliques simultaneos — NAO mais     │
+// │    para responder "este honorario ja tem cobranca?" (ver a nota do      │
+// │    ESTORNO abaixo). NENHUMA decisao sobre pagamento passa por ela.      │
 // │                                                                         │
 // │ 3. `honorarios.asaas_charge_id` / `asaas_customer_id` (0032, marcadas   │
 // │    "-- gancho Bloco B") ← MORTAS, e ficam mortas. Elas supoem que o     │
@@ -34,18 +35,38 @@
 // │    link e estorno. Preenche-las seria a terceira ligacao meio            │
 // │    preenchida. Ficam para um DROP COLUMN na proxima migration do bloco. │
 // └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌─ ESTORNO LIBERA O HONORARIO (decisao do usuario, 28/07) ────────────────┐
+// │ Ate aqui, quem bloqueava nova emissao era `cobranca_escritorio_id`      │
+// │ preenchido — "ja existiu alguma cobranca". Isso deixava o honorario     │
+// │ cuja cobranca foi ESTORNADA impossivel de recobrar pela tela, para      │
+// │ sempre. Mas estorno acontece por valor errado, dados errados ou acordo, │
+// │ e A DIVIDA CONTINUA EXISTINDO: o escritorio precisa poder emitir a      │
+// │ cobranca certa.                                                         │
+// │                                                                         │
+// │ Agora quem bloqueia e existir cobranca VIVA (`cobrancaViva`, em         │
+// │ lib/billing/cobranca-escritorio) na tabela canonica. O rastro do que    │
+// │ foi estornado NAO some: a linha estornada fica em `cobrancas_escritorio`│
+// │ com o mesmo `honorario_id`, e a recobranca vira auditoria propria.      │
+// │ O que muda de dono e so o back-pointer, que passa a apontar para a      │
+// │ cobranca mais recente.                                                  │
+// └─────────────────────────────────────────────────────────────────────────┘
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireEscritorioAprovado } from '@/lib/contador/guards';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { emitirCobrancaEscritorio, clienteDaCarteira } from '@/lib/billing/emitir-cobranca';
+import { cobrancaViva } from '@/lib/billing/cobranca-escritorio';
 import { valorToCentavos } from '@/lib/format/dinheiro';
 import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 import { CobrarHonorarioSchema } from '@/types/zod';
 
 export type CobrarHonorarioResult =
   | { ok: true; linkFatura: string | null; aviso?: string }
-  | { ok: false; error: string };
+  // `linkFatura` na recusa NAO e enfeite: quando a recusa e "ja existe cobranca
+  // viva", o contador precisa CHEGAR nela — para conferir o valor, reenviar ao
+  // cliente ou estorna-la. Sem o link, a unica saida e cacar no Asaas.
+  | { ok: false; error: string; linkFatura?: string | null };
 
 /**
  * Competência como MM/YYYY, a partir do que o banco devolver.
@@ -81,8 +102,31 @@ export async function cobrarHonorarioAction(entrada: unknown): Promise<CobrarHon
 
   // TRAVA DE DUPLO CLIQUE (sequencial). O clique SIMULTANEO ainda passa — ver o
   // compare-and-swap la embaixo e a nota no relatorio da task.
-  if (hon.cobranca_escritorio_id) {
-    return { ok: false, error: 'Este honorário já tem uma cobrança emitida.' };
+  //
+  // A pergunta e feita a `cobrancas_escritorio` (a ligacao CANONICA) e nao ao
+  // back-pointer, porque o back-pointer nao sabe o STATUS: ele diz "houve
+  // cobranca", e o que importa e "ha cobranca VIVA". `.eq('contabilidade_id')`
+  // porque o admin client ignora RLS — sem ele, a cobranca viva de outro
+  // escritorio decidiria esta emissao.
+  const { data: cobrancas, error: erroCobrancas } = await sb.from('cobrancas_escritorio')
+    .select('id, status, link_fatura, created_at')
+    .eq('honorario_id', hon.id).eq('contabilidade_id', ctx.id)
+    .order('created_at', { ascending: false });
+  if (erroCobrancas) {
+    // Nao da para saber se ha cobranca viva. Emitir no escuro pode virar o
+    // segundo boleto real do mesmo honorario — recusar so custa um clique.
+    console.error('[4b] leitura das cobrancas do honorario falhou', hon.id, erroCobrancas.message);
+    return { ok: false, error: 'Não foi possível conferir se este honorário já tem cobrança. Tente de novo.' };
+  }
+  const viva = (cobrancas ?? []).find((c) => cobrancaViva(String(c.status)));
+  if (viva) {
+    return {
+      ok: false,
+      error: viva.status === 'paga'
+        ? 'Este honorário já tem uma cobrança PAGA. Estorne-a antes de emitir outra.'
+        : 'Este honorário já tem uma cobrança em aberto. Estorne-a antes de emitir outra.',
+      linkFatura: (viva.link_fatura as string | null) ?? null,
+    };
   }
   if (hon.status === 'pago') {
     return { ok: false, error: 'Este honorário já está marcado como pago.' };
@@ -130,19 +174,35 @@ export async function cobrarHonorarioAction(entrada: unknown): Promise<CobrarHon
   });
   if (!r.ok) return r;
 
-  // BACK-POINTER, com compare-and-swap. `.is('cobranca_escritorio_id', null)`
-  // faz do banco o juiz de dois cliques simultaneos: so um encontra a coluna
-  // nula. O `.select('id')` nao e enfeite — sem ele o supabase-js devolve
+  // BACK-POINTER, com compare-and-swap DE VALOR (e nao "so se for nulo").
+  //
+  // O CAS faz do banco o juiz de dois cliques simultaneos: os dois leram o
+  // MESMO valor la em cima, e so um consegue troca-lo. Antes o predicado era
+  // fixo em `.is(..., null)`, o que funcionava enquanto o honorario so podia
+  // ser cobrado uma vez na vida. Com o estorno liberando a recobranca, o
+  // ponteiro ja NAO e nulo na segunda emissao — e o `.is(null)` fixo daria
+  // "corrida perdida" em toda recobranca legitima, enchendo a auditoria de
+  // duplicidade falsa e avisando o contador de um problema que nao existe.
+  //
+  // O que se compara e o valor LIDO NESTA REQUISICAO. Duas simultaneas leem o
+  // mesmo `ponteiroAntes`; a segunda a chegar nao acha mais aquele valor na
+  // coluna e casa zero linhas — exatamente como antes.
+  //
+  // O `.select('id')` nao e enfeite — sem ele o supabase-js devolve
   // `data: null` e o perdedor da corrida fica indistinguivel do vencedor.
   //
   // Nao mexe em `pagamento_origem`: ele descreve a ORIGEM DO PAGAMENTO, e aqui
   // ainda nao houve pagamento nenhum. Quem o preenche com 'asaas' e o webhook,
   // quando o dinheiro entra.
-  const { data: ligadas, error: erroLigacao } = await sb.from('honorarios')
+  const ponteiroAntes = (hon.cobranca_escritorio_id as string | null) ?? null;
+  const alvo = sb.from('honorarios')
     .update({ cobranca_escritorio_id: r.cobrancaId, updated_at: new Date().toISOString() })
-    .eq('id', hon.id).eq('contabilidade_id', ctx.id)
-    .is('cobranca_escritorio_id', null)
-    .select('id');
+    .eq('id', hon.id).eq('contabilidade_id', ctx.id);
+  const { data: ligadas, error: erroLigacao } = await (
+    ponteiroAntes
+      ? alvo.eq('cobranca_escritorio_id', ponteiroAntes)
+      : alvo.is('cobranca_escritorio_id', null)
+  ).select('id');
 
   // EM QUALQUER DOS DOIS CASOS ABAIXO A COBRANCA VALE: ela existe no Asaas e ja
   // esta gravada com `honorario_id`, que e a ligacao CANONICA — o semaforo do
@@ -173,6 +233,20 @@ export async function cobrarHonorarioAction(entrada: unknown): Promise<CobrarHon
       meta: { cobranca_id: r.cobrancaId, charge_id: r.chargeId, valor_centavos: valorCentavos },
     });
     aviso = 'Atenção: parece que este honorário já tinha uma cobrança emitida. Confira no Asaas antes de enviar ao cliente.';
+  } else if (ponteiroAntes) {
+    // RECOBRANCA APOS ESTORNO. O back-pointer acabou de deixar de apontar para
+    // a cobranca anterior — que continua em `cobrancas_escritorio`, estornada,
+    // com o mesmo `honorario_id`. Esta linha e o unico lugar que guarda a
+    // LIGACAO entre as duas: sem ela, "por que este honorario tem duas
+    // cobrancas?" so se responde comparando timestamps.
+    await registrarAuditoria({
+      actorUserId: ctx.userId, acao: 'cobranca_escritorio.honorario_recobrado',
+      alvoTipo: 'honorario', alvoId: hon.id as string, contabilidadeId: ctx.id,
+      meta: {
+        cobranca_anterior_id: ponteiroAntes, cobranca_id: r.cobrancaId,
+        charge_id: r.chargeId, valor_centavos: valorCentavos,
+      },
+    });
   }
 
   revalidatePath('/contador/honorarios');

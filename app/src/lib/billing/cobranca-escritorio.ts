@@ -12,6 +12,43 @@
 
 export type StatusCobranca = 'pendente' | 'paga' | 'vencida' | 'estornada';
 
+// ┌─ VIVA x MORTA — a particao dos quatro status ──────────────────────────────┐
+// │ "Este honorario ja tem cobranca?" NAO e a mesma pergunta que "ja existiu   │
+// │ alguma cobranca deste honorario?". Estorno acontece por valor errado,      │
+// │ dados errados ou acordo — e a divida continua existindo. Se qualquer       │
+// │ cobranca passada bloqueasse, o honorario estornado ficaria impossivel de   │
+// │ recobrar pela tela, para sempre (decisao do usuario, 28/07).               │
+// │                                                                            │
+// │ As duas listas moram AQUI, no modulo puro, porque duas coisas distantes    │
+// │ precisam concordar sobre elas: a guarda de `cobrarHonorarioAction` e o     │
+// │ indice unico parcial do banco. Divergirem significa a tela deixar passar   │
+// │ o que o banco recusa — erro de Postgres na cara do contador.               │
+// │                                                                            │
+// │ Status novo no CHECK da tabela entra em UMA das duas listas (o teste de    │
+// │ exaustividade morde quem esquecer). Se um dia existir 'cancelada', ela e   │
+// │ MORTA: cobranca cancelada nao esta na mao de ninguem.                      │
+// └────────────────────────────────────────────────────────────────────────────┘
+
+/** Ainda pesa: ha boleto na mao do cliente, ou dinheiro que entrou por ele.
+ *  `vencida` e VIVA de proposito — no Asaas o boleto vencido continua pagavel,
+ *  entao emitir outra e mandar um segundo boleto da mesma divida. */
+export const STATUS_VIVOS = ['pendente', 'paga', 'vencida'] as const satisfies readonly StatusCobranca[];
+
+/** Nao pesa mais: o dinheiro voltou. Nao impede uma cobranca nova. */
+export const STATUS_MORTOS = ['estornada'] as const satisfies readonly StatusCobranca[];
+
+/**
+ * A cobrança ainda pesa?
+ *
+ * Escrito como "não está entre os mortos", e não "está entre os vivos", para
+ * que um status inesperado (linha antiga, CHECK afrouxado, escrita fora do app)
+ * conte como VIVO: recusar uma emissão a mais é reparável com um clique;
+ * emitir um segundo boleto real, não.
+ */
+export function cobrancaViva(status: string): boolean {
+  return !(STATUS_MORTOS as readonly string[]).includes(status);
+}
+
 /** Os quatro valores acima sao exatamente o CHECK
  *  `cobrancas_escritorio_status_check` da migration 0053. */
 const MAPA: Record<string, StatusCobranca> = {
@@ -41,6 +78,23 @@ export function aplicarEventoNaCobranca(
 ): { status: StatusCobranca; pago_em: string | null } | null {
   // Reentrega exata do mesmo evento: nada a escrever, e nada a revalidar.
   if (atual.status === evento.status && (atual.pago_em ?? null) === (evento.pagoEm ?? null)) return null;
+
+  // ESTORNO É TERMINAL. Esta linha é a simétrica da de baixo, e faltava.
+  //
+  // O evento que o Asaas mais reentrega é justamente `PAYMENT_RECEIVED`. Com a
+  // cobrança já `estornada`, a reentrega dele encontrava só a guarda de baixo
+  // (`atual.status === 'paga'`), não se aplicava, e a linha VOLTAVA A "paga":
+  // o painel do escritório passava a afirmar que entrou dinheiro que já tinha
+  // sido devolvido, e o honorário voltava a parecer quitado. É a mesma classe
+  // de bug que esta função existe para impedir — só que no sentido inverso, e
+  // por isso escapou: os testes cobriam apenas a direção paga → X.
+  //
+  // Nada sai de `estornada` por evento. Se um estorno for revertido de verdade
+  // (chargeback ganho, por exemplo), o Asaas emite uma cobrança NOVA, com outro
+  // `asaas_charge_id` — que vira outra linha. Ressuscitar esta seria inventar
+  // um fato sobre o dinheiro a partir de um evento que só sabemos ter chegado
+  // fora de ordem.
+  if (atual.status === 'estornada') return null;
 
   // Estorno é o ÚNICO evento que pode desfazer um pagamento: é o próprio
   // Asaas dizendo que o dinheiro voltou.

@@ -14,7 +14,11 @@
 //      semaforo do painel nunca mais fecharia sozinho;
 //   5. tirar o compare-and-swap do back-pointer, ou deixar o perdedor da
 //      corrida sair em silencio;
-//   6. preencher `pagamento_origem` na EMISSAO (ele descreve o PAGAMENTO).
+//   6. preencher `pagamento_origem` na EMISSAO (ele descreve o PAGAMENTO);
+//   7. voltar a perguntar "ja houve cobranca?" (back-pointer) no lugar de "ha
+//      cobranca VIVA?" — o que trancaria para sempre o honorario estornado;
+//   8. deixar o compare-and-swap fixo em `.is(null)`, o que transformaria toda
+//      recobranca legitima em "corrida perdida".
 //
 // O motor de emissao (`@/lib/billing/emitir-cobranca`) e mockado inteiro: ele
 // tem a sua propria rede em `src/lib/billing/emitir-cobranca.test.ts`.
@@ -38,6 +42,9 @@ const h = vi.hoisted(() => {
   const estado = {
     guard: null as unknown,
     honorario: null as Record<string, unknown> | null,
+    /** O que `cobrancas_escritorio` devolve para este honorario. */
+    cobrancas: [] as Record<string, unknown>[],
+    erroCobrancas: null as { message: string } | null,
     cliente: null as unknown,
     emissao: null as unknown,
     /** O que o `.select('id')` do back-pointer devolve: 1 linha = venceu. */
@@ -49,9 +56,18 @@ const h = vi.hoisted(() => {
     select: (_cols: string) => {
       const c = { tabela, eq: [] as unknown[][] };
       consultas.push(c);
+      const resultado = () => tabela === 'cobrancas_escritorio'
+        ? { data: estado.erroCobrancas ? null : estado.cobrancas, error: estado.erroCobrancas }
+        : { data: estado.honorario, error: null };
       const b = {
         eq: (col: unknown, v: unknown) => { c.eq.push([col, v]); return b; },
-        maybeSingle: async () => ({ data: estado.honorario, error: null }),
+        order: (_col: string, _o?: unknown) => b,
+        maybeSingle: async () => resultado(),
+        // A consulta das cobrancas nao termina em `.maybeSingle()`: ela e
+        // AGUARDADA direto, como o supabase-js permite. Sem este `then` o
+        // `await` devolveria o proprio builder e o teste passaria por engano.
+        then: (ok: (v: unknown) => unknown, falhou?: (e: unknown) => unknown) =>
+          Promise.resolve(resultado()).then(ok, falhou),
       };
       return b;
     },
@@ -120,6 +136,8 @@ beforeEach(() => {
     status: 'pendente',
     cobranca_escritorio_id: null,
   };
+  h.estado.cobrancas = [];
+  h.estado.erroCobrancas = null;
   h.estado.cliente = CLIENTE;
   h.estado.emissao = { ok: true, cobrancaId: 'cob_0001', chargeId: 'pay_0001', linkFatura: 'https://asaas.invalid/i/1' };
   h.estado.linhasLigadas = [{ id: HONORARIO_ID }];
@@ -194,13 +212,6 @@ describe('cobrarHonorarioAction — isolamento e recusas', () => {
     expect(h.emitirCobrancaEscritorio).not.toHaveBeenCalled();
   });
 
-  it('honorario que JA tem cobranca nao emite outra (duplo clique sequencial)', async () => {
-    h.estado.honorario = { ...h.estado.honorario, cobranca_escritorio_id: 'cob_antiga' };
-    const r = await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
-    expect(r).toEqual({ ok: false, error: 'Este honorário já tem uma cobrança emitida.' });
-    expect(h.emitirCobrancaEscritorio).not.toHaveBeenCalled();
-  });
-
   it('honorario ja pago nao emite', async () => {
     h.estado.honorario = { ...h.estado.honorario, status: 'pago' };
     const r = await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
@@ -226,6 +237,94 @@ describe('cobrarHonorarioAction — isolamento e recusas', () => {
     const r = await cobrarHonorarioAction({ honorarioId: 'nao-e-uuid' });
     expect(r).toEqual({ ok: false, error: 'Honorário inválido.' });
     expect(h.consultas).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2b. COBRANCA VIVA x COBRANCA ESTORNADA
+//
+// O que bloqueia nova emissao e existir cobranca VIVA na tabela canonica — e
+// nao existir cobranca qualquer. A diferenca e o honorario estornado poder ou
+// nao ser recobrado pela tela: com a regra antiga (`cobranca_escritorio_id`
+// preenchido) ele ficava trancado para sempre, e a divida continua existindo.
+// ---------------------------------------------------------------------------
+describe('cobrarHonorarioAction — o que bloqueia e a cobranca VIVA', () => {
+  const cobranca = (status: string) => ({
+    id: 'cob_antiga', status, link_fatura: `https://asaas.invalid/i/${status}`,
+    created_at: '2026-07-01T12:00:00Z',
+  });
+
+  it.each(['pendente', 'vencida'] as const)(
+    'cobranca %s bloqueia — ha boleto vivo na mao do cliente',
+    async (status) => {
+      h.estado.cobrancas = [cobranca(status)];
+      const r = await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
+      expect(r).toMatchObject({
+        ok: false,
+        error: 'Este honorário já tem uma cobrança em aberto. Estorne-a antes de emitir outra.',
+        // O contador precisa CHEGAR na cobranca que o bloqueou.
+        linkFatura: `https://asaas.invalid/i/${status}`,
+      });
+      expect(h.emitirCobrancaEscritorio).not.toHaveBeenCalled();
+    },
+  );
+
+  it('cobranca paga bloqueia, com mensagem propria', async () => {
+    h.estado.cobrancas = [cobranca('paga')];
+    const r = await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
+    expect(r).toMatchObject({
+      ok: false,
+      error: 'Este honorário já tem uma cobrança PAGA. Estorne-a antes de emitir outra.',
+    });
+    expect(h.emitirCobrancaEscritorio).not.toHaveBeenCalled();
+  });
+
+  // O CORACAO DA MUDANCA. Estorno acontece por valor errado, dados errados ou
+  // acordo — e a divida continua existindo.
+  it('cobranca ESTORNADA nao bloqueia: o honorario pode ser recobrado', async () => {
+    h.estado.honorario = { ...h.estado.honorario, cobranca_escritorio_id: 'cob_antiga' };
+    h.estado.cobrancas = [cobranca('estornada')];
+    const r = await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
+    expect(r).toMatchObject({ ok: true });
+    expect(h.emitirCobrancaEscritorio).toHaveBeenCalledTimes(1);
+    expect(pedidoEmitido()).toMatchObject({ honorarioId: HONORARIO_ID });
+  });
+
+  // Estornou, recobrou, a segunda venceu: volta a bloquear. Senao a "liberacao
+  // por estorno" viraria "nunca mais bloqueia".
+  it('uma estornada + uma viva ainda bloqueia', async () => {
+    h.estado.cobrancas = [cobranca('pendente'), { ...cobranca('estornada'), id: 'cob_mais_antiga' }];
+    const r = await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
+    expect(r).toMatchObject({ ok: false });
+    expect(h.emitirCobrancaEscritorio).not.toHaveBeenCalled();
+  });
+
+  it('a busca por cobranca viva e escopada por honorario E por contabilidade (anti-IDOR)', async () => {
+    await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
+    const c = consultasDe('cobrancas_escritorio')[0];
+    expect(c.eq).toContainEqual(['honorario_id', HONORARIO_ID]);
+    expect(c.eq).toContainEqual(['contabilidade_id', CONTABILIDADE_ID]);
+  });
+
+  // Nao da para saber se ha cobranca viva. Emitir no escuro pode virar o
+  // segundo boleto real; recusar so custa um clique.
+  it('se a leitura das cobrancas falhar, NAO emite', async () => {
+    h.estado.erroCobrancas = { message: 'connection reset' };
+    const r = await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
+    expect(r).toEqual({
+      ok: false,
+      error: 'Não foi possível conferir se este honorário já tem cobrança. Tente de novo.',
+    });
+    expect(h.emitirCobrancaEscritorio).not.toHaveBeenCalled();
+  });
+
+  // O back-pointer sozinho nao sabe o status. Se a guarda voltar a olhar so
+  // para ele, este teste morde.
+  it('back-pointer preenchido, sozinho, NAO bloqueia mais', async () => {
+    h.estado.honorario = { ...h.estado.honorario, cobranca_escritorio_id: 'cob_antiga' };
+    h.estado.cobrancas = [];
+    const r = await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
+    expect(r).toMatchObject({ ok: true });
   });
 });
 
@@ -273,6 +372,45 @@ describe('cobrarHonorarioAction — back-pointer', () => {
     expect(u.is).toContainEqual(['cobranca_escritorio_id', null]);
     // Sem o `.select`, o perdedor da corrida seria indistinguivel do vencedor.
     expect(u.select).toContain('id');
+  });
+
+  // Na RECOBRANCA o ponteiro nao e nulo. Um `.is(null)` fixo casaria zero
+  // linhas e toda recobranca legitima sairia como "corrida perdida" — aviso
+  // falso ao contador e auditoria de duplicidade que nunca houve.
+  it('apos estorno, o compare-and-swap troca A PARTIR do ponteiro antigo', async () => {
+    h.estado.honorario = { ...h.estado.honorario, cobranca_escritorio_id: 'cob_antiga' };
+    h.estado.cobrancas = [{ id: 'cob_antiga', status: 'estornada', link_fatura: null, created_at: '2026-07-01T12:00:00Z' }];
+
+    const r = await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
+    expect(r).toMatchObject({ ok: true });
+    expect(r).not.toHaveProperty('aviso');
+
+    const [u] = updatesDe('honorarios');
+    expect(u.valores).toMatchObject({ cobranca_escritorio_id: 'cob_0001' });
+    // O CAS e de VALOR, e continua sendo um CAS: duas requisicoes simultaneas
+    // leem o mesmo 'cob_antiga' e so uma o encontra na hora de trocar.
+    expect(u.eq).toContainEqual(['cobranca_escritorio_id', 'cob_antiga']);
+    expect(u.is).toHaveLength(0);
+  });
+
+  it('recobranca apos estorno deixa rastro em auditoria, ligando as duas cobrancas', async () => {
+    h.estado.honorario = { ...h.estado.honorario, cobranca_escritorio_id: 'cob_antiga' };
+    h.estado.cobrancas = [{ id: 'cob_antiga', status: 'estornada', link_fatura: null, created_at: '2026-07-01T12:00:00Z' }];
+
+    await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
+    const a = h.auditorias.find((x) => x.acao === 'cobranca_escritorio.honorario_recobrado');
+    expect(a).toBeDefined();
+    expect(a?.meta).toMatchObject({ cobranca_anterior_id: 'cob_antiga', cobranca_id: 'cob_0001' });
+  });
+
+  it('recobranca que PERDE a corrida ainda avisa, e nao vira "recobrado"', async () => {
+    h.estado.honorario = { ...h.estado.honorario, cobranca_escritorio_id: 'cob_antiga' };
+    h.estado.cobrancas = [{ id: 'cob_antiga', status: 'estornada', link_fatura: null, created_at: '2026-07-01T12:00:00Z' }];
+    h.estado.linhasLigadas = [];
+
+    const r = await cobrarHonorarioAction({ honorarioId: HONORARIO_ID });
+    expect(r).toMatchObject({ ok: true, aviso: expect.stringContaining('Confira no Asaas') });
+    expect(h.auditorias.map((x) => x.acao)).toEqual(['cobranca_escritorio.honorario_duplicado']);
   });
 
   it('a emissao NAO mexe em pagamento_origem nem nos ganchos mortos da 0032', async () => {
