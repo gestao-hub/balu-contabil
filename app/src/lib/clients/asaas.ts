@@ -125,6 +125,19 @@ export type AsaasSubconta = {
   name: string; email: string; cpfCnpj: string;
 };
 
+/** Resposta de `GET /v3/myAccount/status` — os quatro eixos de KYC da conta
+ *  cujo token foi usado. Levantado contra o sandbox, nao contra a doc:
+ *  {"id","commercialInfo","bankAccountInfo","documentation","general"}, todos
+ *  string maiuscula. Quem traduz para o vocabulario da coluna e
+ *  `@/lib/billing/status-subconta`. */
+export type AsaasStatusConta = {
+  id: string;
+  commercialInfo: string;
+  bankAccountInfo: string;
+  documentation: string;
+  general: string;
+};
+
 /** Criação de subconta — vai SEMPRE pela conta-mãe. */
 export const asaasContaMae = {
   criarSubconta: (d: Record<string, unknown>) =>
@@ -157,5 +170,16 @@ export function asaasSub(token: string) {
 
     pixDaCobranca: (id: string) =>
       call<{ payload?: string; encodedImage?: string }>('GET', `/v3/payments/${id}/pixQrCode`, undefined, token),
+
+    /**
+     * KYC da PROPRIA subconta. `myAccount` significa "a conta do token" — com o
+     * token da conta-mae isto devolveria o KYC da Balu, e a Balu esta sempre
+     * aprovada: o `, token` aqui e a diferenca entre ler o cadastro do
+     * escritorio e carimbar toda subconta como aprovada. Nao ha rota
+     * equivalente por subconta na conta-mae (`GET /v3/accounts` so lista
+     * `{ id, name }`).
+     */
+    consultarStatusConta: () =>
+      call<AsaasStatusConta>('GET', '/v3/myAccount/status', undefined, token),
   };
 }

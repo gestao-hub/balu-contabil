@@ -101,6 +101,25 @@ describe('asaasSub — access_token deve ser o token da SUBCONTA', () => {
 
     expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
   });
+
+  // O mais perigoso da lista: `/v3/myAccount/status` responde 200 para
+  // QUALQUER token válido. Com a chave da conta-mãe ele devolve o KYC da Balu,
+  // que está aprovado — e toda subconta seria marcada 'aprovada' sem que nada
+  // quebrasse.
+  it('consultarStatusConta', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(200, {
+        id: 'acc_1', commercialInfo: 'APPROVED', bankAccountInfo: 'APPROVED',
+        documentation: 'APPROVED', general: 'APPROVED',
+      }),
+    );
+
+    await asaasSub(SUB_TOKEN).consultarStatusConta();
+
+    expect(accessTokenUsado(fetchSpy)).toBe(SUB_TOKEN);
+    const [url] = fetchSpy.mock.calls[0]! as [string, unknown];
+    expect(url).toContain('/v3/myAccount/status');
+  });
 });
 
 describe('asaas (conta-mãe) — access_token deve ser a chave da Balu, nunca da subconta', () => {
