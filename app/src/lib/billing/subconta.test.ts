@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validarDadosSubconta, montarPayloadSubconta, soDigitos } from './subconta';
+import { validarDadosSubconta, montarPayloadSubconta, soDigitos, ehPessoaJuridica } from './subconta';
 
 const pj = {
   name: 'Escritorio Teste Contabil LTDA', cpfCnpj: '11.222.333/0001-81',
@@ -31,6 +31,10 @@ describe('validarDadosSubconta', () => {
   it('exige companyType para CNPJ', () => {
     const r = validarDadosSubconta({ ...pj, companyType: null });
     expect(r.ok).toBe(false);
+    // Sem afirmar a MENSAGEM, este caso passa mesmo com a bifurcacao PJ/PF
+    // invertida: o fixture `pj` tem birthDate null, entao o validador errado
+    // recusaria pelo motivo errado e o teste nao notaria.
+    if (!r.ok) expect(r.error).toContain('tipo da empresa');
   });
 
   it.each([
@@ -49,6 +53,30 @@ describe('validarDadosSubconta', () => {
 
   it('recusa faturamento estimado zerado ou negativo', () => {
     expect(validarDadosSubconta({ ...pj, incomeValue: 0 }).ok).toBe(false);
+    expect(validarDadosSubconta({ ...pj, incomeValue: -1 }).ok).toBe(false);
+  });
+
+  // Campo vazio e o caso facil. O que aparece de verdade no formulario e valor
+  // PRESENTE e malformado — e nenhum dos ramos abaixo tinha teste.
+  it.each([
+    ['CEP com 7 digitos', { postalCode: '0100100' }, 'CEP'],
+    ['celular sem DDD', { mobilePhone: '99999999' }, 'celular'],
+    ['e-mail sem arroba', { email: 'contatoescritorio.com.br' }, 'e-mail'],
+    ['bairro em branco', { province: '  ' }, 'bairro'],
+  ])('recusa %s', (_r, patch, trecho) => {
+    const r = validarDadosSubconta({ ...pj, ...patch });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain(trecho);
+  });
+});
+
+describe('ehPessoaJuridica', () => {
+  // Export que o Client Component da Task 6 importa para trocar o formulario;
+  // ate aqui so era coberto de raspao, por dentro do validador.
+  it('14 digitos e PJ, 11 e PF, mascara nao importa', () => {
+    expect(ehPessoaJuridica('11.222.333/0001-81')).toBe(true);
+    expect(ehPessoaJuridica('123.456.789-09')).toBe(false);
+    expect(ehPessoaJuridica('')).toBe(false);
   });
 });
 

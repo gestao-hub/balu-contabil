@@ -24,6 +24,15 @@ export function guardarCredencial(apiKey: string): string {
 
 export function lerCredencial(cifrada: string | null): string | null {
   if (!cifrada) return null;
+  // `decifrarCampo` devolve o proprio valor quando nao ha o prefixo, para
+  // conviver com certificado gravado em claro antes do Bloco E. Aqui NAO ha
+  // legado: a coluna nasceu na 0053 e `guardarCredencial` recusa gravar sem
+  // cifra. Entao valor sem prefixo so pode ser gravacao corrompida — e o
+  // fallback silencioso a devolveria como se fosse chave boa, escondendo que
+  // o segredo mais sensivel do sistema esta em claro no banco.
+  if (!cifrada.startsWith('enc:v1:')) {
+    throw new Error('lerCredencial: credencial da subconta sem cifra — gravacao corrompida');
+  }
   return decifrarCampo(cifrada);
 }
 

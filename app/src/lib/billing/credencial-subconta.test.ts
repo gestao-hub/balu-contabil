@@ -34,6 +34,14 @@ describe('ciclo completo da credencial', () => {
   it('lerCredencial devolve null quando nao ha nada guardado', () => {
     expect(lerCredencial(null)).toBeNull();
   });
+
+  // `decifrarCampo` tolera valor sem prefixo por causa do certificado gravado
+  // em claro antes do Bloco E. Para a apiKey da subconta nao existe legado, e
+  // devolver o valor cru esconderia o segredo mais sensivel do sistema em
+  // claro no banco — parecendo que tudo funciona.
+  it('recusa ler credencial sem cifra em vez de devolver o valor cru', () => {
+    expect(() => lerCredencial('$aact_gravado_em_claro')).toThrow(/sem cifra/);
+  });
 });
 
 describe('mascarar', () => {

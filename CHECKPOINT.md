@@ -37,6 +37,28 @@
 
 ---
 
+## Sessão 14 (2026-07-28) — Bloco 4B em execução (subagent-driven)
+
+> Seção em construção — atualizar ao fim da sessão.
+
+**Duas decisões tomadas na retomada:** execução **subagent-driven** (um subagente por task + revisão de spec e de qualidade entre elas), e o **gate de inadimplência do 4A bloqueia apenas *criar* cobrança nova pela subconta** — nunca alcança ver, sincronizar ou receber as já emitidas, porque é com esse dinheiro que o escritório paga a Balu. Mesma forma das duas fronteiras do 4A.
+
+### Duas landmines novas, ambas em `contabilidades`
+
+**1. A tabela não tem mais grant de tabela para `anon`/`authenticated`.** A 0053 acrescentou as cinco colunas `asaas*` e elas caíram debaixo das policies da `0035:20-27`, que dão SELECT **e UPDATE** a qualquer membro do escritório sobre a linha inteira. Pela anon key dava para se autoaprovar o KYC (`asaas_subconta_status='aprovada'`) e, pior, **zerar `asaas_api_key_cifrada`** — chave que o Asaas devolve uma única vez e sem a qual a subconta fica inoperável.
+
+O conserto (fim da 0053) **não pôde ser `REVOKE` por coluna**: privilégio de tabela e de coluna se **somam**, então revogar a coluna com o grant de tabela de pé não corta nada e **falha em silêncio**. Foi preciso revogar no nível da tabela e reconceder coluna a coluna — UPDATE só nas 4 colunas que a `0030:84` já pretendia (`nome, logo_url, whatsapp_suporte, email_remetente_nome`), SELECT em todas menos `asaas_api_key_cifrada`.
+
+**Consequência que vai morder:** **coluna nova em `contabilidades` nasce ilegível para o cliente** até alguém reaplicar o bloco `DO` do fim da 0053. E um `GRANT ALL ON ALL TABLES IN SCHEMA public` futuro reabre tudo calado.
+
+**2. `criar_assinatura_trial()` quebrava todo cadastro de escritório novo — em produção desde a 0050.** Corrigido pela **migration 0054**, já aplicada. A guarda era `IF TG_TABLE_NAME = 'companies' AND NEW.contabilidade_id IS NOT NULL`; **PL/pgSQL não garante short-circuit**, e a mesma função serve `trg_assinatura_contabilidade`, onde a coluna não existe → todo `INSERT INTO contabilidades` morria com `42703`. Passou meses despercebido porque só existe uma contabilidade, criada antes da 0050. Provado antes/depois em `BEGIN`/`ROLLBACK`, incluindo os dois caminhos de `companies`.
+
+### Buraco no plano do 4B, a decidir na Task 9
+
+A tabela de arquivos a modificar do plano (linha 65) promete **"Gerar cobrança" no honorário**, e o webhook (linha 1910) e a sincronização (2110) já tratam `cob.honorario_id` — mas **nenhuma task preenche `honorario_id`**. O único caminho de emissão escrito é o de **serviço avulso**. Do jeito que está, o 4B entregaria o avulso e deixaria de fora a **mensalidade**, que é o principal que um escritório cobra. Decidir ao chegar na Task 9.
+
+---
+
 ## Sessão 13 (2026-07-27) — smoke do 4A concluído + comprovante obrigatório (0052)
 
 **O smoke fechou, e ainda gerou uma regra de produto nova no caminho** — a terceira do bloco. 4 commits (`b163e89` → o merge).

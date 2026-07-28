@@ -40,7 +40,13 @@ export function validarDadosSubconta(d: DadosSubconta): ResultadoValidacao {
   if (doc.length !== 11 && doc.length !== 14) {
     return { ok: false, error: 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.' };
   }
-  if (!d.email?.trim()) return { ok: false, error: 'Informe o e-mail do responsável.' };
+  // Sem o `@` o Asaas devolve `invalid_email` em ingles — que e exatamente o
+  // modo de falha que este modulo existe para evitar. Esquecer o arroba e erro
+  // de digitacao corriqueiro, e a mensagem em portugues ja mora aqui.
+  const email = d.email?.trim() ?? '';
+  if (!email || !email.includes('@')) {
+    return { ok: false, error: 'Informe o e-mail do responsável.' };
+  }
   if (soDigitos(d.mobilePhone).length < 10) {
     return { ok: false, error: 'Informe o celular com DDD.' };
   }
