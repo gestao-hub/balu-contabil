@@ -1,7 +1,64 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4B COMPLETO e com o SMOKE CONCLUÍDO.** Branch `feat/bloco-4b-subcontas`, 41 commits, **NÃO mergeada**. Tasks 13 e 14 fechadas, navegação, tela consolidada do contador, rodada de code-review + systematic-debugging, e o **SMOKE MANUAL CONCLUÍDO** (§1–§10, nenhum bug novo). **Pronto para merge.** Migrations `0053`, `0054` e `0055` **aplicadas em produção**. **Blocos 1, 2, 3 e 4A em `main` e no ar.**)
+> **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4 FECHADO: 4A + 4B mergeados (`1199a1e`), empurrados e no ar.** Smoke §1–§10 sem nenhum bug novo. Migrations até `0055` em produção. **Bloco 6A (explicação de imposto com IA) desenhado e planejado**, zero linha de código — a spec ainda não foi lida pelo usuário. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
+
+> ## ▶ AO RETOMAR: executar o Bloco 6A (spec e plano prontos, nenhuma linha de código)
+> **O Bloco 4 está FECHADO e no ar** (ver abaixo). O 6A foi desenhado e planejado
+> na mesma sessão, com o usuário ausente no fim — então **a spec ainda não foi
+> lida por ele**.
+>
+> **Primeira coisa ao retomar: pedir que ele leia a spec**
+> (`docs/superpowers/specs/2026-07-28-bloco-6a-explicacao-ia-design.md`), porque o
+> fluxo do projeto prevê aprovação dele antes da execução, e essa etapa ficou
+> pendente. Só depois começar a Task 1 do plano
+> (`docs/superpowers/plans/2026-07-28-bloco-6a-explicacao-ia.md`, 12 tasks).
+>
+> **O que é o 6A.** O Bloco 6 do Master PRD junta IA e WhatsApp; virou **6A (IA)**
+> e **6B (WhatsApp)**, pela mesma lógica que dividiu o 4. E dentro do 6A, apenas a
+> **primeira** das três features de IA: **explicar imposto**. Sugestão de código de
+> serviço e onboarding conversacional viram blocos próprios.
+>
+> **As três decisões do usuário que moldaram o desenho:**
+> 1. **Só a FORMA sai da Balu.** A IA recebe `{ tributo, regime, componentes }` e
+>    devolve texto **com marcadores**; a Balu troca `{inss}` por `R$ 61,60` na hora
+>    de exibir. Nenhum dado de contribuinte atravessa a fronteira — não há
+>    transferência internacional a fundamentar porque não há dado de titular.
+> 2. **Uma vez por situação, revisada por humano.** Consequência direta da
+>    primeira: se a explicação descreve uma *situação* e não um *cliente*, ela é
+>    idêntica para todo MEI do país. Isso deixou de ser "IA no caminho da
+>    requisição" e virou **catálogo**: custo ~zero, latência zero, provedor fora do
+>    ar é indiferente, e nenhum texto sobre tributo chega ao cliente sem um humano
+>    ter lido (DL 9.295/46).
+> 3. **Provedor escolhido pelo AdminBalu** — dropdown com Anthropic, Gemini,
+>    OpenAI, OpenRouter, Groq, DeepSeek, Mistral e "Personalizado", chave cifrada
+>    no banco. **Dois adaptadores cobrem a lista inteira** (a chamada é texto entra
+>    / texto sai). É barato *por causa* das decisões 1 e 2: sem dado do cliente
+>    saindo, trocar de provedor não mexe no risco; com revisão humana, provedor
+>    ruim vira rascunho rejeitado.
+>
+> **Nenhuma credencial de IA existe** (`ANTHROPIC_API_KEY` ausente, sem SDK, sem
+> `src/lib/ai/`). O usuário disse que **vai pegar a chave em breve** — e o desenho
+> só precisa dela para **gerar rascunho**, nunca para exibir.
+>
+> **Três achados levantados contra o repo real, que o PRD errava:**
+> - **Não existe lista oficial de códigos de serviço.** São 10 escritos à mão em
+>   `codigos-tributacao.ts` e um validador que só confere 6 dígitos — `999999`
+>   passa. E o repo usa a **Lista Nacional (6 dígitos)**, não a LC 116 (`X.XX`)
+>   que o PRD cita. **Pré-requisito da feature de sugestão de código.**
+> - **O Pix do DAS é suposição.** O PRD afirma que o SERPRO devolve o
+>   copia-e-cola; nosso parser não lê campo nenhum de Pix e **descarta em silêncio
+>   o que não lê**. **Pré-requisito do 6B** — sondar quando houver credencial.
+> - **O DAS-MEI usa o salário mínimo de 2025** (R$ 1.518 → INSS 75,90), com um
+>   comentário mandando conferir "quando o de 2026 for oficial". Já é julho de
+>   2026: **a estimativa provavelmente está errada hoje**, independentemente do
+>   6A. A Task 1 do plano estrutura a composição; trocar o valor vira uma linha.
+>
+> ⚠️ **Pendência do 4B combinada com o usuário:** o cenário do smoke (4 cobranças,
+> 1 serviço avulso, 2 honorários, a subconta) **fica vivo como prova de que o teste
+> foi feito**, e a limpeza acontece **antes da entrega ao dono do produto**.
+
+---
 
 > ## ✅ SMOKE DO 4B CONCLUÍDO (2026-07-28) — §1 a §10, todas passaram
 > **Nenhum bug novo** — o primeiro bloco do projeto em que isso acontece. Não é
