@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-28 (sessão 14 — **Bloco 4B em execução, subagent-driven.** Branch `feat/bloco-4b-subcontas`, 36 commits, **NÃO mergeada**. Tasks 1–12 do plano fechadas. Falta **13, 14, cadastro do webhook na subconta, navegação** e o **smoke manual**. Migrations `0053`, `0054` e `0055` **aplicadas em produção**. Dois bugs de produção corrigidos no caminho. **Blocos 1, 2, 3 e 4A em `main` e no ar.**)
+> **Última atualização:** 2026-07-28 (sessão 14 — **Bloco 4B em execução, subagent-driven.** Branch `feat/bloco-4b-subcontas`, 38 commits, **NÃO mergeada**. Tasks 1–12 do plano fechadas + o cadastro do webhook na subconta. Falta **13, 14, navegação** e o **smoke manual**. Migrations `0053`, `0054` e `0055` **aplicadas em produção**. Dois bugs de produção corrigidos no caminho. **Blocos 1, 2, 3 e 4A em `main` e no ar.**)
 
 > ## ▶ AO RETOMAR: começar pela Task 13 do 4B
 > **Pedido explícito do usuário ao encerrar a sessão 14:** parar antes da
@@ -45,17 +45,11 @@
 
 ## Sessão 14 (2026-07-28) — Bloco 4B em execução (subagent-driven)
 
-**Tasks 1–12 do plano fechadas**, cada uma com subagente próprio + revisão de conformidade e de qualidade. Branch `feat/bloco-4b-subcontas`, 36 commits, **não mergeada**. Migrations `0053`, `0054` e `0055` aplicadas em produção.
+**Tasks 1–12 do plano fechadas**, cada uma com subagente próprio + revisão de conformidade e de qualidade. Branch `feat/bloco-4b-subcontas`, 38 commits, **não mergeada**. Migrations `0053`, `0054` e `0055` aplicadas em produção.
 
-**Verificação no fecho da sessão** (commit `e1cc9f5`, ambiente limpo, nenhum node vivo): `tsc --noEmit` **0 erros** · vitest **1082 passando / 0 falhando** (27 pulados — os smoke/e2e que exigem credencial) · `next build` **compilado com sucesso, 0 erros**.
+**Verificação no fecho da sessão** (commit `e1cc9f5`, ambiente limpo, nenhum node vivo): `tsc --noEmit` **0 erros** · vitest **1112 passando / 0 falhando** (27 pulados — os smoke/e2e que exigem credencial) · `next build` **compilado com sucesso, 0 erros**.
 
-> ⚠️ **A sessão foi encerrada com UMA frente em voo, que deixou trabalho NÃO COMMITADO na árvore.** A Task 12 pousou e está commitada (`34a9a62`); o **cadastro do webhook na subconta**, não.
->
-> **O que ficou por commitar:**
-> - `app/src/lib/billing/webhook-subconta.ts` e `webhook-subconta-asaas.ts` (novos, não rastreados)
-> - `app/src/lib/clients/asaas.ts` e `contador/configuracoes/subconta/actions.ts` (modificados)
->
-> **Ao retomar, ANTES da Task 13:** `git status`, ler o que está aí, rodar `npx tsc --noEmit` e a suíte, e decidir **aproveitar ou descartar**. **Não presumir que está pronto — não passou por revisão.** Dois pontos a conferir em especial: (a) se entrou método novo em `asaasSub`, **tem de entrar o caso em `app/src/lib/clients/asaas.test.ts`** (esse arquivo existe porque apagar `, token` faz a chamada sair com a chave da conta-mãe, compilando limpo); (b) `criarSubcontaAction` tem **ordem de operações crítica** — cadastrar webhook não pode entrar antes da gravação da `apiKey`, nem fazer a criação da subconta parecer que falhou.
+> ⚠️ **Duas frentes pousaram DEPOIS do pedido de encerramento e NÃO passaram por revisão:** a Task 12 (`34a9a62`) e o cadastro do webhook na subconta (`dd6b285`). Estão commitadas e verdes (`tsc` 0, 1112 testes), mas **nenhuma teve revisão de conformidade nem de qualidade**, ao contrário das Tasks 1–11. **Revisá-las é a primeira coisa a fazer, antes da Task 13.**
 >
 > **Nota da Task 12, decisão de produto pendente:** o empresário passou a ter **dois itens de menu concorrentes** — `/honorarios` (razão manual de mensalidades, sem link de pagamento, status calculado por data) e `/cobrancas` (boleto real da subconta, status do Asaas). Um honorário cobrado aparece **nas duas telas, com status calculado por caminhos diferentes**. Isso vai gerar pergunta no smoke. Decidir se `/honorarios` vira aba de `/cobrancas`, ou se some do menu quando o escritório usa subconta.
 
@@ -151,11 +145,25 @@ A falha é do **lado seguro** — sem cadastro nada chega, e nada é marcado com
 
 **Roteamento:** por ausência de `subscription`. O payload do Asaas **não traz dono** (conferido contra o objeto real capturado em `asaas.e2e.test.ts`), e `externalReference` foi rejeitado por ser campo escolhido pelo remetente. O desenho compensa: **a ausência escolhe o RAMO, a busca decide a AÇÃO** — os dois ramos só agem sobre linha existente e nenhum faz INSERT, então evento roteado para o lado errado vira log e 200.
 
+### ⛔ AÇÃO DO USUÁRIO: `ASAAS_WEBHOOK_SECRET` não existe, e sem ele nenhuma subconta registra
+
+O cadastro do webhook (`dd6b285`) usa o **mesmo** `ASAAS_WEBHOOK_SECRET` que o `route.ts` já valida. **Ele não está em `app/.env.local`** (conferido: zero ocorrências) e precisa existir também na Vercel, **com no mínimo 32 caracteres** — o Asaas recusa `authToken` menor (`"O token deve ter pelo menos 32 caracteres."`).
+
+**O modo de falha é o mais silencioso possível:** se o valor configurado à mão no painel do Asaas for mais curto que 32, a conta-mãe continua funcionando normalmente e **nenhuma subconta jamais registra webhook**. Ninguém percebe até um escritório reclamar que cobrança paga não baixa.
+
+Dois detalhes do sandbox que moldaram o desenho:
+- **`POST /v3/webhooks` sem `authToken` NÃO deixa a config sem token** — o Asaas **gera um** e responde `hasAuthToken: true`. Como o segredo nunca volta na leitura, um webhook cadastrado à mão é **indistinguível de um saudável**, e mesmo assim toda entrega morre em `unauthorized`. Não há como diagnosticar pela API; só `PUT` sobrescreve. Daí o botão **"Reconfigurar avisos"**, sempre visível.
+- **O dedupe do Asaas é pela URL sozinha** — segundo POST com mesma URL devolve `400 "Já existe uma configuração..."`, o que dá idempotência de graça.
+
+**Trocar o segredo derruba todas as subcontas de uma vez, em silêncio:** elas seguem emitindo e nenhum pagamento volta. O conserto é apertar "Reconfigurar avisos" em cada escritório — não há automação.
+
+O estado do webhook é lido **ao vivo** na tela da subconta a cada carregamento, e não de uma coluna: o webhook pode ser apagado no painel do Asaas sem avisar, e uma coluna espelhada mentiria justamente no caso que importa.
+
 ### O que falta para fechar o 4B
 
 1. **Task 13** — sincronização (com as duas correções do bloco ▶ no topo).
 2. **Task 14** — verificação final + `_probe-4b.mjs` (404 pela conta-mãe).
-3. **Cadastrar o webhook na subconta** (§acima) — sem isso o ciclo não fecha.
+3. ~~Cadastrar o webhook na subconta~~ — FEITO (`dd6b285`), mas depende do `ASAAS_WEBHOOK_SECRET` (§acima) e ainda sem revisão.
 4. **Navegação** — seção "Cobranças" no menu lateral; **hoje nenhuma tela do 4B é alcançável**.
 5. **Smoke manual do usuário**, o gate antes do merge.
 
