@@ -1,7 +1,49 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-29 (sessão 17 — **SMOKE DO 6A CONCLUÍDO, §0 a §9, todas passaram.** Verificação final: `tsc` 0 · vitest 1326/1326 (27 pulados) · `next build` 0 erros / 45 rotas. Cenário restaurado. **Pronto para merge `--no-ff` em `main`, push pendente de confirmação. Blocos 1, 2, 3, 4A e 4B em `main`; 6A na branch `feat/bloco-6a-explicacao-ia`.**)
+> **Última atualização:** 2026-07-29 (sessão 18 — **Bloco 6B (WhatsApp) com spec e plano aprovados, IMPLEMENTAÇÃO AINDA NÃO COMEÇADA.** Blocos A, E, 1, 2, 3, 4A, 4B e 6A em `main` e no ar. `main` local está **3 commits à frente de `origin/main`** — só documentação (spec + plano do 6B), nada de código; push pendente de confirmação.)
+
+> ## ⛔ AO RETOMAR: Bloco 6B — plano pronto, falta escolher execução e começar a Task 1
+>
+> **O que existe agora, tudo em `main` (docs, sem branch de feature ainda):**
+> - Spec aprovada: `docs/superpowers/specs/2026-07-29-bloco-6b-whatsapp-design.md`
+>   — canal de WhatsApp via **uazapi** (API não-oficial, QR code; trocada do
+>   Envia.Click a pedido do usuário no meio da sessão). Consentimento opt-in
+>   explícito (`profiles.whatsapp_numero`/`whatsapp_habilitado_em`, default
+>   desligado); disparo proativo embutido no cron de obrigações existente (sem
+>   cron novo — Hobby só permite 2); atendimento com IA **construído no Balu**
+>   (a uazapi não tem agente nativo, diferente do que se cogitou com o
+>   Envia.Click), reaproveitando `lib/ai/` e `lib/explicacoes/` do 6A;
+>   escalação vira notificação in-app pro contador, sem inbox novo.
+> - Plano aprovado: `docs/superpowers/plans/2026-07-29-bloco-6b-whatsapp.md`
+>   (7 tasks). Migration da Task 1 já é a **`0061`**. Tasks 1, 2, 3 e 7 têm
+>   código completo e conferido contra o repo/banco reais; **Tasks 4, 5 e 6 são
+>   deliberadamente thin** — dependem de sondar, ainda sem instância uazapi
+>   provisionada: (a) o contrato HTTP da uazapi, (b) se o envelope do SERPRO
+>   traz Pix Copia-e-Cola do DAS, (c) quem é "o contador" de uma empresa (para
+>   a escalação notificar a pessoa certa — não verificado ainda).
+> - **Achado de sessão que vale para qualquer migration futura em `profiles`:**
+>   o schema REAL de `profiles` (conferido por `information_schema.columns`
+>   contra o banco) é só `id, user_id, company_id, created_at, updated_at,
+>   deleted_at, current_company` — **diverge** do `0001_init.sql` idealizado
+>   (`empresa_fiscal_id`, `logo`, `background_color`, `user_role` não existem
+>   fisicamente). E **o código real usa `profiles.user_id`**, não
+>   `profiles.id`, para achar a linha da sessão (`impostos/page.tsx:41-45`) —
+>   o join da RPC nova usa `p.user_id = n.owner_user_id`, não `p.id`.
+>
+> **Pendências do usuário, em paralelo, não bloqueiam o código:** provisionar
+> a instância uazapi (número WhatsApp real).
+>
+> **Próximo passo exato:** o usuário ainda não escolheu entre execução
+> **subagent-driven** (recomendado — subagente novo por task, revisão entre
+> tasks) ou **inline** (nesta sessão, com `executing-plans`). Perguntar de
+> novo se retomar sem essa resposta.
+>
+> **Nada foi empurrado ainda desta sessão** — os 3 commits de doc (spec,
+> reescrita da spec pra uazapi, plano) estão só em `main` local. Confirmar com
+> o usuário antes do próximo push (mesmo sendo só doc, é a regra do projeto).
+
+---
 
 > ## ✅ SMOKE DO 6A CONCLUÍDO (2026-07-29, sessão 17) — §0 a §9, todas passaram
 > **Nenhum bug novo encontrado no smoke** — as duas rodadas de `/code-review` +
