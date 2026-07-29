@@ -1,17 +1,41 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4 FECHADO: 4A + 4B mergeados (`1199a1e`), empurrados e no ar.** Smoke §1–§10 sem nenhum bug novo. Migrations até `0055` em produção. **Bloco 6A (explicação de imposto com IA) desenhado e planejado**, zero linha de código — spec aprovada, execução liberada. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
+> **Última atualização:** 2026-07-29 (sessão 16 — **Bloco 6A COMPLETO nas 12 tasks**, branch não mergeada, **smoke pendente**. Migrations `0056`–`0060` em produção. Duas rodadas de review: 17 achados corrigidos. Caminho de IA provado contra o OpenRouter de verdade. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
 
 > ## ⛔ AO RETOMAR: **mostrar o roteiro do smoke do 6A na conversa, de cara**
-> **Bloco 6A COMPLETO — Tasks 1 a 12.** Branch `feat/bloco-6a-explicacao-ia`
-> (18 commits, **não mergeada**). `tsc` 0 · vitest **1310/1310** · `next build`
-> 0 erros, com `ƒ /admin/configuracoes/ia` e `ƒ /admin/explicacoes`.
-> Migrations **0056 a 0059 aplicadas em produção**.
+> **Bloco 6A COMPLETO — Tasks 1 a 12.** Branch `feat/bloco-6a-explicacao-ia`,
+> **22 commits, NÃO mergeada, NADA empurrado.** Árvore limpa (só os dois
+> untracked de sempre: um PDF na raiz e um `.docx` em `app/`).
+> `tsc` 0 · vitest **1326/1326** · `next build` 0 erros, com
+> `ƒ /admin/configuracoes/ia` e `ƒ /admin/explicacoes`.
+> Migrations **0056 a 0060 aplicadas em produção**.
 >
 > **Duas rodadas de `/code-review` + `/systematic-debugging`**: 8 achados na
 > primeira (Tasks 1–7), **9 na segunda** (branch inteira). Todos corrigidos com
-> prova antes do conserto. Migrations **0056 a 0060** em produção.
+> prova antes do conserto, e cada correção com sabotagem que morde.
+>
+> ### ✅ O caminho de IA JÁ FOI PROVADO contra provedor real
+> A chave está em `app/.env.local` como **`TOKEN_OPENROUTER`**. Rodando o código
+> **real** (`cliente.ts` + `prompt.ts`) contra o OpenRouter:
+> - o adaptador OpenAI-compatível **é aceito**;
+> - chave errada → **401 legível, sem a chave na mensagem**;
+> - o prompt produz rascunho **com os marcadores certos e nenhum intruso**.
+>
+> ```bash
+> cd app && npx vitest run --config scratchpad/vitest.ia.config.ts
+> ```
+> Essa config vive em `scratchpad/` (não versionada) e **não entra na suíte
+> offline** — a suíte normal continua sem tocar rede. Modelo usado:
+> **`mistralai/mistral-small-24b-instruct-2501`**. ⚠️ **Evitar `:free`**: o
+> `google/gemma-4-31b-it:free` deu **429** (limite upstream, não é bug nosso).
+>
+> **O que o provedor real ensinou e o mock não podia:** o modelo tratava o
+> marcador como se fosse o NOME do tributo (`"a contribuição {inss}"` → depois
+> da troca, `"a contribuição R$ 75,90"`). O prompt passou a pedir segunda pessoa
+> e a mostrar a forma certa — usando o **primeiro marcador da situação**, nunca
+> um literal (a primeira tentativa injetava `{inss}` no prompt do PGDAS-D, onde
+> ele é intruso; o próprio teste pegou).
 >
 > **Da segunda rodada, o que muda o roteiro do smoke:** o §7.4 dizia que o
 > rascunho gerado "aparece no campo" — isso **não acontecia** (o textarea não
@@ -21,13 +45,23 @@
 > a página" em vez de sobrescrever — comportamento novo, esperado no smoke.
 >
 > **▶ HÁ SMOKE PENDENTE.** Roteiro pronto em
-> `docs/smoke/2026-07-29-bloco-6a-roteiro-smoke.md` (9 seções). A regra do
-> projeto: **renderizar o roteiro completo na conversa logo na retomada**, sem
-> esperar o usuário pedir — com os comandos, as contas e os valores esperados.
+> `docs/smoke/2026-07-29-bloco-6a-roteiro-smoke.md` (9 seções, já atualizado com
+> tudo acima). A regra do projeto: **renderizar o roteiro completo na conversa
+> logo na retomada**, sem esperar o usuário pedir — com os comandos, as contas e
+> os valores esperados.
 >
-> Antes de mostrar, conferir o estado do cenário:
-> `node app/scratchpad/_probe-6a.mjs` (somente leitura) e
-> `node app/scratchpad/seed-6a.mjs listar` (somente leitura).
+> ### Estado do cenário AGORA (conferido em 2026-07-29, fim da sessão)
+> - **catálogo VAZIO**, `explicacoes_faltando` vazia, **`config_ia` vazia** — a
+>   chave do OpenRouter **não** foi gravada no banco de propósito: quem a grava é
+>   o §7, pela tela, que é o que ele testa;
+> - **nenhum MEI**: as 3 empresas estão em `regime="1"`, `atividade_mei=null`
+>   (ids e valores originais na tabela do roteiro) — o §0 promove a `ideapp`
+>   **pela tela de Configurações** e o §9 desfaz;
+> - nada meu ficou no banco: todas as sondas rodaram em transação desfeita ou
+>   limparam o que criaram.
+>
+> Conferir antes de mostrar o roteiro (ambos somente leitura):
+> `node app/scratchpad/_probe-6a.mjs` e `node app/scratchpad/seed-6a.mjs listar`.
 >
 > **Depois do smoke:** verificação com o cenário vivo → restaurar (§9) → rodar a
 > suíte **sem** o cenário → `next build` com o dev parado → merge `--no-ff` →
