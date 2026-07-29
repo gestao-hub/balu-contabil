@@ -1,0 +1,32 @@
+-- 0060 — o efeito colateral da 0058 fora do schema `public`.
+--
+-- A 0058 fechou, com razão, o `EXECUTE` que `acldefault()` concede a PUBLIC em
+-- toda função nova criada pela role `postgres`. Só que a única variante que
+-- funciona é a GLOBAL (sem `IN SCHEMA`) — e global quer dizer **todos os
+-- schemas**, não só o nosso. O comentário da 0058 limitava o alcance pela ROLE
+-- ("cobre tudo que é nosso") e não mencionava isso. Um code-review pegou.
+--
+-- MEDIDO (transação desfeita, depois da 0058):
+--   CREATE FUNCTION extensions.zz_prova_ext() ...
+--   acl = postgres=X/postgres
+--   anon=false  authenticated=false  service_role=false
+--
+-- Ou seja: a próxima extensão instalada como `postgres` em `extensions` —
+-- `unaccent`, `pg_trgm`, `vector`, `http`, um toggle no painel do Supabase —
+-- nasceria com TODAS as funções fechadas, inclusive para o **service role**. O
+-- sintoma não seria "erro de permissão" numa tela: seria uma consulta do app
+-- quebrando com `permission denied for function` no meio de outra coisa, e
+-- ninguém ligaria isso a uma migration de dois blocos atrás.
+--
+-- `public` NÃO precisa disto e não é tocado aqui: lá a linha por schema da 0057
+-- já concede a `service_role`, e fechar para anon/authenticated é justamente o
+-- ponto. A regra do repo continua: **RPC nova em `public` precisa de GRANT
+-- explícito na sua migration.**
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA extensions
+  GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+
+-- Conferido depois de aplicar (mesma prova de antes, agora esperando o
+-- contrário): função criada em `extensions` volta a nascer executável por
+-- authenticated e service_role, que é a postura padrão do Supabase para esse
+-- schema — a mesma que a linha de `supabase_admin` já garante para o que a
+-- plataforma cria.

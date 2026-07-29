@@ -1,0 +1,46 @@
+-- 0058 — o buraco que a 0057 achou que tinha fechado, e não tinha.
+--
+-- A 0057 terminou com `ALTER DEFAULT PRIVILEGES ... IN SCHEMA public REVOKE
+-- EXECUTE ON FUNCTIONS FROM anon, authenticated` e um comentário afirmando que,
+-- dali em diante, função nova nasceria fechada. **Era falso**, e um code-review
+-- pegou. Medido neste banco (PostgreSQL 17.6), criando uma função de teste
+-- dentro de uma transação desfeita:
+--
+--   acl da função recém-criada: =X/postgres postgres=X/postgres service_role=X/postgres
+--   has_function_privilege('anon', ..., 'EXECUTE') -> TRUE
+--
+-- O `=X/postgres` (grantee vazio) é o **PUBLIC**, e `anon` é membro de PUBLIC.
+--
+-- O MECANISMO, porque ele não é óbvio e a correção "natural" também não funciona:
+-- na criação do objeto, o Postgres parte de `acldefault()` — que para FUNÇÕES
+-- concede EXECUTE a PUBLIC — e só então soma as linhas de `pg_default_acl`. A
+-- linha por schema não tem entrada de PUBLIC para revogar, então
+--
+--   ALTER DEFAULT PRIVILEGES ... IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC
+--
+-- é **no-op** — testado: a linha armazenada não muda e a função nova continua com
+-- `=X`. O que funciona é a variante GLOBAL (sem `IN SCHEMA`), medida do mesmo
+-- jeito: com ela, a função nova nasce `postgres=X service_role=X` e
+-- `has_function_privilege('anon', ...)` passa a ser FALSE.
+--
+-- TABELAS não têm este problema: `acldefault()` não concede nada a PUBLIC para
+-- tabelas, e a linha da 0057 já produziu o efeito certo (`anon=arwdm`, sem o
+-- `D` de TRUNCATE) — também conferido criando uma tabela de teste.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+-- ⚠️ O QUE MUDA PARA QUEM ESCREVER A PRÓXIMA MIGRATION
+-- Função nova criada pela role `postgres` — em QUALQUER schema — passa a nascer
+-- executável só pelo dono. Se uma RPC nova "não aparece" para a tela, é isto: o
+-- conserto é o `GRANT EXECUTE ... TO authenticated` (ou `service_role`) que
+-- deveria estar na migration desde o começo, e não afrouxar esta linha.
+--
+-- Objetos que JÁ existem não são tocados: default privilege só vale no momento
+-- da criação. E `CREATE OR REPLACE FUNCTION` de função existente **preserva** a
+-- ACL — conferido contra `registrar_explicacao_faltando`, que continuou com
+-- `authenticated=X` depois de um replace com o default já fechado. Ou seja:
+-- reaplicar uma migration antiga não tranca ninguém para fora.
+--
+-- Não alcança objetos criados por OUTRAS roles (`supabase_admin`,
+-- `supabase_auth_admin`), que têm as próprias linhas em `pg_default_acl`. Como
+-- as migrations deste repo rodam como `postgres` (conferido com
+-- `SELECT current_user`), isso cobre tudo que é nosso.

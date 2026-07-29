@@ -1,17 +1,171 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4 FECHADO: 4A + 4B mergeados (`1199a1e`), empurrados e no ar.** Smoke §1–§10 sem nenhum bug novo. Migrations até `0055` em produção. **Bloco 6A (explicação de imposto com IA) desenhado e planejado**, zero linha de código — spec aprovada, execução liberada. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
+> **Última atualização:** 2026-07-29 (sessão 17 — **SMOKE DO 6A CONCLUÍDO, §0 a §9, todas passaram.** Verificação final: `tsc` 0 · vitest 1326/1326 (27 pulados) · `next build` 0 erros / 45 rotas. Cenário restaurado. **Pronto para merge `--no-ff` em `main`, push pendente de confirmação. Blocos 1, 2, 3, 4A e 4B em `main`; 6A na branch `feat/bloco-6a-explicacao-ia`.**)
 
-> ## ▶ AO RETOMAR: executar o Bloco 6A pela Task 1
-> **O Bloco 4 está FECHADO e no ar** (ver abaixo). O 6A foi desenhado e planejado,
-> e a **spec foi lida e APROVADA pelo usuário em 2026-07-28**. O portão do fluxo
-> está liberado: começar pela **Task 1** do plano.
+> ## ✅ SMOKE DO 6A CONCLUÍDO (2026-07-29, sessão 17) — §0 a §9, todas passaram
+> **Nenhum bug novo encontrado no smoke** — as duas rodadas de `/code-review` +
+> `/systematic-debugging` da sessão 16 (17 achados) já tinham fechado tudo que o
+> smoke poderia achar. Único wart real: o **card "Competência atual" e o wizard
+> apontam para meses diferentes** (pré-existente, fora desta branch — ver a
+> seção "O que este bloco NÃO resolve" do roteiro).
+>
+> **Confirmado explicitamente pelo usuário** (não assumido): o re-render do
+> rascunho de IA no §7 **atualizou sozinho**, sem reload manual — a regressão
+> que o 2º code-review consertou não voltou.
+>
+> **Três decisões tomadas na retomada:**
+> 1. O texto aprovado do catálogo (`das-mei:inss+iss`, redigido com apoio de IA)
+>    **fica** — conteúdo legítimo e reaproveitável para qualquer MEI de serviços.
+> 2. A `config_ia` gravada em produção durante o §7 (chave OpenRouter cifrada)
+>    **fica configurada** — produção passa a ter "Gerar com IA" ativo de verdade.
+> 3. Cenário restaurado pela tela (§9): as três empresas de volta em
+>    `regime="1"`, confirmado com `node scratchpad/seed-6a.mjs listar`.
+>
+> **Verificação final, nesta ordem:** suíte completa sem seed interferindo
+> (1326/1326, 0 falhas) → `tsc --noEmit` (0 erros) → dev server parado → `next
+> build` limpo (0 erros/warnings, 45 rotas confirmadas em
+> `.next/app-build-manifest.json` — o resumo do `rtk` mostrou "1 routes" nesta
+> sessão, era ruído do parser dele, não do build; confirmado com `npx next
+> build` puro e com o manifesto).
+>
+> **Falta:** commit da documentação, merge `--no-ff` em `main`, e **push só com
+> confirmação explícita** do usuário (auto-deploy em produção).
+>
+> Roteiro completo com os resultados: `docs/smoke/2026-07-29-bloco-6a-roteiro-smoke.md`.
+
+> ## ⛔ HISTÓRICO: o que faltava antes do smoke
+> **Bloco 6A COMPLETO — Tasks 1 a 12.** Branch `feat/bloco-6a-explicacao-ia`,
+> **22 commits, NÃO mergeada, NADA empurrado.** Árvore limpa (só os dois
+> untracked de sempre: um PDF na raiz e um `.docx` em `app/`).
+> `tsc` 0 · vitest **1326/1326** · `next build` 0 erros, com
+> `ƒ /admin/configuracoes/ia` e `ƒ /admin/explicacoes`.
+> Migrations **0056 a 0060 aplicadas em produção**.
+>
+> **Duas rodadas de `/code-review` + `/systematic-debugging`**: 8 achados na
+> primeira (Tasks 1–7), **9 na segunda** (branch inteira). Todos corrigidos com
+> prova antes do conserto, e cada correção com sabotagem que morde.
+>
+> ### ✅ O caminho de IA JÁ FOI PROVADO contra provedor real
+> A chave está em `app/.env.local` como **`TOKEN_OPENROUTER`**. Rodando o código
+> **real** (`cliente.ts` + `prompt.ts`) contra o OpenRouter:
+> - o adaptador OpenAI-compatível **é aceito**;
+> - chave errada → **401 legível, sem a chave na mensagem**;
+> - o prompt produz rascunho **com os marcadores certos e nenhum intruso**.
+>
+> ```bash
+> cd app && npx vitest run --config scratchpad/vitest.ia.config.ts
+> ```
+> Essa config vive em `scratchpad/` (não versionada) e **não entra na suíte
+> offline** — a suíte normal continua sem tocar rede. Modelo usado:
+> **`mistralai/mistral-small-24b-instruct-2501`**. ⚠️ **Evitar `:free`**: o
+> `google/gemma-4-31b-it:free` deu **429** (limite upstream, não é bug nosso).
+>
+> **O que o provedor real ensinou e o mock não podia:** o modelo tratava o
+> marcador como se fosse o NOME do tributo (`"a contribuição {inss}"` → depois
+> da troca, `"a contribuição R$ 75,90"`). O prompt passou a pedir segunda pessoa
+> e a mostrar a forma certa — usando o **primeiro marcador da situação**, nunca
+> um literal (a primeira tentativa injetava `{inss}` no prompt do PGDAS-D, onde
+> ele é intruso; o próprio teste pegou).
+>
+> **Da segunda rodada, o que muda o roteiro do smoke:** o §7.4 dizia que o
+> rascunho gerado "aparece no campo" — isso **não acontecia** (o textarea não
+> ressincronizava depois do `router.refresh()`), e agora acontece. E os três
+> escritores de `explicacoes_fiscais` passaram a ter **trava otimista** em
+> `updated_at`: com duas abas abertas, a segunda gravação recusa com "recarregue
+> a página" em vez de sobrescrever — comportamento novo, esperado no smoke.
+>
+> **▶ HÁ SMOKE PENDENTE.** Roteiro pronto em
+> `docs/smoke/2026-07-29-bloco-6a-roteiro-smoke.md` (9 seções, já atualizado com
+> tudo acima). A regra do projeto: **renderizar o roteiro completo na conversa
+> logo na retomada**, sem esperar o usuário pedir — com os comandos, as contas e
+> os valores esperados.
+>
+> ### Estado do cenário AGORA (conferido em 2026-07-29, fim da sessão)
+> - **catálogo VAZIO**, `explicacoes_faltando` vazia, **`config_ia` vazia** — a
+>   chave do OpenRouter **não** foi gravada no banco de propósito: quem a grava é
+>   o §7, pela tela, que é o que ele testa;
+> - **nenhum MEI**: as 3 empresas estão em `regime="1"`, `atividade_mei=null`
+>   (ids e valores originais na tabela do roteiro) — o §0 promove a `ideapp`
+>   **pela tela de Configurações** e o §9 desfaz;
+> - nada meu ficou no banco: todas as sondas rodaram em transação desfeita ou
+>   limparam o que criaram.
+>
+> Conferir antes de mostrar o roteiro (ambos somente leitura):
+> `node app/scratchpad/_probe-6a.mjs` e `node app/scratchpad/seed-6a.mjs listar`.
+>
+> **Depois do smoke:** verificação com o cenário vivo → restaurar (§9) → rodar a
+> suíte **sem** o cenário → `next build` com o dev parado → merge `--no-ff` →
+> **confirmar antes do push** (auto-deploy em produção).
+>
+> **⛔ DUAS COISAS QUE O SMOKE PRECISA SABER ANTES DE COMEÇAR:**
+> 1. **Não existe nenhum MEI no banco** (`Code_regime_tributario = '4'`: zero
+>    empresas). A explicação só é renderizada no card do MEI — `isSimples`
+>    manda a tela para o outro layout. Para ver a explicação na tela, o smoke
+>    **precisa mudar o regime de uma empresa para `'4'` em produção**: pedir ao
+>    usuário antes, anotar o valor original e restaurar no fim.
+> 2. **`atividade_mei` é `null` nas 3 empresas fiscais.** Não é problema — cai no
+>    fallback de Serviços, que é o mesmo da estimativa —, mas significa que a
+>    chave exercitada será `das-mei:inss+iss`. Para testar outra, preencher a
+>    coluna (e restaurar).
+>
+> **O que a Task 11 descobriu, e vale para o roteiro:** a explicação só aparece
+> quando o total na tela é a soma dos componentes. Com guia real do SERPRO
+> divergindo da estimativa (dívida do salário mínimo de 2025), ela **não
+> aparece** — de propósito. No smoke, usar competência com apuração nossa
+> (`valor_imposto`), não com guia do SERPRO, ou a explicação some e parecerá bug.
+>
+> **Escopo entregue:** a explicação renderiza **só para MEI**. O catálogo aceita
+> chaves de PGDAS-D (`pgdas:anexo-iii+fator-r`) e o admin consegue aprová-las,
+> mas nenhuma tela do Simples as consome ainda — fica para um bloco próprio.
+>
+> **O caminho manual é o único que funciona hoje.** Sem chave de IA, "Gerar com
+> IA" está desligado na tela (dito na entrada, com o motivo). Escrever à mão e
+> aprovar cria a linha e funciona ponta a ponta — dá para encher o catálogo e
+> fazer o smoke inteiro do 6A sem nenhuma credencial de IA.
 >
 > - spec (aprovada): `docs/superpowers/specs/2026-07-28-bloco-6a-explicacao-ia-design.md`
 > - plano: `docs/superpowers/plans/2026-07-28-bloco-6a-explicacao-ia.md` (12 tasks)
 >
-> **Nenhuma linha de código escrita ainda.**
+> **⚠️ TRÊS COISAS QUE MUDARAM O PLANO — ler antes de escrever a Task 8:**
+> 1. **A Task 10 tem de usar o `createAdminClient()`** para chamar
+>    `registrar_explicacao_faltando`. A 0059 tirou essa RPC de `authenticated`:
+>    ela conta *situação*, não pessoa, e quem a chama é Server Component. Chamar
+>    pela sessão do usuário agora dá 401.
+> 2. **`upsert` é proibido neste repo** (o do PostgREST manda NULL nas colunas
+>    ausentes). O plano pede upsert na Task 8 (`explicacoes_fiscais`) e na 7 —
+>    na 7 já virou `select` → `update`/`insert`; a 8 precisa do mesmo.
+> 3. **Guardas reais:** `requireAdminBaluPage()` / `requireAdminBaluAction()`
+>    (`src/lib/admin/guard.ts`). Não existe `requireAdmin`.
+>
+> **Ainda pendente do usuário:** a **chave de IA** (só necessária para *gerar*
+> rascunho, nunca para exibir) e o **salário mínimo de 2026** (o DAS-MEI usa o de
+> 2025; agora é trocar `INSS_MENSAL` e o total se ajusta sozinho).
+>
+> ### 🔒 O que a sessão 16 achou de segurança, fora do escopo do 6A
+> Conferir o **efeito** da 0056 no banco (em vez de aceitar que o SQL rodou)
+> revelou que o `pg_default_acl` da role `postgres` abre **toda tabela e toda
+> função nova** de `public` para anon/authenticated. Provado por HTTP com a anon
+> key, **sem login**: `notificacoes_pendentes_email` devolvia e-mail de todos os
+> usuários e `anonimizar_usuario` executava. Fechado nas **0057 + 0058 + 0059**,
+> com 15 privilégios conferidos um a um e a fronteira HTTP re-sondada (401).
+>
+> **A 0057 sozinha NÃO bastava, e o comentário dela dizia que bastava** — um
+> `/code-review` pegou. O `EXECUTE` que `acldefault()` concede a **PUBLIC**
+> sobrevive ao revoke por schema, e anon é membro de PUBLIC; só a variante
+> **GLOBAL** (`ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON
+> FUNCTIONS FROM PUBLIC`, sem `IN SCHEMA`) fecha. A errata está na 0057 e o
+> conserto na 0058, ambos com o mecanismo escrito por extenso.
+>
+> **Consequência para a próxima migration:** função nova nasce executável só pelo
+> dono. Se uma RPC "não aparece" para a tela, é isso — o conserto é o `GRANT
+> EXECUTE ... TO authenticated`, não afrouxar a 0058.
+>
+> ⚠️ **Sujeira de produção que EU criei e ficou:** uma sonda minha chamou duas
+> RPCs de escrita que estavam abertas. As 6 notificações espúrias (chave com
+> `1899`) foram **apagadas** — nenhuma lida, nenhuma enviada. **Ficou 1 honorário
+> de R$ 1.890** (julho/2026, empresa `ideapp`, `atrasado`), por decisão do
+> usuário: era devido desde 01/07 e a empresa é a do cenário de teste do 4B.
 >
 > **O que é o 6A.** O Bloco 6 do Master PRD junta IA e WhatsApp; virou **6A (IA)**
 > e **6B (WhatsApp)**, pela mesma lógica que dividiu o 4. E dentro do 6A, apenas a

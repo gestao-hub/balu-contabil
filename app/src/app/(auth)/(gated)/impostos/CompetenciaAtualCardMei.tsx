@@ -5,22 +5,36 @@ import Link from 'next/link';
 import { Calculator, FileDown, Receipt } from 'lucide-react';
 import { brl, dataBR, statusGuiaBadge, competenciaLabel } from '@/lib/fiscal/guia';
 import { fatorRAplicavel } from '@/lib/fiscal/regime';
+import { situacaoDasMei } from '@/lib/fiscal/situacao-fiscal';
+import { valoresDoDasMei } from '@/lib/explicacoes/valores-mei';
 import type { ApuracaoRow } from './page';
 import type { GuiaRow } from './HistoricoGuias';
 import GuiaActions from './GuiaActions';
+import ExplicacaoImposto from './ExplicacaoImposto';
 
 type Props = {
   apuracao: ApuracaoRow | null;
   guia: GuiaRow | null;
   competencia: string;
+  /** Bloco 6A — de `empresas_fiscais.atividade_mei`. É o que decide QUAIS
+   *  componentes o DAS deste MEI tem, e portanto qual explicação se aplica.
+   *  Nulo cai em Serviços, o mesmo fallback da estimativa. */
+  atividadeMei: string | null;
 };
 
-export default function CompetenciaAtualCardMei({ apuracao, guia, competencia }: Props) {
+export default function CompetenciaAtualCardMei({ apuracao, guia, competencia, atividadeMei }: Props) {
   if (!apuracao && !guia) {
     return <EmptyCompetencia competencia={competencia} />;
   }
 
   const badge = guia ? statusGuiaBadge(guia.status) : null;
+
+  // O MESMO número que a tela exibe, não outro. `valoresDoDasMei` devolve `null`
+  // quando ele não é a soma dos componentes — o caso da guia real do SERPRO
+  // divergindo da nossa estimativa — e aí não há explicação, porque explicar
+  // peças que não fecham com o total logo acima é pior que não explicar.
+  const totalExibido = guia?.valor ?? apuracao?.valor_imposto ?? null;
+  const valores = valoresDoDasMei(atividadeMei, totalExibido);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-6">
@@ -68,6 +82,8 @@ export default function CompetenciaAtualCardMei({ apuracao, guia, competencia }:
           {guia && <GuiaActions guia={guia} variant="primary" />}
         </div>
       </div>
+
+      <ExplicacaoImposto situacao={situacaoDasMei(atividadeMei)} valores={valores} />
     </div>
   );
 }

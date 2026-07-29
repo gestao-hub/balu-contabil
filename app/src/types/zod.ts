@@ -5,6 +5,7 @@ import { isValidCnpj } from '@/lib/validators/cnpj';
 import { normalizarValorBRL } from '@/lib/format/dinheiro';
 import { COMPANY_TYPES } from '@/lib/billing/subconta';
 import { TIPOS_VALOR } from '@/lib/billing/avulso';
+import { PROVEDORES } from '@/lib/ai/provedores';
 import { EMPRESA_TIPOS, REGIMES, SEDE_TIPOS } from '@/types/abertura';
 
 export const ClienteSchema = z.object({
@@ -367,4 +368,86 @@ export const AberturaCreateSchema = z.object({
   sede_bairro: z.string().optional(),
   sede_cidade: z.string().optional(),
   sede_uf: z.string().length(2).or(z.literal('')).optional(),
+});
+
+// Bloco 6A — configuração do provedor de IA (AdminBalu).
+//
+// Mora aqui, e não na action, porque arquivo `'use server'` só pode exportar
+// função async — exportar um schema de lá quebra o `next build` sem o `tsc`
+// reclamar (a mesma regra que levou `ServicoAvulsoSchema` para cá).
+//
+// DUAS SUTILEZAS QUE VALEM MAIS QUE O RESTO DO SCHEMA:
+//  - `chave` VAZIA significa "não trocar a chave", NUNCA "apagar a chave". O
+//    campo da tela vem vazio toda vez que o admin não quer digitá-la de novo, e
+//    é a action que decide não gravar a coluna.
+//  - `base_url` é obrigatória se, e somente se, o provedor for 'personalizado'
+//    — nos demais o adaptador conhece a URL, e aceitar uma aqui só criaria um
+//    jeito silencioso de apontar o "Anthropic" para outro servidor.
+export const ConfigIaSchema = z
+  .object({
+    provedor: z.enum(PROVEDORES),
+    modelo: z.string().trim().min(1, 'Informe o modelo.'),
+    base_url: z.string().trim().max(300).nullable().optional(),
+    chave: z.string().max(500).optional(),
+  })
+  .superRefine((v, ctx) => {
+    const base = (v.base_url ?? '').trim();
+    if (v.provedor === 'personalizado') {
+      if (!base) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom, path: ['base_url'],
+          message: 'Provedor personalizado exige a URL base.',
+        });
+        return;
+      }
+      // `https` exigido: a chave do provedor viaja neste cabeçalho.
+      if (!/^https:\/\/\S+$/i.test(base)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom, path: ['base_url'],
+          message: 'A URL base precisa começar com https://.',
+        });
+      }
+    }
+  });
+
+export type ConfigIaInput = z.infer<typeof ConfigIaSchema>;
+
+/**
+ * Bloco 6A — a chave de uma situação fiscal, na fronteira da action.
+ *
+ * A MESMA FORMA QUE A 0059 EXIGE NO BANCO (`registrar_explicacao_faltando`), de
+ * propósito: chave que a action aceitasse e o banco recusasse produziria um
+ * catálogo que a contagem de faltantes nunca alcança. Não fixa a lista de
+ * tributos — o 6B trará outros —, mas fixa caixa, charset e teto de tamanho.
+ *
+ * A validação de SIGNIFICADO (o tributo existe? o anexo existe?) é de
+ * `situacaoDaChave`, que devolve `null` para o que não reconhece. Aqui é só a
+ * forma, que é o que a fronteira tem como julgar sozinha.
+ */
+export const ChaveExplicacaoSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-z][a-z0-9-]{0,19}:[a-z0-9+-]{1,64}$/, 'Chave de situação inválida.');
+
+/**
+ * Bloco 6A — o texto de uma explicação, na fronteira de salvar e aprovar.
+ *
+ * O teto de 4000 é generoso de propósito: a explicação são duas a quatro frases,
+ * e qualquer coisa muito maior é colagem acidental. Texto vazio é recusado aqui
+ * porque `explicacoes_fiscais.texto` é NOT NULL e um texto em branco aprovado
+ * seria uma explicação invisível que ninguém entende por que não aparece.
+ */
+export const ExplicacaoTextoSchema = z.object({
+  chave: ChaveExplicacaoSchema,
+  texto: z.string().trim().min(1, 'Escreva o texto da explicação.').max(4000, 'Texto longo demais.'),
+  /**
+   * TRAVA OTIMISTA: o `updated_at` que a tela leu quando carregou. A action só
+   * grava se ele ainda for o do banco — senão outro admin escreveu no meio e a
+   * gravação seria um lost update silencioso.
+   *
+   * `null`/ausente significa "a situação não tinha linha quando a tela carregou"
+   * e leva ao caminho de INSERT, onde a corrida é resolvida pelo UNIQUE da
+   * chave. Não é escapatória: com linha existente, a action exige a versão.
+   */
+  versao: z.string().nullable().optional(),
 });
