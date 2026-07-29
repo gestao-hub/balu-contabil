@@ -5,6 +5,7 @@ import { isValidCnpj } from '@/lib/validators/cnpj';
 import { normalizarValorBRL } from '@/lib/format/dinheiro';
 import { COMPANY_TYPES } from '@/lib/billing/subconta';
 import { TIPOS_VALOR } from '@/lib/billing/avulso';
+import { PROVEDORES } from '@/lib/ai/provedores';
 import { EMPRESA_TIPOS, REGIMES, SEDE_TIPOS } from '@/types/abertura';
 
 export const ClienteSchema = z.object({
@@ -368,3 +369,45 @@ export const AberturaCreateSchema = z.object({
   sede_cidade: z.string().optional(),
   sede_uf: z.string().length(2).or(z.literal('')).optional(),
 });
+
+// Bloco 6A — configuração do provedor de IA (AdminBalu).
+//
+// Mora aqui, e não na action, porque arquivo `'use server'` só pode exportar
+// função async — exportar um schema de lá quebra o `next build` sem o `tsc`
+// reclamar (a mesma regra que levou `ServicoAvulsoSchema` para cá).
+//
+// DUAS SUTILEZAS QUE VALEM MAIS QUE O RESTO DO SCHEMA:
+//  - `chave` VAZIA significa "não trocar a chave", NUNCA "apagar a chave". O
+//    campo da tela vem vazio toda vez que o admin não quer digitá-la de novo, e
+//    é a action que decide não gravar a coluna.
+//  - `base_url` é obrigatória se, e somente se, o provedor for 'personalizado'
+//    — nos demais o adaptador conhece a URL, e aceitar uma aqui só criaria um
+//    jeito silencioso de apontar o "Anthropic" para outro servidor.
+export const ConfigIaSchema = z
+  .object({
+    provedor: z.enum(PROVEDORES),
+    modelo: z.string().trim().min(1, 'Informe o modelo.'),
+    base_url: z.string().trim().max(300).nullable().optional(),
+    chave: z.string().max(500).optional(),
+  })
+  .superRefine((v, ctx) => {
+    const base = (v.base_url ?? '').trim();
+    if (v.provedor === 'personalizado') {
+      if (!base) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom, path: ['base_url'],
+          message: 'Provedor personalizado exige a URL base.',
+        });
+        return;
+      }
+      // `https` exigido: a chave do provedor viaja neste cabeçalho.
+      if (!/^https:\/\/\S+$/i.test(base)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom, path: ['base_url'],
+          message: 'A URL base precisa começar com https://.',
+        });
+      }
+    }
+  });
+
+export type ConfigIaInput = z.infer<typeof ConfigIaSchema>;

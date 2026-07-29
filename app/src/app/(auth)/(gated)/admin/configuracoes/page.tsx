@@ -4,7 +4,7 @@
 // comprovante antes da compensação. É a página onde os próximos ajustes de
 // plataforma vão morar.
 import Link from 'next/link';
-import { CreditCard } from 'lucide-react';
+import { CreditCard, Sparkles } from 'lucide-react';
 import { requireAdminBaluPage } from '@/lib/admin/guard';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { statusEfetivo, type StatusAssinatura } from '@/lib/billing/status';
@@ -102,6 +102,23 @@ export default async function Page() {
           className="mt-3 inline-block rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
         >
           Abrir assinaturas
+        </Link>
+      </section>
+
+      <section className="rounded-md border border-border bg-surface p-4">
+        <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Sparkles className="size-4 shrink-0 text-primary" />
+          Provedor de IA
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Quem redige os rascunhos das explicações de imposto. Os textos só chegam ao
+          cliente depois de revisados e aprovados aqui no admin.
+        </p>
+        <Link
+          href="/admin/configuracoes/ia"
+          className="mt-3 inline-block rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+        >
+          Configurar provedor
         </Link>
       </section>
 
