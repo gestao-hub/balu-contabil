@@ -9,6 +9,17 @@
 > 0 erros, com `ƒ /admin/configuracoes/ia` e `ƒ /admin/explicacoes`.
 > Migrations **0056 a 0059 aplicadas em produção**.
 >
+> **Duas rodadas de `/code-review` + `/systematic-debugging`**: 8 achados na
+> primeira (Tasks 1–7), **9 na segunda** (branch inteira). Todos corrigidos com
+> prova antes do conserto. Migrations **0056 a 0060** em produção.
+>
+> **Da segunda rodada, o que muda o roteiro do smoke:** o §7.4 dizia que o
+> rascunho gerado "aparece no campo" — isso **não acontecia** (o textarea não
+> ressincronizava depois do `router.refresh()`), e agora acontece. E os três
+> escritores de `explicacoes_fiscais` passaram a ter **trava otimista** em
+> `updated_at`: com duas abas abertas, a segunda gravação recusa com "recarregue
+> a página" em vez de sobrescrever — comportamento novo, esperado no smoke.
+>
 > **▶ HÁ SMOKE PENDENTE.** Roteiro pronto em
 > `docs/smoke/2026-07-29-bloco-6a-roteiro-smoke.md` (9 seções). A regra do
 > projeto: **renderizar o roteiro completo na conversa logo na retomada**, sem
