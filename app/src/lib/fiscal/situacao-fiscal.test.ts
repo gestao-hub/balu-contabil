@@ -111,6 +111,30 @@ describe('situacaoDaChave — o caminho de volta', () => {
     'recusa a chave inválida %s',
     (k) => expect(situacaoDaChave(k)).toBeNull(),
   );
+
+  // ACHADO DO CODE-REVIEW. A validação era só de FORMA: `das-mei:xyz` passava
+  // pelo regex e virava uma situação com o componente 'xyz'. O `null` existe
+  // justamente para impedir que a IA redija sobre um tributo inventado — e um
+  // AdminBalu com a chave na mão chegava ao provedor, gastava a chamada e
+  // gravava no catálogo uma linha com cara de legítima.
+  it.each(['das-mei:xyz', 'das-mei:inss+xyz', 'das-mei:irpj'])(
+    'recusa componente que não existe no DAS-MEI (%s)',
+    (k) => expect(situacaoDaChave(k)).toBeNull(),
+  );
+
+  it.each(['pgdas:anexo-ix', 'pgdas:qualquer-coisa', 'pgdas:anexo-iii+fator-z'])(
+    'recusa anexo que não existe (%s)',
+    (k) => expect(situacaoDaChave(k)).toBeNull(),
+  );
+
+  // ASSIMETRIA DELIBERADA: `situacaoPgdas(null)` produz a chave
+  // 'pgdas:desconhecido', mas a volta a recusa. Não é descuido — uma situação
+  // sem anexo conhecido é indescritível, e gerar explicação para ela produziria
+  // um prompt dizendo "enquadrada no desconhecido".
+  it('pgdas:desconhecido é gerável mas NÃO é reconhecível de volta', () => {
+    expect(chaveDaSituacao(situacaoPgdas(null, false))).toBe('pgdas:desconhecido');
+    expect(situacaoDaChave('pgdas:desconhecido')).toBeNull();
+  });
 });
 
 describe('rotuloDaSituacao', () => {

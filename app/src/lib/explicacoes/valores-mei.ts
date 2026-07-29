@@ -21,8 +21,19 @@
 import { componentesDasMei, valorDasMei } from '@/lib/fiscal/das-mei';
 import { brl } from '@/lib/fiscal/guia';
 
-/** Um centavo de folga, para arredondamento não esconder a explicação. */
-const TOLERANCIA = 0.01;
+/**
+ * Um centavo de folga, para arredondamento não esconder a explicação.
+ *
+ * ⚠️ EM CENTAVOS INTEIROS, e não `Math.abs(a - b) > 0.01`. A comparação em
+ * ponto flutuante não é simétrica: `|80,91 − 80,90|` dá 0,00999999999999 (passa)
+ * e `|80,89 − 80,90|` dá 0,01000000000000 (não passa) — um centavo acima
+ * mostrava a explicação e um centavo abaixo a escondia. Pior: `80,90 + 0,01`
+ * nem sequer é 80,91 em binário, então a própria folga de um centavo era
+ * recusada dos dois lados. Dinheiro se compara em inteiros.
+ */
+const TOLERANCIA_CENTAVOS = 1;
+
+const emCentavos = (v: number) => Math.round(v * 100);
 
 /**
  * Os valores formatados de cada componente, ou `null` quando não é seguro
@@ -39,7 +50,7 @@ export function valoresDoDasMei(
   if (totalExibido == null || !Number.isFinite(totalExibido)) return null;
 
   const soma = valorDasMei(atividade);
-  if (Math.abs(totalExibido - soma) > TOLERANCIA) return null;
+  if (Math.abs(emCentavos(totalExibido) - emCentavos(soma)) > TOLERANCIA_CENTAVOS) return null;
 
   const componentes = componentesDasMei(atividade);
   return Object.fromEntries(

@@ -17,7 +17,7 @@ const h = vi.hoisted(() => {
   const avisos: string[] = [];
 
   const estado = {
-    linha: null as { texto: string } | null,
+    linha: null as { texto: string; gerado_por?: string | null } | null,
     erroLeitura: null as { message: string } | null,
     /** `{ error }` que a RPC devolve (supabase-js NÃO lança nesse caso). */
     erroRpc: null as { message: string } | null,
@@ -79,17 +79,32 @@ beforeEach(() => {
 
 describe('buscarExplicacao', () => {
   it('devolve o texto quando há explicação APROVADA', async () => {
-    h.estado.linha = { texto: 'Você paga {inss} de INSS.' };
+    h.estado.linha = { texto: 'Você paga {inss} de INSS.', gerado_por: null };
     const r = await buscarExplicacao(sb(), CHAVE);
-    expect(r).toBe('Você paga {inss} de INSS.');
+    expect(r?.texto).toBe('Você paga {inss} de INSS.');
     expect(h.rpcsAdmin).toHaveLength(0);   // achou: não há buraco para contar
+  });
+
+  // ACHADO DO CODE-REVIEW. O disclaimer da tela afirmava "gerada com apoio de
+  // IA" para TODO texto. Hoje não há provedor configurado, então todo texto do
+  // catálogo foi escrito por um humano do começo ao fim — e a frase é uma
+  // afirmação de procedência numa tela sobre tributo. Quem sabe a diferença é
+  // `gerado_por`, então ele vem junto do texto.
+  it('devolve a procedência do texto, não só o texto', async () => {
+    h.estado.linha = { texto: 'x {inss}', gerado_por: 'groq/llama-3.3-70b' };
+    expect((await buscarExplicacao(sb(), CHAVE))?.geradoPor).toBe('groq/llama-3.3-70b');
+  });
+
+  it('texto escrito à mão não inventa procedência de IA', async () => {
+    h.estado.linha = { texto: 'x {inss}', gerado_por: null };
+    expect((await buscarExplicacao(sb(), CHAVE))?.geradoPor).toBeNull();
   });
 
   // ═══ RASCUNHO NÃO VAZA ═══
   // A policy da 0056 já filtra, mas o filtro explícito é a primeira camada — e a
   // única que continua valendo se um dia alguém ler isto pelo service role.
   it('a consulta filtra por status aprovado, sempre', async () => {
-    h.estado.linha = { texto: 'x' };
+    h.estado.linha = { texto: 'x', gerado_por: null };
     await buscarExplicacao(sb(), CHAVE);
     expect(h.consultas[0].eq).toContainEqual(['status', 'aprovado']);
     expect(h.consultas[0].eq).toContainEqual(['chave', CHAVE]);
@@ -149,7 +164,7 @@ describe('buscarExplicacao', () => {
   });
 
   it('texto vazio no banco conta como ausência, não como explicação', async () => {
-    h.estado.linha = { texto: '   ' };
+    h.estado.linha = { texto: '   ', gerado_por: null };
     expect(await buscarExplicacao(sb(), CHAVE)).toBeNull();
     expect(h.rpcsAdmin).toHaveLength(1);
   });

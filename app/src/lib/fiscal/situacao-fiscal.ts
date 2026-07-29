@@ -14,7 +14,7 @@
 // Puro de propósito: sem I/O, sem `server-only`. A tela do cliente e a tela do
 // admin têm de derivar a MESMA chave, e uma regra dessas não pode existir em
 // duas versões.
-import { componentesDasMei } from './das-mei';
+import { componentesDasMei, COMPONENTES_DAS_MEI } from './das-mei';
 import { fatorRAplicavel, FAIXA_OPTIONS } from './regime';
 
 export type SituacaoFiscal =
@@ -100,9 +100,14 @@ export function situacaoDaChave(chave: string): SituacaoFiscal | null {
 
   if (tributo === 'das-mei') {
     const componentes = resto.split('+');
-    // Minúsculas e sem vazio: a chave é canônica por construção, e aceitar
-    // 'INSS' aqui criaria uma segunda grafia para o mesmo componente.
+    // FORMA e SIGNIFICADO. A forma (minúsculas, sem vazio) impede uma segunda
+    // grafia do mesmo componente; o significado impede o componente inventado.
+    // Sem a segunda checagem, `das-mei:xyz` virava uma situação válida e o
+    // prompt saía dizendo "esse valor é composto por: xyz" — a IA redigindo
+    // sobre um tributo que não existe, e a linha entrando no catálogo com cara
+    // de legítima. É exatamente o que o `null` desta função existe para impedir.
     if (componentes.some((c) => !/^[a-z0-9]+$/.test(c))) return null;
+    if (componentes.some((c) => !COMPONENTES_DAS_MEI.includes(c))) return null;
     return { tributo: 'das-mei', componentes };
   }
 
@@ -110,18 +115,26 @@ export function situacaoDaChave(chave: string): SituacaoFiscal | null {
     const fatorR = resto.endsWith(SUFIXO_FATOR_R);
     const anexo = fatorR ? resto.slice(0, -SUFIXO_FATOR_R.length) : resto;
     if (!/^[a-z0-9-]+$/.test(anexo)) return null;
+    // Anexo tem de ser um dos que existem. 'pgdas:desconhecido' — que a IDA
+    // produz para empresa sem anexo — é recusado aqui DE PROPÓSITO: situação
+    // sem anexo conhecido é indescritível, e o prompt sairia dizendo
+    // "enquadrada no desconhecido".
+    if (!anexoConhecido(anexo)) return null;
     return { tributo: 'pgdas', anexo, fatorR };
   }
 
   return null;
 }
 
-/**
- * O rótulo legível de um anexo a partir do slug que vive na chave
- * (`anexo-iii` → `Anexo III`). O prompt precisa dele para descrever a situação
- * em português; sem isto, cada consumidor faria sua própria conversão e a
- * terceira delas erraria.
- */
+/** O slug de um anexo canônico, do jeito que ele aparece na chave. */
+function slugDoAnexo(anexo: string): string {
+  return achatar(anexo).replace(/\s+/g, '-');
+}
+
+function anexoConhecido(slug: string): boolean {
+  return FAIXA_OPTIONS.some((f) => slugDoAnexo(f.anexo) === slug);
+}
+
 /**
  * Como a situação é chamada na tela do admin. Curto de propósito: ele vai ver
  * uma lista delas, e a chave crua (`das-mei:icms+inss+iss`) é precisa mas não se
@@ -135,10 +148,13 @@ export function rotuloDaSituacao(s: SituacaoFiscal): string {
   return `Simples Nacional · ${rotuloDoAnexo(s.anexo)}${s.fatorR ? ' · Fator R' : ''}`;
 }
 
+/**
+ * O rótulo legível de um anexo a partir do slug que vive na chave
+ * (`anexo-iii` → `Anexo III`). O prompt precisa dele para descrever a situação
+ * em português; sem isto, cada consumidor faria sua própria conversão e a
+ * terceira delas erraria.
+ */
 export function rotuloDoAnexo(slug: string): string {
   const achatadoSlug = slug.trim().toLowerCase();
-  const achar = FAIXA_OPTIONS.find(
-    (f) => achatar(f.anexo).replace(/\s+/g, '-') === achatadoSlug,
-  );
-  return achar?.anexo ?? slug;
+  return FAIXA_OPTIONS.find((f) => slugDoAnexo(f.anexo) === achatadoSlug)?.anexo ?? slug;
 }

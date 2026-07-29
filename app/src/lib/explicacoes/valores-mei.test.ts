@@ -39,6 +39,22 @@ describe('valores do DAS-MEI para a explicação', () => {
     expect(valoresDoDasMei('Prestacao de Servicos', total + 0.02)).toBeNull();
   });
 
+  // ACHADO DO CODE-REVIEW. `Math.abs(a - b) > 0.01` NÃO é simétrico em IEEE-754:
+  //   |80,91 − 80,90| = 0,009999999999990905  -> aceitava
+  //   |80,89 − 80,90| = 0,010000000000005116  -> RECUSAVA
+  // Um centavo ACIMA mostrava a explicação e um centavo ABAIXO a escondia, sem
+  // nenhuma razão de negócio. A suíte não pegava porque testava ±0,004 e ±0,02,
+  // nunca exatamente um centavo. Dinheiro se compara em centavos inteiros.
+  it.each([-0.01, 0.01])('a folga de um centavo é simétrica (%s)', (delta) => {
+    const total = valorDasMei('Prestacao de Servicos');
+    expect(valoresDoDasMei('Prestacao de Servicos', total + delta)).not.toBeNull();
+  });
+
+  it.each([-0.02, 0.02])('dois centavos recusam dos dois lados (%s)', (delta) => {
+    const total = valorDasMei('Prestacao de Servicos');
+    expect(valoresDoDasMei('Prestacao de Servicos', total + delta)).toBeNull();
+  });
+
   // Atividade desconhecida cai em Serviços — o MESMO fallback que a estimativa
   // usa. Se divergisse, a explicação falaria de um tributo que o número não tem.
   it('atividade nula segue o mesmo fallback da estimativa', () => {

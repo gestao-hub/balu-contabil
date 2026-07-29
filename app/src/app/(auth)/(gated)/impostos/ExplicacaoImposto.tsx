@@ -30,10 +30,10 @@ export default async function ExplicacaoImposto({ situacao, valores }: Props) {
   // A sessão do usuário, de propósito: a policy de RLS é a segunda camada do
   // filtro de `status`. A contagem de faltantes, que precisa de outro
   // privilégio, `buscarExplicacao` resolve por dentro.
-  const texto = await buscarExplicacao(supabase, chaveDaSituacao(situacao));
-  if (!texto) return null;
+  const explicacao = await buscarExplicacao(supabase, chaveDaSituacao(situacao));
+  if (!explicacao) return null;
 
-  const r = renderizar(texto, valores);
+  const r = renderizar(explicacao.texto, valores);
   if (!r.ok) {
     // Chegar aqui significa que a aprovação e a tela discordam: um texto foi
     // aprovado com marcador que esta situação não fornece. A validação da
@@ -49,10 +49,16 @@ export default async function ExplicacaoImposto({ situacao, valores }: Props) {
     <div className="mt-4 rounded-lg border border-border bg-surface-2 p-4">
       <p className="text-sm leading-relaxed text-foreground">{r.texto}</p>
       {/* FIXO NO COMPONENTE, fora do catálogo e fora do alcance do admin: é o
-          aviso que não pode ser editado junto com o texto que ele qualifica. */}
+          aviso que não pode ser editado junto com o texto que ele qualifica.
+          A PROCEDÊNCIA É LIDA DO DADO, não afirmada por padrão: dizer "gerada
+          com apoio de IA" sobre um texto que um humano escreveu do começo ao
+          fim seria declaração falsa numa tela sobre tributo — e é o caso de
+          TODO texto do catálogo enquanto não houver provedor configurado. */}
       <p className="mt-2 text-xs text-muted-foreground">
-        Informação educativa gerada com apoio de IA e revisada pela Balu. Não
-        substitui a orientação do seu contador.
+        {explicacao.geradoPor
+          ? 'Informação educativa gerada com apoio de IA e revisada pela Balu.'
+          : 'Informação educativa escrita e revisada pela Balu.'}
+        {' '}Não substitui a orientação do seu contador.
       </p>
     </div>
   );

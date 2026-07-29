@@ -43,6 +43,8 @@ const h = vi.hoisted(() => {
     /** Quantas linhas o `.select('id')` do UPDATE devolve. 0 = não pegou nada. */
     linhasAfetadas: [{ id: 1 }] as { id: number }[],
     erroIa: null as unknown,
+    /** Roda entre a leitura e a escrita, para simular a corrida. */
+    aoAplicar: null as null | (() => void),
   };
 
   function construir(tabela: string, kind: 'update' | 'insert', valores: Record<string, unknown>) {
@@ -50,6 +52,24 @@ const h = vi.hoisted(() => {
     (kind === 'update' ? updates : inserts).push(chamada);
     const resultado = () => {
       if (estado.erroEscrita) return { data: null, error: estado.erroEscrita };
+
+      if (kind === 'update') {
+        estado.aoAplicar?.();
+        // O MOCK HONRA AS CONDIÇÕES `.eq`, conferidas contra a linha que existe
+        // agora. Antes ele devolvia um `estado.linhasAfetadas` que ninguém
+        // conectava à realidade: o teste do "UPDATE que não pega linha" acionava
+        // um botão do próprio mock, e por isso não podia falhar pelo motivo
+        // certo — o mock provando a si mesmo, a lição registrada no Bloco 4B.
+        const linha = estado.linha as Record<string, unknown> | null;
+        const casou = linha !== null
+          && chamada.eq.every(([col, val]) => linha[col as string] === val);
+        if (!casou) return { data: chamada.select.length ? [] : null, error: null };
+
+        Object.assign(linha, valores);
+        if (chamada.select.length === 0) return { data: null, error: null };
+        return { data: [{ id: linha.id }], error: null };
+      }
+
       // FIEL AO supabase-js: sem `.select()`, `data` volta null.
       if (chamada.select.length === 0) return { data: null, error: null };
       return { data: estado.linhasAfetadas, error: null };
@@ -116,6 +136,7 @@ beforeEach(() => {
   h.estado.erroEscrita = null;
   h.estado.linhasAfetadas = [{ id: 1 }];
   h.estado.erroIa = null;
+  h.estado.aoAplicar = null;
   h.registrarAuditoria.mockClear();
   h.revalidatePath.mockClear();
   h.gerarTexto.mockClear();
@@ -213,8 +234,11 @@ describe('salvarConfigIaAction', () => {
 
   // Sem o `.select('id')`, o PostgREST devolve sucesso para um UPDATE que não
   // pegou linha nenhuma — e a tela diria "salvo" sobre coisa nenhuma.
+  // O cenário é a linha SUMIR entre a leitura e a escrita. A versão anterior
+  // deste teste zerava um `linhasAfetadas` do mock — botão desligado da
+  // realidade, incapaz de falhar pelo motivo certo.
   it('UPDATE que não pega linha nenhuma não é reportado como salvo', async () => {
-    h.estado.linhasAfetadas = [];
+    h.estado.aoAplicar = () => { h.estado.linha = null; };
     const r = await salvarConfigIaAction(entrada());
     expect(r.ok).toBe(false);
     expect(h.auditorias).toHaveLength(0);

@@ -440,4 +440,14 @@ export const ChaveExplicacaoSchema = z
 export const ExplicacaoTextoSchema = z.object({
   chave: ChaveExplicacaoSchema,
   texto: z.string().trim().min(1, 'Escreva o texto da explicação.').max(4000, 'Texto longo demais.'),
+  /**
+   * TRAVA OTIMISTA: o `updated_at` que a tela leu quando carregou. A action só
+   * grava se ele ainda for o do banco — senão outro admin escreveu no meio e a
+   * gravação seria um lost update silencioso.
+   *
+   * `null`/ausente significa "a situação não tinha linha quando a tela carregou"
+   * e leva ao caminho de INSERT, onde a corrida é resolvida pelo UNIQUE da
+   * chave. Não é escapatória: com linha existente, a action exige a versão.
+   */
+  versao: z.string().nullable().optional(),
 });

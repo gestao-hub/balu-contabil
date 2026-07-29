@@ -40,12 +40,19 @@ const ROTA = '/admin/explicacoes';
  * existir de verdade. Aprovar contra uma situação que ninguém sabe descrever
  * seria aprovar no escuro.
  */
-function lerEntradaDeTexto(entrada: unknown): { chave: string; texto: string } | { error: string } {
+function lerEntradaDeTexto(
+  entrada: unknown,
+): { chave: string; texto: string; versao: string | null } | { error: string } {
   const p = ExplicacaoTextoSchema.safeParse(entrada);
   if (!p.success) return { error: p.error.errors[0]?.message ?? 'Dados inválidos.' };
   if (!situacaoDaChave(p.data.chave)) return { error: 'Situação fiscal desconhecida.' };
-  return { chave: p.data.chave, texto: p.data.texto };
+  return { chave: p.data.chave, texto: p.data.texto, versao: p.data.versao ?? null };
 }
+
+/** Mensagem única da trava otimista. Ela aparece nos três escritores, e uma
+ *  cópia divergente faria o admin achar que são problemas diferentes. */
+const MUDOU_NO_MEIO =
+  'Esta explicação mudou desde que a tela carregou (outro admin salvou, aprovou ou gerou). Nada foi sobrescrito — recarregue a página e refaça.';
 
 /**
  * A gravação que salvar e aprovar compartilham. Uma função só porque a diferença
@@ -57,13 +64,13 @@ function lerEntradaDeTexto(entrada: unknown): { chave: string; texto: string } |
  * quem aprovou está em `aprovado_por`.
  */
 async function gravarTexto(
-  p: { chave: string; texto: string; actorUserId: string; aprovando: boolean },
+  p: { chave: string; texto: string; versao: string | null; actorUserId: string; aprovando: boolean },
 ): Promise<ActionResult> {
   const sb = createAdminClient();
   const agora = new Date().toISOString();
 
   const { data: atual, error: eLer } = await sb
-    .from('explicacoes_fiscais').select('id, status').eq('chave', p.chave).maybeSingle();
+    .from('explicacoes_fiscais').select('id, status, updated_at').eq('chave', p.chave).maybeSingle();
   if (eLer) {
     console.error('[6a] catalogo leitura falhou:', eLer.message);
     return { ok: false, error: 'Não foi possível ler o catálogo. Tente de novo.' };
@@ -80,15 +87,34 @@ async function gravarTexto(
   };
 
   if (atual) {
+    // ⚠️ TRAVA OTIMISTA. Sem ela, salvar e aprovar eram last-write-wins: o admin
+    // com a tela de 30 segundos atrás sobrescrevia o rascunho que o outro
+    // acabara de gerar — sem erro, sem sinal, e com `gerado_por` continuando a
+    // apontar o modelo, ou seja, o catálogo afirmando que uma IA escreveu um
+    // texto que ela nunca escreveu.
+    //
+    // `updated_at` é a coluna certa porque o gatilho `tg_set_updated_at` a move
+    // em TODA escrita — inclusive nas que não a mencionam no payload. Provado
+    // contra o PostgREST: ele devolve microssegundos e o filtro `eq` casa
+    // exatamente o valor lido (uma versão anterior desta correção, com
+    // `.eq('status','rascunho')`, deixava passar a escrita concorrente que não
+    // mudava o status).
+    if (!p.versao) {
+      return {
+        ok: false,
+        error: 'Esta situação já tem texto no catálogo. Recarregue a página antes de salvar.',
+      };
+    }
     const { data, error } = await sb
-      .from('explicacoes_fiscais').update(linha).eq('chave', p.chave).select('id');
+      .from('explicacoes_fiscais').update(linha)
+      .eq('chave', p.chave)
+      .eq('updated_at', p.versao)
+      .select('id');
     if (error) {
       console.error('[6a] catalogo update falhou:', error.message);
       return { ok: false, error: 'Não foi possível salvar. Tente de novo.' };
     }
-    if ((data?.length ?? 0) === 0) {
-      return { ok: false, error: 'A explicação não foi encontrada. Recarregue a página.' };
-    }
+    if ((data?.length ?? 0) === 0) return { ok: false, error: MUDOU_NO_MEIO };
   } else {
     // Situação sem linha: o admin escreveu o texto à mão. É o caminho normal
     // enquanto não houver provedor de IA configurado.
@@ -141,7 +167,7 @@ export async function gerarRascunhoAction(chaveBruta: unknown): Promise<Resultad
   // gravar seria pagar por um texto que vai para o lixo.
   const { data: atual, error: eLer } = await sb
     .from('explicacoes_fiscais')
-    .select('id, status')
+    .select('id, status, updated_at')
     .eq('chave', chave)
     .maybeSingle();
   if (eLer) {
@@ -228,28 +254,26 @@ export async function gerarRascunhoAction(chaveBruta: unknown): Promise<Resultad
     // ausentes do payload — regra do repo, e o que quase apagou a chave do
     // provedor na Task 7. O `.select('id')` distingue "gravou" de "não achou".
     //
-    // ⚠️ COMPARE-AND-SWAP no `status`. A leitura que autorizou esta escrita
-    // aconteceu ANTES da chamada de IA, que leva segundos — e desde a Task 9
-    // existe um terceiro escritor nesta tabela (a aprovação). Um admin
-    // aprovando nesse intervalo faria a geração regravar por cima do texto
-    // recém-carimbado: a trava "nunca sobrescreve aprovado" teria sido avaliada
-    // contra um estado que já não existe. Zero linhas afetadas = outro escritor
-    // mandou, e não há o que retentar.
+    // ⚠️ COMPARE-AND-SWAP na VERSÃO, não no status. A leitura que autorizou esta
+    // escrita aconteceu ANTES da chamada de IA, que leva segundos, e a tabela
+    // tem TRÊS escritores (gerar, salvar, aprovar).
+    //
+    // A primeira versão desta trava usava `.eq('status','rascunho')` e cobria só
+    // metade da corrida: um `salvarTextoAction` concorrente deixa o status em
+    // 'rascunho', então o CAS passava e o rascunho da IA sobrescrevia a edição
+    // manual do outro admin — exatamente o lost update que a mensagem de erro
+    // dizia estar impedindo. `updated_at` muda em toda escrita (o gatilho
+    // garante), então cobre as três.
     const { data, error } = await sb
       .from('explicacoes_fiscais').update(linha)
       .eq('chave', chave)
-      .eq('status', 'rascunho')
+      .eq('updated_at', atual.updated_at)
       .select('id');
     if (error) {
       console.error('[6a] catalogo update falhou:', error.message);
       return { ok: false, error: 'Não foi possível salvar o rascunho. Tente de novo.' };
     }
-    if ((data?.length ?? 0) === 0) {
-      return {
-        ok: false,
-        error: 'A explicação mudou enquanto o texto era gerado (alguém aprovou ou editou). Nada foi sobrescrito — recarregue a página.',
-      };
-    }
+    if ((data?.length ?? 0) === 0) return { ok: false, error: MUDOU_NO_MEIO };
   } else {
     const { error } = await sb.from('explicacoes_fiscais').insert({ chave, ...linha });
     if (error) {
@@ -296,7 +320,8 @@ export async function salvarTextoAction(entrada: unknown): Promise<ActionResult>
   if ('error' in dados) return { ok: false, error: dados.error };
 
   return gravarTexto({
-    chave: dados.chave, texto: dados.texto, actorUserId: ctx.userId, aprovando: false,
+    chave: dados.chave, texto: dados.texto, versao: dados.versao,
+    actorUserId: ctx.userId, aprovando: false,
   });
 }
 
@@ -328,6 +353,7 @@ export async function aprovarExplicacaoAction(entrada: unknown): Promise<ActionR
   }
 
   return gravarTexto({
-    chave: dados.chave, texto: dados.texto, actorUserId: ctx.userId, aprovando: true,
+    chave: dados.chave, texto: dados.texto, versao: dados.versao,
+    actorUserId: ctx.userId, aprovando: true,
   });
 }

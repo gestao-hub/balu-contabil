@@ -24,6 +24,9 @@ export type ItemCatalogo = {
   aprovadoEm: string | null;
   /** Quantas vezes a tela do cliente pediu esta situação sem achar texto. */
   vistas: number;
+  /** `updated_at` de quando esta tela carregou — a trava otimista. `null` para
+   *  situação que ainda não tem linha. */
+  versao: string | null;
 };
 
 type Props = {
@@ -48,7 +51,20 @@ export default function CatalogoExplicacoes({ itens, temProvedorIa }: Props) {
   return (
     <div className="space-y-4">
       {itens.map((item) => (
-        <LinhaExplicacao key={item.chave} item={item} temProvedorIa={temProvedorIa} />
+        // ⚠️ A VERSÃO ENTRA NA `key` DE PROPÓSITO. `useState(item.texto)` só lê a
+        // prop na MONTAGEM; com `key={item.chave}` o React reaproveitava a
+        // instância depois do `router.refresh()` e o textarea continuava
+        // mostrando o texto de antes. Depois de "Gerar com IA", o selo e o
+        // "redigido por …" mudavam mas o campo não — e clicar em Aprovar
+        // gravava o texto VELHO por cima do rascunho novo, com `gerado_por`
+        // ainda apontando o modelo: o catálogo afirmando que uma IA escreveu um
+        // texto que ela nunca escreveu. Trocar a `key` remonta a linha e
+        // ressincroniza o campo.
+        <LinhaExplicacao
+          key={`${item.chave}::${item.versao ?? 'sem-linha'}`}
+          item={item}
+          temProvedorIa={temProvedorIa}
+        />
       ))}
     </div>
   );
@@ -142,7 +158,7 @@ function LinhaExplicacao({ item, temProvedorIa }: { item: ItemCatalogo; temProve
         <button
           type="button"
           disabled={ocupado || !texto.trim()}
-          onClick={() => agir(() => salvarTextoAction({ chave: item.chave, texto }), 'Rascunho salvo.')}
+          onClick={() => agir(() => salvarTextoAction({ chave: item.chave, texto, versao: item.versao }), 'Rascunho salvo.')}
           className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:text-primary disabled:opacity-60"
         >
           {pendente && <Loader2 className="size-4 animate-spin" />}
@@ -152,7 +168,7 @@ function LinhaExplicacao({ item, temProvedorIa }: { item: ItemCatalogo; temProve
         <button
           type="button"
           disabled={ocupado || !texto.trim() || intrusos.length > 0}
-          onClick={() => agir(() => aprovarExplicacaoAction({ chave: item.chave, texto }), 'Aprovada. Já aparece para os clientes nesta situação.')}
+          onClick={() => agir(() => aprovarExplicacaoAction({ chave: item.chave, texto, versao: item.versao }), 'Aprovada. Já aparece para os clientes nesta situação.')}
           className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-opacity disabled:opacity-60"
         >
           <Check className="size-4" />

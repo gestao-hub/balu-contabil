@@ -222,7 +222,9 @@ describe('gerarRascunhoAction', () => {
   });
 
   it('substitui o rascunho anterior por UPDATE, nunca por upsert', async () => {
-    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'velho' };
+    h.estado.linhaCatalogo = {
+      id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'velho', updated_at: 'V1',
+    };
     const r = await gerarRascunhoAction(CHAVE_SIT);
     expect(r.ok).toBe(true);
     expect(h.updates).toHaveLength(1);
@@ -293,7 +295,9 @@ describe('gerarRascunhoAction', () => {
   // botão desligado da realidade — o mock provando a si mesmo. Agora o mock
   // confere as condições `.eq` contra a linha que existe de fato.
   it('UPDATE que não pega linha nenhuma não é reportado como sucesso', async () => {
-    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'velho' };
+    h.estado.linhaCatalogo = {
+      id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'velho', updated_at: 'V1',
+    };
     h.estado.aoAplicar = () => { h.estado.linhaCatalogo = null; };
     const r = await gerarRascunhoAction(CHAVE_SIT);
     expect(r.ok).toBe(false);
@@ -325,11 +329,13 @@ describe('gerarRascunhoAction', () => {
   // Conserto: compare-and-swap (`.eq('status','rascunho')`) e zero linhas
   // afetadas = outro escritor mandou.
   it('não sobrescreve um texto aprovado ENTRE a leitura e a escrita', async () => {
-    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'velho' };
-    // o outro admin aprova enquanto a IA responde
+    h.estado.linhaCatalogo = {
+      id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'velho', updated_at: 'V1',
+    };
+    // o outro admin aprova enquanto a IA responde — e toda escrita move a versao
     h.estado.aoAplicar = () => {
-      (h.estado.linhaCatalogo as Record<string, unknown>).status = 'aprovado';
-      (h.estado.linhaCatalogo as Record<string, unknown>).texto = 'texto revisado por humano';
+      const l = h.estado.linhaCatalogo as Record<string, unknown>;
+      l.status = 'aprovado'; l.texto = 'texto revisado por humano'; l.updated_at = 'V2';
     };
 
     const r = await gerarRascunhoAction(CHAVE_SIT);
@@ -370,10 +376,10 @@ describe('salvarTextoAction', () => {
   // significar "um humano leu ISTO": significaria "um humano leu alguma versão".
   it('editar um texto APROVADO derruba a aprovação', async () => {
     h.estado.linhaCatalogo = {
-      id: 'exp_1', chave: CHAVE_SIT, status: 'aprovado', texto: 'antigo',
+      id: 'exp_1', chave: CHAVE_SIT, status: 'aprovado', texto: 'antigo', updated_at: 'V1',
       aprovado_por: USER_ID, aprovado_em: '2026-07-01T00:00:00Z',
     };
-    const r = await salvarTextoAction({ chave: CHAVE_SIT, texto: TEXTO });
+    const r = await salvarTextoAction({ chave: CHAVE_SIT, texto: TEXTO, versao: 'V1' });
     expect(r.ok).toBe(true);
     expect(h.updates[0].valores).toMatchObject({
       texto: TEXTO, status: 'rascunho', aprovado_por: null, aprovado_em: null,
@@ -397,6 +403,29 @@ describe('salvarTextoAction', () => {
   it('a auditoria registra a edição', async () => {
     await salvarTextoAction({ chave: CHAVE_SIT, texto: TEXTO });
     expect(h.auditorias.some((a) => a.acao === 'explicacao.salvar_rascunho')).toBe(true);
+  });
+
+  // ═══ ACHADO DO CODE-REVIEW: escritores 2 e 3 eram last-write-wins ═══
+  // `gravarTexto` fazia select → update .eq('chave') sem trava nenhuma. Dois
+  // admins com a tela aberta: A gera um rascunho, B (tela de 30s atrás) clica
+  // Salvar → o texto velho de B sobrescreve o de A, sem erro e sem sinal.
+  it('recusa salvar sobre uma versão que mudou desde que a tela carregou', async () => {
+    h.estado.linhaCatalogo = {
+      id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'v1', updated_at: 'V1',
+    };
+    const r = await salvarTextoAction({ chave: CHAVE_SIT, texto: TEXTO, versao: 'V0' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/mudou|recarregue/i);
+    expect((h.estado.linhaCatalogo as Record<string, unknown>).texto).toBe('v1');
+  });
+
+  it('salva quando a versão confere', async () => {
+    h.estado.linhaCatalogo = {
+      id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'v1', updated_at: 'V1',
+    };
+    const r = await salvarTextoAction({ chave: CHAVE_SIT, texto: TEXTO, versao: 'V1' });
+    expect(r.ok).toBe(true);
+    expect(h.updates[0].eq).toContainEqual(['updated_at', 'V1']);
   });
 });
 
@@ -422,8 +451,10 @@ describe('aprovarExplicacaoAction', () => {
   });
 
   it('aprova quando os marcadores cabem na situação', async () => {
-    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'velho' };
-    const r = await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: BOM });
+    h.estado.linhaCatalogo = {
+      id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'velho', updated_at: 'V1',
+    };
+    const r = await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: BOM, versao: 'V1' });
     expect(r.ok).toBe(true);
     expect(h.updates[0].valores).toMatchObject({
       texto: BOM, status: 'aprovado', aprovado_por: USER_ID,
@@ -432,16 +463,16 @@ describe('aprovarExplicacaoAction', () => {
   });
 
   it('texto sem marcador nenhum é aprovável', async () => {
-    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'v' };
-    const r = await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: 'O MEI paga um valor fixo por mês.' });
+    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'v', updated_at: 'V1' };
+    const r = await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: 'O MEI paga um valor fixo por mês.', versao: 'V1' });
     expect(r.ok).toBe(true);
   });
 
   // Usar só parte dos marcadores é legítimo: um texto pode explicar bem sem
   // citar todos os componentes. `renderizar` aceita valor sobrando.
   it('usar só parte dos marcadores permitidos é aprovável', async () => {
-    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'v' };
-    const r = await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: 'São {inss} de INSS.' });
+    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'v', updated_at: 'V1' };
+    const r = await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: 'São {inss} de INSS.', versao: 'V1' });
     expect(r.ok).toBe(true);
   });
 
@@ -465,18 +496,33 @@ describe('aprovarExplicacaoAction', () => {
   });
 
   it('a auditoria registra quem aprovou e o quê', async () => {
-    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'v' };
-    await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: BOM });
+    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'v', updated_at: 'V1' };
+    await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: BOM, versao: 'V1' });
     const ev = h.auditorias.find((a) => a.acao === 'explicacao.aprovar');
     expect(ev).toBeTruthy();
     expect(ev?.meta?.chave).toBe(CHAVE_SIT);
   });
 
   it('erro de escrita não vira sucesso', async () => {
-    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'v' };
+    h.estado.linhaCatalogo = { id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'v', updated_at: 'V1' };
     h.estado.erroEscrita = { message: 'boom' };
-    const r = await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: BOM });
+    const r = await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: BOM, versao: 'V1' });
     expect(r.ok).toBe(false);
     expect(h.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  // O caso mais caro da corrida: aprovar por cima de um rascunho que outro
+  // admin acabou de gerar. O texto aprovado seria o VELHO, e `gerado_por`
+  // continuaria apontando o modelo — o catálogo afirmando que uma IA escreveu
+  // um texto que ela nunca escreveu.
+  it('recusa aprovar sobre uma versão que mudou desde que a tela carregou', async () => {
+    h.estado.linhaCatalogo = {
+      id: 'exp_1', chave: CHAVE_SIT, status: 'rascunho', texto: 'rascunho novo da IA',
+      updated_at: 'V2', gerado_por: 'groq/llama',
+    };
+    const r = await aprovarExplicacaoAction({ chave: CHAVE_SIT, texto: BOM, versao: 'V1' });
+    expect(r.ok).toBe(false);
+    expect((h.estado.linhaCatalogo as Record<string, unknown>).texto).toBe('rascunho novo da IA');
+    expect((h.estado.linhaCatalogo as Record<string, unknown>).status).toBe('rascunho');
   });
 });

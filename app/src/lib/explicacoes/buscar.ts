@@ -16,8 +16,22 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 
+export type ExplicacaoAprovada = {
+  texto: string;
+  /**
+   * `'<provedor>/<modelo>'` quando a IA redigiu o rascunho; `null` quando o
+   * texto foi escrito à mão do começo ao fim.
+   *
+   * A TELA PRECISA DISSO, e não é detalhe: o aviso ao contribuinte afirma a
+   * procedência do texto ("gerada com apoio de IA"). Sem provedor configurado —
+   * o estado do projeto hoje — TODO texto do catálogo é humano, e afirmar IA
+   * seria uma declaração falsa numa tela sobre tributo.
+   */
+  geradoPor: string | null;
+};
+
 /**
- * O texto aprovado para esta situação, ou `null`.
+ * A explicação aprovada para esta situação, ou `null`.
  *
  * `null` NÃO é erro: a maior parte das situações começa sem texto, e é isso que
  * a contagem existe para transformar em fila de trabalho do admin.
@@ -26,10 +40,10 @@ import { createAdminClient } from '@/lib/supabase/admin';
  */
 export async function buscarExplicacao(
   sb: SupabaseClient, chave: string,
-): Promise<string | null> {
+): Promise<ExplicacaoAprovada | null> {
   const { data, error } = await sb
     .from('explicacoes_fiscais')
-    .select('texto')
+    .select('texto, gerado_por')
     .eq('chave', chave)
     .eq('status', 'aprovado')
     .maybeSingle();
@@ -43,7 +57,7 @@ export async function buscarExplicacao(
   }
 
   const texto = data?.texto?.trim();
-  if (texto) return texto;
+  if (texto) return { texto, geradoPor: data?.gerado_por ?? null };
 
   await contarFaltante(chave);
   return null;

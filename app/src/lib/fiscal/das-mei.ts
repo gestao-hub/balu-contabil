@@ -28,6 +28,15 @@ const COMPOSICAO = {
   'Comercio e Servicos':   { inss: INSS_MENSAL, icms: ICMS_MENSAL, iss: ISS_MENSAL },
 } as const satisfies Record<string, ComponentesDasMei>;
 
+/**
+ * Todo componente que um DAS-MEI pode ter, DERIVADO da composição — nunca uma
+ * lista escrita à parte, que divergiria no dia em que um componente novo
+ * entrasse. `situacao-fiscal.ts` usa isto para recusar chave com componente
+ * inventado (`das-mei:xyz`) antes que ela vire prompt.
+ */
+export const COMPONENTES_DAS_MEI: readonly string[] =
+  [...new Set(Object.values(COMPOSICAO).flatMap((c) => Object.keys(c)))].sort();
+
 /** Atividade desconhecida cai em Serviços — comportamento herdado, preservado
  *  de propósito: é o mais comum e mudá-lo alteraria estimativa já exibida. */
 const PADRAO = 'Prestacao de Servicos';

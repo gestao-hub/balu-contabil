@@ -23,7 +23,7 @@ export default async function Page() {
 
   const [catalogo, faltando, config] = await Promise.all([
     sb.from('explicacoes_fiscais')
-      .select('chave, texto, status, gerado_por, aprovado_em')
+      .select('chave, texto, status, gerado_por, aprovado_em, updated_at')
       .order('chave'),
     sb.from('explicacoes_faltando')
       .select('chave, vistas')
@@ -71,6 +71,9 @@ export default async function Page() {
     geradoPor: l.gerado_por,
     aprovadoEm: l.aprovado_em,
     vistas: 0,
+    // A trava otimista viaja para a tela e volta na action: é o que impede um
+    // admin com a página velha de sobrescrever o que o outro acabou de gravar.
+    versao: l.updated_at,
   }));
 
   // Só as que ainda não têm linha: uma situação com rascunho já aparece acima,
@@ -80,18 +83,34 @@ export default async function Page() {
     .map((f) => montarItem({
       chave: f.chave, texto: '', status: 'ausente',
       geradoPor: null, aprovadoEm: null, vistas: Number(f.vistas ?? 0),
+      // Sem linha no catálogo não há versão: a gravação vai pelo INSERT, e a
+      // corrida ali é resolvida pelo UNIQUE da chave.
+      versao: null,
     }));
 
   // As pedidas e ausentes primeiro: é o trabalho que existe.
   const itens = [...semTexto, ...doCatalogo];
 
-  const temProvedorIa = Boolean(config.data?.provedor && config.data?.chave_cifrada);
+  // ACHADO DO CODE-REVIEW: descartar `config.error` fazia uma leitura FALHA
+  // virar "nenhum provedor configurado" — dizendo ao admin que a credencial
+  // sumiu quando ela está lá, e desligando o botão de gerar sem motivo real. O
+  // gatilho mais provável é o cache de schema do PostgREST logo depois de uma
+  // migration, o mesmo que a tela de configuração já trata.
+  const configIndisponivel = Boolean(config.error);
+  if (config.error) console.error('[6a] config_ia leitura falhou na pagina do catalogo:', config.error.message);
+  const temProvedorIa = !configIndisponivel && Boolean(config.data?.provedor && config.data?.chave_cifrada);
 
   return (
     <div className="space-y-6 p-6">
       {cabecalho}
 
-      {!temProvedorIa && (
+      {configIndisponivel ? (
+        <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-muted-foreground">
+          Não foi possível ler a configuração do provedor de IA, então <b>Gerar com IA</b>
+          fica desligado por precaução. Isso <b>não</b> quer dizer que a credencial sumiu —
+          quer dizer que não deu para saber. Revisar e aprovar continua funcionando.
+        </p>
+      ) : !temProvedorIa && (
         <p className="rounded-md border border-border bg-surface p-3 text-xs text-muted-foreground">
           Nenhum provedor de IA configurado — o botão <b>Gerar com IA</b> fica desligado.
           Escrever o texto à mão e aprovar funciona do mesmo jeito: a IA só redige o
