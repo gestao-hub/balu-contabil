@@ -3,10 +3,16 @@
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
 > **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4 FECHADO: 4A + 4B mergeados (`1199a1e`), empurrados e no ar.** Smoke §1–§10 sem nenhum bug novo. Migrations até `0055` em produção. **Bloco 6A (explicação de imposto com IA) desenhado e planejado**, zero linha de código — spec aprovada, execução liberada. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
 
-> ## ▶ AO RETOMAR: Bloco 6A na **Task 8** (sessão 16, 2026-07-29)
-> **Tasks 1 a 7 FEITAS**, na branch `feat/bloco-6a-explicacao-ia` (8 commits, não
-> mergeada). `tsc` 0 · vitest **1211/1211** · `next build` 0 erros, com a rota
+> ## ▶ AO RETOMAR: Bloco 6A na **Task 9** (sessão 16, 2026-07-29)
+> **Tasks 1 a 8 FEITAS**, na branch `feat/bloco-6a-explicacao-ia` (10 commits,
+> não mergeada). `tsc` 0 · vitest **1272/1272** · `next build` 0 erros, com a rota
 > `ƒ /admin/configuracoes/ia`. Migrations **0056 a 0059 aplicadas em produção**.
+>
+> **A Task 8 já entregou parte da 9.** `admin/explicacoes/actions.ts` existe com
+> `gerarRascunhoAction` (19 testes). A Task 9 acrescenta ao MESMO arquivo o
+> `aprovarExplicacaoAction`/edição e cria a `page.tsx`. Duas peças da 9 também já
+> estão prontas e testadas: `marcadoresDaChave` (`lib/explicacoes/marcadores.ts`
+> — o plano a chamava de `marcadoresDaSituacao`) e `situacaoDaChave`.
 >
 > - spec (aprovada): `docs/superpowers/specs/2026-07-28-bloco-6a-explicacao-ia-design.md`
 > - plano: `docs/superpowers/plans/2026-07-28-bloco-6a-explicacao-ia.md` (12 tasks)
