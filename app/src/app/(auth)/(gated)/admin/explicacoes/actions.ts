@@ -24,13 +24,97 @@ import { situacaoDaChave } from '@/lib/fiscal/situacao-fiscal';
 import { montarPrompt } from '@/lib/explicacoes/prompt';
 import { marcadoresDaChave } from '@/lib/explicacoes/marcadores';
 import { marcadoresDe } from '@/lib/explicacoes/renderizar';
-import { ChaveExplicacaoSchema } from '@/types/zod';
+import { ChaveExplicacaoSchema, ExplicacaoTextoSchema } from '@/types/zod';
 
 type ResultadoGeracao =
   | { ok: true; marcadoresIntrusos: string[] }
   | { ok: false; error: string };
 
+type ActionResult = { ok: true } | { ok: false; error: string };
+
 const ROTA = '/admin/explicacoes';
+
+/**
+ * A fronteira de `salvarTextoAction` e `aprovarExplicacaoAction`: forma da
+ * chave, texto não vazio e — o que o schema não tem como julgar — a situação
+ * existir de verdade. Aprovar contra uma situação que ninguém sabe descrever
+ * seria aprovar no escuro.
+ */
+function lerEntradaDeTexto(entrada: unknown): { chave: string; texto: string } | { error: string } {
+  const p = ExplicacaoTextoSchema.safeParse(entrada);
+  if (!p.success) return { error: p.error.errors[0]?.message ?? 'Dados inválidos.' };
+  if (!situacaoDaChave(p.data.chave)) return { error: 'Situação fiscal desconhecida.' };
+  return { chave: p.data.chave, texto: p.data.texto };
+}
+
+/**
+ * A gravação que salvar e aprovar compartilham. Uma função só porque a diferença
+ * entre as duas é o carimbo — duplicar isso faria uma delas esquecer de limpar
+ * `aprovado_por` no dia em que a regra mudasse.
+ *
+ * `gerado_por` NÃO entra no patch de propósito: editar um rascunho de IA não
+ * apaga o fato de que a IA o redigiu. O rastro de origem continua verdadeiro, e
+ * quem aprovou está em `aprovado_por`.
+ */
+async function gravarTexto(
+  p: { chave: string; texto: string; actorUserId: string; aprovando: boolean },
+): Promise<ActionResult> {
+  const sb = createAdminClient();
+  const agora = new Date().toISOString();
+
+  const { data: atual, error: eLer } = await sb
+    .from('explicacoes_fiscais').select('id, status').eq('chave', p.chave).maybeSingle();
+  if (eLer) {
+    console.error('[6a] catalogo leitura falhou:', eLer.message);
+    return { ok: false, error: 'Não foi possível ler o catálogo. Tente de novo.' };
+  }
+
+  const linha = {
+    texto: p.texto,
+    status: p.aprovando ? 'aprovado' : 'rascunho',
+    // Editar derruba a aprovação: sem limpar o carimbo, "aprovado por fulano"
+    // passaria a valer para um texto que fulano nunca leu.
+    aprovado_por: p.aprovando ? p.actorUserId : null,
+    aprovado_em: p.aprovando ? agora : null,
+    updated_at: agora,
+  };
+
+  if (atual) {
+    const { data, error } = await sb
+      .from('explicacoes_fiscais').update(linha).eq('chave', p.chave).select('id');
+    if (error) {
+      console.error('[6a] catalogo update falhou:', error.message);
+      return { ok: false, error: 'Não foi possível salvar. Tente de novo.' };
+    }
+    if ((data?.length ?? 0) === 0) {
+      return { ok: false, error: 'A explicação não foi encontrada. Recarregue a página.' };
+    }
+  } else {
+    // Situação sem linha: o admin escreveu o texto à mão. É o caminho normal
+    // enquanto não houver provedor de IA configurado.
+    const { error } = await sb
+      .from('explicacoes_fiscais').insert({ chave: p.chave, gerado_por: null, ...linha });
+    if (error) {
+      console.error('[6a] catalogo insert falhou:', error.message);
+      return { ok: false, error: 'Não foi possível salvar. Tente de novo.' };
+    }
+  }
+
+  await registrarAuditoria({
+    actorUserId: p.actorUserId,
+    acao: p.aprovando ? 'explicacao.aprovar' : 'explicacao.salvar_rascunho',
+    alvoTipo: 'explicacao_fiscal', alvoId: atual?.id ?? null,
+    meta: {
+      chave: p.chave, tamanho: p.texto.length,
+      // Registrar que a aprovação caiu é o que permite auditar "por que este
+      // texto sumiu da tela do cliente" seis meses depois.
+      derrubou_aprovacao: !p.aprovando && atual?.status === 'aprovado',
+    },
+  });
+
+  revalidatePath(ROTA);
+  return { ok: true };
+}
 
 export async function gerarRascunhoAction(chaveBruta: unknown): Promise<ResultadoGeracao> {
   const ctx = await requireAdminBaluAction();
@@ -143,14 +227,28 @@ export async function gerarRascunhoAction(chaveBruta: unknown): Promise<Resultad
     // `update`, nunca `upsert`: o upsert do PostgREST manda NULL nas colunas
     // ausentes do payload — regra do repo, e o que quase apagou a chave do
     // provedor na Task 7. O `.select('id')` distingue "gravou" de "não achou".
+    //
+    // ⚠️ COMPARE-AND-SWAP no `status`. A leitura que autorizou esta escrita
+    // aconteceu ANTES da chamada de IA, que leva segundos — e desde a Task 9
+    // existe um terceiro escritor nesta tabela (a aprovação). Um admin
+    // aprovando nesse intervalo faria a geração regravar por cima do texto
+    // recém-carimbado: a trava "nunca sobrescreve aprovado" teria sido avaliada
+    // contra um estado que já não existe. Zero linhas afetadas = outro escritor
+    // mandou, e não há o que retentar.
     const { data, error } = await sb
-      .from('explicacoes_fiscais').update(linha).eq('chave', chave).select('id');
+      .from('explicacoes_fiscais').update(linha)
+      .eq('chave', chave)
+      .eq('status', 'rascunho')
+      .select('id');
     if (error) {
       console.error('[6a] catalogo update falhou:', error.message);
       return { ok: false, error: 'Não foi possível salvar o rascunho. Tente de novo.' };
     }
     if ((data?.length ?? 0) === 0) {
-      return { ok: false, error: 'A explicação não foi encontrada. Recarregue a página.' };
+      return {
+        ok: false,
+        error: 'A explicação mudou enquanto o texto era gerado (alguém aprovou ou editou). Nada foi sobrescrito — recarregue a página.',
+      };
     }
   } else {
     const { error } = await sb.from('explicacoes_fiscais').insert({ chave, ...linha });
@@ -173,4 +271,63 @@ export async function gerarRascunhoAction(chaveBruta: unknown): Promise<Resultad
 
   revalidatePath(ROTA);
   return { ok: true, marcadoresIntrusos };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 9 — revisar e aprovar.
+//
+// ⚠️ O CAMINHO MANUAL NÃO É SECUNDÁRIO. Sem chave de IA configurada, escrever o
+// texto à mão e aprovar é o ÚNICO caminho que funciona — e é o estado do projeto
+// hoje. Por isso salvar e aprovar CRIAM a linha quando ela não existe, em vez de
+// exigirem um rascunho gerado antes.
+
+/**
+ * Salva o texto como RASCUNHO. Editar é sempre editar um rascunho: se o texto
+ * estava aprovado, a aprovação cai junto (§5.6 da spec).
+ *
+ * Sem isso, "aprovado" deixaria de significar "um humano leu ISTO" e passaria a
+ * significar "um humano leu alguma versão disto" — que é o mesmo que nada.
+ */
+export async function salvarTextoAction(entrada: unknown): Promise<ActionResult> {
+  const ctx = await requireAdminBaluAction();
+  if ('error' in ctx) return { ok: false, error: ctx.error };
+
+  const dados = lerEntradaDeTexto(entrada);
+  if ('error' in dados) return { ok: false, error: dados.error };
+
+  return gravarTexto({
+    chave: dados.chave, texto: dados.texto, actorUserId: ctx.userId, aprovando: false,
+  });
+}
+
+/**
+ * Aprova o texto — o carimbo humano que a spec exige antes de qualquer cliente
+ * ver explicação sobre tributo (DL 9.295/46).
+ *
+ * RECUSA texto com marcador que a situação não fornece. Sem esta trava,
+ * `{icms}` numa situação de serviços chegaria à tela: ou cru, ou — com a falha
+ * fechada de `renderizar` — fazendo a explicação inteira sumir sem ninguém
+ * entender por quê. A validação é no ato da ESCOLHA, não no envio.
+ */
+export async function aprovarExplicacaoAction(entrada: unknown): Promise<ActionResult> {
+  const ctx = await requireAdminBaluAction();
+  if ('error' in ctx) return { ok: false, error: ctx.error };
+
+  const dados = lerEntradaDeTexto(entrada);
+  if ('error' in dados) return { ok: false, error: dados.error };
+
+  const permitidos = new Set(marcadoresDaChave(dados.chave));
+  const intrusos = marcadoresDe(dados.texto).filter((m) => !permitidos.has(m));
+  if (intrusos.length) {
+    const lista = intrusos.map((m) => `{${m}}`).join(', ');
+    const ok = permitidos.size ? [...permitidos].map((m) => `{${m}}`).join(', ') : 'nenhum';
+    return {
+      ok: false,
+      error: `Esta situação não fornece ${lista}. Marcadores disponíveis: ${ok}.`,
+    };
+  }
+
+  return gravarTexto({
+    chave: dados.chave, texto: dados.texto, actorUserId: ctx.userId, aprovando: true,
+  });
 }

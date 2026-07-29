@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   situacaoDasMei, situacaoPgdas, chaveDaSituacao, situacaoDaChave, rotuloDoAnexo,
+  rotuloDaSituacao,
 } from './situacao-fiscal';
 
 describe('chave da situação fiscal', () => {
@@ -110,6 +111,27 @@ describe('situacaoDaChave — o caminho de volta', () => {
     'recusa a chave inválida %s',
     (k) => expect(situacaoDaChave(k)).toBeNull(),
   );
+});
+
+describe('rotuloDaSituacao', () => {
+  it('nomeia o DAS-MEI pelos componentes, em ordem estável', () => {
+    expect(rotuloDaSituacao(situacaoDasMei('Comercio e Servicos')))
+      .toBe('MEI · DAS · ICMS + INSS + ISS');
+    expect(rotuloDaSituacao(situacaoDasMei('Prestacao de Servicos')))
+      .toBe('MEI · DAS · INSS + ISS');
+  });
+
+  it('nomeia o PGDAS-D pelo anexo, e só cita Fator R quando ele vale', () => {
+    expect(rotuloDaSituacao(situacaoPgdas('Anexo III', true)))
+      .toBe('Simples Nacional · Anexo III · Fator R');
+    expect(rotuloDaSituacao(situacaoPgdas('Anexo III', false)))
+      .toBe('Simples Nacional · Anexo III');
+  });
+
+  // O rótulo é para ler, não para indexar: quem identifica é a chave.
+  it('situação desconhecida ainda produz rótulo, sem quebrar a tela', () => {
+    expect(rotuloDaSituacao(situacaoPgdas(null, false))).toContain('desconhecido');
+  });
 });
 
 describe('rotuloDoAnexo', () => {

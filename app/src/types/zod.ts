@@ -428,3 +428,16 @@ export const ChaveExplicacaoSchema = z
   .string()
   .trim()
   .regex(/^[a-z][a-z0-9-]{0,19}:[a-z0-9+-]{1,64}$/, 'Chave de situação inválida.');
+
+/**
+ * Bloco 6A — o texto de uma explicação, na fronteira de salvar e aprovar.
+ *
+ * O teto de 4000 é generoso de propósito: a explicação são duas a quatro frases,
+ * e qualquer coisa muito maior é colagem acidental. Texto vazio é recusado aqui
+ * porque `explicacoes_fiscais.texto` é NOT NULL e um texto em branco aprovado
+ * seria uma explicação invisível que ninguém entende por que não aparece.
+ */
+export const ExplicacaoTextoSchema = z.object({
+  chave: ChaveExplicacaoSchema,
+  texto: z.string().trim().min(1, 'Escreva o texto da explicação.').max(4000, 'Texto longo demais.'),
+});

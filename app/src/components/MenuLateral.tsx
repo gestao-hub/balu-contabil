@@ -12,7 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
   ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, LayoutDashboard, FilePlus, MessageCircle,
-  CreditCard, Receipt, Landmark, Tags,
+  CreditCard, Receipt, Landmark, Tags, BookOpen,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -115,6 +115,9 @@ const NAV: NavItem[] = [
   { href: '/admin/empresas',        label: 'Empresas',       Icon: Briefcase, roles: ['adminbalu'] },
   { href: '/admin/usuarios',        label: 'Usuários',       Icon: Users, roles: ['adminbalu'] },
   { href: '/admin/assinaturas',     label: 'Assinaturas',    Icon: CreditCard, roles: ['adminbalu'] },
+  // Bloco 6A. Fica no menu, e não escondida em Configurações, porque é tela de
+  // TRABALHO recorrente: toda situação fiscal nova aparece nela pedindo revisão.
+  { href: '/admin/explicacoes',     label: 'Explicações',    Icon: BookOpen, roles: ['adminbalu'] },
   { href: '/admin/configuracoes',   label: 'Configurações',  Icon: Settings, roles: ['adminbalu'] },
   // Assinatura do titular (Bloco 4A). A do empresário é `precisaEmpresa`
   // porque sem empresa corrente a tela vira beco "Nenhuma empresa

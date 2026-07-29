@@ -122,6 +122,19 @@ export function situacaoDaChave(chave: string): SituacaoFiscal | null {
  * em português; sem isto, cada consumidor faria sua própria conversão e a
  * terceira delas erraria.
  */
+/**
+ * Como a situação é chamada na tela do admin. Curto de propósito: ele vai ver
+ * uma lista delas, e a chave crua (`das-mei:icms+inss+iss`) é precisa mas não se
+ * lê. Fica aqui, junto do resto do vocabulário de situação, para não nascer uma
+ * segunda forma de nomear a mesma coisa na primeira tela que precisar.
+ */
+export function rotuloDaSituacao(s: SituacaoFiscal): string {
+  if (s.tributo === 'das-mei') {
+    return `MEI · DAS · ${[...s.componentes].sort().map((c) => c.toUpperCase()).join(' + ')}`;
+  }
+  return `Simples Nacional · ${rotuloDoAnexo(s.anexo)}${s.fatorR ? ' · Fator R' : ''}`;
+}
+
 export function rotuloDoAnexo(slug: string): string {
   const achatadoSlug = slug.trim().toLowerCase();
   const achar = FAIXA_OPTIONS.find(
