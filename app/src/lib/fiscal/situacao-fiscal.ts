@@ -15,7 +15,7 @@
 // admin têm de derivar a MESMA chave, e uma regra dessas não pode existir em
 // duas versões.
 import { componentesDasMei } from './das-mei';
-import { fatorRAplicavel } from './regime';
+import { fatorRAplicavel, FAIXA_OPTIONS } from './regime';
 
 export type SituacaoFiscal =
   | { tributo: 'das-mei'; componentes: readonly string[] }
@@ -25,13 +25,39 @@ export function situacaoDasMei(atividade: string | null | undefined): SituacaoFi
   return { tributo: 'das-mei', componentes: Object.keys(componentesDasMei(atividade)) };
 }
 
+/** Caixa e espaço não distinguem anexo: 'anexo iii', ' Anexo  III ' e
+ *  'Anexo III' são o mesmo. */
+function achatar(bruto: string | null | undefined): string {
+  return (bruto ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * O literal canônico ('Anexo III') de qualquer grafia, ou `null` se não for um
+ * anexo conhecido. A lista canônica vem de `FAIXA_OPTIONS` — copiá-la aqui
+ * criaria uma segunda verdade sobre quais anexos existem.
+ */
+function anexoCanonico(bruto: string | null | undefined): string | null {
+  const achatado = achatar(bruto);
+  if (!achatado) return null;
+  return FAIXA_OPTIONS.find((f) => achatar(f.anexo) === achatado)?.anexo ?? null;
+}
+
 export function situacaoPgdas(anexo: string | null | undefined, usaFatorR: boolean): SituacaoFiscal {
+  // UMA normalização só, e os dois campos derivam DELA. Antes, a chave era
+  // normalizada (minúscula + traço) e o valor CRU ia para `fatorRAplicavel`,
+  // que compara com os literais exatos de `regime.ts` — então 'anexo iii'
+  // perdia o Fator R em silêncio e caía numa chave diferente de 'Anexo III'.
+  // Duas normalizações do mesmo dado é o que produz a chave instável que o
+  // cabeçalho deste módulo chama de pior falha do bloco.
+  const canonico = anexoCanonico(anexo);
+  const base = canonico ?? achatar(anexo);
+
   return {
     tributo: 'pgdas',
-    anexo: (anexo ?? 'desconhecido').toLowerCase().replace(/\s+/g, '-'),
+    anexo: (base || 'desconhecido').toLowerCase().replace(/\s+/g, '-'),
     // Fator R só existe em Anexo III/V — a regra já mora em `regime.ts` e não
-    // é reimplementada aqui.
-    fatorR: usaFatorR && fatorRAplicavel(anexo),
+    // é reimplementada aqui; o que muda é receber o valor canônico em vez do cru.
+    fatorR: usaFatorR && fatorRAplicavel(canonico),
   };
 }
 

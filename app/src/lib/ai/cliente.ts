@@ -43,13 +43,29 @@ export async function gerarTexto(cfg: ConfigProvedor, prompt: string): Promise<s
     headers['Authorization'] = `Bearer ${cfg.chave}`;
   }
 
-  // O CORPO É O MESMO NOS DOIS DIALETOS — os dois aceitam
-  // `{ model, max_tokens, messages:[{role,content}] }` para uma pergunta simples.
-  // A diferença entre Anthropic e OpenAI-compatível está no CAMINHO e no
-  // CABEÇALHO, não aqui. (Se um dia divergir, é aqui que o `if` nasce; um
-  // ternário com os dois lados iguais só faria o leitor procurar diferença que
-  // não existe.)
-  const body = { model: cfg.modelo, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content: prompt }] };
+  // O `if` que o comentário anterior dizia que "nasceria um dia" já nasceu — e
+  // ele é por PROVEDOR, não por dialeto.
+  //
+  // Os modelos de raciocínio da OpenAI (o1/o3/gpt-5) RECUSAM `max_tokens` em
+  // /chat/completions com HTTP 400 "Unsupported parameter: 'max_tokens' … use
+  // 'max_completion_tokens'". Na tela do admin isso chega como um 400 que parece
+  // credencial errada, e o admin troca a chave boa por outra atrás de um erro
+  // que não é de chave.
+  //
+  // O corte é pelo provedor `openai` porque `max_completion_tokens` vale para
+  // TODA a linha atual da OpenAI (não só os de raciocínio) — assim não existe
+  // lista de modelos para manter atualizada. Os demais OpenAI-compatíveis (Groq,
+  // DeepSeek, Mistral, OpenRouter, Gemini pelo endpoint de compatibilidade) NÃO
+  // conhecem o nome novo: trocar para todos consertaria um e quebraria cinco.
+  //
+  // ⚠️ Ponto cego conhecido: 'personalizado' apontado para a própria OpenAI
+  // recebe `max_tokens` e bate no mesmo 400. Fica registrado em vez de adivinhado
+  // — não dá para saber, pela URL, quem fala qual dialeto.
+  const limite = cfg.provedor === 'openai'
+    ? { max_completion_tokens: MAX_TOKENS }
+    : { max_tokens: MAX_TOKENS };
+
+  const body = { model: cfg.modelo, ...limite, messages: [{ role: 'user', content: prompt }] };
 
   const res = await fetch(url, {
     method: 'POST', headers, body: JSON.stringify(body),

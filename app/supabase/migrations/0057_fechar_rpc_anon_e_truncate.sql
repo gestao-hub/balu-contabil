@@ -91,10 +91,14 @@ GRANT EXECUTE ON FUNCTION public.resumo_escritorio()                   TO authen
 -- proximo bloco recomeca a caçada. Vale para objetos criados pela role
 -- `postgres` em `public` — que e exatamente como nossas migrations rodam.
 --
--- ⚠️ CONSEQUENCIA DELIBERADA: a partir daqui, funcao nova NAO e executavel por
--- ninguem alem do dono ate que a migration conceda EXECUTE explicitamente. Se
--- uma RPC nova "nao aparece" para a tela, o motivo e este — e o conserto e o
--- GRANT que deveria estar la desde o comeco.
+-- ⛔ ERRATA (ver 0058): a frase que estava aqui — "a partir daqui, funcao nova
+-- NAO e executavel por ninguem alem do dono" — era FALSA, e um code-review a
+-- pegou. A linha de FUNCTIONS abaixo tira so os grants NOMINais de
+-- anon/authenticated; o EXECUTE que `acldefault()` concede a PUBLIC sobrevive, e
+-- anon e membro de PUBLIC. Medido: funcao criada depois desta migration nascia
+-- com `=X/postgres` e `has_function_privilege('anon', ...)` = TRUE.
+-- Quem fecha de verdade e a **0058**, com a variante GLOBAL (sem `IN SCHEMA`).
+-- A linha de TABLES abaixo esta correta e continua valendo.
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLES FROM anon, authenticated;
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public

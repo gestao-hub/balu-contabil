@@ -42,4 +42,29 @@ describe('renderização da explicação', () => {
   it('valor vazio conta como fornecido', () => {
     expect(renderizar('a{x}b', { x: '' })).toEqual({ ok: true, texto: 'ab' });
   });
+
+  // ACHADO DO CODE-REVIEW. `valores[m] === undefined` percorre a CADEIA DE
+  // PROTOTIPOS: `valores['constructor']` nao e undefined, e o marcador passava
+  // pela falha fechada. O texto ia para a tela do contribuinte com
+  // "function Object() { [native code] }" no lugar de um valor de imposto —
+  // pior que o "{iss}" cru que este modulo existe para impedir.
+  it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])(
+    'marcador herdado do Object.prototype (%s) NÃO passa pela falha fechada',
+    (herdado) => {
+      const r = renderizar(`Você paga {${herdado}} de INSS.`, { inss: 'R$ 75,90' });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.faltando).toEqual([herdado]);
+    },
+  );
+
+  it('marcador herdado também não aparece como fornecido em texto misto', () => {
+    const r = renderizar('{inss} e {toString}', { inss: 'R$ 75,90' });
+    expect(r.ok).toBe(false);
+  });
+
+  // Valor com `undefined` explicito e ausencia, nao presenca.
+  it('valor explicitamente undefined conta como faltando', () => {
+    const r = renderizar('{x}', { x: undefined as unknown as string });
+    expect(r.ok).toBe(false);
+  });
 });

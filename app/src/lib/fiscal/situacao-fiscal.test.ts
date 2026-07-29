@@ -39,6 +39,24 @@ describe('chave da situação fiscal', () => {
     expect(chaveDaSituacao(situacaoPgdas('Anexo I', true))).toBe('pgdas:anexo-i');
   });
 
+  // ACHADO DO CODE-REVIEW. A chave normalizava o anexo (minúscula + traço), mas
+  // o valor CRU ia para `fatorRAplicavel`, que compara com os literais exatos
+  // 'Anexo III'/'Anexo V'. Resultado: 'anexo iii' e 'Anexo III' — o MESMO anexo
+  // depois da normalização — caíam em chaves diferentes, e a versão em
+  // minúscula recebia a explicação sem o Fator R. É exatamente a "chave
+  // instável" que o cabeçalho do módulo chama de pior falha do bloco.
+  it.each(['Anexo III', 'anexo iii', 'ANEXO III', ' Anexo  III '])(
+    'a caixa e o espaço do anexo (%s) não mudam a chave',
+    (escrito) => {
+      expect(chaveDaSituacao(situacaoPgdas(escrito, true))).toBe('pgdas:anexo-iii+fator-r');
+    },
+  );
+
+  it('a normalização não inventa Fator R onde ele não existe', () => {
+    expect(chaveDaSituacao(situacaoPgdas('anexo i', true))).toBe('pgdas:anexo-i');
+    expect(chaveDaSituacao(situacaoPgdas('ANEXO V', true))).toBe('pgdas:anexo-v+fator-r');
+  });
+
   // O QUE A CHAVE NÃO PODE CARREGAR: nada que mude o NÚMERO sem mudar a
   // EXPLICAÇÃO. R$ 61,60 e R$ 75,00 se explicam igual.
   it('a chave não depende de valor, competência nem empresa', () => {

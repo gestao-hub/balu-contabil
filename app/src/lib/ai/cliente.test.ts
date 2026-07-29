@@ -73,6 +73,49 @@ describe('cliente de IA', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  // ACHADO DO CODE-REVIEW. Os modelos de raciocinio da OpenAI (o1/o3/gpt-5)
+  // RECUSAM `max_tokens` em /chat/completions com 400 "Unsupported parameter:
+  // use 'max_completion_tokens'". O erro chega na tela do admin parecendo
+  // credencial invalida. `max_completion_tokens` e aceito por toda a linha atual
+  // da OpenAI, entao o corte e por PROVEDOR, nao por modelo — nao ha lista de
+  // modelos para manter.
+  it('OpenAI recebe max_completion_tokens, não max_tokens', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      resposta({ choices: [{ message: { content: 'ok' } }] }));
+
+    await gerarTexto({ provedor: 'openai', modelo: 'gpt-5', base_url: null, chave: 'k' }, 'p');
+
+    const corpo = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(corpo.max_completion_tokens).toBeGreaterThan(0);
+    expect(corpo.max_tokens).toBeUndefined();
+  });
+
+  // Os demais OpenAI-compativeis NAO conhecem `max_completion_tokens`. Trocar
+  // para todo mundo consertaria a OpenAI e quebraria Groq, DeepSeek e Mistral.
+  it.each(['groq', 'deepseek', 'mistral', 'openrouter', 'gemini'] as const)(
+    '%s continua recebendo max_tokens',
+    async (provedor) => {
+      const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        resposta({ choices: [{ message: { content: 'ok' } }] }));
+
+      await gerarTexto({ provedor, modelo: 'm', base_url: null, chave: 'k' }, 'p');
+
+      const corpo = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      expect(corpo.max_tokens).toBeGreaterThan(0);
+      expect(corpo.max_completion_tokens).toBeUndefined();
+    },
+  );
+
+  it('Anthropic exige max_tokens e continua recebendo', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      resposta({ content: [{ type: 'text', text: 'ok' }] }));
+
+    await gerarTexto({ provedor: 'anthropic', modelo: 'claude-sonnet-4-6', base_url: null, chave: 'k' }, 'p');
+
+    const corpo = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(corpo.max_tokens).toBeGreaterThan(0);
+  });
+
   // Resposta 200 com corpo que nao tem texto e falha, nao string vazia: um
   // rascunho vazio entraria no catalogo parecendo conteudo.
   it('200 sem texto no corpo é erro', async () => {
