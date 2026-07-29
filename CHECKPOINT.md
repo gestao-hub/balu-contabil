@@ -3,15 +3,53 @@
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
 > **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4 FECHADO: 4A + 4B mergeados (`1199a1e`), empurrados e no ar.** Smoke §1–§10 sem nenhum bug novo. Migrations até `0055` em produção. **Bloco 6A (explicação de imposto com IA) desenhado e planejado**, zero linha de código — spec aprovada, execução liberada. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
 
-> ## ▶ AO RETOMAR: executar o Bloco 6A pela Task 1
-> **O Bloco 4 está FECHADO e no ar** (ver abaixo). O 6A foi desenhado e planejado,
-> e a **spec foi lida e APROVADA pelo usuário em 2026-07-28**. O portão do fluxo
-> está liberado: começar pela **Task 1** do plano.
+> ## ▶ AO RETOMAR: Bloco 6A na **Task 8** (sessão 16, 2026-07-29)
+> **Tasks 1 a 7 FEITAS**, na branch `feat/bloco-6a-explicacao-ia` (8 commits, não
+> mergeada). `tsc` 0 · vitest **1211/1211** · `next build` 0 erros, com a rota
+> `ƒ /admin/configuracoes/ia`. Migrations **0056 a 0059 aplicadas em produção**.
 >
 > - spec (aprovada): `docs/superpowers/specs/2026-07-28-bloco-6a-explicacao-ia-design.md`
 > - plano: `docs/superpowers/plans/2026-07-28-bloco-6a-explicacao-ia.md` (12 tasks)
 >
-> **Nenhuma linha de código escrita ainda.**
+> **⚠️ TRÊS COISAS QUE MUDARAM O PLANO — ler antes de escrever a Task 8:**
+> 1. **A Task 10 tem de usar o `createAdminClient()`** para chamar
+>    `registrar_explicacao_faltando`. A 0059 tirou essa RPC de `authenticated`:
+>    ela conta *situação*, não pessoa, e quem a chama é Server Component. Chamar
+>    pela sessão do usuário agora dá 401.
+> 2. **`upsert` é proibido neste repo** (o do PostgREST manda NULL nas colunas
+>    ausentes). O plano pede upsert na Task 8 (`explicacoes_fiscais`) e na 7 —
+>    na 7 já virou `select` → `update`/`insert`; a 8 precisa do mesmo.
+> 3. **Guardas reais:** `requireAdminBaluPage()` / `requireAdminBaluAction()`
+>    (`src/lib/admin/guard.ts`). Não existe `requireAdmin`.
+>
+> **Ainda pendente do usuário:** a **chave de IA** (só necessária para *gerar*
+> rascunho, nunca para exibir) e o **salário mínimo de 2026** (o DAS-MEI usa o de
+> 2025; agora é trocar `INSS_MENSAL` e o total se ajusta sozinho).
+>
+> ### 🔒 O que a sessão 16 achou de segurança, fora do escopo do 6A
+> Conferir o **efeito** da 0056 no banco (em vez de aceitar que o SQL rodou)
+> revelou que o `pg_default_acl` da role `postgres` abre **toda tabela e toda
+> função nova** de `public` para anon/authenticated. Provado por HTTP com a anon
+> key, **sem login**: `notificacoes_pendentes_email` devolvia e-mail de todos os
+> usuários e `anonimizar_usuario` executava. Fechado nas **0057 + 0058 + 0059**,
+> com 15 privilégios conferidos um a um e a fronteira HTTP re-sondada (401).
+>
+> **A 0057 sozinha NÃO bastava, e o comentário dela dizia que bastava** — um
+> `/code-review` pegou. O `EXECUTE` que `acldefault()` concede a **PUBLIC**
+> sobrevive ao revoke por schema, e anon é membro de PUBLIC; só a variante
+> **GLOBAL** (`ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON
+> FUNCTIONS FROM PUBLIC`, sem `IN SCHEMA`) fecha. A errata está na 0057 e o
+> conserto na 0058, ambos com o mecanismo escrito por extenso.
+>
+> **Consequência para a próxima migration:** função nova nasce executável só pelo
+> dono. Se uma RPC "não aparece" para a tela, é isso — o conserto é o `GRANT
+> EXECUTE ... TO authenticated`, não afrouxar a 0058.
+>
+> ⚠️ **Sujeira de produção que EU criei e ficou:** uma sonda minha chamou duas
+> RPCs de escrita que estavam abertas. As 6 notificações espúrias (chave com
+> `1899`) foram **apagadas** — nenhuma lida, nenhuma enviada. **Ficou 1 honorário
+> de R$ 1.890** (julho/2026, empresa `ideapp`, `atrasado`), por decisão do
+> usuário: era devido desde 01/07 e a empresa é a do cenário de teste do 4B.
 >
 > **O que é o 6A.** O Bloco 6 do Master PRD junta IA e WhatsApp; virou **6A (IA)**
 > e **6B (WhatsApp)**, pela mesma lógica que dividiu o 4. E dentro do 6A, apenas a
