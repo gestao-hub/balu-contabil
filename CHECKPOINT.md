@@ -3,12 +3,24 @@
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
 > **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4 FECHADO: 4A + 4B mergeados (`1199a1e`), empurrados e no ar.** Smoke §1–§10 sem nenhum bug novo. Migrations até `0055` em produção. **Bloco 6A (explicação de imposto com IA) desenhado e planejado**, zero linha de código — spec aprovada, execução liberada. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
 
-> ## ▶ AO RETOMAR: Bloco 6A na **Task 12** — a última (sessão 16, 2026-07-29)
-> **Tasks 1 a 11 FEITAS — todo o código do 6A está escrito.** Branch
-> `feat/bloco-6a-explicacao-ia` (16 commits, não mergeada). `tsc` 0 · vitest
-> **1310/1310** · `next build` 0 erros, com `ƒ /admin/configuracoes/ia` e
-> `ƒ /admin/explicacoes`. Migrations **0056 a 0059 aplicadas em produção**.
-> Falta só a **Task 12**: probe `_probe-6a.mjs` + roteiro do smoke.
+> ## ⛔ AO RETOMAR: **mostrar o roteiro do smoke do 6A na conversa, de cara**
+> **Bloco 6A COMPLETO — Tasks 1 a 12.** Branch `feat/bloco-6a-explicacao-ia`
+> (18 commits, **não mergeada**). `tsc` 0 · vitest **1310/1310** · `next build`
+> 0 erros, com `ƒ /admin/configuracoes/ia` e `ƒ /admin/explicacoes`.
+> Migrations **0056 a 0059 aplicadas em produção**.
+>
+> **▶ HÁ SMOKE PENDENTE.** Roteiro pronto em
+> `docs/smoke/2026-07-29-bloco-6a-roteiro-smoke.md` (9 seções). A regra do
+> projeto: **renderizar o roteiro completo na conversa logo na retomada**, sem
+> esperar o usuário pedir — com os comandos, as contas e os valores esperados.
+>
+> Antes de mostrar, conferir o estado do cenário:
+> `node app/scratchpad/_probe-6a.mjs` (somente leitura) e
+> `node app/scratchpad/seed-6a.mjs listar` (somente leitura).
+>
+> **Depois do smoke:** verificação com o cenário vivo → restaurar (§9) → rodar a
+> suíte **sem** o cenário → `next build` com o dev parado → merge `--no-ff` →
+> **confirmar antes do push** (auto-deploy em produção).
 >
 > **⛔ DUAS COISAS QUE O SMOKE PRECISA SABER ANTES DE COMEÇAR:**
 > 1. **Não existe nenhum MEI no banco** (`Code_regime_tributario = '4'`: zero
