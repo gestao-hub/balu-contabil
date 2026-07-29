@@ -1,9 +1,40 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-29 (sessão 16 — **Bloco 6A COMPLETO nas 12 tasks**, branch não mergeada, **smoke pendente**. Migrations `0056`–`0060` em produção. Duas rodadas de review: 17 achados corrigidos. Caminho de IA provado contra o OpenRouter de verdade. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
+> **Última atualização:** 2026-07-29 (sessão 17 — **SMOKE DO 6A CONCLUÍDO, §0 a §9, todas passaram.** Verificação final: `tsc` 0 · vitest 1326/1326 (27 pulados) · `next build` 0 erros / 45 rotas. Cenário restaurado. **Pronto para merge `--no-ff` em `main`, push pendente de confirmação. Blocos 1, 2, 3, 4A e 4B em `main`; 6A na branch `feat/bloco-6a-explicacao-ia`.**)
 
-> ## ⛔ AO RETOMAR: **mostrar o roteiro do smoke do 6A na conversa, de cara**
+> ## ✅ SMOKE DO 6A CONCLUÍDO (2026-07-29, sessão 17) — §0 a §9, todas passaram
+> **Nenhum bug novo encontrado no smoke** — as duas rodadas de `/code-review` +
+> `/systematic-debugging` da sessão 16 (17 achados) já tinham fechado tudo que o
+> smoke poderia achar. Único wart real: o **card "Competência atual" e o wizard
+> apontam para meses diferentes** (pré-existente, fora desta branch — ver a
+> seção "O que este bloco NÃO resolve" do roteiro).
+>
+> **Confirmado explicitamente pelo usuário** (não assumido): o re-render do
+> rascunho de IA no §7 **atualizou sozinho**, sem reload manual — a regressão
+> que o 2º code-review consertou não voltou.
+>
+> **Três decisões tomadas na retomada:**
+> 1. O texto aprovado do catálogo (`das-mei:inss+iss`, redigido com apoio de IA)
+>    **fica** — conteúdo legítimo e reaproveitável para qualquer MEI de serviços.
+> 2. A `config_ia` gravada em produção durante o §7 (chave OpenRouter cifrada)
+>    **fica configurada** — produção passa a ter "Gerar com IA" ativo de verdade.
+> 3. Cenário restaurado pela tela (§9): as três empresas de volta em
+>    `regime="1"`, confirmado com `node scratchpad/seed-6a.mjs listar`.
+>
+> **Verificação final, nesta ordem:** suíte completa sem seed interferindo
+> (1326/1326, 0 falhas) → `tsc --noEmit` (0 erros) → dev server parado → `next
+> build` limpo (0 erros/warnings, 45 rotas confirmadas em
+> `.next/app-build-manifest.json` — o resumo do `rtk` mostrou "1 routes" nesta
+> sessão, era ruído do parser dele, não do build; confirmado com `npx next
+> build` puro e com o manifesto).
+>
+> **Falta:** commit da documentação, merge `--no-ff` em `main`, e **push só com
+> confirmação explícita** do usuário (auto-deploy em produção).
+>
+> Roteiro completo com os resultados: `docs/smoke/2026-07-29-bloco-6a-roteiro-smoke.md`.
+
+> ## ⛔ HISTÓRICO: o que faltava antes do smoke
 > **Bloco 6A COMPLETO — Tasks 1 a 12.** Branch `feat/bloco-6a-explicacao-ia`,
 > **22 commits, NÃO mergeada, NADA empurrado.** Árvore limpa (só os dois
 > untracked de sempre: um PDF na raiz e um `.docx` em `app/`).

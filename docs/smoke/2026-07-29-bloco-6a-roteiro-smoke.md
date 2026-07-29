@@ -68,8 +68,14 @@ Serviços.
 ## §1 — A tela do cliente SEM catálogo: nada aparece, e o buraco é contado
 
 1. Vá em **Impostos**.
-2. Se aparecer o card vazio ("Sem cálculo para …"), clique em **Calcular agora**
-   e conclua o cálculo da competência atual.
+2. Se aparecer o card vazio ("Sem cálculo para …"), clique em **Calcular agora**.
+3. ⚠️ **Troque a competência à mão para o MÊS CORRENTE** (`202607`, rótulo
+   "Julho/2026"). O wizard chega preenchido com o **mês anterior** (`202606`) —
+   é o default dele —, mas o card de "Competência atual" do `/impostos` procura
+   o mês corrente. Calculando o default, o card fica vazio, a explicação não é
+   pedida e o contador não registra nada. Foi o que aconteceu na primeira
+   tentativa deste smoke.
+4. **Calcular** → confira `Imposto: R$ 80,90` → **Confirmar apuração**.
 
 **Esperado na tela:**
 - o card da competência atual mostra o valor do DAS-MEI (**R$ 80,90** para
@@ -318,5 +324,11 @@ Na ordem, e nada fora dela:
   estimativa **não verá explicação** — de propósito, mas é uma perda de alcance.
   Corrigir é trocar `INSS_MENSAL` em `src/lib/fiscal/das-mei.ts`; o total e os
   componentes se ajustam sozinhos.
+- **O card "Competência atual" e o wizard de cálculo apontam para meses
+  diferentes.** O card procura o mês corrente; `/impostos/novo` sugere o mês
+  anterior. Pelo caminho natural — aceitar o default do wizard — o card do MEI
+  nunca enche, e portanto **a explicação do 6A nunca aparece**. Desalinhamento
+  pré-existente (não é desta branch), descoberto durante este smoke; é perda de
+  alcance do bloco e merece decisão de produto.
 - **Não existe lista oficial de códigos de serviço** e **o Pix do DAS é
   suposição do PRD** — pré-requisitos de outros blocos, não deste.
