@@ -58,7 +58,10 @@ export default async function ImpostosPage() {
   const [{ data: company }, { data: fiscal }, { data: apuracoes }, { data: guias }, { data: declaracoes }] = await Promise.all([
     supabase.from('companies').select('razao_social, nome').eq('id', companyId).single(),
     supabase.from('empresas_fiscais')
-      .select('Code_regime_tributario, anexo_simples, sincronizacao_inicial_serpro_at')
+      // `atividade_mei` entrou no Bloco 6A: a coluna já existia, mas esta tela
+      // nunca a lia. É ela que diz QUAIS componentes o DAS deste MEI tem
+      // (INSS + ICMS e/ou ISS) e, portanto, qual explicação se aplica.
+      .select('Code_regime_tributario, anexo_simples, atividade_mei, sincronizacao_inicial_serpro_at')
       .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle(),
     supabase.from('apuracoes_fiscais')
       .select('id, competencia_referencia, anexo_simples, aliquota_efetiva, rbt12, receita_mes, valor_imposto, status, payload_calculo')
@@ -230,6 +233,7 @@ export default async function ImpostosPage() {
                 apuracao={apuracaoAtual ? toApuracaoRowDetalhe(apuracaoAtual) : null}
                 guia={guiaAtual ? toGuiaRowDetalhe(guiaAtual) : null}
                 competencia={competenciaAtual}
+                atividadeMei={fiscal?.atividade_mei ?? null}
               />
             </section>
             <section className="mb-8">
