@@ -3,21 +3,33 @@
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
 > **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4 FECHADO: 4A + 4B mergeados (`1199a1e`), empurrados e no ar.** Smoke §1–§10 sem nenhum bug novo. Migrations até `0055` em produção. **Bloco 6A (explicação de imposto com IA) desenhado e planejado**, zero linha de código — spec aprovada, execução liberada. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
 
-> ## ▶ AO RETOMAR: Bloco 6A na **Task 11** (sessão 16, 2026-07-29)
-> **Tasks 1 a 10 FEITAS**, na branch `feat/bloco-6a-explicacao-ia` (14 commits,
-> não mergeada). `tsc` 0 · vitest **1301/1301** · `next build` 0 erros, com as
-> rotas `ƒ /admin/configuracoes/ia` e `ƒ /admin/explicacoes` (no menu do admin).
-> Migrations **0056 a 0059 aplicadas em produção**.
+> ## ▶ AO RETOMAR: Bloco 6A na **Task 12** — a última (sessão 16, 2026-07-29)
+> **Tasks 1 a 11 FEITAS — todo o código do 6A está escrito.** Branch
+> `feat/bloco-6a-explicacao-ia` (16 commits, não mergeada). `tsc` 0 · vitest
+> **1310/1310** · `next build` 0 erros, com `ƒ /admin/configuracoes/ia` e
+> `ƒ /admin/explicacoes`. Migrations **0056 a 0059 aplicadas em produção**.
+> Falta só a **Task 12**: probe `_probe-6a.mjs` + roteiro do smoke.
 >
-> **A Task 11 é a última de código**: o componente na tela do cliente. Ela junta
-> `buscarExplicacao` (Task 10) + `renderizar` (Task 4) + o disclaimer fixo.
-> **Primeiro passo obrigatório: ler `impostos/CompetenciaAtualCardMei.tsx`** e
-> descobrir de onde vêm `atividade_mei` e o valor exibido — se a atividade não
-> estiver disponível ali, não há chave de situação e isso tem de ser reportado
-> antes de escrever qualquer linha.
+> **⛔ DUAS COISAS QUE O SMOKE PRECISA SABER ANTES DE COMEÇAR:**
+> 1. **Não existe nenhum MEI no banco** (`Code_regime_tributario = '4'`: zero
+>    empresas). A explicação só é renderizada no card do MEI — `isSimples`
+>    manda a tela para o outro layout. Para ver a explicação na tela, o smoke
+>    **precisa mudar o regime de uma empresa para `'4'` em produção**: pedir ao
+>    usuário antes, anotar o valor original e restaurar no fim.
+> 2. **`atividade_mei` é `null` nas 3 empresas fiscais.** Não é problema — cai no
+>    fallback de Serviços, que é o mesmo da estimativa —, mas significa que a
+>    chave exercitada será `das-mei:inss+iss`. Para testar outra, preencher a
+>    coluna (e restaurar).
 >
-> `buscarExplicacao(sb, chave)` espera o cliente da **sessão** (a RLS é a segunda
-> camada do filtro); a contagem por dentro já usa o admin client sozinha.
+> **O que a Task 11 descobriu, e vale para o roteiro:** a explicação só aparece
+> quando o total na tela é a soma dos componentes. Com guia real do SERPRO
+> divergindo da estimativa (dívida do salário mínimo de 2025), ela **não
+> aparece** — de propósito. No smoke, usar competência com apuração nossa
+> (`valor_imposto`), não com guia do SERPRO, ou a explicação some e parecerá bug.
+>
+> **Escopo entregue:** a explicação renderiza **só para MEI**. O catálogo aceita
+> chaves de PGDAS-D (`pgdas:anexo-iii+fator-r`) e o admin consegue aprová-las,
+> mas nenhuma tela do Simples as consome ainda — fica para um bloco próprio.
 >
 > **O caminho manual é o único que funciona hoje.** Sem chave de IA, "Gerar com
 > IA" está desligado na tela (dito na entrada, com o motivo). Escrever à mão e
