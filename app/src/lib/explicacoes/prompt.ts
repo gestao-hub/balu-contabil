@@ -54,6 +54,7 @@ function descreverSituacao(s: SituacaoFiscal): string {
 export function montarPrompt(s: SituacaoFiscal): string {
   const marcadores = marcadoresDaChave(chaveDaSituacao(s));
   const lista = marcadores.map((m) => `{${m}}`).join(', ');
+  const exemplo = marcadores.length ? `{${marcadores[0]}}` : '{valor}';
 
   return [
     'Você escreve explicações curtas sobre tributos para donos de pequenas empresas no Brasil,',
@@ -64,8 +65,20 @@ export function montarPrompt(s: SituacaoFiscal): string {
     '',
     'REGRAS DO TEXTO:',
     '- Escreva de duas a quatro frases, em texto corrido, sem título e sem listas.',
+    '- Fale com quem lê na segunda pessoa ("você paga"), não "o contribuinte paga".',
     `- Use exatamente estes marcadores, cada um pelo menos uma vez: ${lista}.`,
-    '- Os marcadores serão trocados pelos números reais na hora de exibir.',
+    // APRENDIDO CONTRA UM PROVEDOR DE VERDADE: sem este exemplo, o modelo trata
+    // o marcador como se fosse o NOME do tributo e escreve "a contribuição
+    // {inss}" — que, depois da troca, vira "a contribuição R$ 75,90". O marcador
+    // é um VALOR, e a frase precisa continuar de pé depois da substituição.
+    //
+    // O exemplo usa o PRIMEIRO marcador desta situação, nunca um literal fixo:
+    // um `{inss}` escrito à mão aqui apareceria também no prompt do PGDAS-D, que
+    // não fornece esse marcador — o próprio teste de "nenhum marcador além dos
+    // permitidos" pegou essa versão.
+    '- Cada marcador será trocado por um valor em reais na hora de exibir. Escreva de',
+    `  modo que a frase continue correta depois da troca: prefira "${exemplo} de <nome do`,
+    `  tributo>", e nunca "a contribuição ${exemplo}" nem "o ${exemplo}".`,
     '- Não escreva nenhum valor em dinheiro, nenhuma alíquota e nenhum percentual:',
     '  os números entram só pelos marcadores.',
     '- Não invente marcador que não esteja na lista acima.',

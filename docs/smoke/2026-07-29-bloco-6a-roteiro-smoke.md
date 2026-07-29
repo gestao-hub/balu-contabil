@@ -7,8 +7,9 @@
 > de exibir.
 >
 > **Estado:** Tasks 1 a 12 feitas, branch `feat/bloco-6a-explicacao-ia`
-> (não mergeada). `tsc` 0 · vitest 1310/1310 · `next build` 0 erros.
-> Migrations 0056–0059 **já aplicadas em produção**.
+> (não mergeada). `tsc` 0 · vitest 1326/1326 · `next build` 0 erros.
+> Migrations 0056–0060 **já aplicadas em produção**. Duas rodadas de
+> `/code-review` + `/systematic-debugging`: 17 achados, todos corrigidos.
 
 ---
 
@@ -31,9 +32,10 @@ O §0 faz isso **pela tela do produto**, não por script.
 **Use a `ideapp`** — é a empresa do cenário de teste do Bloco 4B, que já está
 viva de propósito. Assim o dado de teste continua concentrado num lugar só.
 
-**2. Não há chave de IA configurada.** Isso **não bloqueia nada**: o caminho
-manual (escrever o texto à mão e aprovar) exercita o bloco inteiro. O §7 cobre a
-parte de IA e é **opcional** — faça só se a chave chegar.
+**2. A chave de IA existe** (`TOKEN_OPENROUTER` no `app/.env.local`) e o caminho
+de IA **já foi provado contra o provedor de verdade** — ver o topo do §7. Mesmo
+assim, o caminho manual (§3) continua sendo o principal do roteiro: ele exercita
+o bloco inteiro e não gasta crédito.
 
 **3. Se a explicação não aparecer com uma guia real do SERPRO, é de propósito.**
 A explicação só aparece quando o total na tela é a **soma dos componentes** que
@@ -134,9 +136,13 @@ humana valer alguma coisa — rascunho não chega a cliente nenhum.
 **Esperado, abaixo do card:**
 - o texto que você escreveu, com **`{inss}` virando `R$ 75,90`** e **`{iss}`
   virando `R$ 5,00`** — os valores dele, preenchidos pela Balu;
-- e, em letra menor, o disclaimer fixo:
-  *"Informação educativa gerada com apoio de IA e revisada pela Balu. Não
+- e, em letra menor, o disclaimer fixo. Como **você escreveu este texto à mão**,
+  ele tem de dizer *"Informação educativa **escrita e revisada pela Balu**. Não
   substitui a orientação do seu contador."*
+  > A frase muda conforme a procedência real (`gerado_por`): só um texto que a
+  > IA redigiu recebe *"gerada com apoio de IA"*. Afirmar IA sobre texto humano
+  > seria declaração falsa numa tela sobre tributo — foi achado do 2º review.
+  > No §7, depois de gerar por IA, confira que a frase vira a outra.
 
 > Confira que **não sobrou nenhuma chave entre `{}`** no texto exibido.
 
@@ -181,7 +187,20 @@ aprovação, e a explicação some da tela do cliente até ser aprovada de novo.
 
 ---
 
-## §7 — (OPCIONAL — só se houver chave de IA)
+## §7 — O provedor de IA (a chave já está no `.env.local`)
+
+> **Já verificado contra o OpenRouter de verdade**, com o nosso próprio código
+> (`cliente.ts` + `prompt.ts`), antes deste roteiro:
+> - o adaptador OpenAI-compatível **é aceito** pelo provedor;
+> - chave errada dá **401 legível e sem a chave na mensagem**;
+> - o prompt produz rascunho **com os marcadores certos e nenhum intruso**.
+>
+> Então o §7 aqui testa a **tela**, não o contrato — esse já está provado.
+>
+> **Use `TOKEN_OPENROUTER` do `app/.env.local`**, provedor **OpenRouter**,
+> modelo **`mistralai/mistral-small-24b-instruct-2501`** (centavos por rascunho).
+> ⚠️ **Evite os modelos `:free`**: o `google/gemma-4-31b-it:free` devolveu **429
+> (limite upstream)** — não é bug nosso, mas atrapalha o teste.
 
 1. Menu → **Configurações** → cartão **Provedor de IA** → **Configurar
    provedor**.
@@ -198,9 +217,21 @@ mensagem**.
 4. Em **Explicações**, apague o texto de uma situação (ou use outra situação sem
    texto) e clique em **Gerar com IA**.
 
-**Esperado:** rascunho redigido aparece no campo, o selo vira **rascunho**, e
-embaixo dos botões aparece *"rascunho redigido por `<provedor>/<modelo>`"*.
-Leia antes de aprovar — é para isso que ele nasce como rascunho.
+**Esperado:** o rascunho redigido **aparece no campo** (o texto muda diante de
+você), o selo vira **rascunho**, e embaixo dos botões aparece *"rascunho
+redigido por `<provedor>/<modelo>`"*.
+
+> Este é um ponto que **falhava** antes da segunda rodada de review: o campo não
+> ressincronizava e continuava mostrando o texto anterior, enquanto o selo já
+> dizia rascunho. Se você vir isso acontecer de novo, é regressão.
+
+**Leia antes de aprovar, e espere ter de editar.** No teste real com o
+`mistral-small-24b`, o rascunho veio com os marcadores certos, mas escreveu
+*"O {inss} é a sua contribuição…"* — que, depois da troca, vira *"O R$ 75,90
+é…"*. E chamou o ISS de imposto pago *"em troca dos serviços públicos que você
+utiliza"*, que é uma caracterização discutível de tributo. **Nada disso é
+defeito do bloco: é exatamente o que a revisão humana existe para pegar** — e é
+por isso que nenhum texto de IA chega ao cliente sem alguém carimbar.
 
 5. Tente **Gerar com IA** numa situação **já aprovada**.
 
