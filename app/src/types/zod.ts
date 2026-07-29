@@ -411,3 +411,20 @@ export const ConfigIaSchema = z
   });
 
 export type ConfigIaInput = z.infer<typeof ConfigIaSchema>;
+
+/**
+ * Bloco 6A — a chave de uma situação fiscal, na fronteira da action.
+ *
+ * A MESMA FORMA QUE A 0059 EXIGE NO BANCO (`registrar_explicacao_faltando`), de
+ * propósito: chave que a action aceitasse e o banco recusasse produziria um
+ * catálogo que a contagem de faltantes nunca alcança. Não fixa a lista de
+ * tributos — o 6B trará outros —, mas fixa caixa, charset e teto de tamanho.
+ *
+ * A validação de SIGNIFICADO (o tributo existe? o anexo existe?) é de
+ * `situacaoDaChave`, que devolve `null` para o que não reconhece. Aqui é só a
+ * forma, que é o que a fronteira tem como julgar sozinha.
+ */
+export const ChaveExplicacaoSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-z][a-z0-9-]{0,19}:[a-z0-9+-]{1,64}$/, 'Chave de situação inválida.');

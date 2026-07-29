@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { situacaoDasMei, situacaoPgdas, chaveDaSituacao } from './situacao-fiscal';
+import {
+  situacaoDasMei, situacaoPgdas, chaveDaSituacao, situacaoDaChave, rotuloDoAnexo,
+} from './situacao-fiscal';
 
 describe('chave da situação fiscal', () => {
   it('DAS-MEI de serviços', () => {
@@ -63,5 +65,60 @@ describe('chave da situação fiscal', () => {
     const k = chaveDaSituacao(situacaoDasMei('Prestacao de Servicos'));
     expect(k).not.toMatch(/\d{2,}/);   // sem valores
     expect(k).not.toMatch(/20\d\d/);   // sem ano/competência
+  });
+});
+
+// A volta: quem tem a CHAVE (a lista de faltantes, uma linha do catálogo)
+// precisa da SITUAÇÃO para montar o prompt. `montarPrompt` recebe
+// `SituacaoFiscal` de propósito — é o tipo que impede o vazamento de compilar —,
+// então o parse tem de existir e ser fiel.
+describe('situacaoDaChave — o caminho de volta', () => {
+  const CHAVES = [
+    'das-mei:inss+iss',
+    'das-mei:icms+inss',
+    'das-mei:icms+inss+iss',
+    'pgdas:anexo-i',
+    'pgdas:anexo-iii',
+    'pgdas:anexo-iii+fator-r',
+    'pgdas:anexo-v+fator-r',
+  ];
+
+  // A INVARIANTE QUE MANTÉM O CATÁLOGO ÍNTEGRO: ida e volta não podem mudar a
+  // chave. Se mudassem, gerar um rascunho gravaria numa linha diferente da que
+  // a tela do cliente vai procurar.
+  it.each(CHAVES)('ida e volta preserva %s', (k) => {
+    const s = situacaoDaChave(k);
+    expect(s).not.toBeNull();
+    expect(chaveDaSituacao(s!)).toBe(k);
+  });
+
+  it('reconstrói os componentes do DAS-MEI', () => {
+    const s = situacaoDaChave('das-mei:icms+inss');
+    expect(s).toEqual({ tributo: 'das-mei', componentes: ['icms', 'inss'] });
+  });
+
+  it('reconstrói anexo e Fator R do PGDAS-D', () => {
+    expect(situacaoDaChave('pgdas:anexo-iii+fator-r'))
+      .toEqual({ tributo: 'pgdas', anexo: 'anexo-iii', fatorR: true });
+    expect(situacaoDaChave('pgdas:anexo-iii'))
+      .toEqual({ tributo: 'pgdas', anexo: 'anexo-iii', fatorR: false });
+  });
+
+  // Chave vinda do banco ou da URL não é de confiar. Devolver `null` deixa quem
+  // chama decidir; inventar uma situação faria a IA redigir sobre coisa nenhuma.
+  it.each(['', 'das-mei:', ':inss', 'irpf:algo', 'sem-dois-pontos', 'das-mei:INSS'])(
+    'recusa a chave inválida %s',
+    (k) => expect(situacaoDaChave(k)).toBeNull(),
+  );
+});
+
+describe('rotuloDoAnexo', () => {
+  it('devolve o rótulo canônico a partir do slug da chave', () => {
+    expect(rotuloDoAnexo('anexo-iii')).toBe('Anexo III');
+    expect(rotuloDoAnexo('anexo-v')).toBe('Anexo V');
+  });
+
+  it('slug desconhecido volta como veio, sem inventar anexo', () => {
+    expect(rotuloDoAnexo('desconhecido')).toBe('desconhecido');
   });
 });

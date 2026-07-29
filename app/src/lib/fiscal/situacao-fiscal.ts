@@ -72,3 +72,60 @@ export function chaveDaSituacao(s: SituacaoFiscal): string {
   }
   return `pgdas:${s.anexo}${s.fatorR ? '+fator-r' : ''}`;
 }
+
+/** Sufixo que a chave usa para marcar o Fator R. Uma constante para que a ida
+ *  (`chaveDaSituacao`) e a volta (`situacaoDaChave`) não possam divergir. */
+const SUFIXO_FATOR_R = '+fator-r';
+
+/**
+ * O CAMINHO DE VOLTA: da chave para a situação.
+ *
+ * Existe porque quem tem a chave — a lista de situações sem texto, uma linha do
+ * catálogo — precisa da SITUAÇÃO para montar o prompt, e `montarPrompt` recebe
+ * `SituacaoFiscal` de propósito: é o tipo que torna o vazamento de dado de
+ * contribuinte impossível de compilar. Sem este parse, a tentação seria afrouxar
+ * aquela assinatura para aceitar string.
+ *
+ * Devolve `null` para o que não reconhece, em vez de inventar uma situação
+ * vazia: chave vem do banco ou da URL, e uma situação inventada faria a IA
+ * redigir sobre coisa nenhuma — e o texto entraria no catálogo com aparência de
+ * legítimo.
+ */
+export function situacaoDaChave(chave: string): SituacaoFiscal | null {
+  const i = chave.indexOf(':');
+  if (i <= 0) return null;
+  const tributo = chave.slice(0, i);
+  const resto = chave.slice(i + 1);
+  if (!resto) return null;
+
+  if (tributo === 'das-mei') {
+    const componentes = resto.split('+');
+    // Minúsculas e sem vazio: a chave é canônica por construção, e aceitar
+    // 'INSS' aqui criaria uma segunda grafia para o mesmo componente.
+    if (componentes.some((c) => !/^[a-z0-9]+$/.test(c))) return null;
+    return { tributo: 'das-mei', componentes };
+  }
+
+  if (tributo === 'pgdas') {
+    const fatorR = resto.endsWith(SUFIXO_FATOR_R);
+    const anexo = fatorR ? resto.slice(0, -SUFIXO_FATOR_R.length) : resto;
+    if (!/^[a-z0-9-]+$/.test(anexo)) return null;
+    return { tributo: 'pgdas', anexo, fatorR };
+  }
+
+  return null;
+}
+
+/**
+ * O rótulo legível de um anexo a partir do slug que vive na chave
+ * (`anexo-iii` → `Anexo III`). O prompt precisa dele para descrever a situação
+ * em português; sem isto, cada consumidor faria sua própria conversão e a
+ * terceira delas erraria.
+ */
+export function rotuloDoAnexo(slug: string): string {
+  const achatadoSlug = slug.trim().toLowerCase();
+  const achar = FAIXA_OPTIONS.find(
+    (f) => achatar(f.anexo).replace(/\s+/g, '-') === achatadoSlug,
+  );
+  return achar?.anexo ?? slug;
+}
