@@ -3,16 +3,21 @@
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
 > **Última atualização:** 2026-07-28 (sessão 15 — **Bloco 4 FECHADO: 4A + 4B mergeados (`1199a1e`), empurrados e no ar.** Smoke §1–§10 sem nenhum bug novo. Migrations até `0055` em produção. **Bloco 6A (explicação de imposto com IA) desenhado e planejado**, zero linha de código — spec aprovada, execução liberada. **Blocos 1, 2, 3, 4A e 4B em `main`.**)
 
-> ## ▶ AO RETOMAR: Bloco 6A na **Task 9** (sessão 16, 2026-07-29)
-> **Tasks 1 a 8 FEITAS**, na branch `feat/bloco-6a-explicacao-ia` (10 commits,
-> não mergeada). `tsc` 0 · vitest **1272/1272** · `next build` 0 erros, com a rota
-> `ƒ /admin/configuracoes/ia`. Migrations **0056 a 0059 aplicadas em produção**.
+> ## ▶ AO RETOMAR: Bloco 6A na **Task 10** (sessão 16, 2026-07-29)
+> **Tasks 1 a 9 FEITAS**, na branch `feat/bloco-6a-explicacao-ia` (12 commits,
+> não mergeada). `tsc` 0 · vitest **1292/1292** · `next build` 0 erros, com as
+> rotas `ƒ /admin/configuracoes/ia` e `ƒ /admin/explicacoes` (no menu do admin).
+> Migrations **0056 a 0059 aplicadas em produção**.
 >
-> **A Task 8 já entregou parte da 9.** `admin/explicacoes/actions.ts` existe com
-> `gerarRascunhoAction` (19 testes). A Task 9 acrescenta ao MESMO arquivo o
-> `aprovarExplicacaoAction`/edição e cria a `page.tsx`. Duas peças da 9 também já
-> estão prontas e testadas: `marcadoresDaChave` (`lib/explicacoes/marcadores.ts`
-> — o plano a chamava de `marcadoresDaSituacao`) e `situacaoDaChave`.
+> **⚠️ A Task 10 tem de usar `createAdminClient()`** para a RPC
+> `registrar_explicacao_faltando` — a 0059 a tirou de `authenticated`. E a
+> `buscarExplicacao` também deve ler pelo admin client **ou** aceitar que a
+> policy só devolve `aprovado` (o que é o desejado na tela do cliente).
+>
+> **O caminho manual é o único que funciona hoje.** Sem chave de IA, "Gerar com
+> IA" está desligado na tela (dito na entrada, com o motivo). Escrever à mão e
+> aprovar cria a linha e funciona ponta a ponta — dá para encher o catálogo e
+> fazer o smoke inteiro do 6A sem nenhuma credencial de IA.
 >
 > - spec (aprovada): `docs/superpowers/specs/2026-07-28-bloco-6a-explicacao-ia-design.md`
 > - plano: `docs/superpowers/plans/2026-07-28-bloco-6a-explicacao-ia.md` (12 tasks)
