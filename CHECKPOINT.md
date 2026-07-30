@@ -1,47 +1,74 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-29 (sessão 18 — **Bloco 6B (WhatsApp) com spec e plano aprovados, IMPLEMENTAÇÃO AINDA NÃO COMEÇADA.** Blocos A, E, 1, 2, 3, 4A, 4B e 6A em `main` e no ar. `main` local está **3 commits à frente de `origin/main`** — só documentação (spec + plano do 6B), nada de código; push pendente de confirmação.)
+> **Última atualização:** 2026-07-30 (sessão 20 — **DUAS branches de feature prontas e NÃO mergeadas, em paralelo.** Blocos A, E, 1, 2, 3, 4A, 4B e 6A seguem em `main` e no ar, sem mudança. `main` local está 5 commits à frente de `origin/main` (só docs: specs/planos aprovados de ambas as branches abaixo) — push pendente de confirmação.)
 
-> ## ⛔ AO RETOMAR: Bloco 6B — plano pronto, falta escolher execução e começar a Task 1
+> ## ⛔ AO RETOMAR: duas branches esperando você, em ordem de prontidão
+
+> ### 1) `feat/bloco-6b-whatsapp` — implementado, revisado, `/code-review` aplicado — falta SEU smoke manual
 >
-> **O que existe agora, tudo em `main` (docs, sem branch de feature ainda):**
-> - Spec aprovada: `docs/superpowers/specs/2026-07-29-bloco-6b-whatsapp-design.md`
->   — canal de WhatsApp via **uazapi** (API não-oficial, QR code; trocada do
->   Envia.Click a pedido do usuário no meio da sessão). Consentimento opt-in
->   explícito (`profiles.whatsapp_numero`/`whatsapp_habilitado_em`, default
->   desligado); disparo proativo embutido no cron de obrigações existente (sem
->   cron novo — Hobby só permite 2); atendimento com IA **construído no Balu**
->   (a uazapi não tem agente nativo, diferente do que se cogitou com o
->   Envia.Click), reaproveitando `lib/ai/` e `lib/explicacoes/` do 6A;
->   escalação vira notificação in-app pro contador, sem inbox novo.
-> - Plano aprovado: `docs/superpowers/plans/2026-07-29-bloco-6b-whatsapp.md`
->   (7 tasks). Migration da Task 1 já é a **`0061`**. Tasks 1, 2, 3 e 7 têm
->   código completo e conferido contra o repo/banco reais; **Tasks 4, 5 e 6 são
->   deliberadamente thin** — dependem de sondar, ainda sem instância uazapi
->   provisionada: (a) o contrato HTTP da uazapi, (b) se o envelope do SERPRO
->   traz Pix Copia-e-Cola do DAS, (c) quem é "o contador" de uma empresa (para
->   a escalação notificar a pessoa certa — não verificado ainda).
-> - **Achado de sessão que vale para qualquer migration futura em `profiles`:**
->   o schema REAL de `profiles` (conferido por `information_schema.columns`
->   contra o banco) é só `id, user_id, company_id, created_at, updated_at,
->   deleted_at, current_company` — **diverge** do `0001_init.sql` idealizado
->   (`empresa_fiscal_id`, `logo`, `background_color`, `user_role` não existem
->   fisicamente). E **o código real usa `profiles.user_id`**, não
->   `profiles.id`, para achar a linha da sessão (`impostos/page.tsx:41-45`) —
->   o join da RPC nova usa `p.user_id = n.owner_user_id`, não `p.id`.
+> 19 commits. As 7 tasks do plano + 4 bugs reais achados por um `/code-review`
+> adicional (todos corrigidos: race de idempotência no webhook do WhatsApp,
+> `resolvido` não refletindo falha de envio, uma linha presa quando erro
+> interrompe o fluxo depois do "claim", e a UI de opt-in descartando erro em
+> silêncio). `tsc` 0 · vitest 1361/1361 (27 pulados) · `next build` 0 erros/60
+> rotas. **Smoke roteiro pronto e PARCIAL de propósito** (sem instância uazapi
+> real ainda) em `docs/smoke/2026-07-29-bloco-6b-roteiro-smoke.md` — mostrar o
+> roteiro completo na conversa antes de qualquer outra coisa, sem esperar
+> pedido (ver [[balu-retomada-mostrar-roteiro]]). Dois itens registrados,
+> pendentes de decisão sua (não bugs): notificar o contador quando chega
+> mensagem de número desconhecido (não implementado — sem empresa resolvida
+> não dá pra saber qual escritório notificar); e o early-return pré-existente
+> do cron de e-mail que também cala o loop novo de WhatsApp (não é deste
+> bloco). Depois do smoke: decidir os itens em aberto → merge `--no-ff` →
+> **push só com sua confirmação explícita** (auto-deploy em produção).
 >
-> **Pendências do usuário, em paralelo, não bloqueiam o código:** provisionar
-> a instância uazapi (número WhatsApp real).
+> ### 2) `feat/base-juridica-rag` — implementado e revisado, falta VOCÊ decidir o método de deploy
 >
-> **Próximo passo exato:** o usuário ainda não escolheu entre execução
-> **subagent-driven** (recomendado — subagente novo por task, revisão entre
-> tasks) ou **inline** (nesta sessão, com `executing-plans`). Perguntar de
-> novo se retomar sem essa resposta.
+> Feature nova (pedida nesta sessão): base de conteúdo jurídico/contábil (DOU +
+> portal RFB/Simples Nacional) que alimenta o rascunho de IA do catálogo do
+> Bloco 6A como contexto de apoio — **a regra de "não citar lei pro cliente"
+> continua intacta**, isso é só grounding interno pro rascunho ficar mais
+> preciso. Atualização diária via `pg_cron` (mesmo mecanismo já em produção
+> pro `sync-municipios`, sem depender dos 2 crons do Vercel já ocupados).
+> Spec: `docs/superpowers/specs/2026-07-30-base-juridica-rag-design.md`. Plano:
+> `docs/superpowers/plans/2026-07-30-base-juridica-rag.md` (8 tasks, todas
+> feitas). 5 commits de código + 1 de doc do plano.
 >
-> **Nada foi empurrado ainda desta sessão** — os 3 commits de doc (spec,
-> reescrita da spec pra uazapi, plano) estão só em `main` local. Confirmar com
-> o usuário antes do próximo push (mesmo sendo só doc, é a regra do projeto).
+> **O que existe:** migration `0062_base_juridica.sql` (tabela
+> `documentos_juridicos`, busca textual `tsvector`, RLS fechada — aplicada em
+> produção, confirmada por probe); `lib/base-juridica/palavras-chave.ts` +
+> `buscar.ts` (busca nunca lança); `gerarRascunhoAction`/`montarPrompt` do 6A
+> já usam o contexto (compatibilidade com o comportamento anterior confirmada
+> por teste); duas sondagens reais contra o DOU e o portal RFB/Simples
+> Nacional (contratos confirmados por request de verdade, não suposição — ver
+> `app/scratchpad/_sondar-dou.mjs`/`_sondar-portal-simples.mjs`, não
+> versionados); a Edge Function `sync-base-juridica` escrita com os dois
+> contratos reais. `tsc` 0 · vitest 1338/1338 (27 pulados) · `next build` 0
+> erros (confira a contagem de rotas direto no `next build` puro, não no
+> resumo do `rtk` — o mesmo ruído do parser já visto no smoke do 6A apareceu
+> de novo nesta sessão).
+>
+> **⛔ Duas coisas bloqueadas em você, não em código:**
+> 1. **Método de deploy da Edge Function** — este repo não documenta
+>    `supabase functions deploy` nem tem `config.toml` local, e o MCP do
+>    Supabase devolveu "permission denied" nesta sessão. Preciso que você diga
+>    como as Edge Functions deste projeto são deployadas (provavelmente `npx
+>    supabase login` + `link` + `functions deploy`, mas não vou adivinhar).
+> 2. **Agendar o `pg_cron`** — depende do deploy (item 1), e **ainda nem foi
+>    escrito de propósito** (não só "não rodado"): agendar contra uma função
+>    não deployada geraria falha diária sem sentido, então a Task 8 pulou essa
+>    parte por completo. O plano (`docs/superpowers/plans/2026-07-30-base-
+>    juridica-rag.md`, Task 8/Step 1) já tem o script de referência pronto pra
+>    copiar — script nunca pode ser versionado, carrega a service_role_key em
+>    texto puro (mesma característica do job `sync-municipios` já em
+>    produção). Horário sugerido no plano: `0 6 * * *` (6h UTC), diferente da
+>    meia-noite do `sync-municipios` pra não competir — confirmar se prefere
+>    outro horário.
+>
+> **As duas branches são independentes uma da outra** (a segunda foi criada a
+> partir de `main`, sem depender da primeira) — pode decidir a ordem de
+> retomada como preferir.
 
 ---
 
