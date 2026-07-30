@@ -41,7 +41,7 @@ describe('salvarWhatsappAction', () => {
     const fd = new FormData();
     fd.set('ativar', 'on');
     fd.set('whatsapp_numero', '+5511999998888');
-    const r = await salvarWhatsappAction(fd);
+    const r = await salvarWhatsappAction(undefined, fd);
     expect(r.ok).toBe(true);
     expect(h.linhaProfile.whatsapp_numero).toBe('+5511999998888');
     expect(h.linhaProfile.whatsapp_habilitado_em).not.toBeNull();
@@ -51,7 +51,7 @@ describe('salvarWhatsappAction', () => {
     const fd = new FormData();
     fd.set('ativar', 'on');
     fd.set('whatsapp_numero', '11999998888');
-    const r = await salvarWhatsappAction(fd);
+    const r = await salvarWhatsappAction(undefined, fd);
     expect(r.ok).toBe(false);
   });
 
@@ -62,7 +62,7 @@ describe('salvarWhatsappAction', () => {
     h.linhaProfile.whatsapp_habilitado_em = new Date().toISOString();
     const fd = new FormData();
     // sem 'ativar' no FormData == desligar, mesmo padrão de checkbox do e-mail
-    const r = await salvarWhatsappAction(fd);
+    const r = await salvarWhatsappAction(undefined, fd);
     expect(r.ok).toBe(true);
     expect(h.linhaProfile.whatsapp_habilitado_em).toBeNull();
     expect(h.linhaProfile.whatsapp_numero).toBe('+5511999998888');
@@ -78,7 +78,7 @@ describe('salvarWhatsappAction', () => {
     const fd = new FormData();
     fd.set('ativar', 'on');
     fd.set('whatsapp_numero', '+5511999998888');
-    const r = await salvarWhatsappAction(fd);
+    const r = await salvarWhatsappAction(undefined, fd);
     expect(r).toEqual({ ok: false, error: 'Este número já está em uso por outra conta.' });
   });
 });

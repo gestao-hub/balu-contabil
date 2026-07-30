@@ -154,7 +154,7 @@ const E164 = /^\+[1-9]\d{6,14}$/;
 /** Opt-in de avisos por WhatsApp. Desativar preserva o número (só zera o
  *  carimbo de consentimento) para não obrigar o usuário a redigitar ao
  *  reativar; sem o carimbo, a RPC de disparo já não vê a linha. */
-export async function salvarWhatsappAction(fd: FormData): Promise<ContaActionResult> {
+export async function salvarWhatsappAction(_prev: ContaActionResult | undefined, fd: FormData): Promise<ContaActionResult> {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };

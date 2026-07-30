@@ -6,19 +6,14 @@
 
 import { createServerClient } from '@/lib/supabase/server';
 import { NOTIFICACAO_TIPOS, TIPOS_VALIDOS } from '@/lib/notifications/tipos';
-import { salvarPreferenciasNotificacaoAction, salvarWhatsappAction } from './actions';
+import { salvarPreferenciasNotificacaoAction } from './actions';
+import WhatsappOptInForm from './WhatsappOptInForm';
 
 // Wrapper de retorno void — <form action> exige (formData) => void | Promise<void>,
 // e salvarPreferenciasNotificacaoAction devolve ContaActionResult.
 async function salvarWrapper(fd: FormData): Promise<void> {
   'use server';
   await salvarPreferenciasNotificacaoAction(fd);
-}
-
-// Mesmo padrão adaptador — salvarWhatsappAction também devolve ContaActionResult.
-async function salvarWhatsappWrapper(fd: FormData): Promise<void> {
-  'use server';
-  await salvarWhatsappAction(fd);
 }
 
 export default async function PreferenciasNotificacao() {
@@ -89,24 +84,7 @@ export default async function PreferenciasNotificacao() {
         </div>
       </form>
 
-      <form action={salvarWhatsappWrapper} className="rounded-lg border border-border bg-surface p-4 space-y-3">
-        <h3 className="text-sm font-medium text-foreground">WhatsApp</h3>
-        <p className="text-xs text-muted-foreground">
-          Avisos de vencimento e pendências também por WhatsApp. Você pode desativar quando quiser.
-        </p>
-        <input
-          type="tel"
-          name="whatsapp_numero"
-          placeholder="+5511999998888"
-          defaultValue={whatsappNumero ?? ''}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-        />
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="ativar" defaultChecked={!!whatsappHabilitadoEm} />
-          Ativar avisos por WhatsApp
-        </label>
-        <button type="submit" className="rounded-md bg-primary px-3 py-1.5 text-sm text-white">Salvar</button>
-      </form>
+      <WhatsappOptInForm whatsappNumero={whatsappNumero} whatsappHabilitadoEm={whatsappHabilitadoEm} />
     </div>
   );
 }
