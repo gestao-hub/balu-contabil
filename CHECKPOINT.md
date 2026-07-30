@@ -1,9 +1,70 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-29 (sessão 18 — **Bloco 6B (WhatsApp) com spec e plano aprovados, IMPLEMENTAÇÃO AINDA NÃO COMEÇADA.** Blocos A, E, 1, 2, 3, 4A, 4B e 6A em `main` e no ar. `main` local está **3 commits à frente de `origin/main`** — só documentação (spec + plano do 6B), nada de código; push pendente de confirmação.)
+> **Última atualização:** 2026-07-30 (sessão 19, continuação — **Bloco 6B (WhatsApp) IMPLEMENTADO + `/code-review` rodado e todos os achados corrigidos, NÃO mergeado.** Blocos A, E, 1, 2, 3, 4A, 4B e 6A seguem em `main` e no ar, sem mudança. Branch `feat/bloco-6b-whatsapp`, 19 commits, `tsc` 0 · vitest 1361/1361 (27 pulados) · `next build` 0 erros/60 rotas. Smoke roteiro pronto, **ainda não executado pelo usuário**.)
 
-> ## ⛔ AO RETOMAR: Bloco 6B — plano pronto, falta escolher execução e começar a Task 1
+> ## ⛔ AO RETOMAR: Bloco 6B implementado e revisado — falta o smoke manual do usuário, depois decidir merge/push
+>
+> **As 7 tasks do plano (`docs/superpowers/plans/2026-07-29-bloco-6b-whatsapp.md`) foram
+> executadas na sessão anterior, subagent-driven (um subagente por task, revisão de
+> spec + revisão de qualidade de código em duas rodadas cada, mais uma revisão
+> holística final do branch inteiro).** Nesta continuação, um `/code-review`
+> adicional achou **4 bugs reais** e todos foram corrigidos (cada correção com
+> sua própria revisão de spec+qualidade, uma delas gerando um segundo achado
+> corrigido em cascata):
+>
+> 1. **Corrigido — race de idempotência no webhook:** o check "já visto" (SELECT)
+>    e o INSERT final não eram atômicos; uma reentrega concorrente da uazapi
+>    podia passar pelos dois ao mesmo tempo, gerando duas chamadas de IA e dois
+>    envios pro mesmo cliente, com a violação de UNIQUE do segundo INSERT nunca
+>    checada. Reestruturado para "claim → processa → finaliza": o INSERT que
+>    reivindica o `message_id_externo` agora É a trava atômica (fecha o `23505`
+>    antes de qualquer chamada de IA/envio), e o registro final virou UPDATE da
+>    mesma linha.
+> 2. **Corrigido — `resolvido` não refletia entrega real:** se `enviarMensagem`
+>    falhasse mas a IA tivesse dito `resolvido:true`, ninguém escalava e o
+>    cliente não recebia nada. Agora falha de envio força `resolvido:false`,
+>    garantindo que a escalação dispare.
+> 3. **Corrigido (achado em cascata pela própria revisão da correção acima):**
+>    o claim-then-update deixava uma linha presa pra sempre no estado inicial
+>    se um erro interrompesse o fluxo DEPOIS do claim — pior que antes (uma
+>    reentrega futura bateria sempre em "duplicado", cliente nunca respondido).
+>    O `catch` externo agora tenta uma atualização de recuperação best-effort na
+>    linha já reivindicada.
+> 4. **Corrigido — insert sem checagem de erro** no caminho de telefone
+>    desconhecido do webhook (eliminado, a linha do claim já serve de auditoria
+>    ali — não sobrou insert nenhum pra checar).
+> 5. **Corrigido — opt-in de WhatsApp descartava erro/sucesso silenciosamente:**
+>    `salvarWhatsappWrapper` ignorava o `ContaActionResult` inteiro (número mal
+>    formatado, número já reivindicado por outra conta — o usuário não via
+>    nada). Convertido pro padrão já estabelecido em `login/page.tsx`
+>    (`useActionState` + `useFormStatus`, componente cliente novo
+>    `WhatsappOptInForm.tsx`). O form de e-mail (mesmo padrão antigo, sem os
+>    mesmos modos de falha reais) foi deixado como estava, fora de escopo.
+>
+> **O que já vinha registrado da revisão holística da sessão anterior, ainda
+> em aberto (não é bug, é decisão de desenho pendente):**
+> - A spec promete notificar o contador quando chega mensagem de número
+>   desconhecido; não implementado (sem empresa resolvida não dá pra saber
+>   qual escritório notificar) — decidir se fica assim na v1 ou se inventa um
+>   destino (ex. canal de suporte da Balu) para esse caso.
+> - O cron de obrigações já retornava cedo se a RPC de e-mail falhasse (calando
+>   billing nesse dia); esse early-return agora também cala o loop de
+>   WhatsApp. Pré-existente, não é deste bloco.
+>
+> **Próximo passo exato:** o roteiro do smoke está pronto e é **PARCIAL de
+> propósito** (sem instância uazapi real provisionada, o usuário está
+> provisionando em paralelo) — `docs/smoke/2026-07-29-bloco-6b-roteiro-smoke.md`,
+> 6 seções, com os itens em aberto acima como pendências explícitas no rodapé.
+> **Mostrar o roteiro completo na conversa antes de qualquer outra coisa**,
+> na próxima retomada (regra do projeto — ver [[balu-retomada-mostrar-roteiro]]).
+> Depois do smoke: suíte sem cenário → `next build` com dev parado → decidir
+> os itens em aberto → merge `--no-ff` em `main` → **confirmar com o
+> usuário antes do push** (auto-deploy em produção).
+
+---
+
+> ## ⛔ HISTÓRICO: plano pronto, faltava escolher execução e começar a Task 1
 >
 > **O que existe agora, tudo em `main` (docs, sem branch de feature ainda):**
 > - Spec aprovada: `docs/superpowers/specs/2026-07-29-bloco-6b-whatsapp-design.md`
