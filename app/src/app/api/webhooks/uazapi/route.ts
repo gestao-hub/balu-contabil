@@ -158,10 +158,35 @@ export async function POST(req: Request) {
   try {
     const admin = createAdminClient();
 
-    // Idempotência primeiro — a uazapi pode reenviar.
-    const { data: jaVisto } = await admin
-      .from('whatsapp_atendimentos').select('id').eq('message_id_externo', corpo.messageId).maybeSingle();
-    if (jaVisto) return NextResponse.json({ ok: true, reason: 'duplicado' }, { status: 200 });
+    // Idempotência via CLAIM atômico: o INSERT abaixo é a própria linha de
+    // auditoria (usada pelo resto do fluxo e, no caminho de telefone
+    // desconhecido, a ÚNICA gravação necessária). Confiar na UNIQUE
+    // constraint do banco (`message_id_externo`) em vez de um SELECT prévio
+    // fecha a janela de corrida: um SELECT-then-INSERT-depois deixa duas
+    // requisições concorrentes (mesmo `messageId` reentregue pela uazapi
+    // enquanto a primeira ainda está em voo) verem "não visto" e as DUAS
+    // chamarem IA + `enviarMensagem` — dois envios cobrados e reais ao
+    // cliente. Com o INSERT logo aqui, a segunda requisição colide na
+    // constraint (23505) e sai sem tocar IA nem envio.
+    const { data: claim, error: erroClaim } = await admin
+      .from('whatsapp_atendimentos')
+      .insert({
+        message_id_externo: corpo.messageId, telefone: corpo.from,
+        mensagem_recebida: corpo.text, resolvido: false,
+      })
+      .select('id')
+      .single();
+
+    if (erroClaim) {
+      if (erroClaim.code === '23505') {
+        // Outra requisição (mesmo messageId, em voo) já reivindicou a linha.
+        return NextResponse.json({ ok: true, reason: 'duplicado' }, { status: 200 });
+      }
+      // Qualquer outro erro de banco aqui é inesperado — sobe pro catch
+      // externo, que já responde 200/erro_inesperado (contrato do arquivo).
+      throw new Error(erroClaim.message);
+    }
+    const atendimentoId = (claim as { id: string }).id;
 
     const { data: profile } = await admin
       .from('profiles').select('user_id, current_company')
@@ -173,10 +198,10 @@ export async function POST(req: Request) {
         texto: 'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.',
       });
       if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
-      await admin.from('whatsapp_atendimentos').insert({
-        message_id_externo: corpo.messageId, telefone: corpo.from,
-        mensagem_recebida: corpo.text, resolvido: false,
-      });
+      // Sem insert aqui: o claim acima já é a linha de auditoria completa
+      // para este ramo (message_id_externo, telefone, mensagem_recebida,
+      // resolvido:false) — inserir de novo duplicaria a linha e colidiria
+      // na mesma UNIQUE constraint que acabou de nos deixar passar.
       return NextResponse.json({ ok: true, reason: 'telefone_desconhecido' }, { status: 200 });
     }
 
@@ -211,16 +236,27 @@ export async function POST(req: Request) {
     }
 
     const envio = await enviarMensagem(configDeEnv(), { telefone: corpo.from, texto: resposta });
-    if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+    if (!envio.ok) {
+      console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+      // "Resolvido" só pode significar que a necessidade do cliente foi
+      // atendida DE VERDADE — o que exige a mensagem ter sido entregue. Um
+      // cliente que não recebeu nada não pode contar como "resolvido", e
+      // forçar isto aqui garante que `escalarParaContador` ainda dispare
+      // abaixo mesmo quando a IA achou que o assunto estava encerrado.
+      resolvido = false;
+    }
 
     if (!resolvido) {
       await escalarParaContador(admin, { companyId, pergunta: corpo.text, messageId: corpo.messageId });
     }
 
-    await admin.from('whatsapp_atendimentos').insert({
-      message_id_externo: corpo.messageId, telefone: corpo.from, profile_user_id: profile.user_id,
-      mensagem_recebida: corpo.text, resposta_enviada: resposta, resolvido,
-    });
+    const { error: erroUpdate } = await admin
+      .from('whatsapp_atendimentos')
+      .update({ profile_user_id: profile.user_id, resposta_enviada: resposta, resolvido })
+      .eq('id', atendimentoId);
+    if (erroUpdate) {
+      console.error('[webhook uazapi] falha ao atualizar atendimento:', atendimentoId, erroUpdate.message);
+    }
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {

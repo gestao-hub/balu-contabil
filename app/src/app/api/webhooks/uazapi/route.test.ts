@@ -7,13 +7,27 @@
 // `tsc --noEmit`:
 //   1. segredo errado responder != 200, ou != ok:false — quebraria o contrato
 //      "sempre 200" que evita loop de reentrega;
-//   2. reentrega do mesmo messageId reenviar mensagem/regravar — duplicaria
-//      resposta ao cliente e o registro de auditoria;
+//   2. reentrega concorrente do mesmo messageId (colisão 23505 no INSERT que
+//      reivindica a linha) chamar IA/reenviar mensagem — duplicaria resposta
+//      ao cliente e cobraria a IA duas vezes;
 //   3. telefone desconhecido não avisar o remetente, ou não deixar rastro;
 //   4. `resolvido:false` não escalar para o contador quando há escritório
 //      vinculado, ou inventar destinatário quando não há;
 //   5. `resolvido:true` escalar mesmo assim (ruído para o contador);
-//   6. sem config_ia, tentar chamar a IA em vez do fallback estático.
+//   6. sem config_ia, tentar chamar a IA em vez do fallback estático;
+//   7. falha no envio (`enviarMensagem` ok:false) gravar/considerar
+//      `resolvido:true` mesmo sem entrega, deixando o cliente sem resposta
+//      E sem escalação — ninguém fica sabendo;
+//   8. falha no UPDATE final (a linha já reivindicada pelo claim) sumir sem
+//      log.
+//
+// Idempotência via CLAIM: o handler agora faz um INSERT logo no começo (que
+// já É a linha de auditoria) para reivindicar `message_id_externo` na hora —
+// a UNIQUE constraint do banco é o gate atômico, não mais um SELECT prévio.
+// O mock de `insert` para `whatsapp_atendimentos` devolve `{ code: '23505' }`
+// quando `estado.erroClaim` está setado, simulando a colisão. O registro
+// final passa a ser um UPDATE (`.eq('id', ...)`) da mesma linha, não mais um
+// segundo INSERT.
 //
 // TUDO MOCKADO NA FRONTEIRA: Supabase, rate-limit, uazapi, IA — mesmo estilo
 // de `admin/explicacoes/actions.test.ts` (builder de `from` que devolve o
@@ -29,12 +43,14 @@ function requisicaoFalsa(corpo: unknown, segredo: string) {
 }
 
 type Insercao = { tabela: string; valores: Record<string, unknown> };
+type Atualizacao = { tabela: string; valores: Record<string, unknown> };
+type ErroPg = { code?: string; message: string };
 
 const h = vi.hoisted(() => {
   const inserts: Insercao[] = [];
+  const updates: Atualizacao[] = [];
 
   const estado = {
-    jaVisto: null as { id: string } | null,
     profile: null as { user_id: string; current_company: string | null } | null,
     company: null as { id: string; contabilidade_id: string | null } | null,
     membro: null as { user_id: string } | null,
@@ -43,10 +59,14 @@ const h = vi.hoisted(() => {
     erroIa: null as unknown,
     situacao: { texto: 'Sua situação fiscal: DAS em dia.', geradoPor: 'groq/llama' } as
       { texto: string; geradoPor: string | null } | null,
+    // Setado só pelo teste de colisão concorrente: simula o INSERT do claim
+    // batendo na UNIQUE constraint de `message_id_externo` (23505).
+    erroClaim: null as ErroPg | null,
+    // Setado só pelo teste de falha no UPDATE final.
+    erroUpdate: null as ErroPg | null,
   };
 
   const dadosPorTabela = (tabela: string) => {
-    if (tabela === 'whatsapp_atendimentos') return estado.jaVisto;
     if (tabela === 'profiles') return estado.profile;
     if (tabela === 'companies') return estado.company;
     if (tabela === 'contabilidade_membros') return estado.membro;
@@ -64,13 +84,35 @@ const h = vi.hoisted(() => {
       };
       return b;
     },
+    // Único chamador hoje: o claim de idempotência em `whatsapp_atendimentos`
+    // (`.insert(...).select('id').single()`). `estado.erroClaim` simula a
+    // colisão 23505 de uma reentrega concorrente do mesmo messageId.
     insert: (valores: Record<string, unknown>) => {
       inserts.push({ tabela, valores });
       return {
-        then: (ok: (v: unknown) => unknown, falhou?: (e: unknown) => unknown) =>
-          Promise.resolve({ data: null, error: null }).then(ok, falhou),
+        select: (_cols: string) => ({
+          single: async () => {
+            if (tabela === 'whatsapp_atendimentos' && estado.erroClaim) {
+              return { data: null, error: estado.erroClaim };
+            }
+            return { data: { id: 'atend_novo' }, error: null };
+          },
+        }),
       };
     },
+    // Único chamador hoje: a gravação final do atendimento
+    // (`.update(...).eq('id', atendimentoId)`), que atualiza a linha já
+    // reivindicada pelo claim. `estado.erroUpdate` simula falha transitória
+    // do banco nesse UPDATE.
+    update: (valores: Record<string, unknown>) => ({
+      eq: async (_c: unknown, _v: unknown) => {
+        updates.push({ tabela, valores });
+        if (tabela === 'whatsapp_atendimentos' && estado.erroUpdate) {
+          return { data: null, error: estado.erroUpdate };
+        }
+        return { data: null, error: null };
+      },
+    }),
     // `escalarParaContador` grava a notificação com `upsert` (ignoreDuplicates
     // no conflito owner_user_id+chave) — mesmo registro de chamada que `insert`
     // para o teste poder inspecionar o que foi gravado.
@@ -97,7 +139,7 @@ const h = vi.hoisted(() => {
   const limitar = vi.fn(async () => true);
 
   return {
-    inserts, estado, from, enviarMensagem, configDeEnv, buscarSituacaoAtualMei,
+    inserts, updates, estado, from, enviarMensagem, configDeEnv, buscarSituacaoAtualMei,
     gerarTexto, lerChaveIa, limitar,
   };
 });
@@ -115,7 +157,7 @@ beforeEach(() => {
   process.env.UAZAPI_WEBHOOK_SECRET = SEGREDO;
 
   h.inserts.length = 0;
-  h.estado.jaVisto = null;
+  h.updates.length = 0;
   h.estado.profile = { user_id: 'user_1', current_company: 'empresa_1' };
   h.estado.company = { id: 'empresa_1', contabilidade_id: null };
   h.estado.membro = null;
@@ -123,6 +165,8 @@ beforeEach(() => {
   h.estado.textoGerado = JSON.stringify({ resposta: 'Resposta gerada pela IA.', resolvido: true });
   h.estado.erroIa = null;
   h.estado.situacao = { texto: 'Sua situação fiscal: DAS em dia.', geradoPor: 'groq/llama' };
+  h.estado.erroClaim = null;
+  h.estado.erroUpdate = null;
 
   h.limitar.mockClear();
   h.limitar.mockImplementation(async () => true);
@@ -165,8 +209,17 @@ describe('webhook uazapi', () => {
     expect(body.reason).toBe('payload_invalido');
   });
 
-  it('idempotencia: mesmo messageId ja visto nao reenvia nem regrava', async () => {
-    h.estado.jaVisto = { id: 'atend_1' };
+  // Crux do Bug 1: duas requisições com o MESMO messageId, a segunda chegando
+  // enquanto a primeira ainda está em voo. O gate é o INSERT do claim batendo
+  // na UNIQUE constraint (23505) — não mais um SELECT prévio (que deixaria as
+  // duas verem "não visto" e as DUAS chamarem IA + enviarMensagem). Por isso a
+  // asserção central aqui não é só "respondeu duplicado", é "nunca tocou
+  // IA/envio" — provar que o SEGUNDO request nunca chega perto de gastar nada.
+  it('claim colide (23505 — reentrega concorrente): duplicado, SEM tocar IA nem envio', async () => {
+    h.estado.erroClaim = {
+      code: '23505',
+      message: 'duplicate key value violates unique constraint "whatsapp_atendimentos_message_id_externo_key"',
+    };
     const res = await POST(requisicaoFalsa({ messageId: 'm-dup', from: '+55119999', text: 'oi' }, SEGREDO));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -174,7 +227,11 @@ describe('webhook uazapi', () => {
     expect(body.reason).toBe('duplicado');
     expect(h.enviarMensagem).not.toHaveBeenCalled();
     expect(h.gerarTexto).not.toHaveBeenCalled();
-    expect(h.inserts.filter((i) => i.tabela === 'whatsapp_atendimentos')).toHaveLength(0);
+    expect(h.buscarSituacaoAtualMei).not.toHaveBeenCalled();
+    // Nenhuma gravação além da tentativa de claim que colidiu — em especial,
+    // nenhum UPDATE (não há linha própria para atualizar; a colisão pertence
+    // à OUTRA requisição).
+    expect(h.updates).toHaveLength(0);
   });
 
   it('telefone desconhecido: avisa o remetente e grava o atendimento sem resolver', async () => {
@@ -204,7 +261,7 @@ describe('webhook uazapi', () => {
       expect.anything(), expect.objectContaining({ texto: 'Seu DAS está em dia.' }),
     );
     expect(h.inserts.filter((i) => i.tabela === 'notifications')).toHaveLength(0);
-    const grav = h.inserts.find((i) => i.tabela === 'whatsapp_atendimentos');
+    const grav = h.updates.find((i) => i.tabela === 'whatsapp_atendimentos');
     expect(grav?.valores).toMatchObject({ resolvido: true, resposta_enviada: 'Seu DAS está em dia.' });
   });
 
@@ -225,7 +282,7 @@ describe('webhook uazapi', () => {
       tipo: 'whatsapp_escalado',
       chave: 'whatsapp_escalado:m4',
     });
-    const grav = h.inserts.find((i) => i.tabela === 'whatsapp_atendimentos');
+    const grav = h.updates.find((i) => i.tabela === 'whatsapp_atendimentos');
     expect(grav?.valores).toMatchObject({ resolvido: false });
   });
 
@@ -275,7 +332,7 @@ describe('webhook uazapi', () => {
       expect.anything(),
       expect.objectContaining({ texto: expect.stringMatching(/contador vai retornar/) }),
     );
-    const grav = h.inserts.find((i) => i.tabela === 'whatsapp_atendimentos');
+    const grav = h.updates.find((i) => i.tabela === 'whatsapp_atendimentos');
     expect(grav?.valores).toMatchObject({ resolvido: false });
   });
 
@@ -296,7 +353,7 @@ describe('webhook uazapi', () => {
     // nunca "texto: undefined" indo pro envio
     const chamada = h.enviarMensagem.mock.calls[0][1] as { texto: unknown };
     expect(typeof chamada.texto).toBe('string');
-    const grav = h.inserts.find((i) => i.tabela === 'whatsapp_atendimentos');
+    const grav = h.updates.find((i) => i.tabela === 'whatsapp_atendimentos');
     expect(grav?.valores).toMatchObject({ resolvido: false });
   });
 
@@ -306,7 +363,7 @@ describe('webhook uazapi', () => {
     const body = await res.json();
 
     expect(body.ok).toBe(true);
-    const grav = h.inserts.find((i) => i.tabela === 'whatsapp_atendimentos');
+    const grav = h.updates.find((i) => i.tabela === 'whatsapp_atendimentos');
     expect(grav?.valores).toMatchObject({ resolvido: false });
     expect((grav?.valores as { resposta_enviada: string }).resposta_enviada).toMatch(/contador vai retornar/);
   });
@@ -322,6 +379,54 @@ describe('webhook uazapi', () => {
     expect(erroSpy).toHaveBeenCalledWith(
       expect.stringMatching(/falha ao enviar resposta/), 'uazapi respondeu 500',
     );
+  });
+
+  // Bug 2: `resolvido` não pode refletir só o que a IA achou — tem que
+  // refletir se a mensagem CHEGOU. A IA aqui diz resolvido:true (ver
+  // `textoGerado` padrão do beforeEach), mas o envio falha: o cliente não
+  // recebeu nada, então isto NÃO pode ficar marcado como resolvido, e a
+  // escalação (que só dispara em `!resolvido`) precisa disparar mesmo assim
+  // — senão ninguém no escritório fica sabendo que o cliente ficou sem
+  // resposta.
+  it('envio falha com IA dizendo resolvido:true: forca resolvido:false E ainda escala', async () => {
+    h.estado.company = { id: 'empresa_1', contabilidade_id: 'contab_1' };
+    h.estado.membro = { user_id: 'contador_1' };
+    h.enviarMensagem.mockResolvedValueOnce({ ok: false, erro: 'uazapi respondeu 500' });
+
+    const res = await POST(requisicaoFalsa({ messageId: 'm-envio-falha', from: '+551100', text: 'oi' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.ok).toBe(true);
+    const notif = h.inserts.find((i) => i.tabela === 'notifications');
+    expect(notif).toBeTruthy();
+    expect(notif?.valores).toMatchObject({ chave: 'whatsapp_escalado:m-envio-falha' });
+    const grav = h.updates.find((i) => i.tabela === 'whatsapp_atendimentos');
+    expect(grav?.valores).toMatchObject({ resolvido: false });
+  });
+
+  // Bug 3 (agora reformulado): a linha de auditoria final é um UPDATE da
+  // linha já reivindicada pelo claim, não mais um INSERT solto sem checagem.
+  // Uma falha transitória do banco nesse UPDATE precisa aparecer no log —
+  // sem PII, só um id interno e a mensagem de erro — mesmo o webhook
+  // continuando a responder 200/ok (contrato "sempre 200" do arquivo).
+  it('falha no UPDATE final e logada (sem PII), webhook ainda responde ok', async () => {
+    h.estado.erroUpdate = { message: 'connection reset by peer' };
+    const erroSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await POST(requisicaoFalsa({ messageId: 'm-update-falha', from: '+551100', text: 'oi' }, SEGREDO));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(erroSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/falha ao atualizar atendimento/),
+      'atend_novo',
+      'connection reset by peer',
+    );
+    // Log não deve carregar o telefone do cliente (PII) nem o texto da
+    // mensagem recebida — só o id interno da linha e a mensagem de erro.
+    const chamadasDeErro = erroSpy.mock.calls.map((c) => c.join(' '));
+    expect(chamadasDeErro.some((linha) => linha.includes('+551100'))).toBe(false);
   });
 
   // A ordem importa: `limitar` e chaveado por `corpo.from`, um campo NAO
