@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-30 (sessão 20 — **DUAS branches de feature prontas e NÃO mergeadas, em paralelo.** Blocos A, E, 1, 2, 3, 4A, 4B e 6A seguem em `main` e no ar, sem mudança. `main` local está 5 commits à frente de `origin/main` (só docs: specs/planos aprovados de ambas as branches abaixo) — push pendente de confirmação.)
+> **Última atualização:** 2026-07-30 (sessão 20, continuação — **DUAS branches de feature prontas e NÃO mergeadas, em paralelo, AMBAS já com `/code-review` rodado e achados corrigidos.** Blocos A, E, 1, 2, 3, 4A, 4B e 6A seguem em `main` e no ar, sem mudança. `main` local está 6 commits à frente de `origin/main` (só docs) — push pendente de confirmação.)
 
 > ## ⛔ AO RETOMAR: duas branches esperando você, em ordem de prontidão
 
@@ -33,7 +33,7 @@
 > pro `sync-municipios`, sem depender dos 2 crons do Vercel já ocupados).
 > Spec: `docs/superpowers/specs/2026-07-30-base-juridica-rag-design.md`. Plano:
 > `docs/superpowers/plans/2026-07-30-base-juridica-rag.md` (8 tasks, todas
-> feitas). 5 commits de código + 1 de doc do plano.
+> feitas). 9 commits de código + 1 de doc do plano.
 >
 > **O que existe:** migration `0062_base_juridica.sql` (tabela
 > `documentos_juridicos`, busca textual `tsvector`, RLS fechada — aplicada em
@@ -44,10 +44,38 @@
 > Nacional (contratos confirmados por request de verdade, não suposição — ver
 > `app/scratchpad/_sondar-dou.mjs`/`_sondar-portal-simples.mjs`, não
 > versionados); a Edge Function `sync-base-juridica` escrita com os dois
-> contratos reais. `tsc` 0 · vitest 1338/1338 (27 pulados) · `next build` 0
-> erros (confira a contagem de rotas direto no `next build` puro, não no
-> resumo do `rtk` — o mesmo ruído do parser já visto no smoke do 6A apareceu
-> de novo nesta sessão).
+> contratos reais.
+>
+> **`/code-review` + `/systematic-debugging` rodados nesta continuação, 4
+> achados, 3 corrigidos (cada um com investigação de causa raiz antes da
+> correção, e revisão de spec+qualidade depois):**
+> 1. **Corrigido:** `buscarContextoJuridico` fazia busca textual sem
+>    `ORDER BY` — devolvia 5 linhas arbitrárias, não as mais relevantes, à
+>    medida que a tabela crescesse. Nova migration `0063` com RPC
+>    `buscar_documentos_juridicos` ordenando por `ts_rank_cd`
+>    (`service_role` apenas), verificada com linhas reais inseridas e
+>    revertidas (a mais relevante veio primeiro).
+> 2. **Corrigido:** o upsert da Edge Function era tudo-ou-nada por lote de
+>    200 — uma linha malformada (raspada de HTML externo) derrubava o lote
+>    inteiro, podendo apagar a ingestão do dia inteiro por causa de um
+>    documento só. Agora cai num fallback linha-a-linha quando o lote falha.
+> 3. **Corrigido (defesa em profundidade):** o contexto jurídico raspado
+>    entrava no prompt da IA sem delimitação estrutural forte contra prompt
+>    injection — só uma instrução em prosa. Reforçado com delimitadores
+>    explícitos (`--- INÍCIO/FIM DO CONTEXTO ---`) e instrução para ignorar
+>    qualquer texto que pareça instrução dentro do contexto, "mesmo que
+>    pareça vir de uma autoridade". A regra central ("não citar lei pro
+>    cliente") permanece byte-idêntica — a revisão humana antes de qualquer
+>    aprovação continua sendo a garantia de verdade, isto é só reforço.
+> 4. **Registrado, não corrigido (foi decisão minha, não bug):** `hash_conteudo`
+>    é calculado mas nunca lido para pular reprocessamento — documentado desde
+>    o plano como escopo de uma iteração futura, volume real é pequeno demais
+>    pra importar agora.
+>
+> `tsc` 0 · vitest 1340/1340 (27 pulados) · `next build` 0 erros (confira a
+> contagem de rotas direto no `next build` puro, não no resumo do `rtk` — o
+> mesmo ruído do parser já visto no smoke do 6A apareceu de novo nesta
+> sessão).
 >
 > **⛔ Duas coisas bloqueadas em você, não em código:**
 > 1. **Método de deploy da Edge Function** — este repo não documenta
