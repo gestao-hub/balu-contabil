@@ -180,8 +180,10 @@ export async function salvarWhatsappAction(fd: FormData): Promise<ContaActionRes
     .from('profiles')
     .update({ whatsapp_numero: numero, whatsapp_habilitado_em: new Date().toISOString() })
     .eq('user_id', user.id);
-  // Único índice: outro usuário já reivindicou este número.
-  if (error) return { ok: false, error: error.message.includes('duplicate')
+  // 23505 = unique_violation: outro usuário já reivindicou este número. Checar
+  // o code do Postgres, não substring da mensagem (mais estável — ver
+  // billing/cobranca.ts e billing/emitir-cobranca.ts para o mesmo padrão).
+  if (error) return { ok: false, error: error.code === '23505'
     ? 'Este número já está em uso por outra conta.' : error.message };
 
   revalidatePath('/conta');
