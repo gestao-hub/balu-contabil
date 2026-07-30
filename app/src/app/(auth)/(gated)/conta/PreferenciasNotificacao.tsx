@@ -6,13 +6,19 @@
 
 import { createServerClient } from '@/lib/supabase/server';
 import { NOTIFICACAO_TIPOS, TIPOS_VALIDOS } from '@/lib/notifications/tipos';
-import { salvarPreferenciasNotificacaoAction } from './actions';
+import { salvarPreferenciasNotificacaoAction, salvarWhatsappAction } from './actions';
 
 // Wrapper de retorno void — <form action> exige (formData) => void | Promise<void>,
 // e salvarPreferenciasNotificacaoAction devolve ContaActionResult.
 async function salvarWrapper(fd: FormData): Promise<void> {
   'use server';
   await salvarPreferenciasNotificacaoAction(fd);
+}
+
+// Mesmo padrão adaptador — salvarWhatsappAction também devolve ContaActionResult.
+async function salvarWhatsappWrapper(fd: FormData): Promise<void> {
+  'use server';
+  await salvarWhatsappAction(fd);
 }
 
 export default async function PreferenciasNotificacao() {
@@ -27,44 +33,80 @@ export default async function PreferenciasNotificacao() {
 
   const tipos = TIPOS_VALIDOS.filter((t) => t !== 'abertura_etapa');
 
+  // notification_preferences é escopada por RLS via sessão (sem getUser() explícito);
+  // profiles precisa do id do titular para o filtro `user_id = user.id` (Task 1/3).
+  const { data: { user } } = await supabase.auth.getUser();
+  let whatsappNumero: string | null = null;
+  let whatsappHabilitadoEm: string | null = null;
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('whatsapp_numero, whatsapp_habilitado_em')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    whatsappNumero = profile?.whatsapp_numero ?? null;
+    whatsappHabilitadoEm = profile?.whatsapp_habilitado_em ?? null;
+  }
+
   return (
-    <form action={salvarWrapper} className="max-w-lg space-y-4">
-      <div className="rounded-lg border border-border bg-surface p-4 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Notificações por e-mail
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Escolha para quais avisos você quer receber e-mail. As notificações no app aparecem sempre.
-        </p>
-        <div className="space-y-2">
-          {tipos.map((tipo) => (
-            <label
-              key={tipo}
-              className="flex items-center justify-between rounded-md border border-border bg-surface-2 px-3 py-2"
-            >
-              <span className="text-sm text-foreground">{NOTIFICACAO_TIPOS[tipo].label}</span>
-              <span className="flex items-center gap-2 text-xs text-muted-foreground-2">
-                Desativar e-mail
-                <input
-                  type="checkbox"
-                  name="desativar_email"
-                  value={tipo}
-                  defaultChecked={desativados.has(tipo)}
-                  className="size-4 rounded border-border"
-                />
-              </span>
-            </label>
-          ))}
+    <div className="max-w-lg space-y-4">
+      <form action={salvarWrapper} className="space-y-4">
+        <div className="rounded-lg border border-border bg-surface p-4 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Notificações por e-mail
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Escolha para quais avisos você quer receber e-mail. As notificações no app aparecem sempre.
+          </p>
+          <div className="space-y-2">
+            {tipos.map((tipo) => (
+              <label
+                key={tipo}
+                className="flex items-center justify-between rounded-md border border-border bg-surface-2 px-3 py-2"
+              >
+                <span className="text-sm text-foreground">{NOTIFICACAO_TIPOS[tipo].label}</span>
+                <span className="flex items-center gap-2 text-xs text-muted-foreground-2">
+                  Desativar e-mail
+                  <input
+                    type="checkbox"
+                    name="desativar_email"
+                    value={tipo}
+                    defaultChecked={desativados.has(tipo)}
+                    className="size-4 rounded border-border"
+                  />
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-        >
-          Salvar preferências
-        </button>
-      </div>
-    </form>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            Salvar preferências
+          </button>
+        </div>
+      </form>
+
+      <form action={salvarWhatsappWrapper} className="rounded-lg border border-border bg-surface p-4 space-y-3">
+        <h3 className="text-sm font-medium text-foreground">WhatsApp</h3>
+        <p className="text-xs text-muted-foreground">
+          Avisos de vencimento e pendências também por WhatsApp. Você pode desativar quando quiser.
+        </p>
+        <input
+          type="tel"
+          name="whatsapp_numero"
+          placeholder="+5511999998888"
+          defaultValue={whatsappNumero ?? ''}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+        />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="ativar" defaultChecked={!!whatsappHabilitadoEm} />
+          Ativar avisos por WhatsApp
+        </label>
+        <button type="submit" className="rounded-md bg-primary px-3 py-1.5 text-sm text-white">Salvar</button>
+      </form>
+    </div>
   );
 }
