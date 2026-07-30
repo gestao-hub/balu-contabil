@@ -21,11 +21,10 @@ export async function buscarContextoJuridico(
     // Nacional") viram AND interno, palavras hifenizadas ("DAS-MEI") viram
     // frase por proximidade, e cada termo entra no OR geral.
     const consulta = palavrasChaveDaSituacao(s).join(' OR ');
-    const { data, error } = await sb
-      .from('documentos_juridicos')
-      .select('titulo, texto')
-      .textSearch('busca', consulta, { type: 'websearch', config: 'portuguese' })
-      .limit(LIMITE);
+    const { data, error } = await sb.rpc('buscar_documentos_juridicos', {
+      p_consulta: consulta,
+      p_limite: LIMITE,
+    });
     if (error || !data) return [];
     return data as TrechoJuridico[];
   } catch {
