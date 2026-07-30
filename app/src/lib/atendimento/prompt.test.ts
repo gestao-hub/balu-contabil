@@ -19,4 +19,41 @@ describe('prompt de atendimento', () => {
     expect(p).not.toContain('null');
     expect(p.toLowerCase()).toMatch(/não (sabe|tem informação|encontr)/);
   });
+
+  it('sem primeiraInteracao, nao inclui saudacao', () => {
+    const p = montarPromptAtendimento({ pergunta: 'oi', situacaoFiscalTexto: null });
+    expect(p.toLowerCase()).not.toMatch(/primeira mensagem|saudação/);
+  });
+
+  it('com primeiraInteracao, instrui a saudar como Paulo uma unica vez', () => {
+    const p = montarPromptAtendimento({ pergunta: 'oi', situacaoFiscalTexto: null, primeiraInteracao: true });
+    expect(p).toContain('Paulo');
+    expect(p.toLowerCase()).toMatch(/primeira mensagem/);
+    expect(p.toLowerCase()).toMatch(/não repita/);
+  });
+
+  it('instrui a admitir ser IA se perguntado diretamente', () => {
+    const p = montarPromptAtendimento({ pergunta: 'oi', situacaoFiscalTexto: null });
+    expect(p.toLowerCase()).toMatch(/inteligência artificial|assistente virtual/);
+    expect(p.toLowerCase()).toMatch(/responda honestamente/);
+  });
+
+  // GARANTIA CENTRAL, MAIS FORTE AGORA: mesmo com a persona nova, a IA
+  // continua proibida de citar lei/artigo/prazo/multa que nao esteja no
+  // texto ja calculado — o documento original que inspirou o tom pedia o
+  // oposto disso, e o usuario decidiu NAO adotar essa parte.
+  it('mesmo com a persona nova, continua proibido citar lei/artigo/prazo/multa fora do texto', () => {
+    const p = montarPromptAtendimento({
+      pergunta: 'quanto eu pago?',
+      situacaoFiscalTexto: 'Você paga R$ 75,90 de INSS.',
+    }).toLowerCase();
+    expect(p).toMatch(/nunca invente valor, data, norma, lei, artigo, prazo ou multa/);
+  });
+
+  it('e determinístico com e sem primeiraInteracao', () => {
+    const s = { pergunta: 'oi', situacaoFiscalTexto: null as string | null };
+    expect(montarPromptAtendimento(s)).toBe(montarPromptAtendimento(s));
+    expect(montarPromptAtendimento({ ...s, primeiraInteracao: true }))
+      .toBe(montarPromptAtendimento({ ...s, primeiraInteracao: true }));
+  });
 });

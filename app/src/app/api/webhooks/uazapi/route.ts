@@ -218,6 +218,19 @@ export async function POST(req: Request) {
     const situacao = await buscarSituacaoAtualMei(
       admin, companyId, competenciaReferenciaBrt(new Date()));
 
+    // Persona "Paulo" (pedido do usuário): a saudação só aparece na PRIMEIRA
+    // mensagem de uma conversa, nunca se repete. `atendimentoId` já é a linha
+    // desta própria mensagem (claim acima) — precisa ser excluída da busca,
+    // senão toda mensagem se veria como "não é a primeira" (ela mesma conta).
+    const { data: interacaoAnterior } = await admin
+      .from('whatsapp_atendimentos')
+      .select('id')
+      .eq('telefone', corpo.from)
+      .neq('id', atendimentoId)
+      .limit(1)
+      .maybeSingle();
+    const primeiraInteracao = !interacaoAnterior;
+
     const { data: cfgRow } = await admin.from('config_ia').select('*').eq('id', 1).maybeSingle();
     let resposta = 'Não consegui responder agora — o contador vai retornar em breve.';
     let resolvido = false;
@@ -226,7 +239,11 @@ export async function POST(req: Request) {
       try {
         const chave = lerChaveIa(cfgRow.chave_cifrada as string | null);
         if (chave) {
-          const prompt = montarPromptAtendimento({ pergunta: corpo.text, situacaoFiscalTexto: situacao?.texto ?? null });
+          const prompt = montarPromptAtendimento({
+            pergunta: corpo.text,
+            situacaoFiscalTexto: situacao?.texto ?? null,
+            primeiraInteracao,
+          });
           const bruto = await gerarTexto(
             { provedor: cfgRow.provedor, modelo: cfgRow.modelo, base_url: cfgRow.base_url, chave },
             prompt);

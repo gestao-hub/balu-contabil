@@ -64,6 +64,9 @@ const h = vi.hoisted(() => {
     erroClaim: null as ErroPg | null,
     // Setado só pelo teste de falha no UPDATE final.
     erroUpdate: null as ErroPg | null,
+    // Consultado pela busca de "primeira interação" (persona Paulo): null =
+    // nenhum atendimento anterior para este telefone = primeira mensagem.
+    interacaoAnterior: null as { id: string } | null,
   };
 
   const dadosPorTabela = (tabela: string) => {
@@ -71,6 +74,10 @@ const h = vi.hoisted(() => {
     if (tabela === 'companies') return estado.company;
     if (tabela === 'contabilidade_membros') return estado.membro;
     if (tabela === 'config_ia') return estado.cfg;
+    // Explícito (em vez de cair no `return null` de baixo) para não colidir
+    // por acidente com os outros usos de `whatsapp_atendimentos` neste mesmo
+    // mock (`insert`/`update`/`upsert` são caminhos distintos de `select`).
+    if (tabela === 'whatsapp_atendimentos') return estado.interacaoAnterior;
     return null;
   };
 
@@ -78,6 +85,7 @@ const h = vi.hoisted(() => {
     select: (_cols: string) => {
       const b = {
         eq: (_c: unknown, _v: unknown) => b,
+        neq: (_c: unknown, _v: unknown) => b,
         order: (_c: unknown, _o: unknown) => b,
         limit: (_n: number) => b,
         maybeSingle: async () => ({ data: dadosPorTabela(tabela), error: null }),
@@ -131,7 +139,7 @@ const h = vi.hoisted(() => {
   );
   const configDeEnv = vi.fn(() => ({ baseUrl: 'https://instancia.uazapi.com', token: 'tok' }));
   const buscarSituacaoAtualMei = vi.fn(async () => estado.situacao);
-  const gerarTexto = vi.fn(async () => {
+  const gerarTexto = vi.fn(async (_cfg: unknown, _prompt: string) => {
     if (estado.erroIa) throw estado.erroIa;
     return estado.textoGerado;
   });
@@ -167,6 +175,7 @@ beforeEach(() => {
   h.estado.situacao = { texto: 'Sua situação fiscal: DAS em dia.', geradoPor: 'groq/llama' };
   h.estado.erroClaim = null;
   h.estado.erroUpdate = null;
+  h.estado.interacaoAnterior = null;
 
   h.limitar.mockClear();
   h.limitar.mockImplementation(async () => true);
@@ -474,5 +483,24 @@ describe('webhook uazapi', () => {
     const body = await res.json();
     expect(body.ok).toBe(false);
     expect(body.reason).toBe('erro_inesperado');
+  });
+
+  // Persona "Paulo": a saudação só na primeira mensagem de uma conversa —
+  // quem decide isso é o webhook, consultando se já existe atendimento
+  // anterior para este telefone (excluindo a própria linha do claim atual).
+  it('primeira interacao (sem atendimento anterior): pede saudacao de Paulo no prompt', async () => {
+    h.estado.interacaoAnterior = null;
+    await POST(requisicaoFalsa({ messageId: 'm-primeira', from: '+551100', text: 'oi' }, SEGREDO));
+    const chamada = h.gerarTexto.mock.calls[0];
+    const promptEnviado = String(chamada?.[1] ?? chamada?.[0]);
+    expect(promptEnviado).toMatch(/primeira mensagem/i);
+  });
+
+  it('nao e a primeira interacao (ja existe atendimento anterior): NAO pede saudacao', async () => {
+    h.estado.interacaoAnterior = { id: 'atend_antigo' };
+    await POST(requisicaoFalsa({ messageId: 'm-repetida', from: '+551100', text: 'oi de novo' }, SEGREDO));
+    const chamada = h.gerarTexto.mock.calls[0];
+    const promptEnviado = String(chamada?.[1] ?? chamada?.[0]);
+    expect(promptEnviado.toLowerCase()).not.toMatch(/primeira mensagem/);
   });
 });
