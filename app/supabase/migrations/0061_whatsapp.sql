@@ -81,7 +81,18 @@ ALTER TABLE public.whatsapp_atendimentos ENABLE ROW LEVEL SECURITY;
 -- anon/authenticated, calado, em TODA tabela nova.
 REVOKE ALL ON public.whatsapp_atendimentos FROM anon, authenticated;
 
+-- FK igual ao padrão de audit_log.actor_user_id (0038): referência a usuário
+-- para fim de auditoria, sem travar a linha se o usuário for apagado. Fold
+-- fora do CREATE TABLE (que é IF NOT EXISTS) e guardado por DROP/ADD para o
+-- arquivo inteiro poder ser reaplicado sem erro de "constraint já existe".
+ALTER TABLE public.whatsapp_atendimentos DROP CONSTRAINT IF EXISTS whatsapp_atendimentos_profile_user_id_fkey;
+ALTER TABLE public.whatsapp_atendimentos
+  ADD CONSTRAINT whatsapp_atendimentos_profile_user_id_fkey
+  FOREIGN KEY (profile_user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+
 COMMENT ON TABLE public.whatsapp_atendimentos IS
   'Idempotencia e auditoria do atendimento de WhatsApp. Sem tela nesta rodada — service_role apenas.';
 COMMENT ON COLUMN public.profiles.whatsapp_numero IS
   'E.164, informado pelo proprio cliente no opt-in. NUNCA herdar de companies.telefone.';
+
+-- Tabela e RPC novas: rodar node app/scratchpad/_reload-postgrest.mjs
