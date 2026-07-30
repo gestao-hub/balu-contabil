@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-30 (sessão 20, continuação — **persona "Paulo" incorporada ao atendimento do 6B.** DUAS branches de feature prontas e NÃO mergeadas, em paralelo, ambas com `/code-review` rodado e achados corrigidos. Blocos A, E, 1, 2, 3, 4A, 4B e 6A seguem em `main` e no ar, sem mudança. `main` local está 7 commits à frente de `origin/main` (só docs) — push pendente de confirmação.)
+> **Última atualização:** 2026-07-30 (sessão 20, continuação — **persona "Assistente Balu" incorporada ao atendimento do 6B.** DUAS branches de feature prontas e NÃO mergeadas, em paralelo, ambas com `/code-review` rodado e achados corrigidos. Blocos A, E, 1, 2, 3, 4A, 4B e 6A seguem em `main` e no ar, sem mudança. `main` local está 7 commits à frente de `origin/main` (só docs) — push pendente de confirmação.)
 
 > ## ⛔ AO RETOMAR: duas branches esperando você, em ordem de prontidão
 
@@ -13,13 +13,13 @@
 > interrompe o fluxo depois do "claim", e a UI de opt-in descartando erro em
 > silêncio). `tsc` 0 · vitest 1368/1368 (27 pulados).
 >
-> **Persona "Paulo" configurada no prompt de atendimento** (`lib/atendimento/
+> **Persona "Assistente Balu" configurada no prompt de atendimento** (`lib/atendimento/
 > prompt.ts`), a partir do documento `Direcionamento/PROMPT IA BALU.MD` que o
 > usuário pediu pra seguir — **com dois ajustes deliberados, decididos pelo
 > usuário depois que eu levantei o risco:**
 > 1. O documento original pedia "nunca informe que é IA" — **rejeitado**. Se
->    perguntado diretamente, Paulo admite honestamente que é um assistente
->    virtual. Só o tom/nome (acolhedor, cordial, "Paulo, assistente da Balu")
+>    perguntado diretamente, Assistente Balu admite honestamente que é um assistente
+>    virtual. Só o tom/nome (acolhedor, cordial, "Assistente Balu, assistente da Balu")
 >    ficam.
 > 2. O documento original pedia resposta em tempo real citando "base legal",
 >    artigo, prazo, multa — **rejeitado**. A garantia central do 6A/6B
@@ -28,7 +28,7 @@
 >    reforçada (não enfraquecida) para citar explicitamente lei/artigo/
 >    prazo/multa entre o que nunca deve ser inventado.
 >
-> Saudação de Paulo aparece só na primeira mensagem de cada conversa (o
+> Saudação de Assistente Balu aparece só na primeira mensagem de cada conversa (o
 > webhook consulta se já existe atendimento anterior para aquele telefone).
 >
 > **Smoke roteiro pronto e PARCIAL de propósito** (sem instância uazapi real
