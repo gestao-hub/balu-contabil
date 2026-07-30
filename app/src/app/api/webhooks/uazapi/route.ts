@@ -151,12 +151,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, reason: 'rate_limited' }, { status: 200 });
   }
 
+  // `admin` e `atendimentoId` precisam ser visíveis também no `catch` de
+  // baixo: se o claim já reivindicou a linha e algo lançar DEPOIS disso (uma
+  // leitura de `buscarSituacaoAtualMei`, a escalação, etc.), o catch precisa
+  // conseguir voltar e fechar essa linha em vez de deixá-la para sempre presa
+  // no estado inicial do claim (ver comentário no catch).
+  let admin: SupabaseClient | undefined;
+  let atendimentoId: string | undefined;
+
   // TUDO daqui pra baixo num único try/catch — mesma forma de
   // `webhooks/asaas/route.ts`: qualquer coisa que vier a lançar (uma leitura
   // que falha, uma chamada de rede que aborta) não pode virar 500 e fazer a
   // uazapi desativar ou martelar o webhook inteiro.
   try {
-    const admin = createAdminClient();
+    admin = createAdminClient();
 
     // Idempotência via CLAIM atômico: o INSERT abaixo é a própria linha de
     // auditoria (usada pelo resto do fluxo e, no caminho de telefone
@@ -186,7 +194,7 @@ export async function POST(req: Request) {
       // externo, que já responde 200/erro_inesperado (contrato do arquivo).
       throw new Error(erroClaim.message);
     }
-    const atendimentoId = (claim as { id: string }).id;
+    atendimentoId = (claim as { id: string }).id;
 
     const { data: profile } = await admin
       .from('profiles').select('user_id, current_company')
@@ -261,6 +269,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
     console.error('[webhook uazapi] erro inesperado:', err instanceof Error ? err.message : String(err));
+
+    // Se o claim já tinha reivindicado a linha (`atendimentoId` setado) e o
+    // erro veio DEPOIS disso — uma leitura que falhou, a escalação, etc. —
+    // a linha ficaria presa para sempre no estado inicial do claim
+    // (resolvido:false, sem resposta_enviada, sem profile_user_id). Antes do
+    // claim-then-update, esse mesmo erro deixava NENHUMA linha existir, e uma
+    // reentrega futura da uazapi com o mesmo messageId ainda podia ter
+    // sucesso. Agora essa reentrega bateria na UNIQUE constraint e sempre
+    // voltaria "duplicado" — o cliente nunca receberia resposta nenhuma, e
+    // ninguém escalaria. Recuperação best-effort: fecha a linha com uma
+    // resposta de fallback (mesmo texto do fallback estático de IA) para o
+    // cliente não ficar em silêncio total e a auditoria mostrar um desfecho
+    // (ainda que degradado) em vez de um claim pendurado.
+    if (admin && atendimentoId) {
+      const { error: erroFallback } = await admin
+        .from('whatsapp_atendimentos')
+        .update({
+          resposta_enviada: 'Não consegui responder agora — o contador vai retornar em breve.',
+          resolvido: false,
+        })
+        .eq('id', atendimentoId);
+      if (erroFallback) {
+        console.error('[webhook uazapi] falha ao finalizar atendimento após erro:', erroFallback.message);
+      }
+    }
+
     return NextResponse.json({ ok: false, reason: 'erro_inesperado' }, { status: 200 });
   }
 }

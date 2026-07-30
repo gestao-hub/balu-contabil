@@ -439,6 +439,32 @@ describe('webhook uazapi', () => {
     expect(h.limitar).not.toHaveBeenCalled();
   });
 
+  // Achado do /code-review sobre o claim-then-update: se o claim JÁ
+  // reivindicou a linha e algo lança DEPOIS disso (aqui, a leitura da
+  // situação fiscal), sem recuperação a linha ficaria presa para sempre no
+  // estado do claim (resolvido:false, sem resposta_enviada). Pior que o
+  // comportamento pré-fix: antes, esse mesmo erro não deixava linha
+  // nenhuma, então uma reentrega futura do mesmo messageId ainda podia dar
+  // certo. Agora, sem recuperação, essa reentrega bateria na UNIQUE
+  // constraint e voltaria "duplicado" para sempre — silêncio permanente. O
+  // catch externo precisa fechar a linha com uma resposta de fallback.
+  it('erro DEPOIS do claim (leitura da situacao fiscal falha): catch recupera a linha com fallback', async () => {
+    h.buscarSituacaoAtualMei.mockImplementationOnce(async () => {
+      throw new Error('falha inesperada de leitura');
+    });
+    const res = await POST(requisicaoFalsa({ messageId: 'm-erro-pos-claim', from: '+551166', text: 'oi' }, SEGREDO));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.reason).toBe('erro_inesperado');
+
+    const grav = h.updates.find((i) => i.tabela === 'whatsapp_atendimentos');
+    expect(grav?.valores).toMatchObject({
+      resposta_enviada: expect.stringMatching(/contador vai retornar/),
+      resolvido: false,
+    });
+  });
+
   it('erro inesperado em qualquer ponto do fluxo: o catch externo ainda responde 200/ok:false', async () => {
     h.buscarSituacaoAtualMei.mockImplementationOnce(async () => {
       throw new Error('falha inesperada de leitura');
