@@ -71,9 +71,22 @@ const h = vi.hoisted(() => {
           Promise.resolve({ data: null, error: null }).then(ok, falhou),
       };
     },
+    // `escalarParaContador` grava a notificação com `upsert` (ignoreDuplicates
+    // no conflito owner_user_id+chave) — mesmo registro de chamada que `insert`
+    // para o teste poder inspecionar o que foi gravado.
+    upsert: (valores: Record<string, unknown>, _opts?: unknown) => {
+      inserts.push({ tabela, valores });
+      return {
+        then: (ok: (v: unknown) => unknown, falhou?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: null, error: null }).then(ok, falhou),
+      };
+    },
   }));
 
-  const enviarMensagem = vi.fn(async () => ({ ok: true as const }));
+  type ResultadoEnvio = { ok: true } | { ok: false; erro?: string; skipped?: true };
+  const enviarMensagem = vi.fn(
+    async (_cfg: unknown, _msg: { telefone: string; texto: string }): Promise<ResultadoEnvio> => ({ ok: true }),
+  );
   const configDeEnv = vi.fn(() => ({ baseUrl: 'https://instancia.uazapi.com', token: 'tok' }));
   const buscarSituacaoAtualMei = vi.fn(async () => estado.situacao);
   const gerarTexto = vi.fn(async () => {
@@ -264,5 +277,71 @@ describe('webhook uazapi', () => {
     );
     const grav = h.inserts.find((i) => i.tabela === 'whatsapp_atendimentos');
     expect(grav?.valores).toMatchObject({ resolvido: false });
+  });
+
+  // O modelo pode devolver JSON válido mas fora da forma esperada — isso NAO
+  // lança em JSON.parse. Sem checagem em runtime, `resposta` chegaria
+  // `undefined` em `enviarMensagem`, e `JSON.stringify` apagaria a chave
+  // `text` silenciosamente: o cliente nunca receberia resposta nenhuma.
+  it('IA devolve JSON valido mas fora de forma ({}): cai no fallback, nao manda undefined', async () => {
+    h.estado.textoGerado = JSON.stringify({});
+    const res = await POST(requisicaoFalsa({ messageId: 'm10', from: '+551188', text: 'oi' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.ok).toBe(true);
+    expect(h.enviarMensagem).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ texto: expect.stringMatching(/contador vai retornar/) }),
+    );
+    // nunca "texto: undefined" indo pro envio
+    const chamada = h.enviarMensagem.mock.calls[0][1] as { texto: unknown };
+    expect(typeof chamada.texto).toBe('string');
+    const grav = h.inserts.find((i) => i.tabela === 'whatsapp_atendimentos');
+    expect(grav?.valores).toMatchObject({ resolvido: false });
+  });
+
+  it('IA devolve resposta vazia ou resolvido fora de tipo: tambem cai no fallback', async () => {
+    h.estado.textoGerado = JSON.stringify({ resposta: '   ', resolvido: 'sim' });
+    const res = await POST(requisicaoFalsa({ messageId: 'm11', from: '+551199', text: 'oi' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.ok).toBe(true);
+    const grav = h.inserts.find((i) => i.tabela === 'whatsapp_atendimentos');
+    expect(grav?.valores).toMatchObject({ resolvido: false });
+    expect((grav?.valores as { resposta_enviada: string }).resposta_enviada).toMatch(/contador vai retornar/);
+  });
+
+  it('falha ao enviar a mensagem (uazapi fora do ar) e logada, mas o webhook ainda responde ok', async () => {
+    h.enviarMensagem.mockResolvedValueOnce({ ok: false, erro: 'uazapi respondeu 500' });
+    const erroSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await POST(requisicaoFalsa({ messageId: 'm12', from: '+551100', text: 'oi' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.ok).toBe(true);
+    expect(erroSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/falha ao enviar resposta/), 'uazapi respondeu 500',
+    );
+  });
+
+  // A ordem importa: `limitar` e chaveado por `corpo.from`, um campo NAO
+  // autenticado. Se rodasse antes do segredo, um atacante sem o segredo
+  // poderia estourar o orcamento de rate-limit de um numero de cliente real.
+  it('segredo errado: nunca chega a chamar o rate-limit (ordem segredo-antes)', async () => {
+    const res = await POST(requisicaoFalsa({ messageId: 'm13', from: '+5511vitima', text: 'oi' }, 'errado'));
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(h.limitar).not.toHaveBeenCalled();
+  });
+
+  it('erro inesperado em qualquer ponto do fluxo: o catch externo ainda responde 200/ok:false', async () => {
+    h.buscarSituacaoAtualMei.mockImplementationOnce(async () => {
+      throw new Error('falha inesperada de leitura');
+    });
+    const res = await POST(requisicaoFalsa({ messageId: 'm14', from: '+551166', text: 'oi' }, SEGREDO));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.reason).toBe('erro_inesperado');
   });
 });

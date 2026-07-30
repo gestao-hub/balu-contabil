@@ -1,6 +1,12 @@
 // Bloco 6B — Webhook de entrada da uazapi: atendimento por IA + escalação.
-// Mesma forma do webhook do Asaas: rate-limit → segredo → SEMPRE HTTP 200
-// (a uazapi pode reenfileirar/reenviar em erro, e não queremos loop).
+// Mesma forma do webhook do Asaas: segredo → rate-limit → corpo inteiro num
+// try/catch → SEMPRE HTTP 200 (a uazapi pode reenfileirar/reenviar em erro,
+// e não queremos loop nem desativação do canal por 5xx).
+//
+// SEGREDO ANTES do rate-limit (ao contrário do esqueleto original do plano):
+// `limitar` é chaveado por `corpo.from`, campo do corpo — não autenticado.
+// Rate-limitar antes do segredo deixaria qualquer um estourar o orçamento do
+// NÚMERO DE UM CLIENTE REAL sem precisar conhecer o segredo nenhum.
 //
 // ⚠️ FORMATO DO PAYLOAD DA UAZAPI NÃO CONFIRMADO — ver Task 5/6, Step 1 do
 // plano. `messageId`/`from`/`text` são a MELHOR hipótese; ajuste os nomes de
@@ -56,6 +62,20 @@ export const dynamic = 'force-dynamic';
 type PayloadUazapi = { messageId: string; from: string; text: string };
 
 /**
+ * O modelo pode devolver JSON sintaticamente válido mas fora da forma
+ * esperada (`{}`, `resposta` ausente/número, `resolvido` ausente) — isso NÃO
+ * lança em `JSON.parse`, e um `as` sozinho deixaria `resposta: undefined`
+ * seguir até `enviarMensagem`, onde `JSON.stringify` apaga a chave e a uazapi
+ * recebe uma mensagem sem texto. Checagem em runtime, não só de tipo.
+ */
+function respostaIaValida(j: unknown): j is { resposta: string; resolvido: boolean } {
+  if (!j || typeof j !== 'object') return false;
+  const r = (j as Record<string, unknown>).resposta;
+  const resolvido = (j as Record<string, unknown>).resolvido;
+  return typeof r === 'string' && r.trim().length > 0 && typeof resolvido === 'boolean';
+}
+
+/**
  * Escalação de atendimento não resolvido: notifica o membro mais antigo do
  * escritório responsável pela empresa (ver sondagem no topo do arquivo).
  *
@@ -92,8 +112,10 @@ async function escalarParaContador(
   // `chave` única por (owner_user_id, chave) — ver 0045_notificacoes.sql.
   // Estável por mensagem: uma reentrega da uazapi que escapasse da
   // idempotência de `whatsapp_atendimentos` ainda cairia em conflito aqui
-  // (defesa em profundidade, não a primeira linha).
-  const { error } = await admin.from('notifications').insert({
+  // (defesa em profundidade, não a primeira linha). `upsert` com
+  // `ignoreDuplicates` (mesmo idioma de `lib/billing/cron.ts`) faz essa
+  // colisão legítima não aparecer no log como se fosse uma falha de verdade.
+  const { error } = await admin.from('notifications').upsert({
     owner_user_id: ownerUserId,
     company_id: info.companyId,
     tipo: 'whatsapp_escalado',
@@ -101,7 +123,7 @@ async function escalarParaContador(
     titulo: 'Cliente perguntou pelo WhatsApp e a resposta automática não foi suficiente',
     corpo: `Pergunta recebida: "${info.pergunta}"`,
     chave: `whatsapp_escalado:${info.messageId}`,
-  });
+  }, { onConflict: 'owner_user_id,chave', ignoreDuplicates: true });
   if (error) {
     console.error('[webhook uazapi] falha ao gravar escalação:', error.message);
   }
@@ -115,72 +137,94 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, reason: 'payload_invalido' }, { status: 200 });
   }
 
-  if (!(await limitar(`uazapi-webhook:${corpo.from ?? 'sem-telefone'}`, 30, 60))) {
-    return NextResponse.json({ ok: false, reason: 'rate_limited' }, { status: 200 });
-  }
+  // SEGREDO ANTES do rate-limit. `limitar` é chaveado por `corpo.from` — um
+  // campo do CORPO, não autenticado. Se o rate-limit rodasse primeiro,
+  // qualquer um poderia estourar o orçamento do NÚMERO DE UM CLIENTE REAL sem
+  // conhecer o segredo, e a próxima mensagem legítima dele cairia em
+  // `rate_limited` (200, sem retry da uazapi) — um atendimento perdido sem
+  // custar nada ao atacante. A checagem de segredo é comparação em tempo
+  // constante, sem round-trip a banco: cabe vir antes.
   if (!segredoDaQuery(req, 's', process.env.UAZAPI_WEBHOOK_SECRET ?? '')) {
     return NextResponse.json({ ok: false, reason: 'unauthorized' }, { status: 200 });
   }
-
-  const admin = createAdminClient();
-
-  // Idempotência primeiro — a uazapi pode reenviar.
-  const { data: jaVisto } = await admin
-    .from('whatsapp_atendimentos').select('id').eq('message_id_externo', corpo.messageId).maybeSingle();
-  if (jaVisto) return NextResponse.json({ ok: true, reason: 'duplicado' }, { status: 200 });
-
-  const { data: profile } = await admin
-    .from('profiles').select('user_id, current_company')
-    .eq('whatsapp_numero', corpo.from).maybeSingle();
-
-  if (!profile?.current_company) {
-    await enviarMensagem(configDeEnv(), {
-      telefone: corpo.from,
-      texto: 'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.',
-    });
-    await admin.from('whatsapp_atendimentos').insert({
-      message_id_externo: corpo.messageId, telefone: corpo.from,
-      mensagem_recebida: corpo.text, resolvido: false,
-    });
-    return NextResponse.json({ ok: true, reason: 'telefone_desconhecido' }, { status: 200 });
+  if (!(await limitar(`uazapi-webhook:${corpo.from ?? 'sem-telefone'}`, 30, 60))) {
+    return NextResponse.json({ ok: false, reason: 'rate_limited' }, { status: 200 });
   }
 
-  const companyId = profile.current_company as string;
+  // TUDO daqui pra baixo num único try/catch — mesma forma de
+  // `webhooks/asaas/route.ts`: qualquer coisa que vier a lançar (uma leitura
+  // que falha, uma chamada de rede que aborta) não pode virar 500 e fazer a
+  // uazapi desativar ou martelar o webhook inteiro.
+  try {
+    const admin = createAdminClient();
 
-  const situacao = await buscarSituacaoAtualMei(
-    admin, companyId, competenciaReferenciaBrt(new Date()));
+    // Idempotência primeiro — a uazapi pode reenviar.
+    const { data: jaVisto } = await admin
+      .from('whatsapp_atendimentos').select('id').eq('message_id_externo', corpo.messageId).maybeSingle();
+    if (jaVisto) return NextResponse.json({ ok: true, reason: 'duplicado' }, { status: 200 });
 
-  const { data: cfgRow } = await admin.from('config_ia').select('*').eq('id', 1).maybeSingle();
-  let resposta = 'Não consegui responder agora — o contador vai retornar em breve.';
-  let resolvido = false;
+    const { data: profile } = await admin
+      .from('profiles').select('user_id, current_company')
+      .eq('whatsapp_numero', corpo.from).maybeSingle();
 
-  if (cfgRow) {
-    try {
-      const chave = lerChaveIa(cfgRow.chave_cifrada as string | null);
-      if (chave) {
-        const prompt = montarPromptAtendimento({ pergunta: corpo.text, situacaoFiscalTexto: situacao?.texto ?? null });
-        const bruto = await gerarTexto(
-          { provedor: cfgRow.provedor, modelo: cfgRow.modelo, base_url: cfgRow.base_url, chave },
-          prompt);
-        const j = JSON.parse(bruto) as { resposta: string; resolvido: boolean };
-        resposta = j.resposta;
-        resolvido = j.resolvido;
-      }
-    } catch (e) {
-      console.error('[webhook uazapi] falha ao gerar resposta:', e instanceof Error ? e.message : String(e));
+    if (!profile?.current_company) {
+      const envio = await enviarMensagem(configDeEnv(), {
+        telefone: corpo.from,
+        texto: 'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.',
+      });
+      if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+      await admin.from('whatsapp_atendimentos').insert({
+        message_id_externo: corpo.messageId, telefone: corpo.from,
+        mensagem_recebida: corpo.text, resolvido: false,
+      });
+      return NextResponse.json({ ok: true, reason: 'telefone_desconhecido' }, { status: 200 });
     }
+
+    const companyId = profile.current_company as string;
+
+    const situacao = await buscarSituacaoAtualMei(
+      admin, companyId, competenciaReferenciaBrt(new Date()));
+
+    const { data: cfgRow } = await admin.from('config_ia').select('*').eq('id', 1).maybeSingle();
+    let resposta = 'Não consegui responder agora — o contador vai retornar em breve.';
+    let resolvido = false;
+
+    if (cfgRow) {
+      try {
+        const chave = lerChaveIa(cfgRow.chave_cifrada as string | null);
+        if (chave) {
+          const prompt = montarPromptAtendimento({ pergunta: corpo.text, situacaoFiscalTexto: situacao?.texto ?? null });
+          const bruto = await gerarTexto(
+            { provedor: cfgRow.provedor, modelo: cfgRow.modelo, base_url: cfgRow.base_url, chave },
+            prompt);
+          const j: unknown = JSON.parse(bruto);
+          if (respostaIaValida(j)) {
+            resposta = j.resposta;
+            resolvido = j.resolvido;
+          } else {
+            console.error('[webhook uazapi] resposta da IA em formato inesperado, usando fallback');
+          }
+        }
+      } catch (e) {
+        console.error('[webhook uazapi] falha ao gerar resposta:', e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    const envio = await enviarMensagem(configDeEnv(), { telefone: corpo.from, texto: resposta });
+    if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+
+    if (!resolvido) {
+      await escalarParaContador(admin, { companyId, pergunta: corpo.text, messageId: corpo.messageId });
+    }
+
+    await admin.from('whatsapp_atendimentos').insert({
+      message_id_externo: corpo.messageId, telefone: corpo.from, profile_user_id: profile.user_id,
+      mensagem_recebida: corpo.text, resposta_enviada: resposta, resolvido,
+    });
+
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err) {
+    console.error('[webhook uazapi] erro inesperado:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ ok: false, reason: 'erro_inesperado' }, { status: 200 });
   }
-
-  await enviarMensagem(configDeEnv(), { telefone: corpo.from, texto: resposta });
-
-  if (!resolvido) {
-    await escalarParaContador(admin, { companyId, pergunta: corpo.text, messageId: corpo.messageId });
-  }
-
-  await admin.from('whatsapp_atendimentos').insert({
-    message_id_externo: corpo.messageId, telefone: corpo.from, profile_user_id: profile.user_id,
-    mensagem_recebida: corpo.text, resposta_enviada: resposta, resolvido,
-  });
-
-  return NextResponse.json({ ok: true }, { status: 200 });
 }
