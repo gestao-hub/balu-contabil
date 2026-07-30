@@ -345,11 +345,34 @@ Deno.serve(async (_req) => {
     const { error } = await supabase
       .from('documentos_juridicos')
       .upsert(linhas, { onConflict: 'fonte,url_origem' });
-    if (error) {
-      console.error('[sync-base-juridica] chunk error:', error.message);
-      failed += chunk.length;
-    } else {
+
+    if (!error) {
       upserted += chunk.length;
+      continue;
+    }
+
+    // O upsert em lote e tudo-ou-nada: UMA linha malformada (ex.: bytes
+    // invalidos raspados de HTML externo) derruba o chunk inteiro, mesmo que
+    // as outras estejam limpas. Volume real e pequeno (janela curta do DOU +
+    // 2 paginas fixas do portal), entao o fallback linha-a-linha e barato
+    // mesmo no pior caso — e evita perder um dia inteiro de ingestao por causa
+    // de UM documento ruim.
+    console.error(
+      `[sync-base-juridica] chunk de ${chunk.length} falhou (${error.message}) — tentando linha a linha`,
+    );
+    for (const linha of linhas) {
+      const { error: erroLinha } = await supabase
+        .from('documentos_juridicos')
+        .upsert([linha], { onConflict: 'fonte,url_origem' });
+      if (erroLinha) {
+        console.error(
+          `[sync-base-juridica] linha individual falhou (fonte=${linha.fonte}, url=${linha.url_origem}):`,
+          erroLinha.message,
+        );
+        failed++;
+      } else {
+        upserted++;
+      }
     }
   }
 
