@@ -25,9 +25,9 @@ describe('prompt de atendimento', () => {
     expect(p.toLowerCase()).not.toMatch(/primeira mensagem|saudação/);
   });
 
-  it('com primeiraInteracao, instrui a saudar como Paulo uma unica vez', () => {
+  it('com primeiraInteracao, instrui a saudar como Assistente Balu uma unica vez', () => {
     const p = montarPromptAtendimento({ pergunta: 'oi', situacaoFiscalTexto: null, primeiraInteracao: true });
-    expect(p).toContain('Paulo');
+    expect(p).toContain('Assistente Balu');
     expect(p.toLowerCase()).toMatch(/primeira mensagem/);
     expect(p.toLowerCase()).toMatch(/não repita/);
   });

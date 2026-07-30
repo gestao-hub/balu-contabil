@@ -64,8 +64,8 @@ const h = vi.hoisted(() => {
     erroClaim: null as ErroPg | null,
     // Setado só pelo teste de falha no UPDATE final.
     erroUpdate: null as ErroPg | null,
-    // Consultado pela busca de "primeira interação" (persona Paulo): null =
-    // nenhum atendimento anterior para este telefone = primeira mensagem.
+    // Consultado pela busca de "primeira interação" (persona Assistente Balu):
+    // null = nenhum atendimento anterior para este telefone = primeira mensagem.
     interacaoAnterior: null as { id: string } | null,
   };
 
@@ -485,10 +485,11 @@ describe('webhook uazapi', () => {
     expect(body.reason).toBe('erro_inesperado');
   });
 
-  // Persona "Paulo": a saudação só na primeira mensagem de uma conversa —
-  // quem decide isso é o webhook, consultando se já existe atendimento
-  // anterior para este telefone (excluindo a própria linha do claim atual).
-  it('primeira interacao (sem atendimento anterior): pede saudacao de Paulo no prompt', async () => {
+  // Persona "Assistente Balu": a saudação só na primeira mensagem de uma
+  // conversa — quem decide isso é o webhook, consultando se já existe
+  // atendimento anterior para este telefone (excluindo a própria linha do
+  // claim atual).
+  it('primeira interacao (sem atendimento anterior): pede saudacao do Assistente Balu no prompt', async () => {
     h.estado.interacaoAnterior = null;
     await POST(requisicaoFalsa({ messageId: 'm-primeira', from: '+551100', text: 'oi' }, SEGREDO));
     const chamada = h.gerarTexto.mock.calls[0];

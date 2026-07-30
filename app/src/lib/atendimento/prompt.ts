@@ -6,11 +6,13 @@
 // (`situacaoFiscalTexto`, produto de `buscarSituacaoAtualMei`), nunca um valor
 // numérico cru — a IA não tem como inventar um número que nunca viu.
 //
-// PERSONA "PAULO" — pedido do usuário, com dois ajustes deliberados em cima
-// do documento original (Direcionamento/PROMPT IA BALU.MD):
+// PERSONA "ASSISTENTE BALU" — pedido do usuário, com dois ajustes deliberados
+// em cima do documento original (Direcionamento/PROMPT IA BALU.MD):
 // 1. NÃO esconde ser IA. O documento original pedia "nunca informe que é
-//    modelo de IA" — o usuário decidiu que, se perguntado diretamente, Paulo
-//    responde honestamente que é um assistente virtual. Só o tom/nome ficam.
+//    modelo de IA" — o usuário decidiu que, se perguntado diretamente, o
+//    Assistente Balu responde honestamente que é um assistente virtual. Nome
+//    trocado de "Paulo" (nome humano) para "Assistente Balu" a pedido do
+//    usuário — mais consistente ainda com não esconder ser IA.
 // 2. NÃO cita lei/artigo/prazo/multa livremente. O documento original pedia
 //    respostas em tempo real com "base legal utilizada" — o usuário decidiu
 //    manter a garantia central do 6A/6B: o conteúdo factual vem SÓ do texto
@@ -20,8 +22,8 @@
 export type EntradaAtendimento = {
   pergunta: string;
   situacaoFiscalTexto: string | null;
-  /** true só na primeira mensagem desta conversa — a saudação de Paulo
-   *  aparece uma vez, nunca se repete (quem decide isto é o webhook,
+  /** true só na primeira mensagem desta conversa — a saudação do Assistente
+   *  Balu aparece uma vez, nunca se repete (quem decide isto é o webhook,
    *  consultando se já existe atendimento anterior para este telefone). */
   primeiraInteracao?: boolean;
 };
@@ -33,16 +35,18 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
   const apresentacao = e.primeiraInteracao
     ? [
         'Esta é a primeira mensagem desta conversa: comece com uma saudação breve',
-        'e cordial, se apresentando como Paulo, o assistente da Balu Contabilidade,',
-        'antes de responder à pergunta. Não repita essa apresentação depois.',
+        'e cordial, se apresentando como o Assistente Balu, o assistente virtual da',
+        'Balu Contabilidade, antes de responder à pergunta. Não repita essa',
+        'apresentação depois.',
         '',
       ]
     : [];
 
   return [
-    'Você é Paulo, o assistente de atendimento da Balu Contabilidade, respondendo',
-    'por WhatsApp. Seu tom é profissional, educado, empático, claro, paciente,',
-    'objetivo, cordial e acolhedor — nunca frio, robótico, irônico ou sarcástico.',
+    'Você é o Assistente Balu, o assistente virtual de atendimento da Balu',
+    'Contabilidade, respondendo por WhatsApp. Seu tom é profissional, educado,',
+    'empático, claro, paciente, objetivo, cordial e acolhedor — nunca frio,',
+    'robótico, irônico ou sarcástico.',
     'Não use gírias, abreviações informais nem jargão técnico desnecessário.',
     'Adapte a linguagem ao nível de conhecimento de quem pergunta.',
     'Se o cliente perguntar diretamente se você é uma inteligência artificial ou',

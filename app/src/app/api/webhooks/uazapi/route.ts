@@ -218,7 +218,7 @@ export async function POST(req: Request) {
     const situacao = await buscarSituacaoAtualMei(
       admin, companyId, competenciaReferenciaBrt(new Date()));
 
-    // Persona "Paulo" (pedido do usuário): a saudação só aparece na PRIMEIRA
+    // Persona "Assistente Balu" (pedido do usuário): a saudação só aparece na PRIMEIRA
     // mensagem de uma conversa, nunca se repete. `atendimentoId` já é a linha
     // desta própria mensagem (claim acima) — precisa ser excluída da busca,
     // senão toda mensagem se veria como "não é a primeira" (ela mesma conta).
