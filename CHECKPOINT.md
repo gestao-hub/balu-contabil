@@ -1,13 +1,13 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-30 (sessão 20, continuação — **persona "Assistente Balu" incorporada ao atendimento do 6B.** DUAS branches de feature prontas e NÃO mergeadas, em paralelo, ambas com `/code-review` rodado e achados corrigidos. Blocos A, E, 1, 2, 3, 4A, 4B e 6A seguem em `main` e no ar, sem mudança. `main` local está 7 commits à frente de `origin/main` (só docs) — push pendente de confirmação.)
+> **Última atualização:** 2026-07-30 (sessão 20, fim de sessão — **persona "Assistente Balu" incorporada ao atendimento do 6B.** DUAS branches de feature prontas e NÃO mergeadas, em paralelo, ambas com `/code-review` rodado e achados corrigidos, árvore de trabalho limpa nas três (`main`, `feat/bloco-6b-whatsapp`, `feat/base-juridica-rag`). Blocos A, E, 1, 2, 3, 4A, 4B e 6A seguem em `main` e no ar, sem mudança. `main` local está 9 commits à frente de `origin/main` (só docs) — push pendente de confirmação.)
 
 > ## ⛔ AO RETOMAR: duas branches esperando você, em ordem de prontidão
 
 > ### 1) `feat/bloco-6b-whatsapp` — implementado, revisado, `/code-review` aplicado, persona configurada — falta SEU smoke manual
 >
-> 20 commits. As 7 tasks do plano + 4 bugs reais achados por um `/code-review`
+> 21 commits. As 7 tasks do plano + 4 bugs reais achados por um `/code-review`
 > adicional (todos corrigidos: race de idempotência no webhook do WhatsApp,
 > `resolvido` não refletindo falha de envio, uma linha presa quando erro
 > interrompe o fluxo depois do "claim", e a UI de opt-in descartando erro em
