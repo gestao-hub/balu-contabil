@@ -42,19 +42,31 @@ export async function buscarSituacaoAtualMei(
       .eq('company_id', companyId).is('deleted_at', null)
       .order('competencia_referencia', { ascending: false }).limit(13),
     sb.from('guias_fiscais')
-      .select('competencia_referencia, valor_total')
+      .select('competencia_referencia, valor_total, valor_principal')
       .eq('company_id', companyId).is('deleted_at', null)
       .order('competencia_referencia', { ascending: false }).limit(24),
   ]);
 
   type Apuracao = { competencia_referencia: string; valor_imposto: number | null };
-  type Guia = { competencia_referencia: string; valor_total: number | null };
+  type Guia = {
+    competencia_referencia: string;
+    valor_total: number | null;
+    valor_principal: number | null;
+  };
   const apuracaoAtual = ((apuracoes ?? []) as Apuracao[])
     .find((a) => a.competencia_referencia === competenciaAtual) ?? null;
   const guiaAtual = ((guias ?? []) as Guia[])
     .find((g) => g.competencia_referencia === competenciaAtual) ?? null;
 
-  const totalExibido = guiaAtual?.valor_total ?? apuracaoAtual?.valor_imposto ?? null;
+  // MESMA PRECEDÊNCIA de `mappers.ts` (`toGuiaRowDetalhe`): a tela mostra
+  // `valor_total` da guia e cai para `valor_principal` quando ele falta —
+  // as colunas já chegam numéricas pelo client tipado do Supabase, então,
+  // ao contrário do mapper (que lê `Record<string, unknown>` cru e precisa de
+  // `numero()`), aqui não há coerção a fazer, só reproduzir a mesma ordem.
+  const totalExibido = guiaAtual?.valor_total
+    ?? guiaAtual?.valor_principal
+    ?? apuracaoAtual?.valor_imposto
+    ?? null;
   const valores = valoresDoDasMei(atividadeMei, totalExibido);
   if (!valores) return null;
 
@@ -63,7 +75,17 @@ export async function buscarSituacaoAtualMei(
   if (!explicacao) return null;
 
   const r = renderizar(explicacao.texto, valores);
-  if (!r.ok) return null;
+  if (!r.ok) {
+    // Mesmo sintoma que `ExplicacaoImposto.tsx`: a aprovação e a situação
+    // discordam (texto aprovado com marcador que esta situação não fornece).
+    // Aqui não há tela quebrada para um humano notar — é um webhook rodando
+    // sem ninguém olhando —, então o log é a única forma de isto ser visto.
+    console.warn(
+      '[6b] explicacao aprovada com marcador sem valor:',
+      chaveDaSituacao(situacao), r.faltando.join(','),
+    );
+    return null;
+  }
 
   return { texto: r.texto, geradoPor: explicacao.geradoPor };
 }

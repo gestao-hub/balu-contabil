@@ -83,7 +83,8 @@ describe('buscarSituacaoAtualMei', () => {
   });
 
   // ═══ PRIORIDADE: GUIA VENCE APURAÇÃO ═══
-  // `totalExibido = guiaAtual?.valor_total ?? apuracaoAtual?.valor_imposto ?? null`.
+  // `totalExibido = guiaAtual?.valor_total ?? guiaAtual?.valor_principal
+  //   ?? apuracaoAtual?.valor_imposto ?? null`.
   // Aqui os dois existem e DIVERGEM: só o valor da guia bate com a soma dos
   // componentes. Se a prioridade fosse invertida (ou trocada por `||`), o
   // total usado seria o da apuração — inválido — e a função devolveria `null`
@@ -121,5 +122,73 @@ describe('buscarSituacaoAtualMei', () => {
 
     expect(r).toBeNull();
     expect(h.buscarExplicacao).not.toHaveBeenCalled();
+  });
+
+  // ═══ FALLBACK PARA valor_principal ═══
+  // `mappers.ts` (`toGuiaRowDetalhe`, linha 31): `numero(g.valor_total) ??
+  // numero(g.valor_principal)` — a tela cai para `valor_principal` quando a
+  // guia não tem `valor_total`. Esta divergência existia desde o dia 1 deste
+  // módulo (só selecionava/lia `valor_total`): o webhook explicaria "não sei"
+  // em casos em que a tela do cliente mostraria explicação normalmente.
+  it('guia sem valor_total usa valor_principal (mesma precedência de mappers.ts)', async () => {
+    h.buscarExplicacao.mockResolvedValue({ texto: TEXTO_CATALOGO, geradoPor: null });
+
+    const sb = clienteFalso({
+      empresas_fiscais: { atividade_mei: ATIVIDADE },
+      apuracoes_fiscais: [],
+      guias_fiscais: [
+        { competencia_referencia: COMPETENCIA, valor_total: null, valor_principal: TOTAL_VALIDO },
+      ],
+    });
+
+    const r = await buscarSituacaoAtualMei(sb, 'empresa-1', COMPETENCIA);
+
+    expect(r).toEqual({ texto: TEXTO_ESPERADO, geradoPor: null });
+  });
+
+  // ═══ SEM EXPLICAÇÃO APROVADA ═══
+  // Valores fecham, mas o catálogo ainda não tem texto aprovado para esta
+  // situação: `buscarExplicacao` devolve `null` e a função para aí, sem
+  // chegar a `renderizar`.
+  it('sem explicação aprovada para a situação, devolve null', async () => {
+    h.buscarExplicacao.mockResolvedValue(null);
+
+    const sb = clienteFalso({
+      empresas_fiscais: { atividade_mei: ATIVIDADE },
+      apuracoes_fiscais: [{ competencia_referencia: COMPETENCIA, valor_imposto: TOTAL_VALIDO }],
+      guias_fiscais: [],
+    });
+
+    const r = await buscarSituacaoAtualMei(sb, 'empresa-1', COMPETENCIA);
+
+    expect(r).toBeNull();
+  });
+
+  // ═══ APROVAÇÃO E SITUAÇÃO DISCORDAM ═══
+  // Mesmo sintoma que `ExplicacaoImposto.tsx`: um texto foi aprovado com um
+  // marcador que esta situação não fornece (aqui, `{icms}` — Prestação de
+  // Serviços só tem `inss`/`iss`). `renderizar` recusa (falha fechada) e,
+  // como não há tela para um humano notar, o aviso tem de ir para o log.
+  it('explicação aprovada com marcador sem valor devolve null e loga o aviso', async () => {
+    h.buscarExplicacao.mockResolvedValue({
+      texto: 'Você paga {inss} de INSS e {icms} de ICMS.',
+      geradoPor: null,
+    });
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const sb = clienteFalso({
+      empresas_fiscais: { atividade_mei: ATIVIDADE },
+      apuracoes_fiscais: [{ competencia_referencia: COMPETENCIA, valor_imposto: TOTAL_VALIDO }],
+      guias_fiscais: [],
+    });
+
+    const r = await buscarSituacaoAtualMei(sb, 'empresa-1', COMPETENCIA);
+
+    expect(r).toBeNull();
+    expect(aviso).toHaveBeenCalledWith(
+      '[6b] explicacao aprovada com marcador sem valor:', 'das-mei:inss+iss', 'icms',
+    );
+
+    aviso.mockRestore();
   });
 });
