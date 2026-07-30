@@ -89,6 +89,7 @@ export async function GET(req: Request) {
         await admin.from('notifications').update({ enviada_whatsapp_em: new Date().toISOString() }).eq('id', n.id);
         whatsappEnviados++;
       } else {
+        console.error('[cron obrigacoes] falha ao enviar whatsapp', r.erro ?? 'desconhecido');
         whatsappPulados++;
       }
     }
