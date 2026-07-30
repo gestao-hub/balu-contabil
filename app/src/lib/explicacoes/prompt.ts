@@ -13,6 +13,7 @@ import {
   chaveDaSituacao, rotuloDoAnexo, type SituacaoFiscal,
 } from '@/lib/fiscal/situacao-fiscal';
 import { marcadoresDaChave } from './marcadores';
+import type { TrechoJuridico } from '@/lib/base-juridica/buscar';
 
 /** Como cada componente do DAS-MEI é dito em português, para a IA não ter de
  *  adivinhar a sigla. Só descreve o que o componente É — nada de alíquota, base
@@ -51,10 +52,19 @@ function descreverSituacao(s: SituacaoFiscal): string {
  * embaixo — e mesmo assim ele ainda passa por revisão humana antes de existir
  * para qualquer cliente.
  */
-export function montarPrompt(s: SituacaoFiscal): string {
+export function montarPrompt(s: SituacaoFiscal, contexto?: TrechoJuridico[]): string {
   const marcadores = marcadoresDaChave(chaveDaSituacao(s));
   const lista = marcadores.map((m) => `{${m}}`).join(', ');
   const exemplo = marcadores.length ? `{${marcadores[0]}}` : '{valor}';
+
+  const secaoContexto = contexto && contexto.length
+    ? [
+        '',
+        'CONTEXTO DE APOIO (uso interno seu, para redigir com precisão — NÃO cite',
+        'nem repita este texto, nem mencione lei/norma/resolução no rascunho):',
+        ...contexto.map((c) => `- ${c.titulo}: ${c.texto}`),
+      ]
+    : [];
 
   return [
     'Você escreve explicações curtas sobre tributos para donos de pequenas empresas no Brasil,',
@@ -62,6 +72,7 @@ export function montarPrompt(s: SituacaoFiscal): string {
     '',
     'SITUAÇÃO:',
     descreverSituacao(s),
+    ...secaoContexto,
     '',
     'REGRAS DO TEXTO:',
     '- Escreva de duas a quatro frases, em texto corrido, sem título e sem listas.',

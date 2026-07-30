@@ -17,6 +17,15 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { montarPrompt } from '@/lib/explicacoes/prompt';
 import { situacaoDaChave } from '@/lib/fiscal/situacao-fiscal';
+import { buscarContextoJuridico } from '@/lib/base-juridica/buscar';
+
+// Contexto vazio = prompt identico ao de hoje (confirmado por
+// prompt.test.ts, "sem contexto, o prompt e IDENTICO ao de hoje"), entao
+// TODOS os testes existentes continuam validos sem precisar ensinar o mock
+// manual de `from()` a entender a tabela `documentos_juridicos`.
+vi.mock('@/lib/base-juridica/buscar', () => ({
+  buscarContextoJuridico: vi.fn(async () => []),
+}));
 
 const USER_ID = 'user_admin_1';
 const CHAVE_FALSA = 'sk-TESTE-chave-obviamente-falsa-nunca-use-0001';
@@ -156,6 +165,8 @@ beforeEach(async () => {
   h.registrarAuditoria.mockClear();
   h.revalidatePath.mockClear();
   h.gerarTexto.mockClear();
+  vi.mocked(buscarContextoJuridico).mockClear();
+  vi.mocked(buscarContextoJuridico).mockResolvedValue([]);
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -255,6 +266,27 @@ describe('gerarRascunhoAction', () => {
     const esperado = montarPrompt(situacaoDaChave(CHAVE_SIT)!);
     expect(h.prompts[0]).toBe(esperado);
     expect(h.prompts[0]).not.toMatch(/\d+[.,]\d{2}/);
+  });
+
+  // Task 4 (base-juridica): a busca é chamada para a situação certa, antes de
+  // montar o prompt — sem isso o contexto nunca chegaria ao modelo.
+  it('busca contexto juridico para a situacao antes de montar o prompt', async () => {
+    await gerarRascunhoAction(CHAVE_SIT);
+    expect(buscarContextoJuridico).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tributo: 'das-mei' }),
+    );
+  });
+
+  // Confirma que o contexto devolvido pela busca REALMENTE chega ao prompt
+  // mandado para a IA — não basta chamar a busca, o resultado tem de ser
+  // usado. (Este teste é o que a sabotagem do Step 9 derruba.)
+  it('inclui o contexto juridico encontrado no prompt mandado para a IA', async () => {
+    vi.mocked(buscarContextoJuridico).mockResolvedValueOnce([
+      { titulo: 'Resolução CGSN 140', texto: 'Teto de faturamento do MEI.' },
+    ]);
+    await gerarRascunhoAction(CHAVE_SIT);
+    expect(h.prompts[0]).toContain('Teto de faturamento do MEI.');
   });
 
   it('erro do provedor não carrega a chave, e nada é gravado', async () => {

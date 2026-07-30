@@ -76,3 +76,27 @@ describe('prompt da explicação', () => {
     expect(p).not.toContain('icms');
   });
 });
+
+describe('contexto juridico de apoio (base-juridica)', () => {
+  it('sem contexto, o prompt e IDENTICO ao de hoje (compatibilidade)', () => {
+    const s = situacaoDasMei('Prestacao de Servicos');
+    expect(montarPrompt(s)).toBe(montarPrompt(s, undefined));
+    expect(montarPrompt(s)).toBe(montarPrompt(s, []));
+  });
+
+  it('com contexto, inclui os trechos numa secao separada, marcada como uso interno', () => {
+    const s = situacaoDasMei('Prestacao de Servicos');
+    const p = montarPrompt(s, [{ titulo: 'Resolução CGSN 140', texto: 'Teto de faturamento do MEI.' }]);
+    expect(p).toContain('Resolução CGSN 140');
+    expect(p).toContain('Teto de faturamento do MEI.');
+    expect(p.toLowerCase()).toMatch(/uso interno|não cite|nao cite/);
+  });
+
+  // A REGRA CENTRAL NAO PODE AFROUXAR: mesmo com contexto juridico de apoio,
+  // o prompt continua proibindo citar lei/norma no texto final.
+  it('com contexto, a proibicao de citar lei continua presente', () => {
+    const s = situacaoDasMei('Prestacao de Servicos');
+    const p = montarPrompt(s, [{ titulo: 'Lei X', texto: 'Artigo Y diz Z.' }]).toLowerCase();
+    expect(p).toContain('não cite lei');
+  });
+});

@@ -22,6 +22,7 @@ import { gerarTexto } from '@/lib/ai/cliente';
 import type { Provedor } from '@/lib/ai/provedores';
 import { situacaoDaChave } from '@/lib/fiscal/situacao-fiscal';
 import { montarPrompt } from '@/lib/explicacoes/prompt';
+import { buscarContextoJuridico } from '@/lib/base-juridica/buscar';
 import { marcadoresDaChave } from '@/lib/explicacoes/marcadores';
 import { marcadoresDe } from '@/lib/explicacoes/renderizar';
 import { ChaveExplicacaoSchema, ExplicacaoTextoSchema } from '@/types/zod';
@@ -212,10 +213,17 @@ export async function gerarRascunhoAction(chaveBruta: unknown): Promise<Resultad
 
   const geradoPor = `${cfg.provedor}/${cfg.modelo}`;
 
+  // Busca de apoio (base-juridica): nunca lança, por construção (Task 3) — uma
+  // falha aqui é uma peça de apoio caindo, não motivo para bloquear a geração.
+  // Fica fora do `try` de baixo de propósito: o erro que aquele `try` trata é
+  // o do PROVEDOR de IA, não o da busca textual no próprio banco.
+  const contexto = await buscarContextoJuridico(sb, situacao);
+
   let texto: string;
   try {
-    // O prompt é DERIVADO DA SITUAÇÃO, e `montarPrompt` só aceita
-    // `SituacaoFiscal` — tipo que não tem como carregar dado de contribuinte.
+    // O prompt é DERIVADO DA SITUAÇÃO (mais o contexto de apoio, quando há), e
+    // `montarPrompt` só aceita `SituacaoFiscal` — tipo que não tem como
+    // carregar dado de contribuinte.
     texto = await gerarTexto(
       {
         provedor: cfg.provedor as Provedor,
@@ -223,7 +231,7 @@ export async function gerarRascunhoAction(chaveBruta: unknown): Promise<Resultad
         base_url: cfg.base_url,
         chave: chaveIa,
       },
-      montarPrompt(situacao),
+      montarPrompt(situacao, contexto),
     );
   } catch (e) {
     const bruto = e instanceof Error ? e.message : String(e);
