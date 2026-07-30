@@ -51,6 +51,11 @@ LANGUAGE sql SECURITY DEFINER SET search_path = public, auth AS $$
   FROM public.notifications n
   JOIN public.profiles p ON p.user_id = n.owner_user_id
   WHERE n.enviada_whatsapp_em IS NULL
+    -- whatsapp_escalado é in-app-only por desenho (spec §2.3): é o eco da
+    -- própria mensagem do cliente virando notificação pro contador. Se o
+    -- contador também tiver optado no canal, mandar isso de volta por
+    -- WhatsApp duplicaria a mensagem que ele já está vendo nativamente.
+    AND n.tipo <> 'whatsapp_escalado'
     AND p.whatsapp_numero IS NOT NULL
     AND p.whatsapp_habilitado_em IS NOT NULL
   ORDER BY n.created_at
