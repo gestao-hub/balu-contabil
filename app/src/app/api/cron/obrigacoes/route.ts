@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/clients/email';
 import { renderNotificacaoEmail } from '@/lib/notifications/email-template';
 import { rodarBilling } from '@/lib/billing/cron';
+import { configDeEnv, enviarMensagem } from '@/lib/uazapi/cliente';
 
 // TEMPO DE EXECUCAO — 60s, o teto do plano Hobby da Vercel.
 //
@@ -67,6 +68,32 @@ export async function GET(req: Request) {
     }
   }
 
+  // Terceiro loop (Bloco 6B): WhatsApp via uazapi. Mesma idempotência do
+  // e-mail (enviada_whatsapp_em fica NULL até o envio ter sucesso). Sem
+  // UAZAPI_BASE_URL/UAZAPI_TOKEN configurados, configDeEnv() devolve null e
+  // enviarMensagem vira no-op — todo item cai em "pulado", sem quebrar o
+  // cron. É o estado de hoje, sem instância provisionada.
+  const { data: pendWhats, error: ePendWhats } = await admin.rpc('notificacoes_pendentes_whatsapp', { p_limite: 50 });
+  let whatsappEnviados = 0;
+  let whatsappPulados = 0;
+  if (ePendWhats) {
+    console.error('[cron obrigacoes] notificacoes_pendentes_whatsapp', ePendWhats.message);
+  } else {
+    const cfgUazapi = configDeEnv();
+    for (const n of pendWhats ?? []) {
+      const r = await enviarMensagem(cfgUazapi, {
+        telefone: n.whatsapp_numero,
+        texto: `${n.titulo}\n\n${n.corpo}${n.action_href ? `\n\n${siteUrl}${n.action_href}` : ''}`,
+      });
+      if (r.ok) {
+        await admin.from('notifications').update({ enviada_whatsapp_em: new Date().toISOString() }).eq('id', n.id);
+        whatsappEnviados++;
+      } else {
+        whatsappPulados++;
+      }
+    }
+  }
+
   // Billing (Bloco 4A) roda AQUI e não em cron próprio: o plano Hobby da
   // Vercel permite exatamente 2 crons e o vercel.json já tem 2. O endpoint
   // /api/cron/billing continua existindo para disparo manual.
@@ -84,5 +111,9 @@ export async function GET(req: Request) {
     billing = { erro: String(err) };
   }
 
-  return NextResponse.json({ ok: true, criadas, enviados, pulados, billing });
+  return NextResponse.json({
+    ok: true, criadas, enviados, pulados,
+    whatsapp_enviados: whatsappEnviados, whatsapp_pulados: whatsappPulados,
+    billing,
+  });
 }
