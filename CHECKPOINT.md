@@ -1,55 +1,68 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-31 (sessão 21, fim de sessão — **Bloco 6B (WhatsApp) mergeado e empurrado (produção); `feat/base-juridica-rag` implementada, deployada e agendada, falta só o merge/push.**)
+> **Última atualização:** 2026-07-31 (sessão 21, continuação — `feat/base-juridica-rag` mergeada e empurrada; item novo do Bloco 6 ("linha digitável do DAS no WhatsApp") implementado via subagent-driven-development, revisado, com um bug crítico achado e corrigido no fechamento, pronto pro merge/push.)
 
-> ## ⛔ AO RETOMAR: merge + push da `feat/base-juridica-rag`
->
-> **Bloco 6B: FECHADO.** Smoke §1-§6 completo, 2 bugs achados e corrigidos no
-> fechamento (cerca de código markdown quebrando o parse da resposta da IA;
-> early-return do cron de e-mail calando WhatsApp/billing). Merge `--no-ff`
-> em `main` (`e7165bf`) + push confirmado pelo usuário — **em produção**.
-> Blocos A, E, 1, 2, 3, 4A, 4B, 6A e 6B estão em `main`.
->
-> **`feat/base-juridica-rag`: as duas pendências da sessão anterior foram
-> resolvidas nesta sessão, branch pronta pra merge:**
->
-> 1. **Deploy da Edge Function `sync-base-juridica` — feito.** O método era
->    desconhecido (repo não documenta, MCP do Supabase negou permissão em
->    sessões anteriores); resolvido com Supabase CLI + Personal Access Token
->    de conta (`npx supabase login --token ...`, gerado pelo usuário no
->    dashboard, usado uma vez e depois removido do `.env.local` + revogado).
->    **Achado no processo:** o CLI, sem `config.toml` no repo, não aplicava
->    `verify_jwt=true` mesmo com a flag `--no-verify-jwt` omitida — apesar do
->    comentário no próprio código (`index.ts:288`) dizer que a função é
->    "deployada COM verificação de JWT (padrão)". Corrigido via PATCH direto
->    na Management API do Supabase (`verify_jwt: true`), já que o CLI sozinho
->    não conseguia. **Invocação real confirmada** (não só HTTP 200 — efeito
->    no banco): `{"ok":true,"total":37,"upserted":37,"failed":0}`, 35
->    documentos do DOU + 1 Receita Federal + 1 Simples Nacional, conferidos
->    direto na tabela `documentos_juridicos`. Probe de RLS rodado depois:
->    anon continua sem acesso (401), zero duplicatas de `(fonte,
->    url_origem)`.
-> 2. **Agendamento do `pg_cron` — feito.** `0 6 * * *` (6h UTC, confirmado
->    pelo usuário — diferente da meia-noite do `sync-municipios` pra não
->    competir), script `scratchpad/_agendar-cron-base-juridica.mjs` (não
->    versionado, mesma característica do job já existente — carrega a
->    service_role_key em texto puro). Confirmado no banco: `active: true`.
->
-> `.gitignore` ganhou uma entrada nesta sessão: `supabase/.temp` (cache local
-> de `supabase link`, criado ao linkar o projeto, sem segredo mas sem razão
-> pra versionar).
->
-> `tsc` 0 · vitest 1383/1383 (27 pulados) · `next build` 0 erros/65 rotas
-> (nesta branch, já com o Bloco 6B trazido de `main` por merge).
->
-> **Próximo passo exato:** merge `--no-ff` de `feat/base-juridica-rag` em
-> `main`, **push só com confirmação explícita do usuário** (auto-deploy em
-> produção, mesma disciplina de todo bloco anterior). Depois do merge, o job
-> `pg_cron` já vai rodar sozinho às 6h UTC contra o código que já está
-> deployado — não depende do merge pra funcionar, só o CÓDIGO-FONTE
-> versionado é que ainda não está em `main`.
+> ## ⛔ AO RETOMAR: push da linha digitável do DAS no WhatsApp
 
+> **`feat/base-juridica-rag`: FECHADA.** Edge Function `sync-base-juridica`
+> deployada (verify_jwt corrigido via Management API), invocação real
+> confirmada (37 documentos), `pg_cron` agendado às 6h UTC. Merge + push
+> confirmados pelo usuário — **em produção**. Blocos A, E, 1, 2, 3, 4A, 4B,
+> 6A, 6B e a base jurídica RAG estão todos em `main`.
+>
+> **Item novo (não estava em nenhum bloco anterior): linha digitável do DAS
+> na mensagem de WhatsApp de vencimento.** O PRD Master descrevia isso como
+> "Pix Copia-e-Cola via SERPRO" — investigado e refutado no brainstorming
+> desta sessão (nenhum serviço SERPRO devolve Pix pra DAS, nem `GERARDAS12`
+> nem `GERARDASCOBRANCA17` — confirmado contra documentação oficial +
+> biblioteca `serpro_integra_contador_api`). Redesenhado pra usar o dado
+> real já persistido: `guias_fiscais.linha_digitavel`. Spec:
+> `docs/superpowers/specs/2026-07-31-linha-digitavel-whatsapp-design.md`.
+> Plano: `docs/superpowers/plans/2026-07-31-linha-digitavel-whatsapp.md`
+> (3 tasks, subagent-driven — cada task com implementador + revisão de spec
+> compliance + revisão de qualidade de código, cada uma achando e corrigindo
+> um item real antes de fechar).
+>
+> **Achado extra numa sondagem ao vivo contra o SERPRO Trial nesta sessão:**
+> as credenciais Trial deste projeto (`SERPRO_CONSUMER_KEY`/`_SECRET`)
+> devolveram 403 "API Subscription validation failed" pra `GERARDAS12` — o
+> MESMO serviço que a documentação de status registra como já funcionando.
+> Não é bloqueio de nada construído nesta sessão (nada aqui chama a SERPRO
+> ao vivo), mas é uma pendência real: confirmar no portal da SERPRO se a
+> assinatura Trial expirou, **antes** de qualquer trabalho futuro que
+> dependa de chamar a SERPRO (inclui o Bloco 5, produção fiscal).
+>
+> **Bug crítico achado e corrigido numa revisão holística DEPOIS do merge
+> das duas tasks (antes do push):** nada no sistema cancelava uma
+> notificação `das_a_vencer`/`das_vencido` pendente quando a guia era paga
+> (`marcarGuiaPagaAction` só atualiza `guias_fiscais`, nunca toca em
+> `notifications`) — bug latente desde antes desta sessão, mas agravado
+> porque a mensagem de WhatsApp passou a carregar um código de pagamento
+> acionável, não só um lembrete genérico. Como o `UAZAPI_TOKEN` não está
+> configurado em produção (todo envio de WhatsApp é no-op hoje), o backlog
+> de notificações pendentes vinha se acumulando silenciosamente — no dia em
+> que a instância uazapi for provisionada, esse backlog dispararia em massa,
+> incluindo código de pagamento pra guias já quitadas. Corrigido com
+> migration `0065` (filtro `data_pagamento IS NULL` na RPC
+> `notificacoes_pendentes_whatsapp`, mesmo predicado que
+> `materializar_obrigacoes` já usa), provado contra o banco real com
+> `BEGIN`/`ROLLBACK` (guia paga fica de fora, guia em aberto continua
+> normal, sem regressão).
+>
+> **Pendência registrada, não corrigida (mesma causa-raiz, fora de escopo
+> deste push):** `notificacoes_pendentes_email` tem o mesmo problema —
+> reenvia lembrete de e-mail pra guia já paga. Menos grave que o WhatsApp
+> (é só um lembrete genérico, sem código de pagamento), mas vale corrigir
+> num follow-up.
+>
+> `tsc` 0 · vitest 1388/1388 (27 pulados) · `next build` 0 erros/65 rotas
+> (confirmado antes do merge). Migrations `0064` e `0065` já aplicadas e
+> verificadas em produção.
+>
+> **Próximo passo exato:** `main` local está à frente de `origin/main` —
+> falta só o `git push`, com confirmação explícita do usuário (auto-deploy
+> em produção).
 ---
 
 > ## ✅ SMOKE DO 6A CONCLUÍDO (2026-07-29, sessão 17) — §0 a §9, todas passaram
