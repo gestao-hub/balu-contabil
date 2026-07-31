@@ -38,12 +38,12 @@ export function SinoNotificacoes({ collapsed }: { collapsed: boolean }) {
 
   async function carregar() {
     const supabase = createBrowserClient();
+    // RPC (não .from('notifications').select() direto) — migration 0066:
+    // sem isso, uma notificação das_a_vencer/das_vencido de uma guia já
+    // paga continuava aparecendo como não-lida no sino pra sempre, porque
+    // nada marca notifications quando marcarGuiaPagaAction quita a guia.
     const [{ data }, { data: cos }] = await Promise.all([
-      supabase
-        .from('notifications')
-        .select('id,titulo,corpo,severidade,action_href,lida_em,created_at,company_id')
-        .order('created_at', { ascending: false })
-        .limit(15),
+      supabase.rpc('notificacoes_sino', { p_limite: 15 }),
       supabase.from('companies').select('id,razao_social').is('deleted_at', null),
     ]);
     setItens((data as Notificacao[] | null) ?? []);
