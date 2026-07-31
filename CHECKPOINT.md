@@ -1,68 +1,66 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-31 (sessão 21, continuação — `feat/base-juridica-rag` mergeada e empurrada; item novo do Bloco 6 ("linha digitável do DAS no WhatsApp") implementado via subagent-driven-development, revisado, com um bug crítico achado e corrigido no fechamento, pronto pro merge/push.)
+> **Última atualização:** 2026-07-31 (sessão 21, continuação — linha digitável do DAS no WhatsApp empurrada; `/code-review` rodado sobre o resultado achou mais 2 bugs reais da mesma causa-raiz (e-mail e sino de notificações mostrando guia paga como pendente), corrigidos e verificados, **push pendente de confirmação**.)
 
-> ## ⛔ AO RETOMAR: push da linha digitável do DAS no WhatsApp
+> ## ⛔ AO RETOMAR: push do fix de e-mail/sino + decisões registradas
 
-> **`feat/base-juridica-rag`: FECHADA.** Edge Function `sync-base-juridica`
-> deployada (verify_jwt corrigido via Management API), invocação real
-> confirmada (37 documentos), `pg_cron` agendado às 6h UTC. Merge + push
-> confirmados pelo usuário — **em produção**. Blocos A, E, 1, 2, 3, 4A, 4B,
-> 6A, 6B e a base jurídica RAG estão todos em `main`.
+> **Linha digitável do DAS no WhatsApp: EMPURRADA e em produção** (commits
+> até `54ff95d`). Spec: `docs/superpowers/specs/2026-07-31-linha-digitavel-
+> whatsapp-design.md`. Plano: `docs/superpowers/plans/2026-07-31-linha-
+> digitavel-whatsapp.md` (subagent-driven, 3 tasks). Migrations `0064` e
+> `0065` aplicadas — `0065` corrige o bug crítico achado numa revisão
+> holística antes do push original: guia paga não cancelava a notificação
+> de WhatsApp pendente, e agora a mensagem carrega código de pagamento.
 >
-> **Item novo (não estava em nenhum bloco anterior): linha digitável do DAS
-> na mensagem de WhatsApp de vencimento.** O PRD Master descrevia isso como
-> "Pix Copia-e-Cola via SERPRO" — investigado e refutado no brainstorming
-> desta sessão (nenhum serviço SERPRO devolve Pix pra DAS, nem `GERARDAS12`
-> nem `GERARDASCOBRANCA17` — confirmado contra documentação oficial +
-> biblioteca `serpro_integra_contador_api`). Redesenhado pra usar o dado
-> real já persistido: `guias_fiscais.linha_digitavel`. Spec:
-> `docs/superpowers/specs/2026-07-31-linha-digitavel-whatsapp-design.md`.
-> Plano: `docs/superpowers/plans/2026-07-31-linha-digitavel-whatsapp.md`
-> (3 tasks, subagent-driven — cada task com implementador + revisão de spec
-> compliance + revisão de qualidade de código, cada uma achando e corrigindo
-> um item real antes de fechar).
+> **Depois do push, o usuário pediu `/code-review`.** Achou 7 itens; 2 eram
+> bugs reais da MESMA causa-raiz do que a `0065` já tinha corrigido só pro
+> WhatsApp — **corrigidos nesta continuação, ainda NÃO empurrados**:
 >
-> **Achado extra numa sondagem ao vivo contra o SERPRO Trial nesta sessão:**
-> as credenciais Trial deste projeto (`SERPRO_CONSUMER_KEY`/`_SECRET`)
-> devolveram 403 "API Subscription validation failed" pra `GERARDAS12` — o
-> MESMO serviço que a documentação de status registra como já funcionando.
-> Não é bloqueio de nada construído nesta sessão (nada aqui chama a SERPRO
-> ao vivo), mas é uma pendência real: confirmar no portal da SERPRO se a
-> assinatura Trial expirou, **antes** de qualquer trabalho futuro que
-> dependa de chamar a SERPRO (inclui o Bloco 5, produção fiscal).
+> 1. **`notificacoes_pendentes_email`** nunca filtrava guia paga — reenviava
+>    lembrete pra sempre. Sem efeito prático hoje só porque o Resend está
+>    bloqueado por domínio não verificado (só manda pro próprio e-mail de
+>    teste), mas o defeito estava ativo no código.
+> 2. **`SinoNotificacoes.tsx`** (sino da sidebar) lia `notifications` direto,
+>    sem join nenhum — usuário continuava vendo "DAS a vencer" não-lido na
+>    tela pra guia já quitada, **ativo agora**, visível pra qualquer usuário.
+>    Substituído por RPC nova `notificacoes_sino` (SECURITY INVOKER, respeita
+>    RLS de `notifications`+`guias_fiscais`).
 >
-> **Bug crítico achado e corrigido numa revisão holística DEPOIS do merge
-> das duas tasks (antes do push):** nada no sistema cancelava uma
-> notificação `das_a_vencer`/`das_vencido` pendente quando a guia era paga
-> (`marcarGuiaPagaAction` só atualiza `guias_fiscais`, nunca toca em
-> `notifications`) — bug latente desde antes desta sessão, mas agravado
-> porque a mensagem de WhatsApp passou a carregar um código de pagamento
-> acionável, não só um lembrete genérico. Como o `UAZAPI_TOKEN` não está
-> configurado em produção (todo envio de WhatsApp é no-op hoje), o backlog
-> de notificações pendentes vinha se acumulando silenciosamente — no dia em
-> que a instância uazapi for provisionada, esse backlog dispararia em massa,
-> incluindo código de pagamento pra guias já quitadas. Corrigido com
-> migration `0065` (filtro `data_pagamento IS NULL` na RPC
-> `notificacoes_pendentes_whatsapp`, mesmo predicado que
-> `materializar_obrigacoes` já usa), provado contra o banco real com
-> `BEGIN`/`ROLLBACK` (guia paga fica de fora, guia em aberto continua
-> normal, sem regressão).
+> Migration `0066` aplicada e verificada contra o banco real (probe com
+> `BEGIN`/`ROLLBACK` + `SET ROLE authenticated` simulando RLS de verdade).
+> **Achado no processo de provar isso** (não no code-review original): a
+> primeira versão do fix usava `g.status <> 'erro'`, que em SQL avalia pra
+> `NULL` (não `TRUE`) quando `g.status` é `NULL` — e uma `WHERE` com `NULL`
+> descarta a linha em vez de mostrar por padrão. Corrigido pra `IS DISTINCT
+> FROM 'erro'` (null-safe) nas três RPCs (whatsapp/email/sino).
 >
-> **Pendência registrada, não corrigida (mesma causa-raiz, fora de escopo
-> deste push):** `notificacoes_pendentes_email` tem o mesmo problema —
-> reenvia lembrete de e-mail pra guia já paga. Menos grave que o WhatsApp
-> (é só um lembrete genérico, sem código de pagamento), mas vale corrigir
-> num follow-up.
->
-> `tsc` 0 · vitest 1388/1388 (27 pulados) · `next build` 0 erros/65 rotas
-> (confirmado antes do merge). Migrations `0064` e `0065` já aplicadas e
-> verificadas em produção.
+> `tsc` 0 · vitest 1388/1388 (27 pulados) · `next build` 0 erros/65 rotas.
+> Commits: `86282ad` (limpeza — trim duplicado, mock morto) e `60d266f`
+> (fix de e-mail/sino + migration `0066`).
 >
 > **Próximo passo exato:** `main` local está à frente de `origin/main` —
-> falta só o `git push`, com confirmação explícita do usuário (auto-deploy
+> **push pendente, precisa de confirmação explícita do usuário** (auto-deploy
 > em produção).
+>
+> **Pendências registradas, NÃO corrigidas nesta sessão (mesma causa-raiz,
+> escopo explicitamente não aprovado pra esta rodada):**
+> - **`/notificacoes` (a página cheia, não só o sino)** tem o mesmo gap —
+>   lê `notifications` direto sem join. Achado durante o fechamento, não fazia
+>   parte do que o usuário aprovou corrigir.
+> - **Recomendação arquitetural do `/code-review`:** resolver a notificação
+>   NO PONTO DE ESCRITA (`marcarGuiaPagaAction` cancelar/marcar a notificação
+>   da guia ao confirmar o pagamento) em vez de filtrar em cada RPC de
+>   leitura — mais robusto, cobre qualquer consumidor futuro de uma vez só,
+>   mas é mudança maior. Os filtros de leitura (0065/0066) resolvem o
+>   problema prático hoje; a refatoração fica como melhoria futura.
+> - **Risco de rajada de mensagens duplicadas:** com `UAZAPI_TOKEN` não
+>   configurado, o backlog de notificações D7/D3/D1/vencido de uma mesma
+>   guia se acumula sem enviar nada; no dia em que a instância for
+>   provisionada, o cliente pode receber várias mensagens quase idênticas
+>   de uma vez (mesma linha digitável repetida). É uma decisão de produto
+>   (dedupe/coalescer antes de enviar), não um bug simples — não decidido
+>   nesta sessão.
 ---
 
 > ## ✅ SMOKE DO 6A CONCLUÍDO (2026-07-29, sessão 17) — §0 a §9, todas passaram
