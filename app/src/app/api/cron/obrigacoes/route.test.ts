@@ -110,6 +110,20 @@ describe('GET /api/cron/obrigacoes — linha digitável na mensagem de WhatsApp'
     expect(chamada.texto).toBe('Título\n\nCorpo');
   });
 
+  it('linha_digitavel só com espaços em branco: tratada como ausente', async () => {
+    h.estado.pendWhats = [{
+      id: 'n5', owner_user_id: 'u1', tipo: 'das_a_vencer',
+      titulo: 'Título', corpo: 'Corpo', action_href: null, whatsapp_numero: '+5511999990000',
+      linha_digitavel: '   ',
+    }];
+
+    await GET(requisicaoFalsa());
+
+    const chamada = h.enviarMensagem.mock.calls[0][1] as { texto: string };
+    expect(chamada.texto).not.toContain('Código para pagar');
+    expect(chamada.texto).toBe('Título\n\nCorpo');
+  });
+
   it('notificação de outro tipo (pgdas_pendente): linha_digitavel nula não aparece', async () => {
     h.estado.pendWhats = [{
       id: 'n4', owner_user_id: 'u1', tipo: 'pgdas_pendente',
