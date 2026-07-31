@@ -1,52 +1,54 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-30 (sessão 20, fim de sessão — **persona "Assistente Balu" incorporada ao atendimento do 6B.** DUAS branches de feature prontas e NÃO mergeadas, em paralelo, ambas com `/code-review` rodado e achados corrigidos, árvore de trabalho limpa nas três (`main`, `feat/bloco-6b-whatsapp`, `feat/base-juridica-rag`). Blocos A, E, 1, 2, 3, 4A, 4B e 6A seguem em `main` e no ar, sem mudança. `main` local está 9 commits à frente de `origin/main` (só docs) — push pendente de confirmação.)
+> **Última atualização:** 2026-07-31 (sessão 21 — **Bloco 6B (WhatsApp) MERGEADO em `main`, smoke manual completo.** §1 a §6 do roteiro verdes, sem bug no que já vinha de sessões anteriores; **2 bugs novos achados e corrigidos durante o fechamento do smoke** (ver abaixo). Cenário desfeito (ideapp de volta a Simples Nacional normal, `atividade_mei = null`); WhatsApp de teste (`+5532987006789`) deixado **ativado** por decisão do usuário, mesma convenção do 6A com a chave de IA. `tsc` 0 · vitest 1369/1369 (27 pulados) · `next build` 0 erros/65 rotas. **Blocos A, E, 1, 2, 3, 4A, 4B, 6A e 6B estão em `main`.** `feat/base-juridica-rag` segue independente, não mergeada — ver item 2 abaixo.)
 
-> ## ⛔ AO RETOMAR: duas branches esperando você, em ordem de prontidão
+> ## ⛔ AO RETOMAR: push do merge do 6B (sua confirmação) + decisões da `feat/base-juridica-rag`
 
-> ### 1) `feat/bloco-6b-whatsapp` — implementado, revisado, `/code-review` aplicado, persona configurada — falta SEU smoke manual
+> ### 1) Push do merge do 6B — só falta sua confirmação explícita
 >
-> 21 commits. As 7 tasks do plano + 4 bugs reais achados por um `/code-review`
-> adicional (todos corrigidos: race de idempotência no webhook do WhatsApp,
-> `resolvido` não refletindo falha de envio, uma linha presa quando erro
-> interrompe o fluxo depois do "claim", e a UI de opt-in descartando erro em
-> silêncio). `tsc` 0 · vitest 1368/1368 (27 pulados).
+> `main` local está à frente de `origin/main` com o merge `--no-ff` do Bloco
+> 6B. **Não empurrei ainda** — push aciona auto-deploy em produção, mesma
+> disciplina de todo bloco anterior (4B, 6A). Confirme para eu rodar
+> `git push`.
 >
-> **Persona "Assistente Balu" configurada no prompt de atendimento** (`lib/atendimento/
-> prompt.ts`), a partir do documento `Direcionamento/PROMPT IA BALU.MD` que o
-> usuário pediu pra seguir — **com dois ajustes deliberados, decididos pelo
-> usuário depois que eu levantei o risco:**
-> 1. O documento original pedia "nunca informe que é IA" — **rejeitado**. Se
->    perguntado diretamente, Assistente Balu admite honestamente que é um assistente
->    virtual. Só o tom/nome (acolhedor, cordial, "Assistente Balu, assistente da Balu")
->    ficam.
-> 2. O documento original pedia resposta em tempo real citando "base legal",
->    artigo, prazo, multa — **rejeitado**. A garantia central do 6A/6B
->    continua: o conteúdo factual vem só do texto já calculado/aprovado
->    (nunca de raciocínio jurídico livre da IA); a regra "nunca invente" foi
->    reforçada (não enfraquecida) para citar explicitamente lei/artigo/
->    prazo/multa entre o que nunca deve ser inventado.
+> **Os 2 bugs achados e corrigidos no fechamento do smoke** (não estavam
+> pegos pelas rodadas de `/code-review` anteriores, porque só apareceram
+> contra um provedor de IA real e um cenário de erro real, não os mocks da
+> suíte):
+> 1. **Corrigido — resposta da IA envolta em cerca de código markdown
+>    quebrava o parse:** um modelo real (via OpenRouter) devolveu o JSON
+>    pedido (`resposta`/`resolvido`) dentro de ` ```json ... ``` `, mesmo com
+>    o prompt pedindo só JSON. `JSON.parse` sozinho lançava, descartando uma
+>    resposta válida e caindo no fallback estático + escalação desnecessária
+>    pro contador. `route.ts` agora tira a cerca antes do parse; teste de
+>    regressão adicionado (22/22 nesse arquivo).
+> 2. **Corrigido (pré-existente do Bloco 1, achado no fechamento) — cron de
+>    obrigações parava o WhatsApp/billing se o e-mail falhasse:** uma falha
+>    transitória em `notificacoes_pendentes_email` retornava cedo (207),
+>    calando também o loop novo de WhatsApp e o billing (4A) — que não têm
+>    relação nenhuma com o e-mail. Agora só loga e segue; o erro vai no corpo
+>    da resposta (`email_erro`) quando existir. Sem teste de regressão
+>    dedicado (não existe harness de mock pra essa rota ainda — verificado
+>    por leitura + suíte completa + teste ao vivo do caminho feliz).
 >
-> Saudação de Assistente Balu aparece só na primeira mensagem de cada conversa (o
-> webhook consulta se já existe atendimento anterior para aquele telefone).
+> **Duas decisões tomadas no fechamento, a pedido do usuário:**
+> - Notificar o contador em número de WhatsApp desconhecido: **deixado como
+>   está** (limitação conhecida, não é bug — sem empresa resolvida não dá
+>   pra saber qual escritório notificar).
+> - As 3 linhas de smoke em `whatsapp_atendimentos`
+>   (`smoke-6b-001`/`002`/`003`): **mantidas** em produção, mesma convenção
+>   do 4B (prova de que o teste foi feito).
 >
-> **Smoke roteiro pronto e PARCIAL de propósito** (sem instância uazapi real
-> ainda) em `docs/smoke/2026-07-29-bloco-6b-roteiro-smoke.md` — mostrar o
-> roteiro completo na conversa antes de qualquer outra coisa, sem esperar
-> pedido (ver [[balu-retomada-mostrar-roteiro]]); **o roteiro ainda não foi
-> atualizado para mencionar a persona/saudação — conferir isso no §4 antes de
-> rodar**. Dois itens registrados, pendentes de decisão sua (não bugs):
-> notificar o contador quando chega mensagem de número desconhecido (não
-> implementado — sem empresa resolvida não dá pra saber qual escritório
-> notificar); e o early-return pré-existente do cron de e-mail que também
-> cala o loop novo de WhatsApp (não é deste bloco). Depois do smoke: decidir
-> os itens em aberto → merge `--no-ff` → **push só com sua confirmação
-> explícita** (auto-deploy em produção).
->
+> **Pendência documentada, não corrigida:** o formato real do payload da
+> uazapi (`messageId`/`from`/`text` no webhook; `header`/`path`/`body` no
+> envio) continua sendo a MELHOR HIPÓTESE, não confirmada — depende de uma
+> instância uazapi real, que o usuário está provisionando em paralelo. Ver
+> avisos em `lib/uazapi/cliente.ts` e `app/api/webhooks/uazapi/route.ts`.
+
 > ### 2) `feat/base-juridica-rag` — implementado e revisado, falta VOCÊ decidir o método de deploy
 >
-> Feature nova (pedida nesta sessão): base de conteúdo jurídico/contábil (DOU +
+> Feature nova (pedida na sessão 20): base de conteúdo jurídico/contábil (DOU +
 > portal RFB/Simples Nacional) que alimenta o rascunho de IA do catálogo do
 > Bloco 6A como contexto de apoio — **a regra de "não citar lei pro cliente"
 > continua intacta**, isso é só grounding interno pro rascunho ficar mais
@@ -114,10 +116,7 @@
 >    produção). Horário sugerido no plano: `0 6 * * *` (6h UTC), diferente da
 >    meia-noite do `sync-municipios` pra não competir — confirmar se prefere
 >    outro horário.
->
-> **As duas branches são independentes uma da outra** (a segunda foi criada a
-> partir de `main`, sem depender da primeira) — pode decidir a ordem de
-> retomada como preferir.
+
 
 ---
 
