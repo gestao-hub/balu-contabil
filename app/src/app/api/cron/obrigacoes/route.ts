@@ -23,6 +23,28 @@ import { configDeEnv, enviarMensagem } from '@/lib/uazapi/cliente';
 // chega seria justamente o que deixaria de existir, em silencio.
 export const maxDuration = 60;
 
+// Achado no brainstorming do item "pagamento do DAS no WhatsApp": a SERPRO
+// nao devolve Pix para DAS em nenhum servico identificado (GERARDAS12 nem
+// GERARDASCOBRANCA17) — ver docs/superpowers/specs/2026-07-31-linha-
+// digitavel-whatsapp-design.md §1. O que existe de verdade e a linha
+// digitavel do boleto, ja persistida em guias_fiscais desde a geracao da
+// guia. Funcao pura para poder testar a montagem da mensagem sem mockar
+// rede/banco.
+function montarTextoWhatsapp(n: {
+  titulo: string;
+  corpo: string;
+  action_href: string | null;
+  linha_digitavel: string | null;
+  siteUrl: string;
+}): string {
+  const linhas = [n.titulo, '', n.corpo];
+  if (n.linha_digitavel && n.linha_digitavel.trim()) {
+    linhas.push('', 'Código para pagar (copie e cole no app do seu banco):', n.linha_digitavel.trim());
+  }
+  if (n.action_href) linhas.push('', `${n.siteUrl}${n.action_href}`);
+  return linhas.join('\n');
+}
+
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return NextResponse.json({ error: 'CRON_SECRET não configurado' }, { status: 500 });
@@ -88,7 +110,13 @@ export async function GET(req: Request) {
     for (const n of pendWhats ?? []) {
       const r = await enviarMensagem(cfgUazapi, {
         telefone: n.whatsapp_numero,
-        texto: `${n.titulo}\n\n${n.corpo}${n.action_href ? `\n\n${siteUrl}${n.action_href}` : ''}`,
+        texto: montarTextoWhatsapp({
+          titulo: n.titulo,
+          corpo: n.corpo,
+          action_href: n.action_href,
+          linha_digitavel: n.linha_digitavel,
+          siteUrl,
+        }),
       });
       if (r.ok) {
         await admin.from('notifications').update({ enviada_whatsapp_em: new Date().toISOString() }).eq('id', n.id);
