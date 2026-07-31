@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/clients/email';
 import { renderNotificacaoEmail } from '@/lib/notifications/email-template';
 import { rodarBilling } from '@/lib/billing/cron';
+import { configDeEnv, enviarMensagem } from '@/lib/uazapi/cliente';
 
 // TEMPO DE EXECUCAO — 60s, o teto do plano Hobby da Vercel.
 //
@@ -36,10 +37,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: eRpc.message }, { status: 500 });
   }
 
+  // Não retorna cedo em falha desta RPC: fazia isso até esta sessão, e como
+  // resultado uma falha transitória só no lado de e-mail calava também o
+  // loop de WhatsApp (Bloco 6B) e o billing (Bloco 4A) — que não têm nenhuma
+  // relação com o e-mail e não deveriam parar por causa dele. `pend ?? []`
+  // abaixo já cobre o caso de erro (nenhum e-mail é enviado, mas o resto do
+  // cron segue).
   const { data: pend, error: ePend } = await admin.rpc('notificacoes_pendentes_email', { p_limite: 200 });
   if (ePend) {
     console.error('[cron obrigacoes] notificacoes_pendentes_email', ePend.message);
-    return NextResponse.json({ ok: true, criadas, email_erro: ePend.message }, { status: 207 });
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://balu-contabil.vercel.app';
@@ -67,6 +73,33 @@ export async function GET(req: Request) {
     }
   }
 
+  // Terceiro loop (Bloco 6B): WhatsApp via uazapi. Mesma idempotência do
+  // e-mail (enviada_whatsapp_em fica NULL até o envio ter sucesso). Sem
+  // UAZAPI_BASE_URL/UAZAPI_TOKEN configurados, configDeEnv() devolve null e
+  // enviarMensagem vira no-op — todo item cai em "pulado", sem quebrar o
+  // cron. É o estado de hoje, sem instância provisionada.
+  const { data: pendWhats, error: ePendWhats } = await admin.rpc('notificacoes_pendentes_whatsapp', { p_limite: 50 });
+  let whatsappEnviados = 0;
+  let whatsappPulados = 0;
+  if (ePendWhats) {
+    console.error('[cron obrigacoes] notificacoes_pendentes_whatsapp', ePendWhats.message);
+  } else {
+    const cfgUazapi = configDeEnv();
+    for (const n of pendWhats ?? []) {
+      const r = await enviarMensagem(cfgUazapi, {
+        telefone: n.whatsapp_numero,
+        texto: `${n.titulo}\n\n${n.corpo}${n.action_href ? `\n\n${siteUrl}${n.action_href}` : ''}`,
+      });
+      if (r.ok) {
+        await admin.from('notifications').update({ enviada_whatsapp_em: new Date().toISOString() }).eq('id', n.id);
+        whatsappEnviados++;
+      } else {
+        console.error('[cron obrigacoes] falha ao enviar whatsapp', r.erro ?? 'desconhecido');
+        whatsappPulados++;
+      }
+    }
+  }
+
   // Billing (Bloco 4A) roda AQUI e não em cron próprio: o plano Hobby da
   // Vercel permite exatamente 2 crons e o vercel.json já tem 2. O endpoint
   // /api/cron/billing continua existindo para disparo manual.
@@ -84,5 +117,10 @@ export async function GET(req: Request) {
     billing = { erro: String(err) };
   }
 
-  return NextResponse.json({ ok: true, criadas, enviados, pulados, billing });
+  return NextResponse.json({
+    ok: true, criadas, enviados, pulados,
+    ...(ePend ? { email_erro: ePend.message } : {}),
+    whatsapp_enviados: whatsappEnviados, whatsapp_pulados: whatsappPulados,
+    billing,
+  });
 }

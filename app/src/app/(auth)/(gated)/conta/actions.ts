@@ -146,6 +146,50 @@ export async function salvarPreferenciasNotificacaoAction(fd: FormData): Promise
   return { ok: true };
 }
 
+// Regex simples de E.164: '+', dígito 1-9, 6 a 14 dígitos depois. Não valida
+// se o número EXISTE no WhatsApp — só a forma. A prova de existência é a
+// mensagem de confirmação que a uazapi manda (Task 5/6).
+const E164 = /^\+[1-9]\d{6,14}$/;
+
+/** Opt-in de avisos por WhatsApp. Desativar preserva o número (só zera o
+ *  carimbo de consentimento) para não obrigar o usuário a redigitar ao
+ *  reativar; sem o carimbo, a RPC de disparo já não vê a linha. */
+export async function salvarWhatsappAction(_prev: ContaActionResult | undefined, fd: FormData): Promise<ContaActionResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+
+  const ativar = fd.get('ativar') != null;
+
+  if (!ativar) {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ whatsapp_habilitado_em: null })
+      .eq('user_id', user.id);
+    if (error) return { ok: false, error: error.message };
+    revalidatePath('/conta');
+    return { ok: true };
+  }
+
+  const numero = String(fd.get('whatsapp_numero') ?? '').trim();
+  if (!E164.test(numero)) {
+    return { ok: false, error: 'Informe o número no formato +5511999998888.' };
+  }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ whatsapp_numero: numero, whatsapp_habilitado_em: new Date().toISOString() })
+    .eq('user_id', user.id);
+  // 23505 = unique_violation: outro usuário já reivindicou este número. Checar
+  // o code do Postgres, não substring da mensagem (mais estável — ver
+  // billing/cobranca.ts e billing/emitir-cobranca.ts para o mesmo padrão).
+  if (error) return { ok: false, error: error.code === '23505'
+    ? 'Este número já está em uso por outra conta.' : error.message };
+
+  revalidatePath('/conta');
+  return { ok: true };
+}
+
 /** Colunas de credencial/segredo de `empresas_fiscais` que JAMAIS podem sair em texto
  *  puro na exportação — viram o marcador 'configurado' (não-nulo) ou `null`. */
 const EMPRESA_FISCAL_SEGREDOS = [
