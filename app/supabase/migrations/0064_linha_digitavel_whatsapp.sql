@@ -17,6 +17,11 @@
 -- e o unico writer desses tipos) — para qualquer outro tipo de notificacao,
 -- o CASE devolve NULL e NULL::uuid nunca lanca.
 --
+-- Risco aceito: mesma exposicao que `chave` ja tem hoje — se um bug futuro
+-- gravar um entidade_ref malformado nesses dois tipos, o cast lanca e derruba
+-- a RPC inteira (nao so a notificacao afetada), bloqueando WhatsApp pra todo
+-- mundo naquela chamada do cron.
+--
 -- DESVIO do plano: CREATE OR REPLACE FUNCTION falha com "cannot change
 -- return type of existing function" (42P13) quando o RETURNS TABLE ganha
 -- uma coluna nova — Postgres trata isso como troca do tipo composto de
