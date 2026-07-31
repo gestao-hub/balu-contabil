@@ -37,10 +37,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: eRpc.message }, { status: 500 });
   }
 
+  // Não retorna cedo em falha desta RPC: fazia isso até esta sessão, e como
+  // resultado uma falha transitória só no lado de e-mail calava também o
+  // loop de WhatsApp (Bloco 6B) e o billing (Bloco 4A) — que não têm nenhuma
+  // relação com o e-mail e não deveriam parar por causa dele. `pend ?? []`
+  // abaixo já cobre o caso de erro (nenhum e-mail é enviado, mas o resto do
+  // cron segue).
   const { data: pend, error: ePend } = await admin.rpc('notificacoes_pendentes_email', { p_limite: 200 });
   if (ePend) {
     console.error('[cron obrigacoes] notificacoes_pendentes_email', ePend.message);
-    return NextResponse.json({ ok: true, criadas, email_erro: ePend.message }, { status: 207 });
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://balu-contabil.vercel.app';
@@ -114,6 +119,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true, criadas, enviados, pulados,
+    ...(ePend ? { email_erro: ePend.message } : {}),
     whatsapp_enviados: whatsappEnviados, whatsapp_pulados: whatsappPulados,
     billing,
   });
