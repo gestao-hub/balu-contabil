@@ -38,6 +38,9 @@ screenshots
 # ── Vercel ───────────────────────────────────────────────────
 .vercel
 
+# ── Supabase CLI (cache local de `supabase link`, sem segredo) ─
+supabase/.temp
+
 # ── Kanban stray (o canônico é o .kanban/ da raiz) ───────────
 .kanban
 
