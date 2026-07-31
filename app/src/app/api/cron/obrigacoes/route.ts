@@ -38,8 +38,9 @@ function montarTextoWhatsapp(n: {
   siteUrl: string;
 }): string {
   const linhas = [n.titulo, '', n.corpo];
-  if (n.linha_digitavel && n.linha_digitavel.trim()) {
-    linhas.push('', 'Código para pagar (copie e cole no app do seu banco):', n.linha_digitavel.trim());
+  const linhaDigitavel = n.linha_digitavel?.trim();
+  if (linhaDigitavel) {
+    linhas.push('', 'Código para pagar (copie e cole no app do seu banco):', linhaDigitavel);
   }
   if (n.action_href) linhas.push('', `${n.siteUrl}${n.action_href}`);
   return linhas.join('\n');

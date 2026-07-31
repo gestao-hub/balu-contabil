@@ -7,7 +7,6 @@ const h = vi.hoisted(() => {
   const estado = {
     pendWhats: [] as Array<Record<string, unknown>>,
   };
-  const updates: Array<{ tabela: string; valores: Record<string, unknown> }> = [];
 
   const rpc = vi.fn(async (nome: string) => {
     if (nome === 'materializar_obrigacoes') return { data: 0, error: null };
@@ -16,9 +15,11 @@ const h = vi.hoisted(() => {
     throw new Error(`RPC inesperada no mock: ${nome}`);
   });
 
-  const from = vi.fn((tabela: string) => ({
-    update: (valores: Record<string, unknown>) => ({
-      eq: async () => { updates.push({ tabela, valores }); return { data: null, error: null }; },
+  // Nenhum teste deste arquivo faz asserção sobre o UPDATE final — só precisa
+  // não lançar, pra não travar o loop de WhatsApp do GET.
+  const from = vi.fn((_tabela: string) => ({
+    update: (_valores: Record<string, unknown>) => ({
+      eq: async () => ({ data: null, error: null }),
     }),
   }));
 
@@ -30,7 +31,7 @@ const h = vi.hoisted(() => {
   const configDeEnv = vi.fn(() => null);
   const rodarBilling = vi.fn(async () => ({ reconciliadas: 0 }));
 
-  return { estado, updates, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling };
+  return { estado, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling };
 });
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: h.createAdminClient }));
@@ -48,7 +49,6 @@ function requisicaoFalsa() {
 
 beforeEach(() => {
   h.estado.pendWhats = [];
-  h.updates.length = 0;
   h.rpc.mockClear();
   h.enviarMensagem.mockClear();
 });
