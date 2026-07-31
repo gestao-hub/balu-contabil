@@ -76,6 +76,18 @@ function respostaIaValida(j: unknown): j is { resposta: string; resolvido: boole
 }
 
 /**
+ * Alguns modelos devolvem o JSON pedido envolto em cerca de código markdown
+ * (```json ... ``` ou ``` ... ```) mesmo com o prompt pedindo só JSON —
+ * confirmado no smoke manual do Bloco 6B contra um modelo real via
+ * OpenRouter. `JSON.parse` sozinho lança nesse caso e o fluxo cai no
+ * fallback estático à toa, com uma resposta válida sendo descartada.
+ */
+function semCercaMarkdown(bruto: string): string {
+  const m = bruto.trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return m ? m[1] : bruto;
+}
+
+/**
  * Escalação de atendimento não resolvido: notifica o membro mais antigo do
  * escritório responsável pela empresa (ver sondagem no topo do arquivo).
  *
@@ -247,7 +259,7 @@ export async function POST(req: Request) {
           const bruto = await gerarTexto(
             { provedor: cfgRow.provedor, modelo: cfgRow.modelo, base_url: cfgRow.base_url, chave },
             prompt);
-          const j: unknown = JSON.parse(bruto);
+          const j: unknown = JSON.parse(semCercaMarkdown(bruto));
           if (respostaIaValida(j)) {
             resposta = j.resposta;
             resolvido = j.resolvido;

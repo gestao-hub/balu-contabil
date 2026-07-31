@@ -366,6 +366,22 @@ describe('webhook uazapi', () => {
     expect(grav?.valores).toMatchObject({ resolvido: false });
   });
 
+  // Achado no smoke manual do Bloco 6B: um modelo real (via OpenRouter)
+  // devolveu o JSON pedido envolto em cerca de código markdown, mesmo com o
+  // prompt pedindo só JSON. Sem tirar a cerca antes do JSON.parse, uma
+  // resposta válida da IA era descartada e o fluxo caía no fallback à toa.
+  it('IA devolve JSON envolto em cerca de codigo markdown: ainda usa a resposta real', async () => {
+    h.estado.textoGerado = '```json\n' + JSON.stringify({ resposta: 'Resposta cercada.', resolvido: true }) + '\n```';
+    const res = await POST(requisicaoFalsa({ messageId: 'm10b', from: '+551188', text: 'oi' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.ok).toBe(true);
+    expect(h.enviarMensagem).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ texto: 'Resposta cercada.' }),
+    );
+  });
+
   it('IA devolve resposta vazia ou resolvido fora de tipo: tambem cai no fallback', async () => {
     h.estado.textoGerado = JSON.stringify({ resposta: '   ', resolvido: 'sim' });
     const res = await POST(requisicaoFalsa({ messageId: 'm11', from: '+551199', text: 'oi' }, SEGREDO));
