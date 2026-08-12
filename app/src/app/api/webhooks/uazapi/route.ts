@@ -4,7 +4,7 @@
 // e não queremos loop nem desativação do canal por 5xx).
 //
 // SEGREDO ANTES do rate-limit (ao contrário do esqueleto original do plano):
-// `limitar` é chaveado por `corpo.from`, campo do corpo — não autenticado.
+// `limitar` é chaveado por `entrada.from`, campo do corpo — não autenticado.
 // Rate-limitar antes do segredo deixaria qualquer um estourar o orçamento do
 // NÚMERO DE UM CLIENTE REAL sem precisar conhecer o segredo nenhum.
 //
@@ -55,6 +55,7 @@ import { lerChaveIa } from '@/lib/ai/config-ia';
 import { enviarMensagem, configDeEnv } from '@/lib/uazapi/cliente';
 import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
 import { variantesDoNumero } from '@/lib/whatsapp/numero';
+import { normalizarEntrada, formaDoPayload } from '@/lib/uazapi/payload';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -157,7 +158,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, reason: 'payload_invalido' }, { status: 200 });
   }
 
-  // SEGREDO ANTES do rate-limit. `limitar` é chaveado por `corpo.from` — um
+  // SEGREDO ANTES do rate-limit. `limitar` é chaveado por `entrada.from` — um
   // campo do CORPO, não autenticado. Se o rate-limit rodasse primeiro,
   // qualquer um poderia estourar o orçamento do NÚMERO DE UM CLIENTE REAL sem
   // conhecer o segredo, e a próxima mensagem legítima dele cairia em
@@ -167,7 +168,36 @@ export async function POST(req: Request) {
   if (!segredoDaQuery(req, 's', process.env.UAZAPI_WEBHOOK_SECRET ?? '')) {
     return NextResponse.json({ ok: false, reason: 'unauthorized' }, { status: 200 });
   }
-  if (!(await limitar(`uazapi-webhook:${corpo.from ?? 'sem-telefone'}`, 30, 60))) {
+  // O payload da uazapi NÃO tem a forma que este arquivo supôs até 12/08/2026
+  // (`{messageId, from, text}`): a mensagem real chega com `chatid`,
+  // `content.text`, `messageid`, possivelmente dentro de um envelope. Com os
+  // campos vindo `undefined`, o claim morria por NOT NULL e o endpoint
+  // respondia 200 — a uazapi via sucesso, o cliente via silêncio, e não
+  // sobrava nem linha de auditoria. `normalizarEntrada` aceita as formas
+  // conhecidas e recusa o resto.
+  const entrada = normalizarEntrada(corpo);
+  if (!entrada) {
+    // Registra a FORMA (chaves e tipos, nunca o conteúdo) para o formato
+    // desconhecido virar código em vez de virar mais uma rodada de adivinhação.
+    try {
+      await createAdminClient().from('audit_log').insert({
+        acao: 'uazapi.payload_nao_reconhecido',
+        alvo_tipo: 'webhook',
+        meta: { forma: formaDoPayload(corpo) },
+      });
+    } catch (e) {
+      console.error('[webhook uazapi] payload desconhecido e falha ao registrar forma:', e);
+    }
+    return NextResponse.json({ ok: false, reason: 'payload_nao_reconhecido' }, { status: 200 });
+  }
+
+  // Eco da própria instância: sem isto o assistente responderia às respostas
+  // que ele mesmo acabou de enviar.
+  if (entrada.fromMe) {
+    return NextResponse.json({ ok: true, reason: 'mensagem_propria' }, { status: 200 });
+  }
+
+  if (!(await limitar(`uazapi-webhook:${entrada.from}`, 30, 60))) {
     return NextResponse.json({ ok: false, reason: 'rate_limited' }, { status: 200 });
   }
 
@@ -199,8 +229,8 @@ export async function POST(req: Request) {
     const { data: claim, error: erroClaim } = await admin
       .from('whatsapp_atendimentos')
       .insert({
-        message_id_externo: corpo.messageId, telefone: corpo.from,
-        mensagem_recebida: corpo.text, resolvido: false,
+        message_id_externo: entrada.messageId, telefone: entrada.from,
+        mensagem_recebida: entrada.text, resolvido: false,
       })
       .select('id')
       .single();
@@ -228,7 +258,7 @@ export async function POST(req: Request) {
     // `maybeSingle()` não serve com `in`: dois perfis poderiam casar (um com
     // o 9, outro sem). Pegamos o primeiro e avisamos — cadastro duplicado é
     // problema de dado, não motivo para não atender ninguém.
-    const candidatos = variantesDoNumero(corpo.from);
+    const candidatos = variantesDoNumero(entrada.from);
     const { data: perfis } = await admin
       .from('profiles').select('user_id, current_company, whatsapp_numero')
       .in('whatsapp_numero', candidatos)
@@ -240,7 +270,7 @@ export async function POST(req: Request) {
 
     if (!profile?.current_company) {
       const envio = await enviarMensagem(configDeEnv(), {
-        telefone: corpo.from,
+        telefone: entrada.from,
         texto: 'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.',
       });
       if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
@@ -263,7 +293,7 @@ export async function POST(req: Request) {
     const { data: interacaoAnterior } = await admin
       .from('whatsapp_atendimentos')
       .select('id')
-      .eq('telefone', corpo.from)
+      .eq('telefone', entrada.from)
       .neq('id', atendimentoId)
       .limit(1)
       .maybeSingle();
@@ -278,7 +308,7 @@ export async function POST(req: Request) {
         const chave = lerChaveIa(cfgRow.chave_cifrada as string | null);
         if (chave) {
           const prompt = montarPromptAtendimento({
-            pergunta: corpo.text,
+            pergunta: entrada.text,
             situacaoFiscalTexto: situacao?.texto ?? null,
             primeiraInteracao,
           });
@@ -298,7 +328,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const envio = await enviarMensagem(configDeEnv(), { telefone: corpo.from, texto: resposta });
+    const envio = await enviarMensagem(configDeEnv(), { telefone: entrada.from, texto: resposta });
     if (!envio.ok) {
       console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
       // "Resolvido" só pode significar que a necessidade do cliente foi
@@ -315,7 +345,7 @@ export async function POST(req: Request) {
     // casa com policy nenhuma: some da tela em vez de virar trabalho de alguém.
     let contabilidadeId: string | null = null;
     if (!resolvido) {
-      contabilidadeId = await escalarParaContador(admin, { companyId, pergunta: corpo.text, messageId: corpo.messageId });
+      contabilidadeId = await escalarParaContador(admin, { companyId, pergunta: entrada.text, messageId: entrada.messageId });
     }
 
     const { error: erroUpdate } = await admin

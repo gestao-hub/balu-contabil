@@ -261,8 +261,11 @@ describe('webhook uazapi', () => {
     expect(h.enviarMensagem).toHaveBeenCalledTimes(1);
     expect(h.gerarTexto).not.toHaveBeenCalled();
     const grav = h.inserts.find((i) => i.tabela === 'whatsapp_atendimentos');
+    // Telefone gravado em DÍGITOS, sem o `+`: a normalização de entrada
+    // (lib/uazapi/payload) desmonta JID e máscara antes de qualquer uso, para
+    // o mesmo número não virar duas grafias no banco.
     expect(grav?.valores).toMatchObject({
-      message_id_externo: 'm2', telefone: '+55110000', resolvido: false,
+      message_id_externo: 'm2', telefone: '55110000', resolvido: false,
     });
   });
 
