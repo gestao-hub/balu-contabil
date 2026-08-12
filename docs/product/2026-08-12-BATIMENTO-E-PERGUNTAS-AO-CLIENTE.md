@@ -161,11 +161,49 @@ catálogo de explicações e configurações.
 Ordenadas por impacto. As 5 primeiras destravam decisões que hoje estão paradas.
 
 ### Bloqueiam o planejamento
-**P1. "Saldo disponível real" no painel — o que é exatamente?**
-Ele reprovou o painel inicial e pediu esse item. Não sabemos se é (a) saldo em
-conta bancária (exigiria Open Finance), (b) faturamento menos impostos previstos,
-(c) o que sobrou depois das obrigações do mês, ou (d) outra coisa. É a diferença
-entre uma conta simples e uma integração bancária inteira.
+**P1. ✅ RESPONDIDA (Walace, 12/08/2026).**
+> "O saldo disponível é, na página de conta, ter a visualização dos valores
+> recebidos na conta Asaas, com a opção de transferir para a conta pessoal ou
+> PJ do contador."
+
+**O item não era o que a pergunta supunha.** No formulário, o Michel listou
+"saldo disponível real" entre os itens do **painel do cliente empresa**; a
+resposta o coloca no **painel do contador** — e não como cartão informativo, mas
+como **movimentação de dinheiro**: saldo da subconta Asaas do escritório
+(Bloco 4B) com **saque para a conta bancária do contador**.
+
+Consequências:
+- Não é item de dashboard. É funcionalidade financeira, com spec própria: tira
+  dinheiro de uma conta, então exige confirmação explícita, trilha de auditoria e
+  decisão sobre quem no escritório pode disparar.
+- Base já existe: a subconta por escritório e a chave cifrada (`asaas_api_key_cifrada`)
+  são do Bloco 4B. Falta `/v3/finance/balance` e `/v3/transfers`, mais a conta de destino.
+- 🔒 Depende do Asaas em produção (P14). Em sandbox dá para construir e testar.
+- **Sobra em aberto no dashboard do empresário:** "pendências consolidadas" e
+  "resumo financeiro" continuam sem definição — ver **P1b**.
+
+**Decisões de desenho (Walace, 12/08):**
+- **Onde:** dentro de "Conta de recebimento" (`/contador/configuracoes/subconta`).
+- **Destino:** conta bancária (PF ou PJ) cadastrada **uma vez**; o saque só
+  confirma o valor — menos chance de errar destino digitando a cada vez.
+- **Quem saca:** **só quem criou a subconta**. O modelo atual é "1 escritório =
+  N usuários iguais", sem papéis internos; restringir ao criador é o mais próximo
+  de "titular" sem inventar papéis (que estão marcados como V2).
+
+**Dois pontos técnicos que essas decisões levantam:**
+1. `contabilidades` guarda `asaas_subconta_criada_em` mas **não quem criou** —
+   precisa de coluna nova, e as subcontas já existentes ficam sem dono. Regra
+   proposta: sem `criada_por`, cai no **membro mais antigo** (mesmo precedente de
+   `donoDaAssinatura` no billing e da escalação do 6B).
+2. O Asaas tem **taxa de transferência e liberação D+N** — o "disponível" não é a
+   soma das cobranças pagas. A tela precisa mostrar o saldo que a API informa,
+   nunca um número calculado por nós.
+
+**P1b. O empresário vê algum saldo?**
+Como o dinheiro do Balu flui do cliente final **para** o escritório, o empresário
+paga e não recebe — ele não teria saldo nenhum. Confirmar que a lista dele fica
+só com faturamento, impostos, notas, alertas, pendências e resumo financeiro; e o
+que exatamente ele espera ver em "pendências" e "resumo financeiro".
 
 **P2. Os 3 itens que tornam o app "lançável" (8.1) e a definição de "pronto" (8.5).**
 Ficaram em branco. Sem eles não há critério objetivo — e ele diz que já está atrasado.
