@@ -114,6 +114,10 @@ const NAV: NavItem[] = [
   // telas falam do mesmo credor, e separá-las faria o cliente procurar o boleto
   // na tela errada. Só aparece quando existe boleto (ver `precisaCobranca`).
   { href: '/cobrancas',             label: 'Cobranças',      Icon: Receipt, precisaEmpresa: true, precisaCobranca: true },
+  // Bloco 7: conciliação bancária do empresário. Vizinha de Impostos, não de
+  // Configurações: o cliente vem aqui para ver pagamento reconhecido, não para
+  // configurar algo — a conexão é o meio, não o fim.
+  { href: '/configuracoes/conciliacao', label: 'Conciliação',    Icon: Landmark, precisaEmpresa: true },
   { href: '/configuracoes',         label: 'Configurações',  Icon: Settings, precisaEmpresa: true },
   // Seção AdminBalu (oversight da plataforma). O admin não tem empresa/escritório
   // próprios, então não vê os itens tenant acima — estas telas são as dele.

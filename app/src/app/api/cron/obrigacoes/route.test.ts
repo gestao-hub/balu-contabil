@@ -34,13 +34,20 @@ const h = vi.hoisted(() => {
   );
   const configDeEnv = vi.fn(() => null);
   const rodarBilling = vi.fn(async () => ({ reconciliadas: 0 }));
+  // Mockada de propósito: sem isto ela roda de verdade contra o mock de
+  // banco deste arquivo, falha, e cai no try/catch do route — passando a
+  // impressão de que a conciliação foi exercitada quando não foi.
+  const rodarConciliacao = vi.fn(async () => ({
+    conexoes: 0, importadas: 0, conciliadas: 0, sugestoes: 0, alertas: 0, erros: [],
+  }));
 
-  return { estado, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling };
+  return { estado, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling, rodarConciliacao };
 });
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: h.createAdminClient }));
 vi.mock('@/lib/clients/email', () => ({ sendEmail: h.sendEmail }));
 vi.mock('@/lib/billing/cron', () => ({ rodarBilling: h.rodarBilling }));
+vi.mock('@/lib/conciliacao/cron', () => ({ rodarConciliacao: h.rodarConciliacao }));
 vi.mock('@/lib/uazapi/cliente', () => ({ configDeEnv: h.configDeEnv, enviarMensagem: h.enviarMensagem }));
 
 import { GET } from './route';
