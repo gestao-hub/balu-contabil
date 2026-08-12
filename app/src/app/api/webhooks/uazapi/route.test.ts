@@ -254,7 +254,10 @@ describe('webhook uazapi', () => {
 
   it('telefone desconhecido: avisa o remetente e grava o atendimento sem resolver', async () => {
     h.estado.profile = null;
-    const res = await POST(requisicaoFalsa({ messageId: 'm2', from: '5532987006789', text: 'oi' }, SEGREDO));
+    // Texto com cara de dúvida fiscal: é o único caso em que o aviso sai para
+    // um número não cadastrado. "oi" solto agora passa em silêncio (ver o
+    // teste seguinte) — o assistente não fala com quem não perguntou nada.
+    const res = await POST(requisicaoFalsa({ messageId: 'm2', from: '5532987006789', text: 'qual o limite do MEI?' }, SEGREDO));
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.reason).toBe('telefone_desconhecido');
@@ -267,6 +270,18 @@ describe('webhook uazapi', () => {
     expect(grav?.valores).toMatchObject({
       message_id_externo: 'm2', telefone: '5532987006789', resolvido: false,
     });
+  });
+
+  it('numero desconhecido com conversa fiada NAO recebe mensagem automatica', async () => {
+    // 12/08/2026: a instancia estava num aparelho com conversas pessoais e o
+    // assistente respondia "nao conseguimos identificar sua conta" para quem
+    // so estava falando com o dono do numero.
+    h.estado.profile = null;
+    const res = await POST(requisicaoFalsa({ messageId: 'm2-silencio', from: '5532987006792', text: 'Ta bom entao 👍' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.reason).toBe('telefone_desconhecido');
+    expect(h.enviarMensagem).not.toHaveBeenCalled();
   });
 
   it('resolvido=true: responde ao cliente e NAO escala', async () => {

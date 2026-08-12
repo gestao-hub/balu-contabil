@@ -248,11 +248,26 @@ export async function POST(req: Request) {
     const profile = perfis?.[0] ?? null;
 
     if (!profile?.current_company) {
-      const envio = await enviarMensagem(configDeEnv(), {
-        telefone: entrada.from,
-        texto: 'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.',
-      });
-      if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+      // NÃO responder a qualquer desconhecido. Achado em 12/08/2026: a
+      // instância estava num aparelho com conversas pessoais, e o assistente
+      // respondeu "não conseguimos identificar sua conta" para gente que só
+      // estava conversando com o dono do número — mensagem automática não
+      // solicitada, para quem nunca pediu nada ao Balu.
+      //
+      // O aviso só sai quando a mensagem PARECE dúvida fiscal (mesmo
+      // classificador que decide o resto do fluxo). "Ta bom", "👍" e "to no
+      // ponto" passam em silêncio; "qual o limite do MEI?" recebe a
+      // orientação de cadastrar o número.
+      const pareceDuvidaFiscal = classificarPergunta(entrada.text) === 'geral'
+        || /(das|mei|imposto|nota fiscal|cnpj|guia|declara|tributo|simples)/i.test(entrada.text);
+
+      if (pareceDuvidaFiscal) {
+        const envio = await enviarMensagem(configDeEnv(), {
+          telefone: entrada.from,
+          texto: 'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.',
+        });
+        if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+      }
       // Sem insert aqui: o claim acima já é a linha de auditoria completa
       // para este ramo (message_id_externo, telefone, mensagem_recebida,
       // resolvido:false) — inserir de novo duplicaria a linha e colidiria
