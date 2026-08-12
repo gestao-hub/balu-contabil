@@ -1,6 +1,54 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
+> **Última atualização:** 2026-08-12 (sessão 22, continuação — Bloco 7 mergeado e em produção; `/code-review` de tudo; **WhatsApp validado AO VIVO** com 5 bugs corrigidos; onboarding conversacional entregue; favicon consertado).
+
+> ## ⛔ AO RETOMAR: dois bloqueios operacionais, nenhum de código
+>
+> 1. **A instância de WhatsApp está num número PESSOAL.** Em uma hora de teste,
+>    três conversas de terceiros atravessaram o webhook e viraram linha em
+>    `whatsapp_atendimentos` — dado de gente que nunca falou com o Balu, no
+>    banco do cliente. Já silenciamos a resposta automática para conversa fiada
+>    (só sai aviso quando a mensagem parece dúvida fiscal), mas **a causa é o
+>    número**: produção exige chip dedicado.
+>    Trocar a instância: `node scratchpad/_criar-instancia-balu.mjs`.
+> 2. **OpenRouter sem crédito** (501 comprados, 501,21 usados). A `config_ia`
+>    está no modelo GRATUITO `google/gemma-4-26b-a4b-it:free`, que já falhou
+>    duas vezes por limite de taxa e uma por escrever a chave `"resovido"`.
+>    Ao repor: `node scratchpad/_config-ia-modelo.mjs "mistralai/mistral-small-24b-instruct-2501"`.
+>
+> ### O que foi para produção nesta continuação (main `06b6d5a`)
+> - **13 achados do `/code-review`**, com os 3 graves verificados no banco antes
+>   de aceitar. Dois eram funcionalidades **que nunca funcionaram**: salvar o
+>   SLA e revogar consentimento de Open Finance. Migration **`0076`** conserta
+>   no banco (GRANT + policy) em vez de contornar com service_role.
+> - **WhatsApp (6B) testado ao vivo** — 5 bugs que nenhum teste automatizado
+>   pegaria: env vars ausentes na Vercel; payload de entrada era hipótese
+>   errada desde o 6B; **LID** (`@lid`) lido como telefone; comparação exata de
+>   número (o cadastro tem `+55…`, o WhatsApp entrega dígitos e sem o 9º);
+>   contrato do modelo frágil.
+> - **Atendimento ganhou memória** (últimas 4 trocas) e **a base jurídica**
+>   (415 documentos), que até então só o catálogo do 6A consumia.
+> - **Dúvida geral × pergunta sobre a empresa**: classificação determinística
+>   decide quando um humano é acionado. "O que é IOF?" é respondido sem dado
+>   fiscal; "quanto é o meu DAS?" sem dado vai para o contador.
+> - **Onboarding conversacional com IA** (item 6.1, o último verde em aberto):
+>   dado pessoal é redigido (`⟨CNPJ⟩`) antes de ir ao provedor, a máquina de
+>   estados decide o que falta, e sem IA o fluxo segue pelo texto padrão.
+> - **Favicon**: `metadata.icons` manual desligava a convenção do Next e o
+>   `icon.svg` ficava órfão.
+>
+> ### Verificações que ficaram no repo
+> - `src/lib/atendimento/ia.smoke.test.ts` (6 casos) e
+>   `src/lib/onboarding/ia.smoke.test.ts` (3) — rodam com `SMOKE_IA=1` contra o
+>   provedor real. Foi o primeiro que flagrou o `"resovido"`.
+> - Suíte: **1549 testes**, `tsc` 0, build limpo.
+
+---
+
+> ## Histórico da sessão 22 (primeira parte)
+
+> Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
 > **Última atualização:** 2026-08-12 (sessão 22 — Bloco 7 inteiro + saldo/saque Asaas + métricas do admin + batimento com o cliente; domínio próprio arquivado a pedido do usuário).
 
 > ## ⛔ AO RETOMAR
