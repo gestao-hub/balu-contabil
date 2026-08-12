@@ -7,6 +7,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { signedUrlBranding } from '@/lib/clients/supabase-storage';
 import EscritorioConfigForm from './EscritorioConfigForm';
+import DominioSlaForm, { type DominioSlaInicial } from './DominioSlaForm';
 
 export default async function ContadorConfiguracoesPage() {
   const ctx = await getContabilidadeCtx();
@@ -31,6 +32,22 @@ export default async function ContadorConfiguracoesPage() {
     .maybeSingle();
   const linkInicial = linkRow ? `${process.env.NEXT_PUBLIC_SITE_URL}/r/${linkRow.token}` : null;
 
+  // Domínio/SLA vêm de uma leitura própria: o guard `getContabilidadeCtx`
+  // seleciona uma lista fixa de colunas (branding do Bloco A) e não vale
+  // alargá-la para todo consumidor por causa desta tela.
+  const { data: dominioRow } = await supabase
+    .from('contabilidades')
+    .select('dominio_customizado,dominio_status,dominio_verificado_em,dominio_erro,sla_resposta_horas')
+    .eq('id', c.id)
+    .maybeSingle();
+  const dominioInicial: DominioSlaInicial = {
+    dominio_customizado: (dominioRow?.dominio_customizado ?? null) as string | null,
+    dominio_status: ((dominioRow?.dominio_status ?? 'pendente') as DominioSlaInicial['dominio_status']),
+    dominio_verificado_em: (dominioRow?.dominio_verificado_em ?? null) as string | null,
+    dominio_erro: (dominioRow?.dominio_erro ?? null) as string | null,
+    sla_resposta_horas: (dominioRow?.sla_resposta_horas ?? null) as number | null,
+  };
+
   return (
     <main className="p-6 max-w-3xl">
       <header className="mb-6">
@@ -52,6 +69,8 @@ export default async function ContadorConfiguracoesPage() {
         logoUrlInicial={logoUrlInicial}
         linkInicial={linkInicial}
       />
+
+      <DominioSlaForm initial={dominioInicial} />
     </main>
   );
 }

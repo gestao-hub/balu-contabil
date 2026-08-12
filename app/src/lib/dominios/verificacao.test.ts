@@ -8,7 +8,7 @@ function resposta(corpo: unknown, status = 200): Response {
 
 describe('verificarHost', () => {
   it('token igual => verificado', async () => {
-    const f = vi.fn(async () => resposta({ token: 'tok-1' }));
+    const f = vi.fn(async (_url: string, _init?: RequestInit) => resposta({ token: 'tok-1' }));
     await expect(verificarHost('app.x.com.br', 'tok-1', f)).resolves.toEqual({ ok: true });
     expect(f.mock.calls[0][0]).toBe('https://app.x.com.br/api/dominio/verificacao');
   });
