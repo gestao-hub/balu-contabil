@@ -93,12 +93,17 @@ export default function CreateCompanyDialog({
     if (!open && d.open) d.close();
   }, [open]);
 
-  // Veio CNPJ da conversa: preenche e busca uma vez só. O guard por
-  // `form.cnpj` evita refazer a consulta a cada render e sobrescrever o que a
-  // pessoa já tiver corrigido à mão.
+  // Veio CNPJ da conversa: preenche E BUSCA, uma vez só. Só preencher não
+  // bastava — o assistente acabou de dizer "vou buscar os dados na Receita" e
+  // a pessoa encontraria o formulário parado, esperando um clique que ela não
+  // sabe que precisa dar. O ref (e não `form.cnpj`) é o guard: ele impede a
+  // segunda busca sem impedir que a pessoa edite o campo depois.
+  const buscouCnpjInicial = useRef(false);
   useEffect(() => {
-    if (!open || !cnpjInicial || form.cnpj) return;
-    setForm((prev) => ({ ...prev, cnpj: cnpjInicial }));
+    if (!open || !cnpjInicial || buscouCnpjInicial.current) return;
+    buscouCnpjInicial.current = true;
+    setForm((prev) => (prev.cnpj ? prev : { ...prev, cnpj: cnpjInicial }));
+    void lookupCnpj(cnpjInicial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, cnpjInicial]);
 
@@ -109,6 +114,7 @@ export default function CreateCompanyDialog({
       setBusyCep(false);
       setBusyCnpj(false);
       setSubmitting(false);
+      buscouCnpjInicial.current = false;
     }
   }, [open]);
 
@@ -139,8 +145,15 @@ export default function CreateCompanyDialog({
     }
   }
 
-  async function handleLookupCnpj() {
-    const digits = form.cnpj.replace(/\D+/g, '');
+  function handleLookupCnpj() {
+    return lookupCnpj(form.cnpj);
+  }
+
+  // Recebe o CNPJ por parâmetro (e não do state) para poder ser chamada do
+  // efeito que acabou de preencher o campo: ali `form.cnpj` ainda é o valor
+  // velho, e o React não reagenda a função no meio do mesmo render.
+  async function lookupCnpj(bruto: string) {
+    const digits = (bruto ?? '').replace(/\D+/g, '');
     if (digits.length !== 14) {
       toast('warning', 'Informe um CNPJ com 14 dígitos.');
       return;

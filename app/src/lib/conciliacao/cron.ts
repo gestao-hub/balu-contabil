@@ -132,7 +132,12 @@ export async function rodarConciliacao(admin: SupabaseClient): Promise<Resultado
           p_transacao_id: c.transacaoId,
         });
         if (eBaixa) { r.erros.push(`baixa ${c.guiaId}: ${eBaixa.message}`); continue; }
-        if ((res as { ok?: boolean } | null)?.ok) r.conciliadas++;
+        // `ja_estava_paga` NÃO conta: a RPC é idempotente e devolve ok=true
+        // para guia que já estava quitada. Somar isso faria o relatório do
+        // cron reportar baixa nova todo dia sobre a mesma guia, e o número
+        // deixaria de servir para o que existe — saber se algo aconteceu.
+        const baixa = res as { ok?: boolean; ja_estava_paga?: boolean } | null;
+        if (baixa?.ok && !baixa.ja_estava_paga) r.conciliadas++;
       }
 
       // ── 4. vencida, conectada e sem pagamento detectado ──

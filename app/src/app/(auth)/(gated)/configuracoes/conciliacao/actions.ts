@@ -72,6 +72,13 @@ export async function desconectarContaAction(): Promise<ActionResult> {
 
   const supabase = await createServerClient();
 
+  // Apagar o extrato importado é o titular exercendo o art. 18, VI da LGPD —
+  // e por isso a 0076 abriu DELETE para ele (`conciliacao_transacoes_delete_dono`,
+  // com `user_owns_company`), em vez de fazermos isso por service_role. A RLS
+  // continua sendo a fronteira: um `company_id` que não seja dele apaga zero
+  // linhas, mesmo que `profiles.current_company` diga o contrário.
+  //
+  // INSERT e UPDATE seguem fechados: extrato é escrito pelo cron, não pela tela.
   const { error: eTx } = await supabase
     .from('conciliacao_transacoes').delete().eq('company_id', ctx.companyId);
   if (eTx) return { ok: false, error: eTx.message };

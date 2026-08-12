@@ -67,6 +67,26 @@ export default function SaldoSaque({ ehDono, contaResumo, historico }: Props) {
           Apenas quem abriu a conta de recebimento movimenta o saldo. Fale com essa pessoa
           do escritório para solicitar um saque.
         </p>
+
+        {/* O histórico APARECE para o time todo — é o que a policy da 0073
+            concede de propósito ("todos veem o que saiu"). Esconder dinheiro
+            que sai da conta do escritório de quem trabalha nele seria o
+            contrário da transparência que a tabela existe para dar. */}
+        {historico.length > 0 && (
+          <ul className="mt-4 space-y-2 border-t border-border pt-4 text-sm">
+            {historico.map((s) => (
+              <li key={s.id} className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium text-foreground">{formatBRL(s.valorCentavos)}</span>
+                <span className="text-muted-foreground">
+                  {new Date(s.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <span className={s.status === 'falhou' ? 'text-destructive' : s.status === 'confirmado' ? 'text-primary' : 'text-alert'}>
+                  {ROTULO[s.status]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     );
   }

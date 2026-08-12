@@ -60,7 +60,14 @@ export function resumoPlataforma(
   hojeYmd: string,
 ): ResumoPlataforma {
   const mesAtual = hojeYmd.slice(0, 7);
-  const valorPlano = new Map(planos.map((p) => [p.id, num(p.valor_centavos)]));
+  // MRR é receita MENSAL: o plano anual (`ciclo = 'YEARLY'`, ver 0050) entra
+  // dividido por 12. Somar o valor cheio multiplicaria por doze a receita de
+  // quem paga uma vez por ano — o painel diria que a plataforma fatura num mês
+  // o que ela fatura no exercício.
+  const mensalDoPlano = new Map(planos.map((p) => {
+    const v = num(p.valor_centavos);
+    return [p.id, (p.ciclo ?? '').toUpperCase() === 'YEARLY' ? Math.round(v / 12) : v];
+  }));
 
   const assinaturasPorStatus: Record<string, number> = {};
   let mrrCentavos = 0;
@@ -68,7 +75,7 @@ export function resumoPlataforma(
     const s = (a.status ?? 'sem status').toLowerCase();
     assinaturasPorStatus[s] = (assinaturasPorStatus[s] ?? 0) + 1;
     // Trial não é receita: é promessa. Cancelada e inadimplente também não.
-    if (s === 'ativa') mrrCentavos += valorPlano.get(a.plano_id ?? '') ?? 0;
+    if (s === 'ativa') mrrCentavos += mensalDoPlano.get(a.plano_id ?? '') ?? 0;
   }
 
   let recebidoNoMesCentavos = 0;
@@ -129,7 +136,9 @@ export type UsoEscritorio = {
   assinaturaStatus: string | null;
   /** Volume que o escritório já recebeu pela subconta (Bloco 4B). */
   recebidoCentavos: number;
-  /** Cobranças do escritório vencidas e não pagas. */
+  /** Cobranças do escritório ainda não pagas — inclusive as a vencer.
+   *  `cobrancas_escritorio.vencimento` não é lido aqui, então "em aberto" é
+   *  literalmente "sem pagamento", não "vencida". */
   emAbertoCentavos: number;
 };
 
@@ -146,10 +155,7 @@ export function usoPorEscritorio(
   membros: MembroLinha[],
   cobrancas: CobrancaEscritorioLinha[],
   assinaturas: AssinaturaLinha[],
-  planos: PlanoLinha[],
-  hojeYmd: string,
 ): UsoEscritorio[] {
-  const nomePlano = new Map(planos.map((p) => [p.id, p.id]));
   const porEscritorio = new Map<string, UsoEscritorio>();
 
   for (const e of escritorios) {
@@ -176,7 +182,9 @@ export function usoPorEscritorio(
     const l = porEscritorio.get(a.contabilidade_id);
     if (!l) continue;
     l.assinaturaStatus = a.status;
-    l.plano = a.plano_id ? (nomePlano.get(a.plano_id) ?? a.plano_id) : null;
+    // `planos.id` JÁ É o rótulo exibido ('starter', 'pro') — a tabela não tem
+    // coluna de nome. Um Map id→id no meio disto só disfarçava esse fato.
+    l.plano = a.plano_id ?? null;
   }
 
   for (const c of cobrancas) {

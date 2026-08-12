@@ -107,14 +107,14 @@ describe('usoPorEscritorio', () => {
       { id: 'd', contabilidade_id: 'e2', deleted_at: null },
       { id: 'e', contabilidade_id: null, deleted_at: null },   // self-service
     ];
-    const r = usoPorEscritorio(escritorios, empresas, [], [], [], [], HOJE);
+    const r = usoPorEscritorio(escritorios, empresas, [], [], []);
     expect(r.map((x) => [x.nome, x.clientes])).toEqual([['Alfa', 2], ['Beta', 1], ['Gama', 0]]);
   });
 
   it('escritório sem cliente nenhum APARECE na lista', () => {
     // É justamente o caso que interessa ao dono da plataforma: cadastrou e não
     // usou. Filtrar por clientes > 0 esconderia isso.
-    const r = usoPorEscritorio(escritorios, [], [], [], [], [], HOJE);
+    const r = usoPorEscritorio(escritorios, [], [], [], []);
     expect(r).toHaveLength(3);
     expect(r.every((x) => x.clientes === 0)).toBe(true);
   });
@@ -125,7 +125,7 @@ describe('usoPorEscritorio', () => {
       { contabilidade_id: 'e1', valor_centavos: 30000, status: 'pendente', pago_em: null },
       { contabilidade_id: 'e2', valor_centavos: 10000, status: 'vencida', pago_em: null },
     ];
-    const r = usoPorEscritorio(escritorios, [], [], cobrancas, [], [], HOJE);
+    const r = usoPorEscritorio(escritorios, [], [], cobrancas, []);
     const alfa = r.find((x) => x.nome === 'Alfa');
     expect(alfa).toMatchObject({ recebidoCentavos: 50000, emAbertoCentavos: 30000 });
     expect(r.find((x) => x.nome === 'Beta')).toMatchObject({ recebidoCentavos: 0, emAbertoCentavos: 10000 });
@@ -135,7 +135,7 @@ describe('usoPorEscritorio', () => {
     const assinaturas: AssinaturaLinha[] = [
       { contabilidade_id: 'e2', company_id: null, plano_id: 'pro', status: 'ativa' },
     ];
-    const r = usoPorEscritorio(escritorios, [], [], [], assinaturas, planos, HOJE);
+    const r = usoPorEscritorio(escritorios, [], [], [], assinaturas);
     expect(r.find((x) => x.nome === 'Beta')).toMatchObject({ plano: 'pro', assinaturaStatus: 'ativa' });
     expect(r.find((x) => x.nome === 'Alfa')).toMatchObject({ plano: null, assinaturaStatus: null });
   });
@@ -145,7 +145,7 @@ describe('usoPorEscritorio', () => {
       { id: 'a', contabilidade_id: 'e2', deleted_at: null },
       { id: 'b', contabilidade_id: 'e2', deleted_at: null },
     ];
-    const r = usoPorEscritorio(escritorios, empresas, [], [], [], [], HOJE);
+    const r = usoPorEscritorio(escritorios, empresas, [], [], []);
     expect(r.map((x) => x.nome)).toEqual(['Beta', 'Alfa', 'Gama']);
   });
 });

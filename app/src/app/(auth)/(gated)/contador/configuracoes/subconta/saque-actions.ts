@@ -48,8 +48,17 @@ async function requireDonoDaSubconta(): Promise<
     return { ok: false, error: 'A conta de recebimento ainda não foi aprovada pelo Asaas.' };
   }
 
+  // `criada_por` NULO NÃO É PASSE LIVRE. A 0073 fez backfill apontando o
+  // membro mais antigo, então nulo aqui significa "sem dono identificável" —
+  // e é exatamente assim que a tela decide (`ehDono` exige o valor presente).
+  // Aceitar nulo aqui deixaria qualquer pessoa do escritório esvaziar a conta
+  // por chamada direta da action, com a caixa escondida na tela dando a falsa
+  // impressão de que a regra existe.
   const dono = cont.asaas_subconta_criada_por as string | null;
-  if (dono && dono !== g.userId) {
+  if (!dono) {
+    return { ok: false, error: 'Não sabemos quem abriu esta conta de recebimento. Fale com o suporte da Balu antes de sacar.' };
+  }
+  if (dono !== g.userId) {
     return { ok: false, error: 'Apenas quem abriu a conta de recebimento pode movimentar o saldo.' };
   }
 

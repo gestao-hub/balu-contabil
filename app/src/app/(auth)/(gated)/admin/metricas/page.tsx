@@ -19,9 +19,16 @@ export default async function AdminMetricasPage() {
   const admin = createAdminClient();
   const hoje = ymdBrt();
 
+  // ⚠️ Toda leitura aqui é uma listagem crua, e o PostgREST corta em
+  // `db-max-rows` (1000 por padrão) sem avisar — passado esse ponto os números
+  // param de crescer e o painel mente para baixo, calado. Enquanto o volume
+  // couber, tudo bem; quando não couber, isto vira agregação em SQL, não um
+  // `.limit()` maior. Por isso o erro de cada consulta é logado: uma tabela
+  // que falhe por permissão renderizaria zero como se fosse a verdade.
   const [
-    { data: cobrancas }, { data: assinaturas }, { data: planos },
-    { data: contabs }, { data: empresas }, { data: membros }, { data: cobrEscritorio },
+    { data: cobrancas, error: eCobr }, { data: assinaturas, error: eAssin }, { data: planos, error: ePlanos },
+    { data: contabs, error: eContabs }, { data: empresas, error: eEmp },
+    { data: membros, error: eMembros }, { data: cobrEscritorio, error: eCobrEsc },
   ] = await Promise.all([
     admin.from('cobrancas').select('valor_centavos,status,vencimento,pago_em'),
     admin.from('assinaturas').select('contabilidade_id,company_id,plano_id,status'),
@@ -32,10 +39,17 @@ export default async function AdminMetricasPage() {
     admin.from('cobrancas_escritorio').select('contabilidade_id,valor_centavos,status,pago_em'),
   ]);
 
+  for (const [rotulo, erro] of [
+    ['cobrancas', eCobr], ['assinaturas', eAssin], ['planos', ePlanos],
+    ['contabilidades', eContabs], ['companies', eEmp],
+    ['contabilidade_membros', eMembros], ['cobrancas_escritorio', eCobrEsc],
+  ] as const) {
+    if (erro) console.error(`[admin/metricas] leitura de ${rotulo} falhou:`, erro.message);
+  }
+
   const resumo = resumoPlataforma(cobrancas ?? [], assinaturas ?? [], planos ?? [], hoje);
   const uso = usoPorEscritorio(
-    contabs ?? [], empresas ?? [], membros ?? [], cobrEscritorio ?? [],
-    assinaturas ?? [], planos ?? [], hoje,
+    contabs ?? [], empresas ?? [], membros ?? [], cobrEscritorio ?? [], assinaturas ?? [],
   );
 
   const totalClientes = uso.reduce((s, e) => s + e.clientes, 0);

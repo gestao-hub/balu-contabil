@@ -1,9 +1,10 @@
 // Bloco 6B — cliente da uazapi.
 //
-// ⚠️ CONTRATO NAO SONDADO CONTRA INSTANCIA REAL (ver Task 5, Step 1). O header
-// `token` e o path `/send/text` são a MELHOR hipótese a partir da documentação
-// pública — confirme contra uma instância real assim que houver uma, e
-// atualize este comentário quando confirmar (removendo o aviso).
+// ✅ CONTRATO CONFIRMADO contra instância real em 12/08/2026: `POST /send/text`
+// com header `token` e corpo `{ number, text }` devolveu 200 e a mensagem
+// chegou no WhatsApp de destino. A hipótese que ficou marcada desde o Bloco 6B
+// (a documentação pública é um SPA que não expõe conteúdo estático) estava
+// correta — o aviso que vivia aqui foi removido porque virou fato.
 //
 // Tentativa de sondagem em 2026-07-29: docs.uazapi.com é um SPA renderizado em
 // JS (gerador de doc OpenAPI) que não expõe conteúdo estático — não deu para

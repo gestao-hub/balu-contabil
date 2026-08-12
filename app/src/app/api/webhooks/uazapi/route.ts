@@ -8,10 +8,10 @@
 // Rate-limitar antes do segredo deixaria qualquer um estourar o orçamento do
 // NÚMERO DE UM CLIENTE REAL sem precisar conhecer o segredo nenhum.
 //
-// ⚠️ FORMATO DO PAYLOAD DA UAZAPI NÃO CONFIRMADO — ver Task 5/6, Step 1 do
-// plano. `messageId`/`from`/`text` são a MELHOR hipótese; ajuste os nomes de
-// campo assim que uma instância real confirmar o contrato (o cliente em
-// lib/uazapi/cliente.ts tem o mesmo aviso para o envio).
+// ⚠️ ENVIO confirmado em 12/08/2026 (ver lib/uazapi/cliente.ts), mas o formato
+// do payload de ENTRADA continua sendo hipótese: `messageId`/`from`/`text`.
+// Só uma mensagem recebida de verdade confirma — e isso exige alguém escrever
+// para o número conectado. Até lá, o aviso fica.
 //
 // ═══ TASK 6 STEP 1 — SONDAGEM: quem é "o contador" de uma empresa ═══
 //

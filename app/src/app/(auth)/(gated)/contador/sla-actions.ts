@@ -29,6 +29,14 @@ export async function salvarSlaAction(horas: number | null): Promise<ActionResul
     }
   }
 
+  // Pela SESSÃO, com a RLS como fronteira — a policy
+  // `contabilidades_update_membro` (id = minha_contabilidade_membro()) é quem
+  // garante que ninguém mexe no SLA de outro escritório.
+  //
+  // Isto já esteve quebrado: a 0053 revogou o UPDATE de tabela e reconcedeu
+  // por coluna, e `sla_resposta_horas` nasceu na 0069, depois disso — grant
+  // por coluna não alcança coluna nova, então o update voltava "permission
+  // denied" e a funcionalidade inteira era inerte. A 0076 concedeu a coluna.
   const supabase = await createServerClient();
   const { error } = await supabase
     .from('contabilidades')

@@ -68,13 +68,29 @@ export function acharTelefone(texto: string): string | null {
   return d.length === 10 || d.length === 11 ? d : null;
 }
 
-/** CRC no formato usual: 1–2 letras de UF + números (ex.: "SP-123456" ou "CRC/SP 123456"). */
+/**
+ * Padrão de CRC: 1–2 letras de UF + números (ex.: "SP-123456" ou "CRC/SP 123456").
+ *
+ * Fábrica, e não constante: regex com `g` carrega `lastIndex`, e uma instância
+ * compartilhada entre `acharCrc` e `redigir` faria uma chamada começar de onde
+ * a outra parou.
+ */
+const crcRe = (): RegExp => /\b(?:crc\s*[-/]?\s*)?([A-Za-z]{2})\s*[-/]?\s*(\d{4,8})\b/gi;
+
+/**
+ * Acha o CRC no texto.
+ *
+ * Percorre TODOS os candidatos, e não só o primeiro: qualquer par de letras
+ * seguido de 4–8 dígitos casa com o padrão ("os 12345 reais", "ap 4501"), e
+ * parar no primeiro descartaria o CRC de verdade que vem depois — o assistente
+ * pediria o CRC de novo com a pessoa já tendo respondido.
+ */
 export function acharCrc(texto: string): { crc: string; uf: string } | null {
-  const m = texto.match(/\b(?:crc\s*[-/]?\s*)?([A-Za-z]{2})\s*[-/]?\s*(\d{4,8})\b/i);
-  if (!m) return null;
-  const uf = m[1].toUpperCase();
-  if (!UFS.has(uf)) return null;
-  return { crc: m[2], uf };
+  for (const m of texto.matchAll(crcRe())) {
+    const uf = m[1].toUpperCase();
+    if (UFS.has(uf)) return { crc: m[2], uf };
+  }
+  return null;
 }
 
 /**
@@ -104,11 +120,20 @@ export function redigir(texto: string): Redacao {
   const crc = acharCrc(saida);
   if (crc) {
     campos.crc = crc.crc; campos.crcUf = crc.uf;
-    saida = saida.replace(/\b(?:crc\s*[-/]?\s*)?[A-Za-z]{2}\s*[-/]?\s*\d{4,8}\b/i, '⟨CRC⟩');
+    // Só as ocorrências com UF de verdade: sem esse filtro, um "os 12345"
+    // qualquer viraria ⟨CRC⟩ e o CRC real seguiria em claro no texto.
+    saida = saida.replace(crcRe(), (m, uf: string) => (UFS.has(uf.toUpperCase()) ? '⟨CRC⟩' : m));
   }
 
   // Sobra numérica longa (CPF, inscrição, conta) também não passa.
   saida = saida.replace(/\b\d{7,}\b/g, '⟨NUMERO⟩');
+
+  // ...e nem quando vem MASCARADA. Aqui contam os DÍGITOS da sequência, não o
+  // comprimento da corrida: "529.982.247-25" tem 11 dígitos e nenhuma corrida
+  // de 7 seguidos, então a regra acima sozinha mandaria um CPF inteiro para o
+  // provedor — exatamente o que este arquivo existe para impedir. O piso de 9
+  // dígitos deixa datas (12/08/2026, 8 dígitos) e valores passarem.
+  saida = saida.replace(/\d[\d./-]*\d/g, (m) => (soDigitos(m).length >= 9 ? '⟨NUMERO⟩' : m));
 
   return { texto: saida, campos };
 }
