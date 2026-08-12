@@ -56,6 +56,8 @@ import { enviarMensagem, configDeEnv } from '@/lib/uazapi/cliente';
 import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
 import { variantesDoNumero } from '@/lib/whatsapp/numero';
 import { normalizarEntrada, formaDoPayload } from '@/lib/uazapi/payload';
+import { buscarContextoPorPergunta } from '@/lib/base-juridica/buscar';
+import { lerRespostaAtendimento } from '@/lib/atendimento/resposta';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,31 +65,7 @@ export const dynamic = 'force-dynamic';
 // ⚠️ FORMATO REAL NÃO CONFIRMADO — ver aviso de topo do arquivo.
 type PayloadUazapi = { messageId: string; from: string; text: string };
 
-/**
- * O modelo pode devolver JSON sintaticamente válido mas fora da forma
- * esperada (`{}`, `resposta` ausente/número, `resolvido` ausente) — isso NÃO
- * lança em `JSON.parse`, e um `as` sozinho deixaria `resposta: undefined`
- * seguir até `enviarMensagem`, onde `JSON.stringify` apaga a chave e a uazapi
- * recebe uma mensagem sem texto. Checagem em runtime, não só de tipo.
- */
-function respostaIaValida(j: unknown): j is { resposta: string; resolvido: boolean } {
-  if (!j || typeof j !== 'object') return false;
-  const r = (j as Record<string, unknown>).resposta;
-  const resolvido = (j as Record<string, unknown>).resolvido;
-  return typeof r === 'string' && r.trim().length > 0 && typeof resolvido === 'boolean';
-}
 
-/**
- * Alguns modelos devolvem o JSON pedido envolto em cerca de código markdown
- * (```json ... ``` ou ``` ... ```) mesmo com o prompt pedindo só JSON —
- * confirmado no smoke manual do Bloco 6B contra um modelo real via
- * OpenRouter. `JSON.parse` sozinho lança nesse caso e o fluxo cai no
- * fallback estático à toa, com uma resposta válida sendo descartada.
- */
-function semCercaMarkdown(bruto: string): string {
-  const m = bruto.trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return m ? m[1] : bruto;
-}
 
 /**
  * Escalação de atendimento não resolvido: notifica o membro mais antigo do
@@ -290,14 +268,33 @@ export async function POST(req: Request) {
     // mensagem de uma conversa, nunca se repete. `atendimentoId` já é a linha
     // desta própria mensagem (claim acima) — precisa ser excluída da busca,
     // senão toda mensagem se veria como "não é a primeira" (ela mesma conta).
-    const { data: interacaoAnterior } = await admin
+    // MEMÓRIA DA CONVERSA. Antes daqui o assistente lia só a mensagem atual —
+    // cada pergunta era tratada como se fosse a primeira, e o cliente tinha de
+    // repetir o contexto a cada frase. Agora as últimas trocas do MESMO
+    // telefone entram no prompt.
+    const { data: anteriores } = await admin
       .from('whatsapp_atendimentos')
-      .select('id')
+      .select('mensagem_recebida, resposta_enviada, created_at')
       .eq('telefone', entrada.from)
       .neq('id', atendimentoId)
-      .limit(1)
-      .maybeSingle();
-    const primeiraInteracao = !interacaoAnterior;
+      .order('created_at', { ascending: false })
+      .limit(4);
+    const primeiraInteracao = (anteriores?.length ?? 0) === 0;
+    // Do mais antigo para o mais recente: é assim que se lê uma conversa.
+    const historico = [...(anteriores ?? [])].reverse().map((a) => ({
+      pergunta: (a.mensagem_recebida as string) ?? '',
+      resposta: (a.resposta_enviada as string | null) ?? null,
+    }));
+
+    // BASE JURÍDICA como apoio (415 documentos da legislação vigente, mantidos
+    // pelo cron do RAG). Era consumida só pelo catálogo do 6A; o atendimento
+    // respondia sem ela e escalava para o contador em qualquer dúvida que
+    // fugisse da situação fiscal calculada.
+    //
+    // GROUNDING, NUNCA VOZ: entra como material interno, e o prompt proíbe
+    // citar lei ou artigo na resposta — a fronteira do DL 9.295/46 continua
+    // de pé. Falha aqui devolve lista vazia e o fluxo segue como antes.
+    const contextoJuridico = await buscarContextoPorPergunta(admin, entrada.text);
 
     const { data: cfgRow } = await admin.from('config_ia').select('*').eq('id', 1).maybeSingle();
     let resposta = 'Não consegui responder agora — o contador vai retornar em breve.';
@@ -311,12 +308,18 @@ export async function POST(req: Request) {
             pergunta: entrada.text,
             situacaoFiscalTexto: situacao?.texto ?? null,
             primeiraInteracao,
+            historico,
+            contextoJuridico,
           });
           const bruto = await gerarTexto(
             { provedor: cfgRow.provedor, modelo: cfgRow.modelo, base_url: cfgRow.base_url, chave },
             prompt);
-          const j: unknown = JSON.parse(semCercaMarkdown(bruto));
-          if (respostaIaValida(j)) {
+          // Leitura TOLERANTE (lib/atendimento/resposta): o modelo já devolveu
+          // a resposta certa com a chave escrita `"resovido"`, e a validação
+          // estrita jogou fora um atendimento bom. Falta de conteúdo continua
+          // sendo recusada; o que se tolera é grafia de chave.
+          const j = lerRespostaAtendimento(bruto);
+          if (j) {
             resposta = j.resposta;
             resolvido = j.resolvido;
           } else {

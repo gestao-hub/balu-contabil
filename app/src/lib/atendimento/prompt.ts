@@ -19,9 +19,20 @@
 //    já calculado/aprovado (`situacaoFiscalTexto`), nunca de raciocínio
 //    jurídico livre da IA. Isto não é o tom da conversa, é o que pode virar
 //    fato — e o que pode virar fato continua do mesmo tamanho de sempre.
+export type TurnoAnterior = { pergunta: string; resposta: string | null };
+
 export type EntradaAtendimento = {
   pergunta: string;
   situacaoFiscalTexto: string | null;
+  /** Trechos da base jurídica (documentos_juridicos) que casam com a pergunta.
+   *  GROUNDING, NUNCA VOZ — mesma regra do 6A: servem para o assistente
+   *  acertar a regra vigente, e o texto que chega ao cliente continua sem
+   *  citar lei, artigo ou resolução (DL 9.295/46). */
+  contextoJuridico?: { titulo: string; texto: string }[];
+  /** Últimas trocas DESTA conversa, da mais antiga para a mais recente. Sem
+   *  isto o assistente responde cada mensagem como se fosse a primeira, e o
+   *  cliente precisa repetir tudo a cada pergunta. */
+  historico?: TurnoAnterior[];
   /** true só na primeira mensagem desta conversa — a saudação do Assistente
    *  Balu aparece uma vez, nunca se repete (quem decide isto é o webhook,
    *  consultando se já existe atendimento anterior para este telefone). */
@@ -42,6 +53,30 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
       ]
     : [];
 
+  // Memória: só as últimas trocas. O estado que vale é o do banco, e mandar a
+  // conversa inteira encareceria o prompt e aumentaria a chance de o modelo se
+  // apoiar em algo velho.
+  const memoria = (e.historico ?? []).length > 0
+    ? [
+        'Conversa até aqui (mais antiga primeiro):',
+        ...(e.historico ?? []).slice(-4).map((t) =>
+          `- Cliente: ${t.pergunta}
+  Assistente: ${t.resposta ?? '(sem resposta)'}`),
+        '',
+      ]
+    : [];
+
+  // Base jurídica: contexto interno, com instrução explícita de não virar voz.
+  const juridico = (e.contextoJuridico ?? []).length > 0
+    ? [
+        'Material de apoio da legislação vigente (uso INTERNO, para você acertar a regra):',
+        ...(e.contextoJuridico ?? []).slice(0, 4).map((t) => `- ${t.titulo}: ${t.texto.slice(0, 600)}`),
+        'Use este material para responder com precisão, mas NÃO cite lei, artigo,',
+        'resolução nem número de norma na sua resposta — explique em português simples.',
+        '',
+      ]
+    : [];
+
   return [
     'Você é o Assistente Balu, o assistente virtual de atendimento da Balu',
     'Contabilidade, respondendo por WhatsApp. Seu tom é profissional, educado,',
@@ -52,14 +87,17 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
     'Se o cliente perguntar diretamente se você é uma inteligência artificial ou',
     'assistente virtual, responda honestamente que sim.',
     ...apresentacao,
+    ...memoria,
+    ...juridico,
     `Pergunta do cliente: "${e.pergunta}"`,
     `O que já sabemos sobre a situação fiscal dele: ${contexto}`,
     '',
-    'Responda em até 3 frases, em português simples, usando SOMENTE a informação acima.',
+    'Responda em até 3 frases, em português simples, usando SOMENTE a informação acima',
+    '(situação fiscal, material de apoio e o que já foi dito nesta conversa).',
     'Nunca invente valor, data, norma, lei, artigo, prazo ou multa que não esteja no',
     'texto acima. Nunca oriente sonegação, fraude nem forma de burlar a fiscalização.',
     'Se a informação acima não for suficiente para responder com segurança, diga que vai',
-    'encaminhar para o contador.',
+    'encaminhar para o contador — e só nesse caso use "resolvido": false.',
     '',
     'Responda em JSON, só com estas duas chaves: ',
     '{ "resposta": "...", "resolvido": true ou false }',
