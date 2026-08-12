@@ -19,6 +19,7 @@ import type { StatusSubconta } from '@/lib/billing/status-subconta';
 import { estadoWebhookDaContabilidade } from '@/lib/billing/webhook-subconta-asaas';
 import { avisoDoDiagnostico } from '@/lib/billing/webhook-subconta';
 import SubcontaForm from './SubcontaForm';
+import SaldoSaque, { type SaqueHistorico } from './SaldoSaque';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,7 @@ export default async function ContadorSubcontaPage() {
   const sb = await createServerClient();
   const { data: cont } = await sb
     .from('contabilidades')
-    .select('nome, cnpj, asaas_subconta_id, asaas_wallet_id, asaas_subconta_status, asaas_subconta_criada_em')
+    .select('nome, cnpj, asaas_subconta_id, asaas_wallet_id, asaas_subconta_status, asaas_subconta_criada_em, asaas_subconta_criada_por, conta_destino_resumo')
     .eq('id', ctx.contabilidade.id)
     .maybeSingle();
 
@@ -65,6 +66,29 @@ export default async function ContadorSubcontaPage() {
       ? avisoDoDiagnostico(webhook)
       : null;
 
+  // Saldo/saque: só para o DONO da subconta (quem a criou) e só com a conta
+  // aprovada. `criada_por` nulo é subconta anterior à 0073 — o backfill já
+  // apontou o membro mais antigo, então nulo aqui significa "sem dono
+  // identificável", e nesse caso ninguém saca: dinheiro não é lugar de
+  // presumir permissão.
+  const ehDono = Boolean(cont?.asaas_subconta_criada_por) && cont?.asaas_subconta_criada_por === ctx.userId;
+
+  let historico: SaqueHistorico[] = [];
+  if (temSubconta && status === 'aprovada') {
+    const { data: saques } = await sb
+      .from('saques_escritorio')
+      .select('id,valor_centavos,status,destino_resumo,created_at')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    historico = (saques ?? []).map((x) => ({
+      id: x.id as string,
+      valorCentavos: Number(x.valor_centavos),
+      status: x.status as SaqueHistorico['status'],
+      destinoResumo: (x.destino_resumo as string | null) ?? null,
+      criadoEm: x.created_at as string,
+    }));
+  }
+
   return (
     <main className="p-6 max-w-3xl">
       <header className="mb-6">
@@ -87,6 +111,14 @@ export default async function ContadorSubcontaPage() {
         criadaEm={cont?.asaas_subconta_criada_em ?? null}
         avisoWebhook={avisoWebhook}
       />
+
+      {temSubconta && status === 'aprovada' && (
+        <SaldoSaque
+          ehDono={ehDono}
+          contaResumo={(cont?.conta_destino_resumo as string | null) ?? null}
+          historico={historico}
+        />
+      )}
     </main>
   );
 }
