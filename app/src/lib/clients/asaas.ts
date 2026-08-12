@@ -330,6 +330,45 @@ export function asaasSub(token: string) {
       call<{ payload?: string; encodedImage?: string }>('GET', `/v3/payments/${id}/pixQrCode`, undefined, token),
 
     /**
+     * Saldo DISPONIVEL da subconta — o numero que o Asaas considera sacavel
+     * agora, ja descontada a liberacao D+N e as taxas.
+     *
+     * ⚠️ NAO calcular isto somando cobrancas pagas. Cobranca liquidada nao e
+     * dinheiro disponivel: ha prazo de liberacao e tarifa por transacao. Um
+     * saldo calculado por nos ficaria maior que o real, o contador tentaria
+     * sacar e levaria erro — parecendo bug nosso, quando seria conta errada.
+     */
+    consultarSaldo: () =>
+      call<{ balance: number }>('GET', '/v3/finance/balance', undefined, token),
+
+    /**
+     * Transferencia da subconta para conta bancaria de terceiro (a do proprio
+     * contador). `value` em REAIS com decimais, que e a unidade do Asaas — a
+     * conversao de centavos acontece em quem chama, uma vez so.
+     *
+     * `semRetry`: retry cego em transferencia pode transferir duas vezes. O
+     * Asaas nao expoe chave de idempotencia nesta rota, entao a unica defesa e
+     * nao repetir sozinho — se a resposta se perder, quem decide repetir e uma
+     * pessoa olhando o extrato.
+     */
+    transferir: (d: {
+      value: number;
+      bankAccount: {
+        bank: { code: string };
+        accountName?: string;
+        ownerName: string;
+        cpfCnpj: string;
+        agency: string;
+        account: string;
+        accountDigit: string;
+        bankAccountType: 'CONTA_CORRENTE' | 'CONTA_POUPANCA';
+      };
+      description?: string;
+    }) => call<{ id: string; status: string; value: number }>(
+      'POST', '/v3/transfers', d, token, { semRetry: true },
+    ),
+
+    /**
      * KYC da PROPRIA subconta. `myAccount` significa "a conta do token" — com o
      * token da conta-mae isto devolveria o KYC da Balu, e a Balu esta sempre
      * aprovada: o `, token` aqui e a diferenca entre ler o cadastro do

@@ -7,12 +7,14 @@ const h = vi.hoisted(() => {
   const estado = {
     pendWhats: [] as Array<Record<string, unknown>>,
     suprimidas: 0 as number,
+    slaAvisos: 0 as number,
   };
 
   const rpc = vi.fn(async (nome: string) => {
     if (nome === 'materializar_obrigacoes') return { data: 0, error: null };
     if (nome === 'notificacoes_pendentes_email') return { data: [], error: null };
     if (nome === 'suprimir_whatsapp_superadas') return { data: estado.suprimidas, error: null };
+    if (nome === 'materializar_sla_estourado') return { data: estado.slaAvisos, error: null };
     if (nome === 'notificacoes_pendentes_whatsapp') return { data: estado.pendWhats, error: null };
     throw new Error(`RPC inesperada no mock: ${nome}`);
   });
@@ -32,13 +34,20 @@ const h = vi.hoisted(() => {
   );
   const configDeEnv = vi.fn(() => null);
   const rodarBilling = vi.fn(async () => ({ reconciliadas: 0 }));
+  // Mockada de propósito: sem isto ela roda de verdade contra o mock de
+  // banco deste arquivo, falha, e cai no try/catch do route — passando a
+  // impressão de que a conciliação foi exercitada quando não foi.
+  const rodarConciliacao = vi.fn(async () => ({
+    conexoes: 0, importadas: 0, conciliadas: 0, sugestoes: 0, alertas: 0, erros: [],
+  }));
 
-  return { estado, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling };
+  return { estado, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling, rodarConciliacao };
 });
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: h.createAdminClient }));
 vi.mock('@/lib/clients/email', () => ({ sendEmail: h.sendEmail }));
 vi.mock('@/lib/billing/cron', () => ({ rodarBilling: h.rodarBilling }));
+vi.mock('@/lib/conciliacao/cron', () => ({ rodarConciliacao: h.rodarConciliacao }));
 vi.mock('@/lib/uazapi/cliente', () => ({ configDeEnv: h.configDeEnv, enviarMensagem: h.enviarMensagem }));
 
 import { GET } from './route';
@@ -52,6 +61,7 @@ function requisicaoFalsa() {
 beforeEach(() => {
   h.estado.pendWhats = [];
   h.estado.suprimidas = 0;
+  h.estado.slaAvisos = 0;
   h.rpc.mockClear();
   h.enviarMensagem.mockClear();
 });
@@ -162,5 +172,32 @@ describe('GET /api/cron/obrigacoes — coalescência de WhatsApp por guia (0068)
     const corpo = await (await GET(requisicaoFalsa())).json();
 
     expect(corpo.whatsapp_suprimidas).toBe(3);
+  });
+});
+
+describe('GET /api/cron/obrigacoes — alerta de SLA de atendimento (0070)', () => {
+  it('chama materializar_sla_estourado e reporta a contagem', async () => {
+    h.estado.slaAvisos = 2;
+
+    const corpo = await (await GET(requisicaoFalsa())).json();
+
+    expect(h.rpc.mock.calls.map((c) => c[0])).toContain('materializar_sla_estourado');
+    expect(corpo.sla_avisos).toBe(2);
+  });
+
+  it('falha no SLA não derruba a materialização das obrigações', async () => {
+    // O que tem prazo legal é a obrigação fiscal; o alerta de SLA é interno.
+    // Um erro nele não pode custar o dia inteiro de notificações.
+    h.rpc.mockImplementationOnce(
+      async () => ({ data: null, error: { message: 'boom' } }) as unknown as { data: Record<string, unknown>[]; error: null },
+    );
+
+    const res = await GET(requisicaoFalsa());
+    const corpo = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(corpo.ok).toBe(true);
+    expect(corpo.sla_avisos).toBeNull();
+    expect(h.rpc.mock.calls.map((c) => c[0])).toContain('materializar_obrigacoes');
   });
 });

@@ -55,27 +55,36 @@ export async function marcarGuiaPagaAction(id: string): Promise<GuiaActionResult
   const brt = new Date(today.getTime() - 3 * 60 * 60 * 1000);
   const dataPagamento = brt.toISOString().slice(0, 10);
 
-  const { error } = await supabase
-    .from('guias_fiscais')
-    .update({
-      status: 'paga',
-      data_pagamento: dataPagamento,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .eq('company_id', companyId)
-    .is('deleted_at', null);
+  // PONTO DE ESCRITA ÚNICO (migration 0072). A action não escreve mais em
+  // `guias_fiscais` direto: a RPC marca a guia, resolve as notificações dela e
+  // grava a auditoria com a origem, numa transação só. A conciliação bancária
+  // (Bloco 7, Frente 3) chama exatamente a mesma função com `origem` diferente.
+  //
+  // O motivo de existir é histórico e concreto: enquanto "guia paga" teve dois
+  // donos, o filtro foi esquecido em três consumidores seguidos (0065, 0066,
+  // 0067), um de cada vez. Com um ponto só, o consumidor novo não tem como
+  // esquecer — não há nada para lembrar.
+  //
+  // `companyId` continua sendo lido acima para o guard de sessão/empresa
+  // ativa; a autorização de verdade é a da RPC (`user_owns_company`).
+  const { data: res, error } = await supabase.rpc('registrar_pagamento_guia', {
+    p_guia_id: id,
+    p_data_pagamento: dataPagamento,
+    p_origem: 'manual',
+    p_transacao_id: null,
+  });
 
   if (error) return { ok: false, error: error.message };
 
-  // Resolve no ponto de escrita (migration 0067): carimba `resolvida_em` nas
-  // notificações das_a_vencer/das_vencido desta guia. Antes disso, cada
-  // consumidor de `notifications` tinha que lembrar de fazer o LEFT JOIN com
-  // guias_fiscais pra não mostrar/enviar aviso de guia quitada — e dois
-  // esqueceram (0065/0066). Erro aqui não desfaz o pagamento: a guia está
-  // paga de fato, e os filtros de leitura seguem cobrindo o caso.
-  const { error: erroNotif } = await supabase.rpc('resolver_notificacoes_guia', { p_guia_id: id });
-  if (erroNotif) console.error('[marcarGuiaPaga] resolver_notificacoes_guia:', erroNotif.message);
+  const r = res as { ok: boolean; motivo?: string } | null;
+  if (!r?.ok) {
+    return {
+      ok: false,
+      error: r?.motivo === 'nao_autorizado'
+        ? 'Esta guia não é da sua empresa.'
+        : 'Guia não encontrada.',
+    };
+  }
 
   revalidatePath('/impostos');
   revalidatePath('/notificacoes');

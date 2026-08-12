@@ -7,6 +7,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { signedUrlBranding } from '@/lib/clients/supabase-storage';
 import EscritorioConfigForm from './EscritorioConfigForm';
+import SlaForm, { type SlaInicial } from './SlaForm';
 
 export default async function ContadorConfiguracoesPage() {
   const ctx = await getContabilidadeCtx();
@@ -31,6 +32,25 @@ export default async function ContadorConfiguracoesPage() {
     .maybeSingle();
   const linkInicial = linkRow ? `${process.env.NEXT_PUBLIC_SITE_URL}/r/${linkRow.token}` : null;
 
+  // SLA vem de leitura própria: o guard `getContabilidadeCtx` seleciona uma
+  // lista fixa de colunas (branding do Bloco A) e não vale alargá-la para todo
+  // consumidor por causa desta tela.
+  const { data: slaRow, error: erroSla } = await supabase
+    .from('contabilidades')
+    .select('sla_resposta_horas')
+    .eq('id', c.id)
+    .maybeSingle();
+  // Mesmo cuidado da tela de subconta: GRANT por coluna em `contabilidades`
+  // não alcança coluna nova, e sem este log a seção renderiza vazia como se
+  // nada estivesse cadastrado.
+  if (erroSla) {
+    console.error('[7] leitura do SLA falhou (coluna sem GRANT?):', erroSla.message);
+  }
+
+  const slaInicial: SlaInicial = {
+    sla_resposta_horas: (slaRow?.sla_resposta_horas ?? null) as number | null,
+  };
+
   return (
     <main className="p-6 max-w-3xl">
       <header className="mb-6">
@@ -52,6 +72,8 @@ export default async function ContadorConfiguracoesPage() {
         logoUrlInicial={logoUrlInicial}
         linkInicial={linkInicial}
       />
+
+      <SlaForm initial={slaInicial} />
     </main>
   );
 }

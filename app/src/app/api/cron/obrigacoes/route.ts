@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/clients/email';
 import { renderNotificacaoEmail } from '@/lib/notifications/email-template';
 import { rodarBilling } from '@/lib/billing/cron';
+import { rodarConciliacao } from '@/lib/conciliacao/cron';
 import { configDeEnv, enviarMensagem } from '@/lib/uazapi/cliente';
 
 // TEMPO DE EXECUCAO — 60s, o teto do plano Hobby da Vercel.
@@ -53,6 +54,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
   const admin = createAdminClient();
+
+  // Bloco 7: SLA de atendimento. Roda junto da materialização das obrigações
+  // porque é o mesmo tipo de trabalho (varrer estado e criar aviso) e porque
+  // o plano Hobby da Vercel permite exatamente 2 crons — as duas vagas já
+  // estão ocupadas. Erro aqui não pode derrubar o resto: o que tem prazo
+  // legal é a materialização das obrigações, não o alerta de SLA.
+  const { data: slaAvisos, error: eSla } = await admin.rpc('materializar_sla_estourado');
+  if (eSla) console.error('[cron obrigacoes] materializar_sla_estourado', eSla.message);
 
   const { data: criadas, error: eRpc } = await admin.rpc('materializar_obrigacoes');
   if (eRpc) {
@@ -138,6 +147,19 @@ export async function GET(req: Request) {
     }
   }
 
+  // Bloco 7: conciliação bancária. Entra DEPOIS do que tem prazo legal e
+  // ANTES do billing, seguindo a mesma disciplina de ordem já estabelecida
+  // aqui: o que é obrigação fiscal primeiro, o que depende de HTTP de
+  // terceiro por último. Isolada em try/catch para um provedor fora do ar
+  // não custar o resto do cron.
+  let conciliacao: unknown = null;
+  try {
+    conciliacao = await rodarConciliacao(admin);
+  } catch (err) {
+    console.error('[cron obrigacoes] conciliacao falhou', err);
+    conciliacao = { erro: String(err) };
+  }
+
   // Billing (Bloco 4A) roda AQUI e não em cron próprio: o plano Hobby da
   // Vercel permite exatamente 2 crons e o vercel.json já tem 2. O endpoint
   // /api/cron/billing continua existindo para disparo manual.
@@ -160,6 +182,8 @@ export async function GET(req: Request) {
     ...(ePend ? { email_erro: ePend.message } : {}),
     whatsapp_enviados: whatsappEnviados, whatsapp_pulados: whatsappPulados,
     whatsapp_suprimidas: eSuprimir ? null : (suprimidas ?? 0),
+    sla_avisos: eSla ? null : (slaAvisos ?? 0),
+    conciliacao,
     billing,
   });
 }

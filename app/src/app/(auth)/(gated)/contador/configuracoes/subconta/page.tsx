@@ -19,6 +19,7 @@ import type { StatusSubconta } from '@/lib/billing/status-subconta';
 import { estadoWebhookDaContabilidade } from '@/lib/billing/webhook-subconta-asaas';
 import { avisoDoDiagnostico } from '@/lib/billing/webhook-subconta';
 import SubcontaForm from './SubcontaForm';
+import SaldoSaque, { type SaqueHistorico } from './SaldoSaque';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,11 +32,22 @@ export default async function ContadorSubcontaPage() {
   if (ctx.contabilidade.status === 'suspensa') redirect('/contador/aguardando');
 
   const sb = await createServerClient();
-  const { data: cont } = await sb
+  const { data: cont, error: erroCont } = await sb
     .from('contabilidades')
-    .select('nome, cnpj, asaas_subconta_id, asaas_wallet_id, asaas_subconta_status, asaas_subconta_criada_em')
+    .select('nome, cnpj, asaas_subconta_id, asaas_wallet_id, asaas_subconta_status, asaas_subconta_criada_em, asaas_subconta_criada_por, conta_destino_resumo')
     .eq('id', ctx.contabilidade.id)
     .maybeSingle();
+
+  // NÃO engolir o erro. A 0053 concede SELECT coluna a coluna, e coluna nova
+  // nasce sem permissão — foi o que aconteceu com as colunas da 0069/0073
+  // (corrigido pela 0074). O sintoma era pior que o defeito: `data` vinha
+  // nulo, a tela concluía "este escritório não tem subconta" e oferecia criar
+  // uma SEGUNDA. Falha silenciosa por natureza, porque `maybeSingle()` não
+  // lança. Com o log, o próximo esquecimento aparece no servidor em vez de
+  // virar tela mentirosa.
+  if (erroCont) {
+    console.error('[4b] leitura da contabilidade falhou (coluna sem GRANT?):', erroCont.message);
+  }
 
   // QUEM MANDA É O VÍNCULO, NÃO A COLUNA DE STATUS. Se existe `asaas_subconta_id`
   // a subconta existe no Asaas — mostrar o formulário de criação nesse caso
@@ -65,6 +77,29 @@ export default async function ContadorSubcontaPage() {
       ? avisoDoDiagnostico(webhook)
       : null;
 
+  // Saldo/saque: só para o DONO da subconta (quem a criou) e só com a conta
+  // aprovada. `criada_por` nulo é subconta anterior à 0073 — o backfill já
+  // apontou o membro mais antigo, então nulo aqui significa "sem dono
+  // identificável", e nesse caso ninguém saca: dinheiro não é lugar de
+  // presumir permissão.
+  const ehDono = Boolean(cont?.asaas_subconta_criada_por) && cont?.asaas_subconta_criada_por === ctx.userId;
+
+  let historico: SaqueHistorico[] = [];
+  if (temSubconta && status === 'aprovada') {
+    const { data: saques } = await sb
+      .from('saques_escritorio')
+      .select('id,valor_centavos,status,destino_resumo,created_at')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    historico = (saques ?? []).map((x) => ({
+      id: x.id as string,
+      valorCentavos: Number(x.valor_centavos),
+      status: x.status as SaqueHistorico['status'],
+      destinoResumo: (x.destino_resumo as string | null) ?? null,
+      criadoEm: x.created_at as string,
+    }));
+  }
+
   return (
     <main className="p-6 max-w-3xl">
       <header className="mb-6">
@@ -87,6 +122,14 @@ export default async function ContadorSubcontaPage() {
         criadaEm={cont?.asaas_subconta_criada_em ?? null}
         avisoWebhook={avisoWebhook}
       />
+
+      {temSubconta && status === 'aprovada' && (
+        <SaldoSaque
+          ehDono={ehDono}
+          contaResumo={(cont?.conta_destino_resumo as string | null) ?? null}
+          historico={historico}
+        />
+      )}
     </main>
   );
 }
