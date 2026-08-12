@@ -1,9 +1,54 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-07-31 (sessão 21, continuação — linha digitável do DAS no WhatsApp empurrada; `/code-review` rodado sobre o resultado achou mais 2 bugs reais da mesma causa-raiz (e-mail e sino de notificações mostrando guia paga como pendente), corrigidos e verificados, **push pendente de confirmação**.)
+> **Última atualização:** 2026-08-12 (sessão 22 — as três pendências que a sessão 21 deixou registradas foram fechadas em sequência: `/notificacoes`, resolução no ponto de escrita e coalescência de WhatsApp. Migrations `0067` e `0068` aplicadas no banco. **Push pendente de confirmação.**)
 
-> ## ⛔ AO RETOMAR: push do fix de e-mail/sino + decisões registradas
+> ## ⛔ AO RETOMAR: push dos commits `d2988f9` e `526f877`
+>
+> As três pendências da sessão 21 estão fechadas, aplicadas no banco e
+> commitadas — **falta só o push** (auto-deploy em produção, exige
+> confirmação explícita do usuário).
+>
+> 1. **`/notificacoes` (a página cheia)** listava "DAS a vencer" de guia já
+>    quitada — mesmo gap que o sino tinha. Passa a usar a RPC
+>    `notificacoes_sino`, que ganhou `norma` no retorno (a página mostra a
+>    norma; o sino não). Trocar o retorno exigiu `DROP FUNCTION` —
+>    `CREATE OR REPLACE` não muda assinatura de saída.
+> 2. **Resolução no ponto de escrita** (a recomendação arquitetural do
+>    `/code-review`): coluna `notifications.resolvida_em` + RPC
+>    `resolver_notificacoes_guia` (SECURITY DEFINER, autoriza por
+>    `user_owns_company` — a notificação é do dono da empresa, não de quem
+>    clicou) chamada por `marcarGuiaPagaAction`. Os filtros de leitura das
+>    `0065`/`0066` **ficam**, como defesa em profundidade: cobrem a guia paga
+>    por caminho que não passe pela action (importação, SQL manual,
+>    conciliação futura), enquanto `resolvida_em` cobre o consumidor novo que
+>    esqueça o join.
+> 3. **Rajada de WhatsApp** (decisão do usuário: **coalescer por guia**):
+>    coluna `suprimida_whatsapp_em` + RPC `suprimir_whatsapp_superadas`,
+>    chamada no cron **antes** de ler os pendentes (a ordem é o que faz valer
+>    — tem teste que a fixa). Só a notificação mais recente de cada guia
+>    sobrevive. Coluna própria em vez de carimbar `enviada_whatsapp_em`:
+>    marcar como "enviada" o que nunca saiu corromperia auditoria futura de
+>    "o que foi enviado a este cliente". Vale só pro WhatsApp — o e-mail já
+>    saiu na época certa e o sino mostra a lista inteira de propósito.
+>
+> **Migrations `0067` + `0068` aplicadas** numa transação só, com 12
+> verificações e `ROLLBACK` automático se qualquer uma falhasse (runner
+> `app/scratchpad/_aplicar-0067.mjs`, gitignorado). Todas passaram.
+>
+> ⚠️ **Duas verificações passaram com zero dado**: o backfill resolveu 0 e a
+> coalescência suprimiu 0. Probe somente-leitura depois
+> (`scratchpad/_probe-0067-dados.mjs`) provou que é zero honesto, não join
+> quebrado: das 21 notificações, só 1 é `das_*`, o `entidade_ref` dela casa
+> com uma guia existente (1 de 1, nenhuma órfã), e essa guia **não está
+> paga** — nada a resolver. Só 1 pendente de WhatsApp, logo nada a coalescer.
+> **A coalescência nunca rodou contra backlog real** — quando a instância
+> uazapi for provisionada, conferir `whatsapp_suprimidas` na resposta do cron.
+>
+> `tsc` 0 · vitest **1390/1390** (27 pulados; 2 testes novos) · `next build`
+> limpo.
+
+> ## ⛔ HISTÓRICO (sessão 21): push do fix de e-mail/sino + decisões registradas
 
 > **Linha digitável do DAS no WhatsApp: EMPURRADA e em produção** (commits
 > até `54ff95d`). Spec: `docs/superpowers/specs/2026-07-31-linha-digitavel-
@@ -41,7 +86,9 @@
 >
 > **Próximo passo exato:** `main` local está à frente de `origin/main` —
 > **push pendente, precisa de confirmação explícita do usuário** (auto-deploy
-> em produção).
+> em produção). — ✅ **feito**: `f277115` está em `origin/main` (confirmado
+> por `git fetch` na sessão 22). As três pendências abaixo também foram
+> fechadas na sessão 22 (ver bloco no topo).
 >
 > **Pendências registradas, NÃO corrigidas nesta sessão (mesma causa-raiz,
 > escopo explicitamente não aprovado pra esta rodada):**
