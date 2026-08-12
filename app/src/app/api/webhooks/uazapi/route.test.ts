@@ -83,12 +83,21 @@ const h = vi.hoisted(() => {
 
   const from = vi.fn((tabela: string) => ({
     select: (_cols: string) => {
+      // `then` torna o builder aguardável: a busca do perfil agora termina em
+      // `.in(...).limit(2)` e é consumida com `await`, sem `maybeSingle()`.
+      // Sem isto, `await` no builder devolve o próprio objeto e a
+      // desestruturação de `data` vira undefined — foi o que quebrou os 14
+      // testes deste arquivo quando o casamento de número virou tolerante.
+      const linha = dadosPorTabela(tabela);
       const b = {
         eq: (_c: unknown, _v: unknown) => b,
         neq: (_c: unknown, _v: unknown) => b,
+        in: (_c: unknown, _v: unknown[]) => b,
         order: (_c: unknown, _o: unknown) => b,
         limit: (_n: number) => b,
-        maybeSingle: async () => ({ data: dadosPorTabela(tabela), error: null }),
+        maybeSingle: async () => ({ data: linha, error: null }),
+        then: (resolve: (v: unknown) => void) =>
+          resolve({ data: linha ? [linha] : [], error: null }),
       };
       return b;
     },

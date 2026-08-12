@@ -54,6 +54,7 @@ import { gerarTexto } from '@/lib/ai/cliente';
 import { lerChaveIa } from '@/lib/ai/config-ia';
 import { enviarMensagem, configDeEnv } from '@/lib/uazapi/cliente';
 import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
+import { variantesDoNumero } from '@/lib/whatsapp/numero';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -215,9 +216,27 @@ export async function POST(req: Request) {
     }
     atendimentoId = (claim as { id: string }).id;
 
-    const { data: profile } = await admin
-      .from('profiles').select('user_id, current_company')
-      .eq('whatsapp_numero', corpo.from).maybeSingle();
+    // Casamento TOLERANTE a formato, e não `.eq()` cru. O `.eq()` que morava
+    // aqui não casava nunca em produção: o opt-in grava E.164 com `+`
+    // (`+5532987006789`), a uazapi entrega dígitos crus, e celular brasileiro
+    // ainda aparece ora com o nono dígito, ora sem — a própria instância do
+    // Balu, (32) 99151-1415, é identificada como `553291511415`.
+    //
+    // O modo de falhar era silencioso e cruel: o cliente cadastrado recebia
+    // "não conseguimos identificar sua conta".
+    //
+    // `maybeSingle()` não serve com `in`: dois perfis poderiam casar (um com
+    // o 9, outro sem). Pegamos o primeiro e avisamos — cadastro duplicado é
+    // problema de dado, não motivo para não atender ninguém.
+    const candidatos = variantesDoNumero(corpo.from);
+    const { data: perfis } = await admin
+      .from('profiles').select('user_id, current_company, whatsapp_numero')
+      .in('whatsapp_numero', candidatos)
+      .limit(2);
+    if ((perfis?.length ?? 0) > 1) {
+      console.warn('[webhook uazapi] mais de um perfil casa com o numero', candidatos[0]);
+    }
+    const profile = perfis?.[0] ?? null;
 
     if (!profile?.current_company) {
       const envio = await enviarMensagem(configDeEnv(), {
