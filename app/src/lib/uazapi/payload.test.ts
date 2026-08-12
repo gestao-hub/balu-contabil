@@ -12,7 +12,7 @@ const mensagemReal = {
   messageTimestamp: 1786566603000,
   messageType: 'ExtendedTextMessage',
   messageid: '3EB0ABC123',
-  sender: '553287006789@s.whatsapp.net',
+  sender: '38105654493205@lid',   // LID real capturado ao vivo em 12/08/2026
   senderName: 'Walace',
   text: 'Boa tarde\nPreciso do das do mês de julho',
 };
@@ -55,6 +55,32 @@ describe('normalizarEntrada — forma real da uazapi', () => {
 
   it('marca fromMe quando a própria instância mandou', () => {
     expect(normalizarEntrada({ ...mensagemReal, fromMe: true })?.fromMe).toBe(true);
+  });
+});
+
+describe('normalizarEntrada — LID (o bug que respondeu para o vazio)', () => {
+  it('usa o chatid, NUNCA o LID do sender', () => {
+    // O WhatsApp entrega `sender: "38105654493205@lid"` — identificador opaco,
+    // não telefone. Tratá-lo como número fez o app responder "não conseguimos
+    // identificar sua conta" e mandar essa resposta para o LID, que não chega
+    // a ninguém. O telefone de verdade está no `chatid`.
+    expect(normalizarEntrada(mensagemReal)?.from).toBe('553287006789');
+  });
+
+  it('só o LID, sem chatid utilizável, é recusado', () => {
+    const { chatid, ...semChat } = mensagemReal;
+    expect(normalizarEntrada(semChat)).toBeNull();
+  });
+
+  it('grupo e broadcast não viram atendimento', () => {
+    // Confundir o id do grupo com o do cliente responderia na conversa errada.
+    expect(normalizarEntrada({ ...mensagemReal, chatid: '120363000000000000@g.us' })).toBeNull();
+    expect(normalizarEntrada({ ...mensagemReal, chatid: 'status@broadcast' })).toBeNull();
+  });
+
+  it('sender é aceito quando é JID de telefone de verdade', () => {
+    const { chatid, ...m } = mensagemReal;
+    expect(normalizarEntrada({ ...m, sender: '553287006789@s.whatsapp.net' })?.from).toBe('553287006789');
   });
 });
 

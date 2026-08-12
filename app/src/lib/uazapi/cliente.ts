@@ -18,6 +18,7 @@
 // Mesma convenção do sendEmail (Bloco 1): sem credencial configurada, no-op
 // logado — nunca derruba quem chama.
 import 'server-only';
+import { soDigitosWhatsapp } from '@/lib/whatsapp/numero';
 
 export type ConfigUazapi = { baseUrl: string; token: string };
 export type EnvioResultado = { ok: true } | { ok: false; skipped?: true; erro?: string };
@@ -38,7 +39,12 @@ export async function enviarMensagem(
     const res = await fetch(`${cfg.baseUrl.replace(/\/+$/, '')}/send/text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', token: cfg.token },
-      body: JSON.stringify({ number: msg.telefone, text: msg.texto }),
+      // Normaliza no PONTO ÚNICO DE SAÍDA: o número pode vir do cadastro
+      // (E.164 com `+`), de um JID (`…@s.whatsapp.net`) ou já em dígitos,
+      // dependendo de quem chama. Mandar `+55…` ou um JID para a API é pedir
+      // para a mensagem sumir sem erro — e isso valeria para TODO telefone da
+      // plataforma, não só para o do teste.
+      body: JSON.stringify({ number: soDigitosWhatsapp(msg.telefone), text: msg.texto }),
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return { ok: false, erro: `uazapi respondeu ${res.status}` };

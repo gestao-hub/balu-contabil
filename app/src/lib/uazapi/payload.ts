@@ -29,7 +29,34 @@ export type EntradaWhatsapp = {
   fromMe: boolean;
 };
 
-const soDigitos = (s: string): string => String(s).split('@')[0].replace(/\D+/g, '');
+/**
+ * Telefone a partir de um JID — e SÓ quando o JID é de telefone.
+ *
+ * ⚠️ O WhatsApp passou a usar **LID** (Linked ID): um identificador opaco no
+ * formato `38105654493205@lid`, que NÃO é número de telefone. Visto ao vivo em
+ * 12/08/2026:
+ *
+ *     chatid: "553287006789@s.whatsapp.net"   ← telefone real
+ *     sender: "38105654493205@lid"            ← LID
+ *
+ * Tratar LID como telefone tem consequência concreta: o app não acha o
+ * cadastro, responde "não conseguimos identificar sua conta" — e manda essa
+ * resposta PARA O LID, que não chega a ninguém. Foi exatamente o que
+ * aconteceu antes desta função existir.
+ *
+ * `@g.us` (grupo) e `@broadcast` também são recusados: não atendemos grupo, e
+ * confundir o id do grupo com o do cliente responderia a conversa errada.
+ */
+function telefoneDeJid(bruto: unknown): string {
+  if (typeof bruto !== 'string' || !bruto) return '';
+  const [parte, sufixo] = bruto.split('@');
+  if (sufixo && sufixo !== 's.whatsapp.net' && sufixo !== 'c.us') return '';
+  const d = parte.replace(/\D+/g, '');
+  // Telefone internacional tem de 10 a 15 dígitos (E.164). O LID visto tinha
+  // 14 e passaria por um teste de tamanho frouxo — por isso a barreira real é
+  // o sufixo, e o tamanho só descarta lixo evidente.
+  return d.length >= 10 && d.length <= 15 ? d : '';
+}
 
 function comoObjeto(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -72,7 +99,10 @@ export function normalizarEntrada(corpo: unknown): EntradaWhatsapp | null {
   if (!m) return null;
 
   const messageId = String(m.messageid ?? m.messageId ?? m.id ?? '').trim();
-  const from = soDigitos(String(m.sender ?? m.chatid ?? m.from ?? ''));
+  // ORDEM IMPORTA: `chatid` primeiro. É a conversa — o telefone do cliente.
+  // `sender` vem depois porque pode ser LID; e só entra se for JID de
+  // telefone. `from` fecha a lista pela forma antiga.
+  const from = telefoneDeJid(m.chatid) || telefoneDeJid(m.sender) || telefoneDeJid(m.from);
   const text = extrairTexto(m);
   // `fromMe` ausente conta como recebida: o filtro de eco tem outra camada
   // (`excludeMessages: wasSentByApi` na própria uazapi), e tratar ausência

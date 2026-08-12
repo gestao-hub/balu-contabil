@@ -208,7 +208,7 @@ describe('webhook uazapi', () => {
 
   it('rate limit estourado: sempre 200 e nao chega no segredo/DB', async () => {
     h.limitar.mockResolvedValueOnce(false);
-    const res = await POST(requisicaoFalsa({ messageId: 'm-rl', from: '+551100', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm-rl', from: '+5532987006790', text: 'oi' }, SEGREDO));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(false);
@@ -238,7 +238,7 @@ describe('webhook uazapi', () => {
       code: '23505',
       message: 'duplicate key value violates unique constraint "whatsapp_atendimentos_message_id_externo_key"',
     };
-    const res = await POST(requisicaoFalsa({ messageId: 'm-dup', from: '+55119999', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm-dup', from: '+5532987006791', text: 'oi' }, SEGREDO));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -254,7 +254,7 @@ describe('webhook uazapi', () => {
 
   it('telefone desconhecido: avisa o remetente e grava o atendimento sem resolver', async () => {
     h.estado.profile = null;
-    const res = await POST(requisicaoFalsa({ messageId: 'm2', from: '+55110000', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm2', from: '5532987006789', text: 'oi' }, SEGREDO));
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.reason).toBe('telefone_desconhecido');
@@ -265,7 +265,7 @@ describe('webhook uazapi', () => {
     // (lib/uazapi/payload) desmonta JID e máscara antes de qualquer uso, para
     // o mesmo número não virar duas grafias no banco.
     expect(grav?.valores).toMatchObject({
-      message_id_externo: 'm2', telefone: '55110000', resolvido: false,
+      message_id_externo: 'm2', telefone: '5532987006789', resolvido: false,
     });
   });
 
@@ -274,7 +274,7 @@ describe('webhook uazapi', () => {
     h.estado.company = { id: 'empresa_1', contabilidade_id: 'contab_1' };
     h.estado.membro = { user_id: 'contador_1' };
 
-    const res = await POST(requisicaoFalsa({ messageId: 'm3', from: '+551111', text: 'Meu DAS venceu?' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm3', from: '5532987006789', text: 'Meu DAS venceu?' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -291,7 +291,7 @@ describe('webhook uazapi', () => {
     h.estado.company = { id: 'empresa_1', contabilidade_id: 'contab_1' };
     h.estado.membro = { user_id: 'contador_1' };
 
-    const res = await POST(requisicaoFalsa({ messageId: 'm4', from: '+551122', text: 'Preciso de ajuda complexa' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm4', from: '+5532987006722', text: 'Preciso de ajuda complexa' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -311,7 +311,7 @@ describe('webhook uazapi', () => {
     h.estado.textoGerado = JSON.stringify({ resposta: 'Vou encaminhar.', resolvido: false });
     h.estado.company = { id: 'empresa_1', contabilidade_id: null };
 
-    const res = await POST(requisicaoFalsa({ messageId: 'm5', from: '+551133', text: 'Ajuda' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm5', from: '+5532987006733', text: 'Ajuda' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -323,7 +323,7 @@ describe('webhook uazapi', () => {
     h.estado.company = { id: 'empresa_1', contabilidade_id: 'contab_vazia' };
     h.estado.membro = null;
 
-    const res = await POST(requisicaoFalsa({ messageId: 'm6', from: '+551144', text: 'Ajuda' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm6', from: '+5532987006744', text: 'Ajuda' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -332,7 +332,7 @@ describe('webhook uazapi', () => {
 
   it('sem config_ia configurado: usa a resposta padrao e nao chama a IA', async () => {
     h.estado.cfg = null;
-    const res = await POST(requisicaoFalsa({ messageId: 'm7', from: '+551155', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm7', from: '+5532987006755', text: 'oi' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -345,7 +345,7 @@ describe('webhook uazapi', () => {
 
   it('falha da IA (lanca) nao derruba o webhook: cai no fallback e ainda grava', async () => {
     h.estado.erroIa = new Error('provedor fora do ar');
-    const res = await POST(requisicaoFalsa({ messageId: 'm9', from: '+551177', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm9', from: '+5532987006777', text: 'oi' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -363,7 +363,7 @@ describe('webhook uazapi', () => {
   // `text` silenciosamente: o cliente nunca receberia resposta nenhuma.
   it('IA devolve JSON valido mas fora de forma ({}): cai no fallback, nao manda undefined', async () => {
     h.estado.textoGerado = JSON.stringify({});
-    const res = await POST(requisicaoFalsa({ messageId: 'm10', from: '+551188', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm10', from: '+5532987006788', text: 'oi' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -384,7 +384,7 @@ describe('webhook uazapi', () => {
   // resposta válida da IA era descartada e o fluxo caía no fallback à toa.
   it('IA devolve JSON envolto em cerca de codigo markdown: ainda usa a resposta real', async () => {
     h.estado.textoGerado = '```json\n' + JSON.stringify({ resposta: 'Resposta cercada.', resolvido: true }) + '\n```';
-    const res = await POST(requisicaoFalsa({ messageId: 'm10b', from: '+551188', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm10b', from: '+5532987006788', text: 'oi' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -396,7 +396,7 @@ describe('webhook uazapi', () => {
 
   it('IA devolve resposta vazia ou resolvido fora de tipo: tambem cai no fallback', async () => {
     h.estado.textoGerado = JSON.stringify({ resposta: '   ', resolvido: 'sim' });
-    const res = await POST(requisicaoFalsa({ messageId: 'm11', from: '+551199', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm11', from: '+5532987006799', text: 'oi' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -409,7 +409,7 @@ describe('webhook uazapi', () => {
     h.enviarMensagem.mockResolvedValueOnce({ ok: false, erro: 'uazapi respondeu 500' });
     const erroSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const res = await POST(requisicaoFalsa({ messageId: 'm12', from: '+551100', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm12', from: '+5532987006790', text: 'oi' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -430,7 +430,7 @@ describe('webhook uazapi', () => {
     h.estado.membro = { user_id: 'contador_1' };
     h.enviarMensagem.mockResolvedValueOnce({ ok: false, erro: 'uazapi respondeu 500' });
 
-    const res = await POST(requisicaoFalsa({ messageId: 'm-envio-falha', from: '+551100', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm-envio-falha', from: '+5532987006790', text: 'oi' }, SEGREDO));
     const body = await res.json();
 
     expect(body.ok).toBe(true);
@@ -450,7 +450,7 @@ describe('webhook uazapi', () => {
     h.estado.erroUpdate = { message: 'connection reset by peer' };
     const erroSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const res = await POST(requisicaoFalsa({ messageId: 'm-update-falha', from: '+551100', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm-update-falha', from: '+5532987006790', text: 'oi' }, SEGREDO));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -470,7 +470,7 @@ describe('webhook uazapi', () => {
   // autenticado. Se rodasse antes do segredo, um atacante sem o segredo
   // poderia estourar o orcamento de rate-limit de um numero de cliente real.
   it('segredo errado: nunca chega a chamar o rate-limit (ordem segredo-antes)', async () => {
-    const res = await POST(requisicaoFalsa({ messageId: 'm13', from: '+5511vitima', text: 'oi' }, 'errado'));
+    const res = await POST(requisicaoFalsa({ messageId: 'm13', from: '+5532987006711', text: 'oi' }, 'errado'));
     const body = await res.json();
     expect(body.ok).toBe(false);
     expect(h.limitar).not.toHaveBeenCalled();
@@ -489,7 +489,7 @@ describe('webhook uazapi', () => {
     h.buscarSituacaoAtualMei.mockImplementationOnce(async () => {
       throw new Error('falha inesperada de leitura');
     });
-    const res = await POST(requisicaoFalsa({ messageId: 'm-erro-pos-claim', from: '+551166', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm-erro-pos-claim', from: '+5532987006766', text: 'oi' }, SEGREDO));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(false);
@@ -506,7 +506,7 @@ describe('webhook uazapi', () => {
     h.buscarSituacaoAtualMei.mockImplementationOnce(async () => {
       throw new Error('falha inesperada de leitura');
     });
-    const res = await POST(requisicaoFalsa({ messageId: 'm14', from: '+551166', text: 'oi' }, SEGREDO));
+    const res = await POST(requisicaoFalsa({ messageId: 'm14', from: '+5532987006766', text: 'oi' }, SEGREDO));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(false);
@@ -519,7 +519,7 @@ describe('webhook uazapi', () => {
   // claim atual).
   it('primeira interacao (sem atendimento anterior): pede saudacao do Assistente Balu no prompt', async () => {
     h.estado.interacaoAnterior = null;
-    await POST(requisicaoFalsa({ messageId: 'm-primeira', from: '+551100', text: 'oi' }, SEGREDO));
+    await POST(requisicaoFalsa({ messageId: 'm-primeira', from: '+5532987006790', text: 'oi' }, SEGREDO));
     const chamada = h.gerarTexto.mock.calls[0];
     const promptEnviado = String(chamada?.[1] ?? chamada?.[0]);
     expect(promptEnviado).toMatch(/primeira mensagem/i);
@@ -527,7 +527,7 @@ describe('webhook uazapi', () => {
 
   it('nao e a primeira interacao (ja existe atendimento anterior): NAO pede saudacao', async () => {
     h.estado.interacaoAnterior = { id: 'atend_antigo' };
-    await POST(requisicaoFalsa({ messageId: 'm-repetida', from: '+551100', text: 'oi de novo' }, SEGREDO));
+    await POST(requisicaoFalsa({ messageId: 'm-repetida', from: '+5532987006790', text: 'oi de novo' }, SEGREDO));
     const chamada = h.gerarTexto.mock.calls[0];
     const promptEnviado = String(chamada?.[1] ?? chamada?.[0]);
     expect(promptEnviado.toLowerCase()).not.toMatch(/primeira mensagem/);

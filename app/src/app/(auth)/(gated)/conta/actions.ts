@@ -2,6 +2,7 @@
 'use server';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import { soDigitosWhatsapp } from '@/lib/whatsapp/numero';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getSiteUrl } from '@/lib/site-url';
@@ -171,7 +172,19 @@ export async function salvarWhatsappAction(_prev: ContaActionResult | undefined,
     return { ok: true };
   }
 
-  const numero = String(fd.get('whatsapp_numero') ?? '').trim();
+  // Aceita como a pessoa digitar (com máscara, espaços, parênteses) e GRAVA
+  // sempre na mesma forma. Sem isto, o mesmo celular entra como
+  // "+55 32 98700-6789", "+5532987006789" e "5532987006789" — três linhas
+  // diferentes para o índice único, e três chances de o WhatsApp não casar
+  // com nenhuma na hora de identificar quem escreveu.
+  const digitado = String(fd.get('whatsapp_numero') ?? '').trim();
+  const digitos = soDigitosWhatsapp(digitado);
+  // Tira máscara, mas NÃO inventa código de país: quem digita "11999998888"
+  // pode estar omitindo o 55 — ou pode ser outro país. Assumir Brasil aqui
+  // gravaria "+11999998888", que é numeração dos EUA/Canadá, e a mensagem
+  // sairia para o vazio. Menos de 12 dígitos (55 + DDD + número) continua
+  // sendo recusado, com a mensagem que já existia.
+  const numero = digitos.length >= 12 ? `+${digitos}` : '';
   if (!E164.test(numero)) {
     return { ok: false, error: 'Informe o número no formato +5511999998888.' };
   }
