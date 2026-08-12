@@ -19,7 +19,22 @@ export const metadata: Metadata = {
     title: 'Balu',
     statusBarStyle: 'default',
   },
+  // ⚠️ Declarar `icons` aqui DESLIGA a convenção de arquivo do Next
+  // (`src/app/icon.svg`): ele para de emitir o <link rel="icon"> sozinho. Era
+  // o que acontecia — só o apple-touch era declarado, e a aba do navegador
+  // ficava com o ícone genérico enquanto /icon.svg respondia 200 sem ninguém
+  // apontar para ele.
+  //
+  // Ordem importa: o navegador costuma usar o ÚLTIMO ícone que entende. O SVG
+  // vem por último para ganhar do PNG onde há suporte (nítido em qualquer
+  // zoom e escala com a aba); o PNG de 192 fica como alternativa para quem
+  // não renderiza SVG em favicon.
   icons: {
+    icon: [
+      { url: '/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/icon.svg', type: 'image/svg+xml', sizes: 'any' },
+    ],
+    shortcut: '/icons/icon-192.png',
     apple: '/icons/apple-touch-icon.png',
   },
 };
