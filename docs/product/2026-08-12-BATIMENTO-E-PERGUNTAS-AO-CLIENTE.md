@@ -213,10 +213,26 @@ Em 9 dos 12 itens ele escreveu "não vimos funcionar". Grande parte do que ele
 acha que falta pode já estar pronto há semanas. Isso muda a conversa inteira.
 
 **P4. DASN-SIMEI e DEFIS: ele aceita o fluxo assistido?**
-Ele marcou "o app transmite oficialmente". A SERPRO não expõe transmissão de
-DASN-SIMEI; o app pré-preenche, o cliente confere e entrega, e registramos o
-comprovante. Precisa saber se isso atende — ou se ele espera algo que não é
-tecnicamente possível hoje.
+Ele marcou "o app transmite oficialmente". Hoje o app pré-preenche, o cliente
+confere e entrega, e registramos o comprovante. O motivo é diferente para cada
+uma — e a distinção importa na conversa:
+
+- **DASN-SIMEI:** o serviço de transmissão **existe** no catálogo do Integra
+  Contador (`TRANSDECLARACAO151`), mas está marcado como *"A FUNCIONALIDADE
+  AINDA NÃO ESTÁ DISPONÍVEL PARA CONTRATAÇÃO E PODE SOFRER ALTERAÇÕES"*
+  (conferido na doc oficial em 12/08/2026). Não é falta de esforço nosso: não há
+  como contratar, então nem as credenciais de produção validadas o alcançam. E o
+  aviso de que o payload pode mudar torna qualquer construção agora um alvo
+  móvel. Agravante: esse serviço **não tem dry-run** (sem `indicadorTransmissao`,
+  ao contrário da PGDAS-D) — toda chamada é transmissão real.
+- **DEFIS:** **não existe serviço nenhum** de transmissão, nem em pré-lançamento.
+  E há um segundo impedimento, independente de API: o DEFIS exige folha,
+  estoque e contas a pagar — dados que o app não tem. Mesmo com API amanhã,
+  esses campos seguiriam sendo digitação humana.
+
+**O que muda a resposta:** se a SERPRO liberar o `TRANSDECLARACAO151`, a DASN
+vira automatizável e o Bloco 3 já deixou o resto pronto. O DEFIS não tem esse
+caminho no horizonte.
 
 **P5. "E-mails com a marca do escritório" — até onde?**
 Hoje as notificações saem com o nome do escritório como remetente, mas os
