@@ -12,7 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
   ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, LayoutDashboard, FilePlus, MessageCircle,
-  CreditCard, Receipt, Landmark, Tags, BookOpen, Headset,
+  CreditCard, Receipt, Landmark, Tags, BookOpen, Headset, TrendingUp,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -122,6 +122,10 @@ const NAV: NavItem[] = [
   // Seção AdminBalu (oversight da plataforma). O admin não tem empresa/escritório
   // próprios, então não vê os itens tenant acima — estas telas são as dele.
   { href: '/admin',                 label: 'Visão geral',    Icon: LayoutDashboard, roles: ['adminbalu'] },
+  // Métricas de operação: receita, inadimplência e uso por escritório. Vizinha
+  // da visão geral porque responde a pergunta seguinte — "e como vai o
+  // negócio?" — que os contadores de cadastro não respondem.
+  { href: '/admin/metricas',        label: 'Métricas',       Icon: TrendingUp, roles: ['adminbalu'] },
   { href: '/admin/contabilidades',  label: 'Escritórios',    Icon: Building2, roles: ['adminbalu'] },
   { href: '/admin/empresas',        label: 'Empresas',       Icon: Briefcase, roles: ['adminbalu'] },
   { href: '/admin/usuarios',        label: 'Usuários',       Icon: Users, roles: ['adminbalu'] },

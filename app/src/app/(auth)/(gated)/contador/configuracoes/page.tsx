@@ -35,11 +35,18 @@ export default async function ContadorConfiguracoesPage() {
   // Domínio/SLA vêm de uma leitura própria: o guard `getContabilidadeCtx`
   // seleciona uma lista fixa de colunas (branding do Bloco A) e não vale
   // alargá-la para todo consumidor por causa desta tela.
-  const { data: dominioRow } = await supabase
+  const { data: dominioRow, error: erroDominio } = await supabase
     .from('contabilidades')
     .select('dominio_customizado,dominio_status,dominio_verificado_em,dominio_erro,sla_resposta_horas')
     .eq('id', c.id)
     .maybeSingle();
+  // Mesmo cuidado da tela de subconta: GRANT por coluna em `contabilidades`
+  // não alcança coluna nova, e sem este log a seção renderiza vazia como se
+  // nada estivesse cadastrado.
+  if (erroDominio) {
+    console.error('[7] leitura de domínio/SLA falhou (coluna sem GRANT?):', erroDominio.message);
+  }
+
   const dominioInicial: DominioSlaInicial = {
     dominio_customizado: (dominioRow?.dominio_customizado ?? null) as string | null,
     dominio_status: ((dominioRow?.dominio_status ?? 'pendente') as DominioSlaInicial['dominio_status']),

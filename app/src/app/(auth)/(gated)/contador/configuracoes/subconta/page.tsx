@@ -32,11 +32,22 @@ export default async function ContadorSubcontaPage() {
   if (ctx.contabilidade.status === 'suspensa') redirect('/contador/aguardando');
 
   const sb = await createServerClient();
-  const { data: cont } = await sb
+  const { data: cont, error: erroCont } = await sb
     .from('contabilidades')
     .select('nome, cnpj, asaas_subconta_id, asaas_wallet_id, asaas_subconta_status, asaas_subconta_criada_em, asaas_subconta_criada_por, conta_destino_resumo')
     .eq('id', ctx.contabilidade.id)
     .maybeSingle();
+
+  // NÃO engolir o erro. A 0053 concede SELECT coluna a coluna, e coluna nova
+  // nasce sem permissão — foi o que aconteceu com as colunas da 0069/0073
+  // (corrigido pela 0074). O sintoma era pior que o defeito: `data` vinha
+  // nulo, a tela concluía "este escritório não tem subconta" e oferecia criar
+  // uma SEGUNDA. Falha silenciosa por natureza, porque `maybeSingle()` não
+  // lança. Com o log, o próximo esquecimento aparece no servidor em vez de
+  // virar tela mentirosa.
+  if (erroCont) {
+    console.error('[4b] leitura da contabilidade falhou (coluna sem GRANT?):', erroCont.message);
+  }
 
   // QUEM MANDA É O VÍNCULO, NÃO A COLUNA DE STATUS. Se existe `asaas_subconta_id`
   // a subconta existe no Asaas — mostrar o formulário de criação nesse caso
