@@ -58,6 +58,7 @@ import { variantesDoNumero } from '@/lib/whatsapp/numero';
 import { normalizarEntrada, formaDoPayload } from '@/lib/uazapi/payload';
 import { buscarContextoPorPergunta } from '@/lib/base-juridica/buscar';
 import { lerRespostaAtendimento } from '@/lib/atendimento/resposta';
+import { classificarPergunta } from '@/lib/atendimento/classificar';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -296,6 +297,14 @@ export async function POST(req: Request) {
     // de pé. Falha aqui devolve lista vazia e o fluxo segue como antes.
     const contextoJuridico = await buscarContextoPorPergunta(admin, entrada.text);
 
+    // Dúvida geral ("o que é IOF?", "como funciona o DAS?") não depende dos
+    // números da empresa: a base jurídica responde sozinha, e escalar isso
+    // para o contador é jogar trabalho humano num problema que o app resolve.
+    // Pergunta sobre a empresa dele, sem dado disponível, continua indo para
+    // o contador. Quem classifica é código, não o modelo — é essa decisão que
+    // determina quando um humano é acionado.
+    const tipoPergunta = classificarPergunta(entrada.text);
+
     const { data: cfgRow } = await admin.from('config_ia').select('*').eq('id', 1).maybeSingle();
     let resposta = 'Não consegui responder agora — o contador vai retornar em breve.';
     let resolvido = false;
@@ -310,6 +319,7 @@ export async function POST(req: Request) {
             primeiraInteracao,
             historico,
             contextoJuridico,
+            tipoPergunta,
           });
           const bruto = await gerarTexto(
             { provedor: cfgRow.provedor, modelo: cfgRow.modelo, base_url: cfgRow.base_url, chave },

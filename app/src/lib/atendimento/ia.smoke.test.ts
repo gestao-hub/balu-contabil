@@ -126,6 +126,42 @@ describe.skipIf(semSmoke)('atendimento × provedor real', () => {
     expect(lido!.resposta).not.toMatch(/(lei|artigo|art\.|LC\s*123|resolu[çc][ãa]o)/i);
   }, 90_000);
 
+  it('duvida GERAL sem dado fiscal nenhum: responde em vez de escalar', async () => {
+    // O caso que o usuario pediu: "mesmo que a IA nao consiga encontrar meus
+    // dados fiscais, ela precisa responder questoes simples como funcionam
+    // impostos". Antes disto, `situacaoFiscalTexto: null` levava o modelo a
+    // dizer que ia encaminhar para o contador.
+    const cfg = await configDoBanco();
+    const bruto = await gerarTexto(cfg, montarPromptAtendimento({
+      pergunta: 'o que e IPI?',
+      situacaoFiscalTexto: null,
+      tipoPergunta: 'geral',
+      contextoJuridico: [{
+        titulo: 'IPI — Imposto sobre Produtos Industrializados',
+        texto: 'Tributo federal que incide sobre produtos industrializados, cobrado na saida do estabelecimento industrial ou no desembaraco aduaneiro.',
+      }],
+    }));
+    const lido = respostaValida(bruto);
+    expect(lido).not.toBeNull();
+    expect(lido!.resposta).toMatch(/produto|industrializ|federal/i);
+    expect(lido!.resposta.toLowerCase()).not.toMatch(/encaminhar para o contador|vou encaminhar/);
+    expect(lido!.resolvido).toBe(true);
+  }, 90_000);
+
+  it('pergunta SOBRE A EMPRESA sem dado fiscal: encaminha, nao inventa', async () => {
+    const cfg = await configDoBanco();
+    const bruto = await gerarTexto(cfg, montarPromptAtendimento({
+      pergunta: 'quanto e o meu DAS deste mes?',
+      situacaoFiscalTexto: null,
+      tipoPergunta: 'especifica',
+    }));
+    const lido = respostaValida(bruto);
+    expect(lido).not.toBeNull();
+    // Nao pode inventar um valor que ninguem calculou.
+    expect(lido!.resposta).not.toMatch(/R\$\s*\d/);
+    expect(lido!.resolvido).toBe(false);
+  }, 90_000);
+
   it('não cita lei nem artigo na resposta ao cliente', async () => {
     // Fronteira do DL 9.295/46: quem orienta sobre tributo profissionalmente é
     // contador licenciado. O guard-rail vale para o texto que chega ao cliente.

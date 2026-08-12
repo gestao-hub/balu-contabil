@@ -33,6 +33,11 @@ export type EntradaAtendimento = {
    *  isto o assistente responde cada mensagem como se fosse a primeira, e o
    *  cliente precisa repetir tudo a cada pergunta. */
   historico?: TurnoAnterior[];
+  /** 'geral' = dúvida conceitual (o que é IOF, como funciona o DAS), que a
+   *  base jurídica responde mesmo sem nenhum dado da empresa. 'especifica' =
+   *  depende dos números daquela empresa. Quem classifica é
+   *  `lib/atendimento/classificar`, por código — não o modelo. */
+  tipoPergunta?: 'geral' | 'especifica';
   /** true só na primeira mensagem desta conversa — a saudação do Assistente
    *  Balu aparece uma vez, nunca se repete (quem decide isto é o webhook,
    *  consultando se já existe atendimento anterior para este telefone). */
@@ -40,8 +45,13 @@ export type EntradaAtendimento = {
 };
 
 export function montarPromptAtendimento(e: EntradaAtendimento): string {
+  // Sem dado fiscal, o texto muda conforme o tipo: numa dúvida geral, a
+  // ausência é irrelevante e dizer "não encontramos" empurraria o modelo a
+  // escalar sem necessidade.
   const contexto = e.situacaoFiscalTexto
-    ?? 'Não encontramos informação fiscal disponível para responder com segurança.';
+    ?? (e.tipoPergunta === 'geral'
+      ? '(não consultado — a pergunta não depende dos números da empresa)'
+      : 'Não encontramos informação fiscal disponível para responder com segurança.');
 
   const apresentacao = e.primeiraInteracao
     ? [
@@ -96,8 +106,21 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
     '(situação fiscal, material de apoio e o que já foi dito nesta conversa).',
     'Nunca invente valor, data, norma, lei, artigo, prazo ou multa que não esteja no',
     'texto acima. Nunca oriente sonegação, fraude nem forma de burlar a fiscalização.',
-    'Se a informação acima não for suficiente para responder com segurança, diga que vai',
-    'encaminhar para o contador — e só nesse caso use "resolvido": false.',
+    ...(e.tipoPergunta === 'geral'
+      ? [
+          'ESTA É UMA DÚVIDA GERAL sobre como funcionam impostos e obrigações — não',
+          'depende dos números da empresa de quem perguntou. Responda com o material de',
+          'apoio acima, de forma didática, ainda que não haja dado fiscal do cliente.',
+          'Não encaminhe para o contador só porque falta a situação fiscal dele.',
+          'Não cite valor específico da empresa dele; se ele quiser o próprio número,',
+          'convide a perguntar sobre isso em seguida.',
+          'Se conseguiu explicar, use "resolvido": true.',
+        ]
+      : [
+          'ESTA PERGUNTA É SOBRE A EMPRESA DE QUEM PERGUNTOU. Se a situação fiscal acima',
+          'não trouxer o que responder, NÃO tente deduzir nem responder de forma genérica:',
+          'diga que vai encaminhar para o contador e use "resolvido": false.',
+        ]),
     '',
     'Responda em JSON, só com estas duas chaves: ',
     '{ "resposta": "...", "resolvido": true ou false }',
