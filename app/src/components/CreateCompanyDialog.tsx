@@ -35,6 +35,10 @@ type Props = {
   onCreated?: (id: string) => void;
   /** Quando fornecido, exibe botão "← Seleção" no footer (uso dentro de AddEmpresaDialog). */
   onBack?: () => void;
+  /** CNPJ já informado antes de abrir o dialog (onboarding conversacional).
+   *  Preenche o campo e dispara a busca na Receita sozinho — a pessoa acabou
+   *  de digitar o número na conversa, pedir de novo seria burrice. */
+  cnpjInicial?: string | null;
   /** Server action usada no submit. Default: createCompanyAction (dono cria a própria
    *  empresa). O contador injeta `criarEmpresaClienteAction` pra cadastrar em nome do
    *  cliente (ver contador/clientes/novo/NovoClienteFlow.tsx). */
@@ -72,6 +76,7 @@ const EMPTY: Form = {
 
 export default function CreateCompanyDialog({
   open, forceCreate = false, onClose, onCreated, onBack, submitAction = defaultSubmitAction,
+  cnpjInicial = null,
 }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const toast = useToast();
@@ -87,6 +92,15 @@ export default function CreateCompanyDialog({
     if (open && !d.open) d.showModal();
     if (!open && d.open) d.close();
   }, [open]);
+
+  // Veio CNPJ da conversa: preenche e busca uma vez só. O guard por
+  // `form.cnpj` evita refazer a consulta a cada render e sobrescrever o que a
+  // pessoa já tiver corrigido à mão.
+  useEffect(() => {
+    if (!open || !cnpjInicial || form.cnpj) return;
+    setForm((prev) => ({ ...prev, cnpj: cnpjInicial }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, cnpjInicial]);
 
   // Reabrir o popup (ex.: botão "Nova empresa" do menu) deve começar limpo.
   useEffect(() => {

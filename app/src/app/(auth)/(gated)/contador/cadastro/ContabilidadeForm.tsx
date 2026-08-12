@@ -20,10 +20,13 @@ const EMPTY: ContabilidadeInput = {
   crc_uf: '',
 };
 
-export default function ContabilidadeForm() {
+/** Valores que o onboarding conversacional já coletou (podem vir vazios). */
+type Inicial = Partial<Pick<ContabilidadeInput, 'cnpj' | 'crc' | 'crc_uf'>>;
+
+export default function ContabilidadeForm({ inicial }: { inicial?: Inicial }) {
   const router = useRouter();
   const toast = useToast();
-  const [form, setForm] = useState<ContabilidadeInput>(EMPTY);
+  const [form, setForm] = useState<ContabilidadeInput>({ ...EMPTY, ...(inicial ?? {}) });
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
