@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { registrarAuditoria } from '@/lib/security/audit';
+import { conciliacaoDisponivel } from '@/lib/conciliacao/provedor';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -24,6 +25,12 @@ async function empresaAtiva(): Promise<{ userId: string; companyId: string } | n
  * base legal art. 7º, I. O texto que o usuário aceita mora na tela, não aqui.
  */
 export async function conectarContaAction(provedor = 'mock'): Promise<ActionResult> {
+  // Fronteira, não enfeite de UI: sem provedor real, conectar não pode
+  // acontecer nem por chamada direta da action. A tela só esconde o botão.
+  if (!conciliacaoDisponivel()) {
+    return { ok: false, error: 'A conexão bancária ainda não está disponível. Avisaremos quando estiver.' };
+  }
+
   const ctx = await empresaAtiva();
   if (!ctx) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 

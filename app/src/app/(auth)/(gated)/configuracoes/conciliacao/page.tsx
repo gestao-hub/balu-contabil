@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation';
 import { Landmark } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 import { casar, type GuiaCandidata, type TransacaoCandidata } from '@/lib/conciliacao/matcher';
+import { conciliacaoDisponivel } from '@/lib/conciliacao/provedor';
 import { formatBRL } from '@/lib/format/dinheiro';
 import ConciliacaoClient, { type SugestaoVM } from './ConciliacaoClient';
 
@@ -28,6 +29,12 @@ export default async function ConciliacaoPage() {
       </main>
     );
   }
+
+  // Sem provedor de Open Finance de verdade, a tela NÃO oferece conexão: o
+  // botão prometeria leitura do extrato bancário, e o que existe é um mock que
+  // lê uma tabela nossa. Quem já estiver conectado continua vendo as sugestões
+  // (o cron segue rodando) — o que se fecha é a porta de entrada.
+  const disponivel = conciliacaoDisponivel();
 
   const { data: conexao } = await supabase
     .from('conciliacao_conexoes')
@@ -117,12 +124,22 @@ export default async function ConciliacaoPage() {
         </p>
       </header>
 
+      {!disponivel && !conectada ? (
+        <div className="rounded-xl border border-border bg-surface p-5">
+          <p className="text-sm text-muted-foreground">
+            Estamos finalizando a integração com o Open Finance. Assim que estiver disponível,
+            você poderá conectar sua conta aqui e o pagamento das guias passa a ser reconhecido
+            sozinho. Por enquanto, continue marcando o pagamento em <strong>Impostos</strong>.
+          </p>
+        </div>
+      ) : (
       <ConciliacaoClient
         conectada={conectada}
         consentidaEm={(conexao?.consentida_em as string | null) ?? null}
         sugestoes={sugestoes}
         totalConciliadas={totalConciliadas}
       />
+      )}
     </main>
   );
 }

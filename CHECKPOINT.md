@@ -1,6 +1,63 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
+> **Última atualização:** 2026-08-12 (sessão 22 — Bloco 7 inteiro + saldo/saque Asaas + métricas do admin + batimento com o cliente; domínio próprio arquivado a pedido do usuário).
+
+> ## ⛔ AO RETOMAR
+>
+> **Bloco 7 fechado e mergeado.** Migrations `0067`–`0075` aplicadas no banco.
+>
+> ### O que entrou nesta sessão
+> 1. **Notificação de guia paga** (`0066`–`0068`): `/notificacoes` filtrada,
+>    resolução no **ponto de escrita** (`resolvida_em`) e **coalescência de
+>    WhatsApp por guia** (só a mais recente sobrevive; as outras ficam
+>    `suprimida_whatsapp_em` — coluna própria, porque carimbar "enviada" no que
+>    nunca saiu corromperia auditoria).
+> 2. **Bloco 7 — Frente 2 (SLA)** (`0070`): fila de escaladas em
+>    `/contador/atendimentos`, alerta `sla_estourado` no cron, prazo exibido ao
+>    cliente. A fila entrou por necessidade: sem tela para marcar "atendido", o
+>    alerta dispararia para sempre sem ter como ser fechado.
+> 3. **Bloco 7 — Frente 3 (conciliação)** (`0071`/`0072`): tabelas, matcher
+>    determinístico (16 testes) e **`registrar_pagamento_guia` como ponto de
+>    escrita único** — a baixa manual passou a usá-la também.
+> 4. **Saldo e saque da subconta Asaas** (`0073`): resposta ao P1 do cliente.
+>    Só o dono da subconta saca; conta de destino cadastrada uma vez e cifrada;
+>    saldo sempre vindo da API, nunca somado por nós.
+> 5. **Métricas do admin** (`/admin/metricas`): MRR, recebido no mês,
+>    inadimplência e uso por escritório (13 testes de regra de negócio).
+> 6. **`0074`** — conserta o efeito colateral silencioso das `0069`/`0073`:
+>    GRANT por coluna em `contabilidades` **não alcança coluna criada depois**,
+>    e a tela concluía "este escritório não tem subconta".
+> 7. **`0075`** — **domínio próprio arquivado** (decisão do usuário): o cliente
+>    não pediu (devolutiva 3.4). Backup em `docs/arquivo/`. O SLA ficou.
+>
+> ### Estado da conciliação em produção
+> **A porta de entrada está fechada de propósito.** `conciliacaoDisponivel()`
+> exige `OPEN_FINANCE_PROVEDOR` real; com o mock, a tela mostra "em preparação"
+> e a action recusa conectar. O cron continua rodando com o mock (testável),
+> mas nenhum cliente recebe promessa de vigilância bancária que não existe.
+> **Para ligar:** definir `OPEN_FINANCE_PROVEDOR` quando houver contrato.
+>
+> ### Documento para a reunião com o cliente
+> `docs/product/2026-08-12-BATIMENTO-E-PERGUNTAS-AO-CLIENTE.md` — batimento do
+> verde (**17 ✅ / 4 🟡 / 1 🔴**, era 8/5/9 em junho) e **16 perguntas** já no
+> Trello, na lista "❓ Perguntas ao cliente". As respostas do Michel estavam
+> escondidas no JS do `devolutiva-dev-preenchido.html` (os checkboxes do arquivo
+> estão em branco) — inclusive explicações dele que não estavam em lugar nenhum.
+>
+> ### Pendências que sobraram
+> - **Único item verde ainda 🔴:** onboarding conversacional com IA — que o
+>   cliente marcou "essencial para lançar".
+> - **IA sugerindo código de serviço** na emissão: idem, marcado essencial.
+> - **Dashboard do empresário**: ele reprovou a tela; falta "pendências" e
+>   "resumo financeiro" (o "saldo" virou o saque da subconta, já entregue).
+> - Smoke do saldo/saque não foi roteirizado (a tela foi vista ao vivo).
+
+---
+
+> ## Histórico anterior
+
+> Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
 > **Última atualização:** 2026-08-12 (sessão 22 — as três pendências que a sessão 21 deixou registradas foram fechadas em sequência: `/notificacoes`, resolução no ponto de escrita e coalescência de WhatsApp. Migrations `0067` e `0068` aplicadas no banco. **Push pendente de confirmação.**)
 
 > ## ⛔ AO RETOMAR: push dos commits `d2988f9` e `526f877`

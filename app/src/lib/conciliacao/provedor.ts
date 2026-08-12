@@ -62,6 +62,23 @@ const provedorMock: Provedor = {
 };
 
 /**
+ * Existe provedor de Open Finance DE VERDADE configurado?
+ *
+ * Enquanto a resposta for `false`, a conciliação não pode ser oferecida ao
+ * cliente final: o botão "conectar sua conta" prometeria leitura do extrato
+ * bancário, e o único provedor existente é um mock que lê uma tabela nossa.
+ * Prometer vigilância bancária sem olhar conta nenhuma é o mesmo defeito que o
+ * alerta de "pagamento não detectado" evita — só que na porta de entrada.
+ *
+ * O cron continua rodando normalmente com o mock: ele não promete nada a
+ * ninguém, e é assim que a feature fica testável até a credencial chegar.
+ */
+export function conciliacaoDisponivel(): boolean {
+  const nome = process.env.OPEN_FINANCE_PROVEDOR;
+  return Boolean(nome) && nome !== 'mock';
+}
+
+/**
  * Sem `OPEN_FINANCE_PROVEDOR` configurado, devolve o mock — e isso é o estado
  * normal hoje, não um erro. Quando existir provedor de verdade, ele entra aqui
  * como outro objeto que cumpre a mesma interface; nada mais no fluxo muda.
