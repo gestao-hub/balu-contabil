@@ -1,0 +1,1041 @@
+diff --git a/app/src/app/(auth)/(gated)/contador/configuracoes/DominioSlaForm.tsx b/app/src/app/(auth)/(gated)/contador/configuracoes/DominioSlaForm.tsx
+new file mode 100644
+index 0000000..a1d2aa2
+--- /dev/null
++++ b/app/src/app/(auth)/(gated)/contador/configuracoes/DominioSlaForm.tsx
+@@ -0,0 +1,200 @@
++'use client';
++// Bloco 7, Task 3 — domínio próprio + SLA de atendimento.
++//
++// A tela funciona por inteiro sem credencial da Vercel (modo manual): mostra
++// o CNAME a cadastrar e verifica o apontamento por HTTP. Com credencial, o
++// mesmo botão registra o domínio no projeto antes de verificar — nada muda
++// aqui.
++import { useState, useTransition } from 'react';
++import { useRouter } from 'next/navigation';
++import { Globe, Loader2, Save, RefreshCw, Trash2, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
++import { useToast } from '@/components/Toaster';
++import { salvarDominioAction, verificarDominioAction, removerDominioAction, salvarSlaAction } from '../dominio-actions';
++
++export type DominioSlaInicial = {
++  dominio_customizado: string | null;
++  dominio_status: 'pendente' | 'ativo' | 'erro';
++  dominio_verificado_em: string | null;
++  dominio_erro: string | null;
++  sla_resposta_horas: number | null;
++};
++
++export default function DominioSlaForm({ initial }: { initial: DominioSlaInicial }) {
++  const router = useRouter();
++  const toast = useToast();
++  const [dominio, setDominio] = useState(initial.dominio_customizado ?? '');
++  const [sla, setSla] = useState(initial.sla_resposta_horas?.toString() ?? '');
++  const [pendente, iniciar] = useTransition();
++  const [verificando, setVerificando] = useState(false);
++
++  const status = initial.dominio_status;
++  const temDominio = Boolean(initial.dominio_customizado);
++
++  function salvar() {
++    iniciar(async () => {
++      const r = await salvarDominioAction(dominio);
++      if (!r.ok) { toast('error', r.error); return; }
++      toast('success', 'Domínio salvo. Aponte o DNS e clique em "Verificar agora".');
++      router.refresh();
++    });
++  }
++
++  async function verificar() {
++    setVerificando(true);
++    try {
++      const r = await verificarDominioAction();
++      if (!r.ok) { toast('error', r.error); return; }
++      if (r.data?.status === 'ativo') toast('success', 'Domínio verificado e ativo.');
++      else toast('error', r.data?.motivo ?? 'Não foi possível verificar o domínio.');
++      router.refresh();
++    } finally {
++      setVerificando(false);
++    }
++  }
++
++  function remover() {
++    iniciar(async () => {
++      const r = await removerDominioAction();
++      if (!r.ok) { toast('error', r.error); return; }
++      setDominio('');
++      toast('success', 'Domínio removido. Seus clientes seguem atendidos pelo endereço da Balu.');
++      router.refresh();
++    });
++  }
++
++  function salvarSla() {
++    const limpo = sla.trim();
++    const valor = limpo === '' ? null : Number(limpo);
++    iniciar(async () => {
++      const r = await salvarSlaAction(valor);
++      if (!r.ok) { toast('error', r.error); return; }
++      toast('success', valor === null ? 'SLA removido.' : `SLA de ${valor}h salvo.`);
++      router.refresh();
++    });
++  }
++
++  return (
++    <div className="mt-8 space-y-8">
++      {/* ─────────────────────────────── domínio próprio */}
++      <section className="rounded-xl border border-border bg-surface p-5">
++        <div className="mb-1 flex items-center gap-2">
++          <Globe className="size-5 text-primary" />
++          <h2 className="text-lg font-semibold text-foreground">Domínio próprio</h2>
++        </div>
++        <p className="mb-4 text-sm text-muted-foreground">
++          Atenda seus clientes em um endereço seu, com a sua marca. O login e os dados continuam
++          exatamente os mesmos — muda só o endereço e a identidade visual.
++        </p>
++
++        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
++          <label className="flex flex-1 flex-col gap-1 text-sm">
++            <span className="text-muted-foreground">Endereço</span>
++            <input
++              value={dominio}
++              onChange={(e) => setDominio(e.target.value)}
++              placeholder="app.seuescritorio.com.br"
++              className="rounded-md border border-border bg-background px-3 py-2 text-foreground"
++            />
++          </label>
++          <button
++            type="button" onClick={salvar} disabled={pendente || !dominio.trim()}
++            className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
++          >
++            {pendente ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
++            Salvar
++          </button>
++        </div>
++
++        {temDominio && (
++          <div className="mt-4 space-y-3">
++            <div className="flex flex-wrap items-center gap-2 text-sm">
++              {status === 'ativo' && (
++                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-primary">
++                  <CheckCircle2 className="size-4" /> Ativo
++                  {initial.dominio_verificado_em && (
++                    <span className="text-muted-foreground">
++                      · verificado em {new Date(initial.dominio_verificado_em).toLocaleDateString('pt-BR')}
++                    </span>
++                  )}
++                </span>
++              )}
++              {status === 'pendente' && (
++                <span className="inline-flex items-center gap-1.5 rounded-full bg-alert/10 px-3 py-1 text-alert">
++                  <Clock className="size-4" /> Aguardando verificação
++                </span>
++              )}
++              {status === 'erro' && (
++                <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-destructive">
++                  <AlertTriangle className="size-4" /> Não verificado
++                </span>
++              )}
++
++              <button
++                type="button" onClick={verificar} disabled={verificando}
++                className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground disabled:opacity-50"
++              >
++                {verificando ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
++                Verificar agora
++              </button>
++              <button
++                type="button" onClick={remover} disabled={pendente}
++                className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-destructive disabled:opacity-50"
++              >
++                <Trash2 className="size-4" /> Remover
++              </button>
++            </div>
++
++            {status === 'erro' && initial.dominio_erro && (
++              <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground">
++                {initial.dominio_erro}
++              </p>
++            )}
++
++            {status !== 'ativo' && (
++              <div className="rounded-md border border-border bg-background p-3 text-sm">
++                <p className="mb-2 font-medium text-foreground">Como apontar o DNS</p>
++                <p className="text-muted-foreground">
++                  No painel onde seu domínio está registrado, crie um registro <strong>CNAME</strong> para{' '}
++                  <code className="rounded bg-surface px-1.5 py-0.5">{initial.dominio_customizado}</code> apontando para{' '}
++                  <code className="rounded bg-surface px-1.5 py-0.5">cname.vercel-dns.com</code>. A propagação pode
++                  levar algumas horas. Depois, clique em <strong>Verificar agora</strong>.
++                </p>
++              </div>
++            )}
++          </div>
++        )}
++      </section>
++
++      {/* ─────────────────────────────── SLA */}
++      <section className="rounded-xl border border-border bg-surface p-5">
++        <div className="mb-1 flex items-center gap-2">
++          <Clock className="size-5 text-primary" />
++          <h2 className="text-lg font-semibold text-foreground">Prazo de resposta (SLA)</h2>
++        </div>
++        <p className="mb-4 text-sm text-muted-foreground">
++          Em quantas horas seu escritório se compromete a responder um atendimento. O prazo é
++          exibido aos seus clientes e vale em <strong>horas corridas</strong>. Deixe em branco para
++          não exibir prazo nenhum.
++        </p>
++        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
++          <label className="flex flex-col gap-1 text-sm">
++            <span className="text-muted-foreground">Horas</span>
++            <input
++              type="number" min={1} max={720} value={sla}
++              onChange={(e) => setSla(e.target.value)}
++              placeholder="24"
++              className="w-32 rounded-md border border-border bg-background px-3 py-2 text-foreground"
++            />
++          </label>
++          <button
++            type="button" onClick={salvarSla} disabled={pendente}
++            className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
++          >
++            {pendente ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
++            Salvar prazo
++          </button>
++        </div>
++      </section>
++    </div>
++  );
++}
+diff --git a/app/src/app/(auth)/(gated)/contador/dominio-actions.ts b/app/src/app/(auth)/(gated)/contador/dominio-actions.ts
+new file mode 100644
+index 0000000..5291974
+--- /dev/null
++++ b/app/src/app/(auth)/(gated)/contador/dominio-actions.ts
+@@ -0,0 +1,178 @@
++// src/app/(auth)/(gated)/contador/dominio-actions.ts
++// Bloco 7, Task 3 — cadastro, verificacao e remocao do dominio proprio do
++// escritorio, mais o SLA de atendimento (a mesma tela configura os dois).
++'use server';
++import { randomUUID } from 'node:crypto';
++import { revalidatePath } from 'next/cache';
++import { createServerClient } from '@/lib/supabase/server';
++import { getContabilidadeCtx } from '@/lib/contador/guards';
++import { registrarAuditoria } from '@/lib/security/audit';
++import { normalizarHost } from '@/lib/dominios/host';
++import { provedorDeEnv, provisionarDominio } from '@/lib/dominios/provedor';
++import { verificarHost } from '@/lib/dominios/verificacao';
++
++export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
++
++/**
++ * Salva o dominio e (re)gera o token de verificacao.
++ *
++ * Trocar de dominio derruba o status para `pendente`: um dominio novo nao
++ * herda a verificacao do antigo, senao bastaria verificar um host qualquer
++ * uma vez e depois apontar o campo pra onde quisesse.
++ */
++export async function salvarDominioAction(bruto: string): Promise<ActionResult<{ host: string; token: string }>> {
++  const g = await getContabilidadeCtx();
++  if ('error' in g) return { ok: false, error: g.error };
++  if (!g.contabilidade) return { ok: false, error: 'Você não faz parte de um escritório.' };
++  if (g.contabilidade.status !== 'aprovada') {
++    return { ok: false, error: 'O escritório precisa estar aprovado para usar domínio próprio.' };
++  }
++
++  const host = normalizarHost(bruto);
++  if (!host) {
++    return { ok: false, error: 'Domínio inválido. Use um endereço como app.seuescritorio.com.br (sem http:// e sem barra).' };
++  }
++
++  const token = randomUUID();
++  const supabase = await createServerClient();
++  const { error } = await supabase
++    .from('contabilidades')
++    .update({
++      dominio_customizado: host,
++      dominio_token: token,
++      dominio_status: 'pendente',
++      dominio_verificado_em: null,
++      dominio_erro: null,
++    })
++    .eq('id', g.contabilidade.id);
++
++  if (error) {
++    // O indice unico parcial (0069) e a fronteira de verdade contra dois
++    // escritorios reivindicarem o mesmo host — a mensagem so traduz.
++    if (error.code === '23505') return { ok: false, error: 'Esse domínio já está em uso por outro escritório.' };
++    return { ok: false, error: error.message };
++  }
++
++  await registrarAuditoria({
++    actorUserId: g.userId, acao: 'escritorio.dominio.salvar',
++    contabilidadeId: g.contabilidade.id, alvoTipo: 'dominio', alvoId: host,
++  });
++
++  revalidatePath('/contador/configuracoes');
++  return { ok: true, data: { host, token } };
++}
++
++/**
++ * Verifica o apontamento. Com credencial da Vercel, registra o dominio no
++ * projeto antes; sem ela (modo manual), vai direto pra prova por HTTP — que
++ * e quem decide, nos dois casos.
++ */
++export async function verificarDominioAction(): Promise<ActionResult<{ status: 'ativo' | 'erro'; motivo?: string }>> {
++  const g = await getContabilidadeCtx();
++  if ('error' in g) return { ok: false, error: g.error };
++  if (!g.contabilidade) return { ok: false, error: 'Você não faz parte de um escritório.' };
++
++  const supabase = await createServerClient();
++  const { data: row, error: eLer } = await supabase
++    .from('contabilidades')
++    .select('dominio_customizado,dominio_token')
++    .eq('id', g.contabilidade.id)
++    .single();
++  if (eLer) return { ok: false, error: eLer.message };
++
++  const host = (row?.dominio_customizado ?? null) as string | null;
++  const token = (row?.dominio_token ?? '') as string;
++  if (!host) return { ok: false, error: 'Cadastre um domínio antes de verificar.' };
++
++  const prov = await provisionarDominio(provedorDeEnv(), host);
++  if (!prov.ok) {
++    await marcarErro(g.contabilidade.id, prov.erro);
++    return { ok: true, data: { status: 'erro', motivo: prov.erro } };
++  }
++
++  const r = await verificarHost(host, token);
++  if (!r.ok) {
++    await marcarErro(g.contabilidade.id, r.motivo);
++    revalidatePath('/contador/configuracoes');
++    return { ok: true, data: { status: 'erro', motivo: r.motivo } };
++  }
++
++  const { error } = await supabase
++    .from('contabilidades')
++    .update({ dominio_status: 'ativo', dominio_verificado_em: new Date().toISOString(), dominio_erro: null })
++    .eq('id', g.contabilidade.id);
++  if (error) return { ok: false, error: error.message };
++
++  await registrarAuditoria({
++    actorUserId: g.userId, acao: 'escritorio.dominio.verificado',
++    contabilidadeId: g.contabilidade.id, alvoTipo: 'dominio', alvoId: host,
++  });
++
++  revalidatePath('/contador/configuracoes');
++  return { ok: true, data: { status: 'ativo' } };
++}
++
++async function marcarErro(contabilidadeId: string, motivo: string): Promise<void> {
++  const supabase = await createServerClient();
++  await supabase
++    .from('contabilidades')
++    .update({ dominio_status: 'erro', dominio_erro: motivo })
++    .eq('id', contabilidadeId);
++}
++
++/** Remove o domínio: o escritório volta a ser atendido só pelo domínio da Balu. */
++export async function removerDominioAction(): Promise<ActionResult> {
++  const g = await getContabilidadeCtx();
++  if ('error' in g) return { ok: false, error: g.error };
++  if (!g.contabilidade) return { ok: false, error: 'Você não faz parte de um escritório.' };
++
++  const supabase = await createServerClient();
++  const { error } = await supabase
++    .from('contabilidades')
++    .update({
++      dominio_customizado: null, dominio_token: null,
++      dominio_status: 'pendente', dominio_verificado_em: null, dominio_erro: null,
++    })
++    .eq('id', g.contabilidade.id);
++  if (error) return { ok: false, error: error.message };
++
++  await registrarAuditoria({
++    actorUserId: g.userId, acao: 'escritorio.dominio.remover',
++    contabilidadeId: g.contabilidade.id,
++  });
++
++  revalidatePath('/contador/configuracoes');
++  return { ok: true };
++}
++
++/**
++ * SLA de resposta, em horas CORRIDAS (decisao §2.4 da spec — hora util
++ * exigiria calendario de feriados). `null` = o escritorio nao promete prazo:
++ * nada e exibido ao cliente e nada e alertado.
++ */
++export async function salvarSlaAction(horas: number | null): Promise<ActionResult> {
++  const g = await getContabilidadeCtx();
++  if ('error' in g) return { ok: false, error: g.error };
++  if (!g.contabilidade) return { ok: false, error: 'Você não faz parte de um escritório.' };
++
++  if (horas !== null) {
++    if (!Number.isInteger(horas) || horas < 1 || horas > 720) {
++      return { ok: false, error: 'Informe um prazo entre 1 e 720 horas (30 dias), ou deixe em branco.' };
++    }
++  }
++
++  const supabase = await createServerClient();
++  const { error } = await supabase
++    .from('contabilidades')
++    .update({ sla_resposta_horas: horas })
++    .eq('id', g.contabilidade.id);
++  if (error) return { ok: false, error: error.message };
++
++  await registrarAuditoria({
++    actorUserId: g.userId, acao: 'escritorio.sla',
++    contabilidadeId: g.contabilidade.id,
++  });
++
++  revalidatePath('/contador/configuracoes');
++  return { ok: true };
++}
+diff --git a/app/src/app/(public)/layout.tsx b/app/src/app/(public)/layout.tsx
+index d14cd04..f28fda3 100644
+--- a/app/src/app/(public)/layout.tsx
++++ b/app/src/app/(public)/layout.tsx
+@@ -1,3 +1,41 @@
+-export default function PublicLayout({ children }: { children: React.ReactNode }) {
+-  return <div className="min-h-screen grid place-items-center bg-background">{children}</div>;
++// Bloco 7, Task 4 — sob o dominio proprio do escritorio, a area publica
++// (login, cadastro, convite, reset de senha) ganha a marca dele no topo.
++//
++// CO-BRANDING, nao substituicao: o logo da Balu segue dentro do card de
++// login. E a decisao do Bloco A, e nao ha motivo pra reabrir aqui — o
++// cliente precisa saber em que produto esta entrando, e o escritorio,
++// aparecer como quem atende.
++import Image from 'next/image';
++import { brandingDoHost } from '@/lib/dominios/branding';
++
++export default async function PublicLayout({ children }: { children: React.ReactNode }) {
++  const marca = await brandingDoHost();
++
++  return (
++    <div className="min-h-screen grid place-items-center bg-background">
++      <div className="flex flex-col items-center gap-6">
++        {marca && (
++          <div className="flex flex-col items-center gap-2">
++            {marca.logoUrl && (
++              // `unoptimized`: a URL e assinada e expira: passar pelo
++              // otimizador do Next criaria cache de uma URL temporaria.
++              <Image
++                src={marca.logoUrl} alt={marca.nome} width={140} height={48} unoptimized
++                className="h-12 w-auto object-contain"
++              />
++            )}
++            <p className="text-sm text-muted-foreground">
++              Área do cliente · <span className="font-medium text-foreground">{marca.nome}</span>
++            </p>
++            {marca.slaRespostaHoras && (
++              <p className="text-xs text-muted-foreground">
++                Respondemos em até {marca.slaRespostaHoras}h (horas corridas).
++              </p>
++            )}
++          </div>
++        )}
++        {children}
++      </div>
++    </div>
++  );
+ }
+diff --git a/app/src/app/api/dominio/verificacao/route.ts b/app/src/app/api/dominio/verificacao/route.ts
+new file mode 100644
+index 0000000..1b5624a
+--- /dev/null
++++ b/app/src/app/api/dominio/verificacao/route.ts
+@@ -0,0 +1,38 @@
++// Bloco 7, Task 3 — endpoint da verificacao de dominio proprio (§2.2 da spec).
++//
++// Publico e sem parametro de proposito: a chave e o HOST da requisicao. O
++// servidor da Balu chama `GET https://<host-do-escritorio>/api/dominio/
++// verificacao` de fora e compara o token que voltar. Se confere, ficou
++// provado de uma vez que o DNS aponta pra ca, que o TLS esta de pe e que e
++// este app que responde naquele host.
++//
++// Aceitar um `?host=` transformaria isto num oraculo que responde sobre
++// QUALQUER dominio a partir de QUALQUER host — inclusive do dominio
++// principal. Nao aceita.
++import { NextResponse } from 'next/server';
++import { headers } from 'next/headers';
++import { createServerClient } from '@/lib/supabase/server';
++import { hostDaRequisicao } from '@/lib/dominios/host';
++
++// Sem cache: verificar duas vezes tem que consultar duas vezes, e o token
++// muda quando o escritorio troca de dominio.
++export const dynamic = 'force-dynamic';
++
++export async function GET() {
++  const host = hostDaRequisicao(await headers());
++  if (!host) return NextResponse.json({ erro: 'host ausente' }, { status: 400 });
++
++  // Cliente da sessao (sem sessao aqui = papel `anon`), nao o admin: a RPC
++  // e SECURITY DEFINER com retorno de uma coluna so, entao nao ha motivo pra
++  // service_role encostar neste caminho publico.
++  const supabase = await createServerClient();
++  const { data, error } = await supabase.rpc('dominio_token_por_host', { p_host: host });
++
++  if (error) {
++    console.error('[dominio/verificacao] rpc', error.message);
++    return NextResponse.json({ erro: 'indisponivel' }, { status: 500 });
++  }
++  if (!data) return NextResponse.json({ erro: 'dominio nao cadastrado' }, { status: 404 });
++
++  return NextResponse.json({ token: data, host }, { headers: { 'cache-control': 'no-store' } });
++}
+diff --git a/app/src/lib/dominios/branding.test.ts b/app/src/lib/dominios/branding.test.ts
+new file mode 100644
+index 0000000..f2fc44d
+--- /dev/null
++++ b/app/src/lib/dominios/branding.test.ts
+@@ -0,0 +1,83 @@
++import { describe, it, expect, vi, beforeEach } from 'vitest';
++
++const h = vi.hoisted(() => {
++  const estado = {
++    cabecalhos: {} as Record<string, string>,
++    resposta: { data: [] as unknown[], error: null as { message: string } | null },
++  };
++  const rpc = vi.fn(async () => estado.resposta);
++  return { estado, rpc };
++});
++
++vi.mock('next/headers', () => ({ headers: async () => new Headers(h.estado.cabecalhos) }));
++vi.mock('@/lib/supabase/server', () => ({ createServerClient: async () => ({ rpc: h.rpc }) }));
++vi.mock('@/lib/clients/supabase-storage', () => ({
++  signedUrlBranding: async (p: string) => `https://signed/${p}`,
++}));
++
++import { brandingDoHost } from './branding';
++
++beforeEach(() => {
++  h.estado.cabecalhos = {};
++  h.estado.resposta = { data: [], error: null };
++  h.rpc.mockClear();
++});
++
++describe('brandingDoHost', () => {
++  it('consulta com o host normalizado do x-forwarded-host', async () => {
++    h.estado.cabecalhos = { 'x-forwarded-host': 'APP.Escritorio.com.br:443', host: 'balu-abc.vercel.app' };
++    h.estado.resposta = {
++      data: [{ contabilidade_id: 'c1', nome: 'Escritório X', logo_url: 'c1/logo.png', sla_resposta_horas: 24 }],
++      error: null,
++    };
++
++    const r = await brandingDoHost();
++
++    expect(h.rpc).toHaveBeenCalledWith('branding_por_host', { p_host: 'app.escritorio.com.br' });
++    expect(r).toEqual({
++      contabilidadeId: 'c1', nome: 'Escritório X',
++      logoUrl: 'https://signed/c1/logo.png', slaRespostaHoras: 24,
++    });
++  });
++
++  it('host sem escritório dono => null (cai na marca Balu)', async () => {
++    h.estado.cabecalhos = { host: 'app.desconhecido.com.br' };
++    await expect(brandingDoHost()).resolves.toBeNull();
++  });
++
++  it('erro na RPC => null, sem derrubar a página', async () => {
++    // Marca é enfeite: um blip de rede não pode quebrar a tela de login.
++    h.estado.cabecalhos = { host: 'app.escritorio.com.br' };
++    h.estado.resposta = { data: [], error: { message: 'timeout' } };
++    await expect(brandingDoHost()).resolves.toBeNull();
++  });
++
++  it('sem cabeçalho de host nenhum => null e nem consulta o banco', async () => {
++    await expect(brandingDoHost()).resolves.toBeNull();
++    expect(h.rpc).not.toHaveBeenCalled();
++  });
++
++  it('escritório sem logo => devolve nome com logoUrl null', async () => {
++    h.estado.cabecalhos = { host: 'app.escritorio.com.br' };
++    h.estado.resposta = {
++      data: [{ contabilidade_id: 'c1', nome: 'Escritório X', logo_url: null, sla_resposta_horas: null }],
++      error: null,
++    };
++    await expect(brandingDoHost()).resolves.toMatchObject({ nome: 'Escritório X', logoUrl: null, slaRespostaHoras: null });
++  });
++
++  it('hosts diferentes consultam chaves diferentes (sem cache compartilhado)', async () => {
++    // Landmine 6.2 da spec: uma entrada de cache sem o host na chave serviria
++    // a marca de um escritório no domínio de outro.
++    h.estado.cabecalhos = { host: 'app.a.com.br' };
++    h.estado.resposta = { data: [{ contabilidade_id: 'a', nome: 'A', logo_url: null, sla_resposta_horas: null }], error: null };
++    await expect(brandingDoHost()).resolves.toMatchObject({ nome: 'A' });
++
++    h.estado.cabecalhos = { host: 'app.b.com.br' };
++    h.estado.resposta = { data: [{ contabilidade_id: 'b', nome: 'B', logo_url: null, sla_resposta_horas: null }], error: null };
++    await expect(brandingDoHost()).resolves.toMatchObject({ nome: 'B' });
++
++    expect(h.rpc.mock.calls.map((c) => (c as unknown as [string, { p_host: string }])[1].p_host))
++      .toEqual(['app.a.com.br', 'app.b.com.br']);
++  });
++});
+diff --git a/app/src/lib/dominios/branding.ts b/app/src/lib/dominios/branding.ts
+new file mode 100644
+index 0000000..6edacd7
+--- /dev/null
++++ b/app/src/lib/dominios/branding.ts
+@@ -0,0 +1,54 @@
++// Bloco 7, Task 4 — marca do escritorio resolvida pelo HOST da requisicao.
++//
++// Serve o caso que o co-branding do Bloco A nao alcanca: o visitante que abre
++// o dominio proprio do escritorio e ainda NAO tem sessao (tela de login). Sem
++// sessao nao ha empresa ativa nem vinculo pra consultar — a unica pista de
++// quem atende ali e o host.
++//
++// Cache: DE PROPOSITO nao usa `unstable_cache`. Ler `headers()` ja torna a
++// rota dinamica, e uma entrada de cache sem o host na chave serviria a marca
++// de um escritorio para o dominio de outro — o pior bug possivel desta
++// feature (landmine 6.2 da spec). O custo evitado seria uma consulta por
++// render; nao paga o risco.
++import 'server-only';
++import { headers } from 'next/headers';
++import { createServerClient } from '@/lib/supabase/server';
++import { signedUrlBranding } from '@/lib/clients/supabase-storage';
++import { hostDaRequisicao } from './host';
++
++export type BrandingHost = {
++  contabilidadeId: string;
++  nome: string;
++  logoUrl: string | null;
++  slaRespostaHoras: number | null;
++};
++
++/**
++ * Devolve a marca do escritorio dono do host atual, ou null quando o host e
++ * o dominio da Balu, um dominio ainda nao verificado, ou de escritorio nao
++ * aprovado — todos caem na marca Balu, que e o default seguro.
++ */
++export async function brandingDoHost(): Promise<BrandingHost | null> {
++  const host = hostDaRequisicao(await headers());
++  if (!host) return null;
++
++  const supabase = await createServerClient();
++  const { data, error } = await supabase.rpc('branding_por_host', { p_host: host });
++  if (error) {
++    // Marca e enfeite: um erro aqui nao pode derrubar a pagina de login.
++    console.error('[branding_por_host]', error.message);
++    return null;
++  }
++
++  const linha = (Array.isArray(data) ? data[0] : data) as
++    | { contabilidade_id: string; nome: string; logo_url: string | null; sla_resposta_horas: number | null }
++    | undefined;
++  if (!linha) return null;
++
++  return {
++    contabilidadeId: linha.contabilidade_id,
++    nome: linha.nome,
++    logoUrl: linha.logo_url ? await signedUrlBranding(linha.logo_url) : null,
++    slaRespostaHoras: linha.sla_resposta_horas ?? null,
++  };
++}
+diff --git a/app/src/lib/dominios/host.test.ts b/app/src/lib/dominios/host.test.ts
+new file mode 100644
+index 0000000..f9a6b7e
+--- /dev/null
++++ b/app/src/lib/dominios/host.test.ts
+@@ -0,0 +1,102 @@
++import { describe, it, expect } from 'vitest';
++import { normalizarHost, ehHostValido, hostDaRequisicao } from './host';
++
++describe('normalizarHost', () => {
++  it('minusculiza e tira a porta', () => {
++    expect(normalizarHost('APP.Escritorio.com.br:443')).toBe('app.escritorio.com.br');
++  });
++
++  it('aceita a URL inteira colada pelo usuario', () => {
++    expect(normalizarHost('https://app.escritorio.com.br/contador?x=1')).toBe('app.escritorio.com.br');
++  });
++
++  it('tira espacos, barra final e ponto de raiz DNS', () => {
++    expect(normalizarHost('  app.escritorio.com.br./  ')).toBe('app.escritorio.com.br');
++  });
++
++  it('descarta credenciais embutidas na URL', () => {
++    expect(normalizarHost('http://user:senha@app.escritorio.com.br')).toBe('app.escritorio.com.br');
++  });
++
++  it('recusa vazio, nulo e indefinido', () => {
++    expect(normalizarHost('')).toBeNull();
++    expect(normalizarHost(null)).toBeNull();
++    expect(normalizarHost(undefined)).toBeNull();
++  });
++
++  it('recusa host de rotulo unico', () => {
++    // Sem isto, alguem reivindicaria o nome interno de um servico.
++    expect(normalizarHost('intranet')).toBeNull();
++  });
++
++  it('recusa IP', () => {
++    expect(normalizarHost('192.168.0.1')).toBeNull();
++    expect(normalizarHost('[::1]:443')).toBeNull();
++  });
++
++  it('recusa localhost e subdominio de localhost', () => {
++    expect(normalizarHost('localhost:3000')).toBeNull();
++    expect(normalizarHost('app.localhost')).toBeNull();
++  });
++
++  it('www e host distinto — nao e unificado com o apex', () => {
++    // Cada um precisa do seu proprio apontamento de DNS; fingir que sao o
++    // mesmo faria o app dizer "verificado" para um host que nao foi.
++    expect(normalizarHost('www.escritorio.com.br')).toBe('www.escritorio.com.br');
++    expect(normalizarHost('escritorio.com.br')).toBe('escritorio.com.br');
++  });
++
++  it('recusa rotulo com caractere invalido ou hifen na ponta', () => {
++    expect(normalizarHost('app_x.com.br')).toBeNull();
++    expect(normalizarHost('-app.com.br')).toBeNull();
++    expect(normalizarHost('app-.com.br')).toBeNull();
++  });
++
++  it('aceita hifen no meio e digitos', () => {
++    expect(normalizarHost('app-2.escritorio-fulano.com.br')).toBe('app-2.escritorio-fulano.com.br');
++  });
++});
++
++describe('ehHostValido', () => {
++  it('recusa host acima de 253 caracteres', () => {
++    const gigante = `${'a'.repeat(60)}.${'b'.repeat(60)}.${'c'.repeat(60)}.${'d'.repeat(60)}.${'e'.repeat(60)}.com.br`;
++    expect(gigante.length).toBeGreaterThan(253);
++    expect(ehHostValido(gigante)).toBe(false);
++  });
++
++  it('recusa o dominio da propria Balu', () => {
++    expect(ehHostValido('balu.app.br')).toBe(false);
++  });
++});
++
++describe('hostDaRequisicao', () => {
++  it('prefere x-forwarded-host ao host', () => {
++    // Na Vercel o `host` e o dominio interno do deployment: usar ele
++    // significaria nunca reconhecer o dominio do escritorio.
++    const h = { 'x-forwarded-host': 'app.escritorio.com.br', host: 'balu-abc123.vercel.app' };
++    expect(hostDaRequisicao(h)).toBe('app.escritorio.com.br');
++  });
++
++  it('cai no host quando nao ha x-forwarded-host', () => {
++    expect(hostDaRequisicao({ host: 'app.escritorio.com.br' })).toBe('app.escritorio.com.br');
++  });
++
++  it('usa o primeiro valor de uma cadeia de proxies', () => {
++    const h = { 'x-forwarded-host': 'app.escritorio.com.br, proxy.interno.com' };
++    expect(hostDaRequisicao(h)).toBe('app.escritorio.com.br');
++  });
++
++  it('x-forwarded-host invalido cai no host, em vez de devolver lixo', () => {
++    const h = { 'x-forwarded-host': 'localhost:3000', host: 'app.escritorio.com.br' };
++    expect(hostDaRequisicao(h)).toBe('app.escritorio.com.br');
++  });
++
++  it('funciona com Headers de verdade, nao so com objeto', () => {
++    const h = new Headers({ 'x-forwarded-host': 'APP.Escritorio.com.br' });
++    expect(hostDaRequisicao(h)).toBe('app.escritorio.com.br');
++  });
++
++  it('sem nenhum cabecalho de host devolve null', () => {
++    expect(hostDaRequisicao({})).toBeNull();
++  });
++});
+diff --git a/app/src/lib/dominios/host.ts b/app/src/lib/dominios/host.ts
+new file mode 100644
+index 0000000..8167327
+--- /dev/null
++++ b/app/src/lib/dominios/host.ts
+@@ -0,0 +1,84 @@
++// Bloco 7 — normalizacao de host para o dominio proprio do escritorio.
++//
++// Duas armadilhas motivam este arquivo existir separado (landmine 6.1 da
++// spec): (a) `headers().get('host')` traz porta em dev e NAO atravessa o
++// proxy da Vercel — la o valor certo esta em `x-forwarded-host`; (b) host e
++// case-insensitive no DNS, mas `=` no Postgres nao e: sem normalizar,
++// `APP.Escritorio.com.br:443` nunca casa com a linha gravada.
++//
++// Funcoes puras, sem dependencia de Next, pra poderem ser testadas sozinhas.
++
++/** Host reservado: nunca pode virar dominio de escritorio. */
++const RESERVADOS = new Set(['localhost', 'vercel.app', 'balu.app.br']);
++
++/**
++ * Normaliza um host para a forma canonica gravada no banco: minusculo, sem
++ * esquema, sem porta, sem barra final, sem credenciais, sem espaco.
++ *
++ * `www.x.com.br` e `x.com.br` NAO sao unificados de proposito: sao hosts
++ * distintos no DNS, cada um precisa do seu proprio apontamento, e fingir que
++ * sao o mesmo faria o app prometer que um dominio funciona quando so o outro
++ * foi verificado.
++ *
++ * Devolve null quando o valor nao e um host utilizavel.
++ */
++export function normalizarHost(bruto: string | null | undefined): string | null {
++  if (!bruto) return null;
++  let h = bruto.trim().toLowerCase();
++  if (!h) return null;
++
++  // Tolera o usuario colando a URL inteira.
++  h = h.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');
++  h = h.split('/')[0];            // caminho
++  h = h.split('?')[0].split('#')[0];
++  h = h.split('@').pop() as string; // credenciais (user:pass@host)
++
++  // Porta. IPv6 literal (`[::1]:443`) cai fora na validacao de formato
++  // adiante — dominio de escritorio e nome, nunca IP.
++  const ultimoDoisPontos = h.lastIndexOf(':');
++  if (ultimoDoisPontos > -1 && /^\d+$/.test(h.slice(ultimoDoisPontos + 1))) {
++    h = h.slice(0, ultimoDoisPontos);
++  }
++  h = h.replace(/\.+$/, ''); // raiz DNS explicita ("x.com.br.")
++
++  if (!ehHostValido(h)) return null;
++  return h;
++}
++
++/**
++ * Formato de nome de dominio com pelo menos um ponto. Recusa IP (v4 e o
++ * literal v6), host de rotulo unico e os reservados.
++ *
++ * O ponto obrigatorio nao e purismo: dominio de escritorio e sempre um nome
++ * publico registrado, e aceitar rotulo unico abriria espaco pra alguem
++ * reivindicar `localhost` ou o nome interno de um servico.
++ */
++export function ehHostValido(h: string): boolean {
++  if (!h || h.length > 253) return false;
++  if (RESERVADOS.has(h)) return false;
++  if (h.endsWith('.localhost')) return false;
++  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return false; // IPv4
++  if (h.includes('[') || h.includes(']')) return false; // IPv6 literal
++  const rotulos = h.split('.');
++  if (rotulos.length < 2) return false;
++  return rotulos.every((r) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(r));
++}
++
++/**
++ * O host da requisicao atual. `x-forwarded-host` PRIMEIRO: na Vercel o
++ * `host` chega como o dominio interno do deployment, e usar ele significaria
++ * nunca reconhecer o dominio do escritorio.
++ *
++ * Aceita `Headers` do Next ou um objeto simples, pra ser testavel sem
++ * levantar o framework.
++ */
++export function hostDaRequisicao(
++  h: Headers | Record<string, string | null | undefined>,
++): string | null {
++  const get = (k: string): string | null | undefined =>
++    typeof (h as Headers).get === 'function' ? (h as Headers).get(k) : (h as Record<string, string | null | undefined>)[k];
++
++  // Pode vir com varios valores em cadeia de proxy: o primeiro e o original.
++  const encaminhado = (get('x-forwarded-host') ?? '').split(',')[0];
++  return normalizarHost(encaminhado) ?? normalizarHost(get('host'));
++}
+diff --git a/app/src/lib/dominios/provedor.ts b/app/src/lib/dominios/provedor.ts
+new file mode 100644
+index 0000000..005ad63
+--- /dev/null
++++ b/app/src/lib/dominios/provedor.ts
+@@ -0,0 +1,62 @@
++// Bloco 7 — provisionamento do dominio na plataforma de hospedagem.
++//
++// Adapter, nao dependencia dura: sem `VERCEL_API_TOKEN`/`VERCEL_PROJECT_ID`
++// (o caso de hoje — o usuario fornece o token depois) `provedorDeEnv()`
++// devolve null e o fluxo entra em MODO MANUAL, que e completo: a tela mostra
++// o CNAME e o token, e a verificacao por HTTP (host.ts + a action) prova o
++// apontamento sozinha. So o passo "adicionar o dominio no projeto" e que
++// passa a ser humano.
++//
++// Mesma convencao de sendEmail (Bloco 1) e configDeEnv do uazapi (6B):
++// falha na CHAMADA, nunca no import — o app tem de subir inteiro sem isto.
++import 'server-only';
++
++export type ConfigVercel = { token: string; projectId: string; teamId?: string };
++
++export type ResultadoProvisionamento =
++  | { ok: true; jaExistia: boolean }
++  | { ok: false; erro: string };
++
++export function provedorDeEnv(): ConfigVercel | null {
++  const token = process.env.VERCEL_API_TOKEN;
++  const projectId = process.env.VERCEL_PROJECT_ID;
++  if (!token || !projectId) return null;
++  return { token, projectId, teamId: process.env.VERCEL_TEAM_ID || undefined };
++}
++
++function url(cfg: ConfigVercel, caminho: string): string {
++  const base = `https://api.vercel.com${caminho}`;
++  return cfg.teamId ? `${base}${caminho.includes('?') ? '&' : '?'}teamId=${cfg.teamId}` : base;
++}
++
++/**
++ * Registra o dominio no projeto. Idempotente do ponto de vista de quem
++ * chama: dominio ja cadastrado devolve `ok` com `jaExistia`, porque o
++ * usuario clicando "verificar" duas vezes nao pode virar erro na tela.
++ */
++export async function provisionarDominio(
++  cfg: ConfigVercel | null, host: string,
++): Promise<ResultadoProvisionamento> {
++  // Modo manual: nao ha o que provisionar, e isso NAO e falha. A verificacao
++  // por HTTP e que decide se o dominio esta de pe.
++  if (!cfg) return { ok: true, jaExistia: false };
++
++  try {
++    const res = await fetch(url(cfg, `/v10/projects/${cfg.projectId}/domains`), {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.token}` },
++      body: JSON.stringify({ name: host }),
++      signal: AbortSignal.timeout(15_000),
++    });
++
++    if (res.ok) return { ok: true, jaExistia: false };
++
++    // 409 = ja esta no projeto. E o estado desejado, nao um erro.
++    if (res.status === 409) return { ok: true, jaExistia: true };
++
++    const corpo = await res.text().catch(() => '');
++    return { ok: false, erro: `Vercel respondeu ${res.status}${corpo ? `: ${corpo.slice(0, 200)}` : ''}` };
++  } catch (e) {
++    return { ok: false, erro: e instanceof Error ? e.message : 'falha ao falar com a Vercel' };
++  }
++}
+diff --git a/app/src/lib/dominios/verificacao.test.ts b/app/src/lib/dominios/verificacao.test.ts
+new file mode 100644
+index 0000000..3a2ca47
+--- /dev/null
++++ b/app/src/lib/dominios/verificacao.test.ts
+@@ -0,0 +1,70 @@
++import { describe, it, expect, vi } from 'vitest';
++import { verificarHost } from './verificacao';
++import { provedorDeEnv, provisionarDominio } from './provedor';
++
++function resposta(corpo: unknown, status = 200): Response {
++  return new Response(JSON.stringify(corpo), { status, headers: { 'content-type': 'application/json' } });
++}
++
++describe('verificarHost', () => {
++  it('token igual => verificado', async () => {
++    const f = vi.fn(async (_url: string, _init?: RequestInit) => resposta({ token: 'tok-1' }));
++    await expect(verificarHost('app.x.com.br', 'tok-1', f)).resolves.toEqual({ ok: true });
++    expect(f.mock.calls[0][0]).toBe('https://app.x.com.br/api/dominio/verificacao');
++  });
++
++  it('token de OUTRO escritorio => recusa', async () => {
++    // Acontece de verdade quando o host aponta pro dominio principal ou pro
++    // dominio de outro escritorio: responde 200, com o registro errado.
++    const f = vi.fn(async () => resposta({ token: 'tok-de-outro' }));
++    const r = await verificarHost('app.x.com.br', 'tok-1', f);
++    expect(r.ok).toBe(false);
++    expect(r).toMatchObject({ motivo: expect.stringContaining('outro escritório') });
++  });
++
++  it('DNS/TLS quebrado => frase de gente, nao stack trace', async () => {
++    const f = vi.fn(async () => { throw new Error('getaddrinfo ENOTFOUND app.x.com.br'); });
++    const r = await verificarHost('app.x.com.br', 'tok-1', f);
++    expect(r.ok).toBe(false);
++    if (!r.ok) {
++      expect(r.motivo).not.toContain('ENOTFOUND');
++      expect(r.motivo).toContain('DNS');
++    }
++  });
++
++  it('host servindo outro site (404) => explica que o apontamento esta errado', async () => {
++    const f = vi.fn(async () => new Response('nao encontrado', { status: 404 }));
++    const r = await verificarHost('app.x.com.br', 'tok-1', f);
++    expect(r).toMatchObject({ ok: false, motivo: expect.stringContaining('404') });
++  });
++
++  it('resposta que nao e JSON => recusa sem explodir', async () => {
++    const f = vi.fn(async () => new Response('<html>site alheio</html>', { status: 200 }));
++    const r = await verificarHost('app.x.com.br', 'tok-1', f);
++    expect(r.ok).toBe(false);
++  });
++
++  it('sem token gravado => manda salvar de novo, sem sair pra rede', async () => {
++    const f = vi.fn(async () => resposta({ token: 'x' }));
++    const r = await verificarHost('app.x.com.br', '', f);
++    expect(r.ok).toBe(false);
++    expect(f).not.toHaveBeenCalled();
++  });
++});
++
++describe('provedorDeEnv / provisionarDominio', () => {
++  it('sem credencial da Vercel => modo manual (null)', () => {
++    const prev = { t: process.env.VERCEL_API_TOKEN, p: process.env.VERCEL_PROJECT_ID };
++    delete process.env.VERCEL_API_TOKEN;
++    delete process.env.VERCEL_PROJECT_ID;
++    expect(provedorDeEnv()).toBeNull();
++    if (prev.t) process.env.VERCEL_API_TOKEN = prev.t;
++    if (prev.p) process.env.VERCEL_PROJECT_ID = prev.p;
++  });
++
++  it('modo manual NAO e falha: provisionar devolve ok sem chamar rede', async () => {
++    // O passo humano ("adicionar o dominio na Vercel") nao pode reprovar a
++    // verificacao — quem decide se o dominio esta de pe e o HTTP.
++    await expect(provisionarDominio(null, 'app.x.com.br')).resolves.toEqual({ ok: true, jaExistia: false });
++  });
++});
+diff --git a/app/src/lib/dominios/verificacao.ts b/app/src/lib/dominios/verificacao.ts
+new file mode 100644
+index 0000000..2942d2c
+--- /dev/null
++++ b/app/src/lib/dominios/verificacao.ts
+@@ -0,0 +1,62 @@
++// Bloco 7 — verificacao do dominio proprio por HTTP (decisao §2.2 da spec).
++//
++// O app busca, DE FORA, o token daquele escritorio no proprio host:
++//   GET https://<host>/api/dominio/verificacao
++// Se voltar o token certo, tres coisas ficaram provadas de uma vez — o DNS
++// aponta pra ca, o TLS esta de pe, e quem responde ali e este app. Um
++// registro TXT no DNS provaria so posse do dominio, que e menos do que
++// interessa.
++import 'server-only';
++
++export type ResultadoVerificacao =
++  | { ok: true }
++  | { ok: false; motivo: string };
++
++/** `fetch` injetavel para o teste nao depender de rede. */
++export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
++
++/**
++ * O motivo devolvido vai direto pra tela do contador — tem que ser frase de
++ * gente, nunca stack trace nem corpo de resposta cru.
++ */
++export async function verificarHost(
++  host: string,
++  tokenEsperado: string,
++  fetchImpl: FetchLike = fetch,
++): Promise<ResultadoVerificacao> {
++  if (!tokenEsperado) return { ok: false, motivo: 'Este domínio ainda não tem token de verificação. Salve o domínio novamente.' };
++
++  let res: Response;
++  try {
++    res = await fetchImpl(`https://${host}/api/dominio/verificacao`, {
++      // `no-store`: verificar duas vezes tem que consultar duas vezes.
++      cache: 'no-store',
++      redirect: 'follow',
++      signal: AbortSignal.timeout(10_000),
++    });
++  } catch {
++    // DNS inexistente, TLS invalido, conexao recusada e timeout caem todos
++    // aqui, e a distincao entre eles nao muda o que o contador faz a seguir.
++    return { ok: false, motivo: 'Não conseguimos acessar https://' + host + '. Confira o apontamento de DNS e aguarde a propagação (pode levar algumas horas).' };
++  }
++
++  if (!res.ok) {
++    return { ok: false, motivo: `O domínio respondeu ${res.status}. Ele já aponta para outro site? O apontamento precisa ser para o app da Balu.` };
++  }
++
++  let corpo: unknown;
++  try {
++    corpo = await res.json();
++  } catch {
++    return { ok: false, motivo: 'O domínio respondeu, mas não é o app da Balu que está atendendo nele.' };
++  }
++
++  const token = (corpo as { token?: unknown } | null)?.token;
++  if (typeof token !== 'string' || token !== tokenEsperado) {
++    // Acontece de verdade quando o host aponta para OUTRO escritorio (ou
++    // para o dominio principal): responde 200, com o token de outra pessoa.
++    return { ok: false, motivo: 'O domínio está respondendo, mas com o registro de outro escritório. Confira se o apontamento é do domínio certo.' };
++  }
++
++  return { ok: true };
++}

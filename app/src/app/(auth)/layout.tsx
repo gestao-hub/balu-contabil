@@ -10,7 +10,6 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getGateContext } from '@/lib/auth/gate-context';
 import { mostrarItemCobrancas } from '@/lib/billing/cobranca-escritorio-vm';
 import { signedUrlBranding } from '@/lib/clients/supabase-storage';
-import { brandingDoHost } from '@/lib/dominios/branding';
 import MenuLateral, { type EscritorioBranding } from '@/components/MenuLateral';
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -115,32 +114,6 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
           slaHoras: (contab.sla_resposta_horas as number | null) ?? null,
         };
       }
-    }
-  }
-
-  // Bloco 7: o host só pinta quando não há marca própria nem co-branding —
-  // ele é FALLBACK, não override.
-  //
-  // A precedência importa. Se o host mandasse, um cliente da contabilidade A
-  // que abrisse o domínio de B veria a marca de B por cima dos dados dele —
-  // exatamente a leitura de que B o atende, que é falsa. Com o host como
-  // fallback, quem tem escritório vê o escritório certo, e o domínio próprio
-  // segue cumprindo o que promete: quem entra pelo endereço do escritório e
-  // ainda não tem vínculo (ou é o próprio visitante da tela de login) vê a
-  // marca daquele escritório.
-  //
-  // Isto NÃO é autorização: o host nunca amplia nem restringe o que alguém
-  // enxerga — quem decide isso é a RLS, como sempre.
-  if (!escritorio) {
-    const marcaHost = await brandingDoHost();
-    if (marcaHost) {
-      escritorio = {
-        nome: marcaHost.nome,
-        logoUrl: marcaHost.logoUrl,
-        whatsapp: null,
-        proprio: false,
-        slaHoras: marcaHost.slaRespostaHoras,
-      };
     }
   }
 

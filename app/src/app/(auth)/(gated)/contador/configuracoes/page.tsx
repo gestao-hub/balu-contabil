@@ -7,7 +7,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { signedUrlBranding } from '@/lib/clients/supabase-storage';
 import EscritorioConfigForm from './EscritorioConfigForm';
-import DominioSlaForm, { type DominioSlaInicial } from './DominioSlaForm';
+import SlaForm, { type SlaInicial } from './SlaForm';
 
 export default async function ContadorConfiguracoesPage() {
   const ctx = await getContabilidadeCtx();
@@ -32,27 +32,23 @@ export default async function ContadorConfiguracoesPage() {
     .maybeSingle();
   const linkInicial = linkRow ? `${process.env.NEXT_PUBLIC_SITE_URL}/r/${linkRow.token}` : null;
 
-  // Domínio/SLA vêm de uma leitura própria: o guard `getContabilidadeCtx`
-  // seleciona uma lista fixa de colunas (branding do Bloco A) e não vale
-  // alargá-la para todo consumidor por causa desta tela.
-  const { data: dominioRow, error: erroDominio } = await supabase
+  // SLA vem de leitura própria: o guard `getContabilidadeCtx` seleciona uma
+  // lista fixa de colunas (branding do Bloco A) e não vale alargá-la para todo
+  // consumidor por causa desta tela.
+  const { data: slaRow, error: erroSla } = await supabase
     .from('contabilidades')
-    .select('dominio_customizado,dominio_status,dominio_verificado_em,dominio_erro,sla_resposta_horas')
+    .select('sla_resposta_horas')
     .eq('id', c.id)
     .maybeSingle();
   // Mesmo cuidado da tela de subconta: GRANT por coluna em `contabilidades`
   // não alcança coluna nova, e sem este log a seção renderiza vazia como se
   // nada estivesse cadastrado.
-  if (erroDominio) {
-    console.error('[7] leitura de domínio/SLA falhou (coluna sem GRANT?):', erroDominio.message);
+  if (erroSla) {
+    console.error('[7] leitura do SLA falhou (coluna sem GRANT?):', erroSla.message);
   }
 
-  const dominioInicial: DominioSlaInicial = {
-    dominio_customizado: (dominioRow?.dominio_customizado ?? null) as string | null,
-    dominio_status: ((dominioRow?.dominio_status ?? 'pendente') as DominioSlaInicial['dominio_status']),
-    dominio_verificado_em: (dominioRow?.dominio_verificado_em ?? null) as string | null,
-    dominio_erro: (dominioRow?.dominio_erro ?? null) as string | null,
-    sla_resposta_horas: (dominioRow?.sla_resposta_horas ?? null) as number | null,
+  const slaInicial: SlaInicial = {
+    sla_resposta_horas: (slaRow?.sla_resposta_horas ?? null) as number | null,
   };
 
   return (
@@ -77,7 +73,7 @@ export default async function ContadorConfiguracoesPage() {
         linkInicial={linkInicial}
       />
 
-      <DominioSlaForm initial={dominioInicial} />
+      <SlaForm initial={slaInicial} />
     </main>
   );
 }
