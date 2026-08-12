@@ -68,7 +68,17 @@ export async function marcarGuiaPagaAction(id: string): Promise<GuiaActionResult
 
   if (error) return { ok: false, error: error.message };
 
+  // Resolve no ponto de escrita (migration 0067): carimba `resolvida_em` nas
+  // notificações das_a_vencer/das_vencido desta guia. Antes disso, cada
+  // consumidor de `notifications` tinha que lembrar de fazer o LEFT JOIN com
+  // guias_fiscais pra não mostrar/enviar aviso de guia quitada — e dois
+  // esqueceram (0065/0066). Erro aqui não desfaz o pagamento: a guia está
+  // paga de fato, e os filtros de leitura seguem cobrindo o caso.
+  const { error: erroNotif } = await supabase.rpc('resolver_notificacoes_guia', { p_guia_id: id });
+  if (erroNotif) console.error('[marcarGuiaPaga] resolver_notificacoes_guia:', erroNotif.message);
+
   revalidatePath('/impostos');
+  revalidatePath('/notificacoes');
   return { ok: true };
 }
 

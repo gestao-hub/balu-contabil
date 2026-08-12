@@ -48,11 +48,12 @@ export default async function NotificacoesPage(
     await supabase.from('notifications').update({ lida_em: new Date().toISOString() }).eq('id', sel).is('lida_em', null);
   }
 
-  const { data } = await supabase
-    .from('notifications')
-    .select('id,titulo,corpo,norma,severidade,action_href,lida_em,created_at,company_id')
-    .order('created_at', { ascending: false })
-    .limit(100);
+  // RPC (não `.from('notifications').select()` direto) — mesma razão do sino
+  // em SinoNotificacoes.tsx: sem o join com guias_fiscais, uma notificação
+  // das_a_vencer/das_vencido de guia já paga continuava listada aqui como
+  // pendente. A 0067 estendeu `notificacoes_sino` com `norma` (esta página
+  // mostra a norma; o sino não) e com o filtro de `resolvida_em`.
+  const { data } = await supabase.rpc('notificacoes_sino', { p_limite: 100 });
 
   const itens = (data as Notificacao[] | null) ?? [];
   const naoLidas = itens.filter((n) => !n.lida_em).length;
