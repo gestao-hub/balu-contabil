@@ -101,7 +101,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
     if (currentCompanyContabilidadeId) {
       const { data: contab } = await admin
         .from('contabilidades')
-        .select('nome, logo_url, whatsapp_suporte, status')
+        .select('nome, logo_url, whatsapp_suporte, status, sla_resposta_horas')
         .eq('id', currentCompanyContabilidadeId)
         .maybeSingle();
       if (contab?.status === 'aprovada') {
@@ -110,6 +110,9 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
           logoUrl: contab.logo_url ? await signedUrlBranding(contab.logo_url as string) : null,
           whatsapp: (contab.whatsapp_suporte as string | null) ?? null,
           proprio: false,
+          // Bloco 7: a promessa de prazo aparece junto do Suporte — que é o
+          // lugar onde ela significa alguma coisa pro cliente.
+          slaHoras: (contab.sla_resposta_horas as number | null) ?? null,
         };
       }
     }
@@ -136,6 +139,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         logoUrl: marcaHost.logoUrl,
         whatsapp: null,
         proprio: false,
+        slaHoras: marcaHost.slaRespostaHoras,
       };
     }
   }

@@ -97,7 +97,7 @@ function semCercaMarkdown(bruto: string): string {
 async function escalarParaContador(
   admin: SupabaseClient,
   info: { companyId: string; pergunta: string; messageId: string },
-): Promise<void> {
+): Promise<string | null> {
   const { data: empresa } = await admin
     .from('companies').select('id, contabilidade_id').eq('id', info.companyId).maybeSingle();
   const contabilidadeId = (empresa as { contabilidade_id: string | null } | null)?.contabilidade_id ?? null;
@@ -105,7 +105,7 @@ async function escalarParaContador(
   if (!contabilidadeId) {
     // Self-service: sem escritório, sem time a notificar. Estado legítimo.
     console.warn('[webhook uazapi] empresa sem escritório vinculado, escalação pulada:', info.companyId);
-    return;
+    return null;
   }
 
   const { data: membro } = await admin
@@ -118,7 +118,9 @@ async function escalarParaContador(
   const ownerUserId = (membro as { user_id: string } | null)?.user_id ?? null;
   if (!ownerUserId) {
     console.warn('[webhook uazapi] escritório sem membros, escalação pulada:', contabilidadeId);
-    return;
+    // Devolve mesmo assim: a fila é do escritório, e a linha tem de ficar
+    // visível para ele mesmo que hoje não haja a quem notificar.
+    return contabilidadeId;
   }
 
   // `chave` única por (owner_user_id, chave) — ver 0045_notificacoes.sql.
@@ -135,10 +137,15 @@ async function escalarParaContador(
     titulo: 'Cliente perguntou pelo WhatsApp e a resposta automática não foi suficiente',
     corpo: `Pergunta recebida: "${info.pergunta}"`,
     chave: `whatsapp_escalado:${info.messageId}`,
+    // Bloco 7: o aviso passa a levar para a fila, que é onde a escalada se
+    // fecha (e onde o relógio do SLA para).
+    action_href: '/contador/atendimentos',
   }, { onConflict: 'owner_user_id,chave', ignoreDuplicates: true });
   if (error) {
     console.error('[webhook uazapi] falha ao gravar escalação:', error.message);
   }
+
+  return contabilidadeId;
 }
 
 export async function POST(req: Request) {
@@ -283,13 +290,21 @@ export async function POST(req: Request) {
       resolvido = false;
     }
 
+    // Bloco 7: a escalada devolve o escritório dono, que é gravado na linha —
+    // é ele que faz a conversa aparecer na fila `/contador/atendimentos` e no
+    // relógio do SLA. Sem isso, `contabilidade_id` fica NULL e a escalada não
+    // casa com policy nenhuma: some da tela em vez de virar trabalho de alguém.
+    let contabilidadeId: string | null = null;
     if (!resolvido) {
-      await escalarParaContador(admin, { companyId, pergunta: corpo.text, messageId: corpo.messageId });
+      contabilidadeId = await escalarParaContador(admin, { companyId, pergunta: corpo.text, messageId: corpo.messageId });
     }
 
     const { error: erroUpdate } = await admin
       .from('whatsapp_atendimentos')
-      .update({ profile_user_id: profile.user_id, resposta_enviada: resposta, resolvido })
+      .update({
+        profile_user_id: profile.user_id, resposta_enviada: resposta, resolvido,
+        ...(contabilidadeId ? { contabilidade_id: contabilidadeId } : {}),
+      })
       .eq('id', atendimentoId);
     if (erroUpdate) {
       console.error('[webhook uazapi] falha ao atualizar atendimento:', atendimentoId, erroUpdate.message);

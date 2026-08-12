@@ -12,7 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
   ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, LayoutDashboard, FilePlus, MessageCircle,
-  CreditCard, Receipt, Landmark, Tags, BookOpen,
+  CreditCard, Receipt, Landmark, Tags, BookOpen, Headset,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -38,6 +38,10 @@ export type EscritorioBranding = {
    *  some o "oferecido por" e o WhatsApp de suporte — os dois pressupõem
    *  que a marca é de outra pessoa. */
   proprio?: boolean;
+  /** Bloco 7: prazo de resposta prometido pelo escritório, em horas CORRIDAS.
+   *  null = não prometeu prazo, e nada é exibido. Só aparece junto do
+   *  Suporte, que é onde a promessa tem sentido para o cliente. */
+  slaHoras?: number | null;
 };
 
 export type MenuLateralProps = {
@@ -90,6 +94,9 @@ const NAV: NavItem[] = [
   { href: '/impostos',              label: 'Impostos',       Icon: Calculator, precisaEmpresa: true },
   { href: '/contador',              label: 'Escritório',     Icon: Briefcase, roles: ['contador'] },
   { href: '/contador/aberturas',    label: 'Aberturas',      Icon: FilePlus, roles: ['contador'] },
+  // Bloco 7: a fila de escaladas do WhatsApp. Fica perto do topo porque é o
+  // item com relógio correndo — cliente esperando resposta.
+  { href: '/contador/atendimentos', label: 'Atendimentos',   Icon: Headset, roles: ['contador'] },
   { href: '/contador/honorarios',   label: 'Honorários',     Icon: HandCoins, roles: ['contador'] },
   // ── Bloco 4B: o escritório cobrando os clientes DELE pela subconta Asaas ──
   // Vira seção própria (decisão do usuário) e não mais três telas espalhadas:
@@ -405,7 +412,16 @@ export default function MenuLateral({
             className="mt-1 flex items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground-2 hover:bg-surface-2 hover:text-foreground"
           >
             <MessageCircle className="size-4 shrink-0" />
-            {open && <span className="truncate">Suporte</span>}
+            {open && (
+              <span className="truncate">
+                Suporte
+                {escritorio.slaHoras ? (
+                  <span className="block text-xs text-muted-foreground">
+                    resposta em até {escritorio.slaHoras}h
+                  </span>
+                ) : null}
+              </span>
+            )}
           </a>
         )}
       </nav>

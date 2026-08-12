@@ -54,6 +54,14 @@ export async function GET(req: Request) {
 
   const admin = createAdminClient();
 
+  // Bloco 7: SLA de atendimento. Roda junto da materialização das obrigações
+  // porque é o mesmo tipo de trabalho (varrer estado e criar aviso) e porque
+  // o plano Hobby da Vercel permite exatamente 2 crons — as duas vagas já
+  // estão ocupadas. Erro aqui não pode derrubar o resto: o que tem prazo
+  // legal é a materialização das obrigações, não o alerta de SLA.
+  const { data: slaAvisos, error: eSla } = await admin.rpc('materializar_sla_estourado');
+  if (eSla) console.error('[cron obrigacoes] materializar_sla_estourado', eSla.message);
+
   const { data: criadas, error: eRpc } = await admin.rpc('materializar_obrigacoes');
   if (eRpc) {
     console.error('[cron obrigacoes] materializar_obrigacoes', eRpc.message);
@@ -160,6 +168,7 @@ export async function GET(req: Request) {
     ...(ePend ? { email_erro: ePend.message } : {}),
     whatsapp_enviados: whatsappEnviados, whatsapp_pulados: whatsappPulados,
     whatsapp_suprimidas: eSuprimir ? null : (suprimidas ?? 0),
+    sla_avisos: eSla ? null : (slaAvisos ?? 0),
     billing,
   });
 }
