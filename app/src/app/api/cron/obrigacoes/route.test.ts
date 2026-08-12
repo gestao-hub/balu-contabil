@@ -6,11 +6,13 @@ process.env.CRON_SECRET = SECRET;
 const h = vi.hoisted(() => {
   const estado = {
     pendWhats: [] as Array<Record<string, unknown>>,
+    suprimidas: 0 as number,
   };
 
   const rpc = vi.fn(async (nome: string) => {
     if (nome === 'materializar_obrigacoes') return { data: 0, error: null };
     if (nome === 'notificacoes_pendentes_email') return { data: [], error: null };
+    if (nome === 'suprimir_whatsapp_superadas') return { data: estado.suprimidas, error: null };
     if (nome === 'notificacoes_pendentes_whatsapp') return { data: estado.pendWhats, error: null };
     throw new Error(`RPC inesperada no mock: ${nome}`);
   });
@@ -49,6 +51,7 @@ function requisicaoFalsa() {
 
 beforeEach(() => {
   h.estado.pendWhats = [];
+  h.estado.suprimidas = 0;
   h.rpc.mockClear();
   h.enviarMensagem.mockClear();
 });
@@ -137,5 +140,27 @@ describe('GET /api/cron/obrigacoes — linha digitável na mensagem de WhatsApp'
 
     const chamada = h.enviarMensagem.mock.calls[0][1] as { texto: string };
     expect(chamada.texto).not.toContain('Código para pagar');
+  });
+});
+
+describe('GET /api/cron/obrigacoes — coalescência de WhatsApp por guia (0068)', () => {
+  it('suprime as superadas ANTES de ler os pendentes', async () => {
+    await GET(requisicaoFalsa());
+
+    const nomes = h.rpc.mock.calls.map((c) => c[0] as string);
+    const iSuprimir = nomes.indexOf('suprimir_whatsapp_superadas');
+    const iPendentes = nomes.indexOf('notificacoes_pendentes_whatsapp');
+    expect(iSuprimir).toBeGreaterThanOrEqual(0);
+    // Ordem é o que faz a coalescência valer: ler primeiro devolveria o
+    // backlog inteiro da guia e as quatro mensagens sairiam mesmo assim.
+    expect(iSuprimir).toBeLessThan(iPendentes);
+  });
+
+  it('a resposta do cron reporta quantas foram suprimidas', async () => {
+    h.estado.suprimidas = 3;
+
+    const corpo = await (await GET(requisicaoFalsa())).json();
+
+    expect(corpo.whatsapp_suprimidas).toBe(3);
   });
 });

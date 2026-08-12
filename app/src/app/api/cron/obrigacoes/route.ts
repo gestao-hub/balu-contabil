@@ -101,6 +101,15 @@ export async function GET(req: Request) {
   // UAZAPI_BASE_URL/UAZAPI_TOKEN configurados, configDeEnv() devolve null e
   // enviarMensagem vira no-op — todo item cai em "pulado", sem quebrar o
   // cron. É o estado de hoje, sem instância provisionada.
+  // Antes de ler os pendentes: coalescer por guia (migration 0068). Sem
+  // instância provisionada nada é enviado e o backlog D7/D3/D1/vencido da
+  // mesma guia se acumula — no dia em que o token existir, o cliente
+  // receberia as quatro mensagens quase idênticas de uma vez. Só a mais
+  // recente de cada guia sobrevive; as anteriores ficam suprimidas (não
+  // "enviadas" — nada saiu).
+  const { data: suprimidas, error: eSuprimir } = await admin.rpc('suprimir_whatsapp_superadas');
+  if (eSuprimir) console.error('[cron obrigacoes] suprimir_whatsapp_superadas', eSuprimir.message);
+
   const { data: pendWhats, error: ePendWhats } = await admin.rpc('notificacoes_pendentes_whatsapp', { p_limite: 50 });
   let whatsappEnviados = 0;
   let whatsappPulados = 0;
@@ -150,6 +159,7 @@ export async function GET(req: Request) {
     ok: true, criadas, enviados, pulados,
     ...(ePend ? { email_erro: ePend.message } : {}),
     whatsapp_enviados: whatsappEnviados, whatsapp_pulados: whatsappPulados,
+    whatsapp_suprimidas: eSuprimir ? null : (suprimidas ?? 0),
     billing,
   });
 }
