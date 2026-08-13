@@ -166,20 +166,24 @@ export const SERPRO_SERVICES = {
   OBTER_DECLARACAO: 'OBTERDECLARACAO',
 } as const;
 
-/**
- * Códigos de tributo usados em PGDAS-D / apuração.
- * Conferir contra PRD §11.2 antes de produção — valores baseados em convenção Receita/Serpro.
- */
-export const TRIBUTO_CODIGOS = {
-  IRPJ:   1010,
-  CSLL:   1020,
-  COFINS: 1031,
-  PIS:    1040,
-  INSS:   1041,
-  ICMS:   1045,
-  ISS:    1050,
-} as const;
-export type TributoCodigo = (typeof TRIBUTO_CODIGOS)[keyof typeof TRIBUTO_CODIGOS];
+// TRIBUTO_CODIGOS foi REMOVIDO em 12/08/2026, e a remoção é a conferência que
+// o card "Impostos P2.6" pedia — não a evasão dela.
+//
+// A tabela vivia aqui com o aviso "conferir contra PRD §11.2 antes de
+// produção". Conferido: o PRD (§11.2, etapa 5) escreve "1010 IRPJ, 1001 CSLL,
+// etc." — e o código dizia CSLL = 1020. As duas fontes do repositório
+// discordam, e o "etc." mostra que o próprio PRD nunca teve a tabela inteira.
+// Nenhuma das duas é autoridade: a autoridade é o manual do Integra Contador
+// para GERARDASAVULSO19.
+//
+// Nada no repositório importava a constante — nem código, nem script, nem
+// teste. Ou seja: sete números fiscais não verificados, exportados e prontos
+// para alguém confiar neles no dia em que o DAS avulso entrar. Guardar isso
+// não é adiantar trabalho, é plantar um erro com aparência de decisão tomada.
+//
+// Quando GERARDASAVULSO19 for implementado de fato, a tabela volta com os
+// códigos lidos do manual — e aí a conferência tem contra o que ser feita.
+
 
 /** Lê o autenticar_procurador_token do corpo (200) ou do ETag (304). Puro. */
 export function parseApoiarToken(body: string, etag: string | undefined): string | null {
