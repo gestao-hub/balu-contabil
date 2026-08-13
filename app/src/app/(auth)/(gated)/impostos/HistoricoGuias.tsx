@@ -28,8 +28,16 @@ export default function HistoricoGuias({ initial }: { initial: GuiaRow[] }) {
   const toggle = (id: string) => setExpandedId((cur) => (cur === id ? null : id));
 
   // Marca como "vencida" visualmente quando vencimento < hoje E status != paga.
-  // Não muta o status do banco; é só pra UX. Vence-de-fato vira write quando o
-  // cron de atualização rodar (fora do escopo de PR 3.1).
+  // Continua sem mutar o banco — e continua existindo mesmo depois de o write
+  // ter entrado (`marcar_guias_vencidas`, migration 0078, chamada pelo cron
+  // diário). Não é redundância: o cron roda uma vez por dia, então entre a
+  // meia-noite e a passada dele há uma janela em que a guia venceu e o banco
+  // ainda não sabe. Nessa janela é isto aqui que mostra a verdade.
+  //
+  // A regra visual é a mais larga das duas de propósito: qualquer não-paga
+  // vencida aparece como vencida, enquanto o banco só grava sobre 'gerada'
+  // (ver o cabeçalho da 0078). Uma guia em 'erro' e vencida aparece vencida na
+  // tela sem que o estado de erro seja apagado no banco.
   const rows = useMemo(() => {
     const now = new Date();
     return initial.map((g) => ({

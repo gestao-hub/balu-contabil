@@ -69,6 +69,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: eRpc.message }, { status: 500 });
   }
 
+  // Persiste status='vencida' (migration 0078). DEPOIS de materializar, nunca
+  // antes: quem avisa o cliente é `materializar_obrigacoes`, e ela é o que tem
+  // prazo. Este UPDATE só arruma o estado gravado — se falhar, o cliente foi
+  // avisado do mesmo jeito e a tela continua pintando o badge por conta
+  // própria. Por isso loga e segue, como o SLA acima.
+  const { data: vencidas, error: eVenc } = await admin.rpc('marcar_guias_vencidas');
+  if (eVenc) console.error('[cron obrigacoes] marcar_guias_vencidas', eVenc.message);
+
   // Não retorna cedo em falha desta RPC: fazia isso até esta sessão, e como
   // resultado uma falha transitória só no lado de e-mail calava também o
   // loop de WhatsApp (Bloco 6B) e o billing (Bloco 4A) — que não têm nenhuma
@@ -180,6 +188,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true, criadas, enviados, pulados,
     ...(ePend ? { email_erro: ePend.message } : {}),
+    guias_vencidas: eVenc ? null : (vencidas ?? 0),
     whatsapp_enviados: whatsappEnviados, whatsapp_pulados: whatsappPulados,
     whatsapp_suprimidas: eSuprimir ? null : (suprimidas ?? 0),
     sla_avisos: eSla ? null : (slaAvisos ?? 0),

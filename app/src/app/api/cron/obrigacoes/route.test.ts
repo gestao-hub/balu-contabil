@@ -8,6 +8,7 @@ const h = vi.hoisted(() => {
     pendWhats: [] as Array<Record<string, unknown>>,
     suprimidas: 0 as number,
     slaAvisos: 0 as number,
+    guiasVencidas: 0 as number,
   };
 
   const rpc = vi.fn(async (nome: string) => {
@@ -15,6 +16,7 @@ const h = vi.hoisted(() => {
     if (nome === 'notificacoes_pendentes_email') return { data: [], error: null };
     if (nome === 'suprimir_whatsapp_superadas') return { data: estado.suprimidas, error: null };
     if (nome === 'materializar_sla_estourado') return { data: estado.slaAvisos, error: null };
+    if (nome === 'marcar_guias_vencidas') return { data: estado.guiasVencidas, error: null };
     if (nome === 'notificacoes_pendentes_whatsapp') return { data: estado.pendWhats, error: null };
     throw new Error(`RPC inesperada no mock: ${nome}`);
   });
@@ -62,6 +64,7 @@ beforeEach(() => {
   h.estado.pendWhats = [];
   h.estado.suprimidas = 0;
   h.estado.slaAvisos = 0;
+  h.estado.guiasVencidas = 0;
   h.rpc.mockClear();
   h.enviarMensagem.mockClear();
 });
@@ -199,5 +202,63 @@ describe('GET /api/cron/obrigacoes — alerta de SLA de atendimento (0070)', () 
     expect(corpo.ok).toBe(true);
     expect(corpo.sla_avisos).toBeNull();
     expect(h.rpc.mock.calls.map((c) => c[0])).toContain('materializar_obrigacoes');
+  });
+});
+
+describe('GET /api/cron/obrigacoes — persistir guia vencida (0078)', () => {
+  it('chama marcar_guias_vencidas e reporta a contagem', async () => {
+    h.estado.guiasVencidas = 4;
+
+    const corpo = await (await GET(requisicaoFalsa())).json();
+
+    expect(h.rpc.mock.calls.map((c) => c[0])).toContain('marcar_guias_vencidas');
+    expect(corpo.guias_vencidas).toBe(4);
+  });
+
+  it('roda DEPOIS de materializar_obrigacoes', async () => {
+    await GET(requisicaoFalsa());
+
+    const nomes = h.rpc.mock.calls.map((c) => c[0] as string);
+    // Ordem é a defesa contra timeout de wall-clock, que não é capturável por
+    // try/catch: o que avisa o cliente e tem prazo legal roda primeiro. Este
+    // UPDATE só arruma estado gravado e pode esperar.
+    expect(nomes.indexOf('materializar_obrigacoes'))
+      .toBeLessThan(nomes.indexOf('marcar_guias_vencidas'));
+  });
+
+  it('falha ao marcar não derruba o cron nem os envios', async () => {
+    // Troca a implementação inteira (e não mockImplementationOnce) porque o
+    // erro precisa cair numa RPC específica, não na n-ésima chamada. Guarda e
+    // devolve a original: `mockClear` do beforeEach não restaura implementação,
+    // e sem isto o vazamento quebraria qualquer teste acrescentado depois.
+    const original = h.rpc.getMockImplementation()!;
+    // O cast repete o que o teste de falha do SLA já faz: o tipo inferido do
+    // mock não admite `{ data: null, error: {...} }`, que é justamente a forma
+    // que o supabase-js devolve em erro e o que queremos exercitar.
+    h.rpc.mockImplementation(((async (nome: string) => {
+      if (nome === 'marcar_guias_vencidas') return { data: null, error: { message: 'boom' } };
+      if (nome === 'materializar_obrigacoes') return { data: 0, error: null };
+      if (nome === 'materializar_sla_estourado') return { data: 0, error: null };
+      if (nome === 'suprimir_whatsapp_superadas') return { data: 0, error: null };
+      if (nome === 'notificacoes_pendentes_email') return { data: [], error: null };
+      if (nome === 'notificacoes_pendentes_whatsapp') return { data: [], error: null };
+      throw new Error(`RPC inesperada no mock: ${nome}`);
+    }) as unknown as typeof original));
+
+    let res: Response;
+    let corpo: Record<string, unknown>;
+    try {
+      res = await GET(requisicaoFalsa());
+      corpo = await res.json();
+    } finally {
+      h.rpc.mockImplementation(original);
+    }
+
+    expect(res.status).toBe(200);
+    expect(corpo.ok).toBe(true);
+    expect(corpo.guias_vencidas).toBeNull();
+    // O badge da tela continua calculando "vencida" sozinho, então falhar aqui
+    // não muda nada para quem olha — some só o estado gravado daquele dia.
+    expect(h.rpc.mock.calls.map((c) => c[0])).toContain('notificacoes_pendentes_whatsapp');
   });
 });
