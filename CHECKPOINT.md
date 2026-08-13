@@ -1,7 +1,80 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-12 (sessão 22, continuação — Bloco 7 mergeado e em produção; `/code-review` de tudo; **WhatsApp validado AO VIVO** com 5 bugs corrigidos; onboarding conversacional entregue; favicon consertado).
+> **Última atualização:** 2026-08-13 (sessão 23 — PR 4.2 e PR 4.3 entregues; **To Do do Trello caiu de 6 para 2**; `/code-review` encontrou que a varredura de UX media a tela errada).
+
+> ## 🆕 SESSÃO 23 (2026-08-13) — main `a453a9b`, deploy `nq9t8ip2k` Ready
+>
+> **PR 4.2 (UX responsiva) e PR 4.3 (README) fechados.** Restam **2 cards** no
+> To Do: P3.3 Open Finance e separação de ambiente — as duas dependem de custo,
+> não de código.
+>
+> ### A lição desta sessão: um teste verde que não media nada
+>
+> `app/tests/responsivo.spec.ts` varre 37 rotas a 390×844 nos três papéis e
+> mede duas coisas objetivas: a página rolar de lado e alvo de toque < 24×24
+> (WCAG 2.5.8). **A primeira versão passou sem medir uma única tela do app**, e
+> só o `/code-review` pegou. Duas causas somadas:
+>
+> 1. O papel era gravado com a coluna errada (`role_type`; a real é **`type`**)
+>    e o erro do insert não era conferido. O trigger `on_auth_user_created_role`
+>    (0002) já cria `'Empresa'` para todo mundo, lendo
+>    `raw_user_meta_data->>'type'` — então os atores de Contador e AdminBalu
+>    logavam como Empresa.
+> 2. **Havia documento LGPD publicado sem aceite**, e `(gated)/layout.tsx` manda
+>    para `/aceite`. As 34 rotas autenticadas terminavam nessa tela curta, que
+>    passa nas duas checagens.
+>
+> **Se for escrever teste de UI autenticada neste projeto:** o papel vem de
+> `createUser({ user_metadata: { type } })` e precisa ser **conferido** depois;
+> o aceite LGPD precisa ser inserido em `aceites`; e a guarda anti-falso-verde
+> tem de rejeitar `/login`, `/onboarding`, `/aceite`, `/contador/cadastro` e
+> `/contador/aguardando`.
+>
+> Com as telas reais medidas apareceram **9 alvos de toque** invisíveis antes
+> (links de 15–20px em admin/metricas, contador/cobrancas, impostos, folha,
+> DashboardCard, AssinaturaView, e o Fechar de 20×20 do CreateCompanyDialog).
+>
+> ### SERPRO: a tradução existia e era inalcançável
+>
+> `lib/fiscal/serpro-erro.ts` (novo) traduz erro da SERPRO para pt-BR, ligado
+> nos 6 wrappers. **Mas `lib/clients/serpro.ts` já desembrulhava o envelope e
+> DESCARTAVA o `codigo`** antes de lançar — a tabela DASN-SIMEI passava nos
+> testes e nunca disparava em produção. O código passa a ser preservado e o
+> tradutor entende as duas formas (`[codigo] texto | …` e JSON cru).
+>
+> Regra do módulo: só mapeia código com significado **documentado**
+> (`docs/investigations/DASN-SIMEI.md`); código desconhecido mostra o texto
+> oficial da Receita com o código ao lado, nunca tradução inventada.
+>
+> Também: heurística de transporte deixou de ser testada contra o texto da
+> Receita (um 400 legítimo falando de "timeout" virava frase de infraestrutura);
+> `Erro` vence `Aviso`; envelope ilegível é descartado em vez de exibido
+> cortado; e o `warning` de `garantirTokenProcurador` — o caminho de falha mais
+> frequente — passa pelo tradutor em vez de contorná-lo.
+>
+> ### README + .env.example
+>
+> README virou **porta de entrada e aponta para este arquivo**: fica só com o
+> que muda devagar. Ganhou a cobertura de deploy que faltava (2 crons no Hobby e
+> por que tarefa nova pega carona, crons não agendados, troca de domínio
+> quebrando e-mail em silêncio). **RLS conferida no banco: 44/44 tabelas ativas**
+> — a advertência antiga estava obsoleta.
+>
+> `.env.example` estava mentindo: `CERT_ENC_KEY` listada como "o código não lê"
+> quando é obrigatória e cifra certificado de cliente; `N8N_*` e
+> `SUPABASE_MOTOR_*` (mortas) removidas.
+>
+> ### ⚠️ Duas pendências de configuração descobertas (nenhuma tocada)
+>
+> - **`UAZAPI_TOKEN` não existe no `.env.local`** — só `UAZAPI_ADMIN_TOKEN`, que
+>   serve apenas para provisionar instância. O app lê `UAZAPI_TOKEN`
+>   (`lib/uazapi/cliente.ts`); sem ela `enviarMensagem` devolve
+>   `{ ok: false, skipped: true }` e **o WhatsApp nunca envia, sem erro nenhum**.
+>   Conferir se na Vercel está com o nome certo.
+> - **`ASAAS_WEBHOOK_SECRET`, `ASAAS_ENV` e `ASAAS_WEBHOOK_EMAIL` ausentes do
+>   `.env.local`.** Sem o primeiro, o webhook das subcontas não chega a ser
+>   cadastrado e nenhum escritório fica sabendo que foi pago.
 
 > ## ⛔ AO RETOMAR: dois bloqueios operacionais, nenhum de código
 >
