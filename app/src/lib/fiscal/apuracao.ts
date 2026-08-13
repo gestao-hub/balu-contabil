@@ -1,6 +1,6 @@
 import type { AnexoSimples } from './regime';
 import type { ReceitaApuracao, ResultadoApuracao } from './apuracao-types';
-import { identificarFaixa, aliquotaEfetiva } from './simples';
+import { identificarFaixa, aliquotaEfetiva, type TabelaSimples } from './simples';
 import { calcularRbt12 } from './rbt12';
 import { valorDasMei } from './das-mei';
 
@@ -18,6 +18,13 @@ export function calcularApuracao(input: {
   competencia: string;
   atividadeMei?: string | null;
   dataInicioAtividade?: string;
+  /**
+   * Parâmetros datados, lidos de `parametros_fiscais` por quem tem banco à mão
+   * (esta função continua pura). Omitidos, cada um cai no seu fallback no
+   * módulo — mesmo número de sempre, nunca zero nem exceção.
+   */
+  tabelaSimples?: TabelaSimples | null;
+  salarioMinimo?: number | null;
 }): ResultadoApuracao {
   const { regimeCode, anexo, receitas, competencia } = input;
   const receitaMes = Number(
@@ -28,7 +35,7 @@ export function calcularApuracao(input: {
   );
 
   if (regimeCode === '4') {
-    const valorImposto = valorDasMei(input.atividadeMei);
+    const valorImposto = valorDasMei(input.atividadeMei, input.salarioMinimo ?? undefined);
     return {
       tipoApuracao: 'DAS-MEI',
       competencia,
@@ -58,7 +65,7 @@ export function calcularApuracao(input: {
     let valorImposto = 0;
     for (const [a, receitaBruta] of buckets) {
       const receita = Number(receitaBruta.toFixed(2));
-      const faixa = identificarFaixa(rbt12, a, competencia);
+      const faixa = identificarFaixa(rbt12, a, competencia, input.tabelaSimples);
       const aliq = aliquotaEfetiva(rbt12, faixa);
       const valor = Number((receita * aliq).toFixed(2));
       valorImposto += valor;
@@ -68,7 +75,7 @@ export function calcularApuracao(input: {
 
     // Alíquota "manchete": ponderada quando há receita; senão a marginal do anexo fallback
     // (preserva a prévia útil mesmo com mês ainda sem notas).
-    const faixaFallback = identificarFaixa(rbt12, anexo, competencia);
+    const faixaFallback = identificarFaixa(rbt12, anexo, competencia, input.tabelaSimples);
     const aliquotaFallback = aliquotaEfetiva(rbt12, faixaFallback);
     const aliquotaGeral = receitaMes > 0 ? valorImposto / receitaMes : aliquotaFallback;
     const segregado = buckets.size > 1;

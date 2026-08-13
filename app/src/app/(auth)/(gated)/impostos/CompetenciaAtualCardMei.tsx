@@ -20,9 +20,13 @@ type Props = {
    *  componentes o DAS deste MEI tem, e portanto qual explicação se aplica.
    *  Nulo cai em Serviços, o mesmo fallback da estimativa. */
   atividadeMei: string | null;
+  /** Vigente na competência (`parametros_fiscais`, migration 0079). Vem de cima
+   *  porque a explicação tem de somar o MESMO INSS que a apuração usou — se a
+   *  tela recalculasse com outro mínimo, a explicação sumiria sozinha. */
+  salarioMinimo?: number;
 };
 
-export default function CompetenciaAtualCardMei({ apuracao, guia, competencia, atividadeMei }: Props) {
+export default function CompetenciaAtualCardMei({ apuracao, guia, competencia, atividadeMei, salarioMinimo }: Props) {
   if (!apuracao && !guia) {
     return <EmptyCompetencia competencia={competencia} />;
   }
@@ -34,7 +38,7 @@ export default function CompetenciaAtualCardMei({ apuracao, guia, competencia, a
   // divergindo da nossa estimativa — e aí não há explicação, porque explicar
   // peças que não fecham com o total logo acima é pior que não explicar.
   const totalExibido = guia?.valor ?? apuracao?.valor_imposto ?? null;
-  const valores = valoresDoDasMei(atividadeMei, totalExibido);
+  const valores = valoresDoDasMei(atividadeMei, totalExibido, salarioMinimo);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-6">

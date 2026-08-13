@@ -11,6 +11,7 @@ import { derivarObrigacoes, competenciasEsperadasDoAno } from '@/lib/fiscal/obri
 import { lerNotasAnoCalendario } from '@/lib/fiscal/receitas-source';
 import { resumirReceitasAno } from '@/lib/fiscal/dasn/resumo';
 import { defisVazio } from '@/lib/fiscal/defis/campos';
+import { getParametrosDaCompetencia } from '@/lib/fiscal/parametros';
 import HistoricoGuias, { type GuiaRow } from './HistoricoGuias';
 import { type DeclaracaoRow } from './DeclaracoesSection';
 import DeclaracoesMeiSection from './DeclaracoesMeiSection';
@@ -54,6 +55,10 @@ export default async function ImpostosPage() {
   }
 
   const competenciaAtual = competenciaReferenciaBrt(new Date());
+
+  // Só o salário mínimo importa nesta tela: o card do MEI precisa somar o mesmo
+  // INSS que a apuração somou para a explicação do 6A poder aparecer (0079).
+  const { salarioMinimo } = await getParametrosDaCompetencia(supabase, competenciaAtual);
 
   const [{ data: company }, { data: fiscal }, { data: apuracoes }, { data: guias }, { data: declaracoes }] = await Promise.all([
     supabase.from('companies').select('razao_social, nome').eq('id', companyId).single(),
@@ -234,6 +239,7 @@ export default async function ImpostosPage() {
                 guia={guiaAtual ? toGuiaRowDetalhe(guiaAtual) : null}
                 competencia={competenciaAtual}
                 atividadeMei={fiscal?.atividade_mei ?? null}
+                salarioMinimo={salarioMinimo}
               />
             </section>
             <section className="mb-8">

@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AnexoSimples } from './regime';
 import type { ReceitaApuracao, PreviewImposto } from './apuracao-types';
 import { calcularApuracao } from './apuracao';
+import type { TabelaSimples } from './simples';
+import { getParametrosDaCompetencia } from './parametros';
 import { lerReceitasParaApuracao } from './receitas-source';
 import { anexarAnexosDasReceitas } from './segregacao';
 import { resolverAnexoEmpresa } from './cnae-sync';
@@ -17,6 +19,8 @@ export function montarPreview(input: {
   receitas: ReceitaApuracao[];
   competencia: string;
   atividadeMei?: string | null;
+  tabelaSimples?: TabelaSimples | null;
+  salarioMinimo?: number | null;
 }): PreviewImposto {
   try {
     const r = calcularApuracao({
@@ -25,6 +29,8 @@ export function montarPreview(input: {
       receitas: input.receitas,
       competencia: input.competencia,
       atividadeMei: input.atividadeMei ?? null,
+      tabelaSimples: input.tabelaSimples,
+      salarioMinimo: input.salarioMinimo,
     });
     if (r.tipoApuracao === 'DAS-MEI') return { tipo: 'mei', valorFixo: r.valorImposto };
     // Simples sempre traz aliquotaEfetiva numérica; se vier null (caminho futuro),
@@ -57,11 +63,17 @@ export async function obterPreviewImposto(
   );
   const fallbackAnexo = resolvido.anexo;
   const receitasAnexadas = await anexarAnexosDasReceitas(supabase, companyId, competencia, receitas, fallbackAnexo);
+  // Mesmos parâmetros datados da apuração de verdade (0079). Se a prévia usasse
+  // uma tabela e a apuração outra, o cliente veria um número na tela e outro na
+  // guia — e a divergência apareceria só depois de emitir.
+  const parametros = await getParametrosDaCompetencia(supabase, competencia);
   return montarPreview({
     regimeCode: fiscal.Code_regime_tributario as string,
     anexo: fallbackAnexo,
     receitas: receitasAnexadas,
     competencia,
     atividadeMei: (fiscal.atividade_mei as string | null) ?? null,
+    tabelaSimples: parametros.tabelaSimples,
+    salarioMinimo: parametros.salarioMinimo,
   });
 }

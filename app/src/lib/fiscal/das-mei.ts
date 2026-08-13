@@ -1,9 +1,17 @@
 // DAS-MEI: INSS 5% do salário mínimo + ICMS (R$ 1) e/ou ISS (R$ 5).
-// Base: salário mínimo R$ 1.518 (2025) → INSS R$ 75,90.
 //
-// ⚠️ DÍVIDA CONHECIDA: este valor é o de 2025. O salário mínimo de 2026 já é
-// oficial e NÃO foi conferido — a estimativa do DAS-MEI pode estar desatualizada.
-// Conferir e atualizar `INSS_MENSAL`; o resto se ajusta sozinho (ver abaixo).
+// O SALÁRIO MÍNIMO É PARÂMETRO, NÃO CONSTANTE (12/08/2026). Até aqui o INSS era
+// o número 75,90 digitado à mão — 5% de R$ 1.518, o mínimo de 2025 — e cada
+// virada de ano exigia um deploy para corrigir imposto. Agora ele é derivado do
+// mínimo, e o mínimo vem de `parametros_fiscais` com vigência (chave
+// `salario_minimo`), lido em `lib/fiscal/parametros.ts`. Trocar de ano virou
+// INSERT de uma linha.
+//
+// ⚠️ O FALLBACK AINDA É O DE 2025, e isso é deliberado. O mínimo de 2026 não
+// foi conferido contra fonte oficial, e chutar valor de imposto é pior do que
+// ficar visivelmente desatualizado: quando estimativa e guia real divergem, a
+// explicação do Bloco 6A se recusa a aparecer (ver `valores-mei.ts`) em vez de
+// mentir. O conserto agora é uma linha em `parametros_fiscais`, não um commit.
 //
 // A COMPOSIÇÃO É DADO, NÃO COMENTÁRIO. Antes, os três totais eram digitados à
 // mão e a quebra vivia num comentário — mudar o INSS exigia editar três números
@@ -11,7 +19,18 @@
 // divergirem. É também o que permite a explicação do Bloco 6A dizer
 // "{inss} de INSS" com o valor certo.
 
-const INSS_MENSAL = 75.90;
+/** Salário mínimo de 2025. Só é usado quando `parametros_fiscais` não responde. */
+export const SALARIO_MINIMO_FALLBACK = 1518;
+
+/** LC 123/2006, art. 18-A, §3º, V — contribuição do MEI: 5% do salário mínimo. */
+export const ALIQUOTA_INSS_MEI = 0.05;
+
+/** O INSS do mês para um dado salário mínimo. R$ 1.518 → R$ 75,90. */
+export function inssMensal(salarioMinimo: number = SALARIO_MINIMO_FALLBACK): number {
+  const sm = Number.isFinite(salarioMinimo) && salarioMinimo > 0 ? salarioMinimo : SALARIO_MINIMO_FALLBACK;
+  return Number((sm * ALIQUOTA_INSS_MEI).toFixed(2));
+}
+
 const ICMS_MENSAL = 1.00;
 const ISS_MENSAL = 5.00;
 
@@ -22,11 +41,17 @@ export type ComponentesDasMei = {
   iss?: number;
 };
 
+/**
+ * Quais componentes cada atividade tem. Só a FORMA mora aqui; o valor do INSS
+ * entra na hora, porque depende do salário mínimo da competência. Antes esta
+ * era uma tabela de números congelados no módulo — e um `const` no topo do
+ * arquivo não tem como saber de que ano é a guia.
+ */
 const COMPOSICAO = {
-  'Comercio ou Industria': { inss: INSS_MENSAL, icms: ICMS_MENSAL },
-  'Prestacao de Servicos': { inss: INSS_MENSAL, iss: ISS_MENSAL },
-  'Comercio e Servicos':   { inss: INSS_MENSAL, icms: ICMS_MENSAL, iss: ISS_MENSAL },
-} as const satisfies Record<string, ComponentesDasMei>;
+  'Comercio ou Industria': { inss: true, icms: true },
+  'Prestacao de Servicos': { inss: true, iss: true },
+  'Comercio e Servicos':   { inss: true, icms: true, iss: true },
+} as const satisfies Record<string, Partial<Record<keyof ComponentesDasMei, true>>>;
 
 /**
  * Todo componente que um DAS-MEI pode ter, DERIVADO da composição — nunca uma
@@ -47,12 +72,27 @@ function chave(atividade: string | null | undefined): keyof typeof COMPOSICAO {
     : PADRAO;
 }
 
-export function componentesDasMei(atividade: string | null | undefined): ComponentesDasMei {
-  return { ...COMPOSICAO[chave(atividade)] };
+/**
+ * Os componentes com valor, para a atividade e o salário mínimo dados.
+ *
+ * `salarioMinimo` é opcional para que todo chamador que não conhece a
+ * competência continue funcionando como sempre — e é passado explicitamente
+ * por quem lê `parametros_fiscais`. A ordem das chaves segue o tipo
+ * `ComponentesDasMei` (inss, icms, iss), que é a ordem do texto na tela.
+ */
+export function componentesDasMei(
+  atividade: string | null | undefined,
+  salarioMinimo?: number,
+): ComponentesDasMei {
+  const forma = COMPOSICAO[chave(atividade)] as Partial<Record<keyof ComponentesDasMei, true>>;
+  const out: ComponentesDasMei = { inss: inssMensal(salarioMinimo) };
+  if (forma.icms) out.icms = ICMS_MENSAL;
+  if (forma.iss) out.iss = ISS_MENSAL;
+  return out;
 }
 
 /** O total é a SOMA dos componentes — nunca um número digitado ao lado deles. */
-export function valorDasMei(atividade: string | null | undefined): number {
-  const c = componentesDasMei(atividade);
+export function valorDasMei(atividade: string | null | undefined, salarioMinimo?: number): number {
+  const c = componentesDasMei(atividade, salarioMinimo);
   return Number((c.inss + (c.icms ?? 0) + (c.iss ?? 0)).toFixed(2));
 }

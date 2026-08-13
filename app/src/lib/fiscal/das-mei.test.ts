@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { componentesDasMei, valorDasMei } from './das-mei';
+import {
+  componentesDasMei, valorDasMei, inssMensal, SALARIO_MINIMO_FALLBACK,
+} from './das-mei';
 
 describe('valorDasMei', () => {
   it('comércio ou indústria', () => {
@@ -50,5 +52,36 @@ describe('composição do DAS-MEI', () => {
   it('atividade desconhecida ou nula cai em Prestação de Serviços', () => {
     expect(valorDasMei(null)).toBeCloseTo(valorDasMei('Prestacao de Servicos'), 2);
     expect(valorDasMei('bananas')).toBeCloseTo(valorDasMei('Prestacao de Servicos'), 2);
+  });
+});
+
+describe('salário mínimo como parâmetro (0079)', () => {
+  it('INSS é 5% do mínimo, arredondado em centavos', () => {
+    expect(inssMensal(1518)).toBe(75.90);
+    expect(inssMensal(1621)).toBe(81.05);
+  });
+
+  it('sem mínimo informado usa o fallback de 2025 — o valor de sempre', () => {
+    // Garante que versionar não mudou nenhum número em produção enquanto a
+    // linha de 2026 não existir em parametros_fiscais.
+    expect(inssMensal()).toBe(75.90);
+    expect(SALARIO_MINIMO_FALLBACK).toBe(1518);
+    expect(valorDasMei('Prestacao de Servicos')).toBe(80.90);
+  });
+
+  it('mínimo inválido não vira NaN nem zero: cai no fallback', () => {
+    // Uma linha torta em parametros_fiscais não pode gerar guia de R$ 0,00 —
+    // seria um DAS impossível de pagar e um imposto omitido.
+    for (const ruim of [0, -1, NaN, Infinity]) {
+      expect(inssMensal(ruim)).toBe(75.90);
+    }
+  });
+
+  it('o mínimo atravessa até o total, componente a componente', () => {
+    const c = componentesDasMei('Comercio e Servicos', 1600);
+    expect(c.inss).toBe(80);
+    expect(c.icms).toBe(1);
+    expect(c.iss).toBe(5);
+    expect(valorDasMei('Comercio e Servicos', 1600)).toBe(86);
   });
 });

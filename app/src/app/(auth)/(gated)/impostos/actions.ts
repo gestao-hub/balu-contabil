@@ -12,6 +12,7 @@ import type { PagamentoDas } from '@/lib/fiscal/serpro-pagamentos-parse';
 import { consultarDasnSimei } from '@/lib/fiscal/serpro-dasn-simei';
 import { gerarDasSimples } from '@/lib/fiscal/serpro-das-simples';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
+import { getParametrosDaCompetencia } from '@/lib/fiscal/parametros';
 import { lerReceitasParaApuracao, lerNotasAnoCalendario } from '@/lib/fiscal/receitas-source';
 import { gerarDasMei } from '@/lib/fiscal/serpro-das-mei';
 import { resolverAnexoEmpresa } from '@/lib/fiscal/cnae-sync';
@@ -137,12 +138,18 @@ export async function iniciarApuracaoAction(
   try {
     const receitas = await lerReceitasParaApuracao(supabase, companyId, competencia);
     const receitasAnexadas = await anexarAnexosDasReceitas(supabase, companyId, competencia, receitas, anexo);
+    // Tabela do Simples e salário mínimo VIGENTES NA COMPETÊNCIA (migration
+    // 0079), não os que estavam no código no dia do deploy. Reapurar uma
+    // competência antiga passa a usar os parâmetros daquela época.
+    const parametros = await getParametrosDaCompetencia(supabase, competencia);
     resultado = calcularApuracao({
       regimeCode,
       anexo,
       receitas: receitasAnexadas,
       competencia,
       atividadeMei: (fiscal.atividade_mei ?? null) as string | null,
+      tabelaSimples: parametros.tabelaSimples,
+      salarioMinimo: parametros.salarioMinimo,
       // dataInicioAtividade: não temos o campo no schema → sem anualização por ora
     });
   } catch (e) {

@@ -2,8 +2,20 @@ import type { AnexoSimples } from './regime';
 
 export type FaixaSimples = { faixa: number; ate: number; nominal: number; deduzir: number };
 
+export type TabelaSimples = Record<AnexoSimples, FaixaSimples[]>;
+
 // LC 123/2006 (redação LC 155/2016). nominal em fração; ate/deduzir em R$.
-const TABELA_SIMPLES_2026: Record<AnexoSimples, FaixaSimples[]> = {
+//
+// FALLBACK, não fonte da verdade (desde 12/08/2026). A tabela vigente vem de
+// `parametros_fiscais` (chave `tabela_simples`, com vigência), lida em
+// `lib/fiscal/parametros.ts`. Isto aqui é o que resta quando o banco não
+// responde — e é o mesmo conteúdo que a 0079 semeou, então o cálculo não muda
+// de resultado por causa da origem.
+//
+// Continua no código de propósito: cair para "sem tabela" não é opção. Um
+// SELECT que falha não pode virar imposto zerado nem tela vazia; vira o mesmo
+// número de sempre, com a divergência aparecendo no log e não no DAS.
+export const TABELA_SIMPLES_FALLBACK: TabelaSimples = {
   'Anexo I': [
     { faixa: 1, ate: 180000, nominal: 0.04, deduzir: 0 },
     { faixa: 2, ate: 360000, nominal: 0.073, deduzir: 5940 },
@@ -46,15 +58,27 @@ const TABELA_SIMPLES_2026: Record<AnexoSimples, FaixaSimples[]> = {
   ],
 };
 
-/** Retorna a tabela vigente para a competência. Hoje só 2026; versionar quando entrar LC 214/2025. */
-export function getTabelaSimples(_competencia: string): Record<AnexoSimples, FaixaSimples[]> {
-  return TABELA_SIMPLES_2026;
+/**
+ * A tabela a usar: a que o chamador leu do banco, ou o fallback.
+ *
+ * A competência não escolhe mais nada aqui — quem escolhe por vigência é o
+ * SELECT em `parametros_fiscais`, que é onde a data mora. O parâmetro fica
+ * porque a assinatura já era essa e porque é ele que documenta, no ponto de
+ * uso, que o cálculo é datado.
+ */
+export function getTabelaSimples(_competencia: string, tabela?: TabelaSimples | null): TabelaSimples {
+  return tabela ?? TABELA_SIMPLES_FALLBACK;
 }
 
 /** Primeira faixa cujo teto cobre o RBT12; acima do teto, última faixa. */
-export function identificarFaixa(rbt12: number, anexo: AnexoSimples, competencia = '202601'): FaixaSimples {
-  const tabela = getTabelaSimples(competencia)[anexo];
-  return tabela.find((f) => rbt12 <= f.ate) ?? tabela[tabela.length - 1];
+export function identificarFaixa(
+  rbt12: number,
+  anexo: AnexoSimples,
+  competencia = '202601',
+  tabela?: TabelaSimples | null,
+): FaixaSimples {
+  const faixas = getTabelaSimples(competencia, tabela)[anexo];
+  return faixas.find((f) => rbt12 <= f.ate) ?? faixas[faixas.length - 1];
 }
 
 /** Alíquota efetiva = ((RBT12 * nominal) - dedução) / RBT12, com clamp em 0. */

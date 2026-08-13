@@ -46,13 +46,17 @@ const emCentavos = (v: number) => Math.round(v * 100);
 export function valoresDoDasMei(
   atividade: string | null | undefined,
   totalExibido: number | null | undefined,
+  /** Vigente na competência (migration 0079). Omitido, cai no de 2025 — o mesmo
+   *  fallback da estimativa, para que os dois lados nunca discordem por
+   *  origem do dado, só por dado desatualizado. */
+  salarioMinimo?: number,
 ): Record<string, string> | null {
   if (totalExibido == null || !Number.isFinite(totalExibido)) return null;
 
-  const soma = valorDasMei(atividade);
+  const soma = valorDasMei(atividade, salarioMinimo);
   if (Math.abs(emCentavos(totalExibido) - emCentavos(soma)) > TOLERANCIA_CENTAVOS) return null;
 
-  const componentes = componentesDasMei(atividade);
+  const componentes = componentesDasMei(atividade, salarioMinimo);
   return Object.fromEntries(
     Object.entries(componentes).map(([chave, valor]) => [chave, brl(valor)]),
   );

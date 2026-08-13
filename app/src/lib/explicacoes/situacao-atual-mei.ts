@@ -11,6 +11,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { situacaoDasMei, chaveDaSituacao } from '@/lib/fiscal/situacao-fiscal';
 import { valoresDoDasMei } from '@/lib/explicacoes/valores-mei';
+import { getParametrosDaCompetencia } from '@/lib/fiscal/parametros';
 import { buscarExplicacao } from '@/lib/explicacoes/buscar';
 import { renderizar } from '@/lib/explicacoes/renderizar';
 
@@ -67,7 +68,12 @@ export async function buscarSituacaoAtualMei(
     ?? guiaAtual?.valor_principal
     ?? apuracaoAtual?.valor_imposto
     ?? null;
-  const valores = valoresDoDasMei(atividadeMei, totalExibido);
+  // O mesmo mínimo que a apuração usou (0079). Sem isto, esta explicação — que
+  // sai por WhatsApp, longe da tela — poderia somar componentes de um ano e
+  // comparar com o total de outro, e se recusaria a aparecer sem que ninguém
+  // entendesse por quê.
+  const { salarioMinimo } = await getParametrosDaCompetencia(sb, competenciaAtual);
+  const valores = valoresDoDasMei(atividadeMei, totalExibido, salarioMinimo);
   if (!valores) return null;
 
   const situacao = situacaoDasMei(atividadeMei);

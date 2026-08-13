@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { identificarFaixa, aliquotaEfetiva, getTabelaSimples } from './simples';
+import { identificarFaixa, aliquotaEfetiva, getTabelaSimples, TABELA_SIMPLES_FALLBACK } from './simples';
 
 describe('identificarFaixa', () => {
   it('faixa 1 no limite inferior', () => {
@@ -38,5 +38,28 @@ describe('aliquotaEfetiva', () => {
 describe('getTabelaSimples', () => {
   it('Anexo III faixa 1 = 6%', () => {
     expect(getTabelaSimples('202601')['Anexo III'][0].nominal).toBe(0.06);
+  });
+});
+
+describe('tabela vinda do banco (0079)', () => {
+  const dobrada = {
+    ...TABELA_SIMPLES_FALLBACK,
+    'Anexo I': TABELA_SIMPLES_FALLBACK['Anexo I'].map((f) => ({ ...f, nominal: f.nominal * 2 })),
+  };
+
+  it('a tabela passada substitui o fallback', () => {
+    expect(identificarFaixa(100000, 'Anexo I', '202601', dobrada).nominal).toBe(0.08);
+  });
+
+  it('sem tabela (ou null) usa o fallback do módulo', () => {
+    // O SELECT pode falhar; o imposto não pode sumir junto.
+    expect(identificarFaixa(100000, 'Anexo I', '202601').nominal).toBe(0.04);
+    expect(identificarFaixa(100000, 'Anexo I', '202601', null).nominal).toBe(0.04);
+    expect(getTabelaSimples('202601', null)).toBe(TABELA_SIMPLES_FALLBACK);
+  });
+
+  it('a tabela do banco chega até a alíquota efetiva', () => {
+    const faixa = identificarFaixa(200000, 'Anexo I', '202601', dobrada); // 14,6% / 5940
+    expect(aliquotaEfetiva(200000, faixa)).toBeCloseTo((200000 * 0.146 - 5940) / 200000, 6);
   });
 });
