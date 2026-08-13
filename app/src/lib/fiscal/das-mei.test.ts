@@ -3,25 +3,32 @@ import {
   componentesDasMei, valorDasMei, inssMensal, SALARIO_MINIMO_FALLBACK,
 } from './das-mei';
 
+// Os números por atividade são conferidos com o salário mínimo PASSADO
+// explicitamente (o de 2025), e não com o fallback do módulo. Antes eles
+// dependiam da constante, então a virada do mínimo quebrava quatro testes que
+// nada tinham a ver com o ano — e o sinal se perdia no meio do ruído. O
+// fallback tem teste próprio, um só, logo abaixo.
+const SM_2025 = 1518;
+
 describe('valorDasMei', () => {
   it('comércio ou indústria', () => {
-    expect(valorDasMei('Comercio ou Industria')).toBe(76.90);
+    expect(valorDasMei('Comercio ou Industria', SM_2025)).toBe(76.90);
   });
   it('prestação de serviços', () => {
-    expect(valorDasMei('Prestacao de Servicos')).toBe(80.90);
+    expect(valorDasMei('Prestacao de Servicos', SM_2025)).toBe(80.90);
   });
   it('comércio e serviços', () => {
-    expect(valorDasMei('Comercio e Servicos')).toBe(81.90);
+    expect(valorDasMei('Comercio e Servicos', SM_2025)).toBe(81.90);
   });
   it('desconhecido/null → default serviços', () => {
-    expect(valorDasMei(null)).toBe(80.90);
-    expect(valorDasMei('xpto')).toBe(80.90);
+    expect(valorDasMei(null, SM_2025)).toBe(80.90);
+    expect(valorDasMei('xpto', SM_2025)).toBe(80.90);
   });
 });
 
 describe('composição do DAS-MEI', () => {
   it('Comércio ou Indústria = INSS + ICMS', () => {
-    const c = componentesDasMei('Comercio ou Industria');
+    const c = componentesDasMei('Comercio ou Industria', SM_2025);
     expect(Object.keys(c)).toEqual(['inss', 'icms']);
     expect(c.inss).toBeCloseTo(75.90, 2);
     expect(c.icms).toBeCloseTo(1.00, 2);
@@ -61,19 +68,28 @@ describe('salário mínimo como parâmetro (0079)', () => {
     expect(inssMensal(1621)).toBe(81.05);
   });
 
-  it('sem mínimo informado usa o fallback de 2025 — o valor de sempre', () => {
-    // Garante que versionar não mudou nenhum número em produção enquanto a
-    // linha de 2026 não existir em parametros_fiscais.
-    expect(inssMensal()).toBe(75.90);
-    expect(SALARIO_MINIMO_FALLBACK).toBe(1518);
-    expect(valorDasMei('Prestacao de Servicos')).toBe(80.90);
+  it('sem mínimo informado usa o fallback do ano corrente (2026)', () => {
+    // O fallback é o último recurso, para quando parametros_fiscais não
+    // responde — e nesse momento o cálculo quase sempre é da competência
+    // atual. Um fallback parado num ano anterior erraria no caso comum.
+    expect(SALARIO_MINIMO_FALLBACK).toBe(1621);
+    expect(inssMensal()).toBe(81.05);
+    expect(valorDasMei('Prestacao de Servicos')).toBe(86.05);
+  });
+
+  it('o mínimo de 2025 continua acessível e dá o valor daquele ano', () => {
+    // Quem lê a competência de 2025 em parametros_fiscais recebe 1518 e tem
+    // de continuar chegando em R$ 80,90 — versionar não pode reescrever o
+    // passado.
+    expect(inssMensal(1518)).toBe(75.90);
+    expect(valorDasMei('Prestacao de Servicos', 1518)).toBe(80.90);
   });
 
   it('mínimo inválido não vira NaN nem zero: cai no fallback', () => {
     // Uma linha torta em parametros_fiscais não pode gerar guia de R$ 0,00 —
     // seria um DAS impossível de pagar e um imposto omitido.
     for (const ruim of [0, -1, NaN, Infinity]) {
-      expect(inssMensal(ruim)).toBe(75.90);
+      expect(inssMensal(ruim)).toBe(81.05);
     }
   });
 

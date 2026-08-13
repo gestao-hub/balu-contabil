@@ -8,14 +8,19 @@ import { valorDasMei } from '@/lib/fiscal/das-mei';
 // usam ` ` de propósito — é o que o cliente realmente vê.
 const RS = (n: string) => `R$ ${n}`;
 
+// Salário mínimo passado explicitamente: o que este arquivo testa é a decisão
+// de explicar ou não, e ela não pode passar a depender de qual ano o fallback
+// do módulo carrega hoje.
+const SM_2025 = 1518;
+
 describe('valores do DAS-MEI para a explicação', () => {
   it('devolve um valor formatado por componente', () => {
-    const v = valoresDoDasMei('Prestacao de Servicos', valorDasMei('Prestacao de Servicos'));
+    const v = valoresDoDasMei('Prestacao de Servicos', valorDasMei('Prestacao de Servicos', SM_2025), SM_2025);
     expect(v).toEqual({ inss: RS('75,90'), iss: RS('5,00') });
   });
 
   it('comércio e serviços traz os três', () => {
-    const v = valoresDoDasMei('Comercio e Servicos', valorDasMei('Comercio e Servicos'));
+    const v = valoresDoDasMei('Comercio e Servicos', valorDasMei('Comercio e Servicos', SM_2025), SM_2025);
     expect(Object.keys(v ?? {})).toEqual(['inss', 'icms', 'iss']);
   });
 
@@ -58,7 +63,7 @@ describe('valores do DAS-MEI para a explicação', () => {
   // Atividade desconhecida cai em Serviços — o MESMO fallback que a estimativa
   // usa. Se divergisse, a explicação falaria de um tributo que o número não tem.
   it('atividade nula segue o mesmo fallback da estimativa', () => {
-    expect(valoresDoDasMei(null, valorDasMei(null))).toEqual({ inss: RS('75,90'), iss: RS('5,00') });
+    expect(valoresDoDasMei(null, valorDasMei(null, SM_2025), SM_2025)).toEqual({ inss: RS('75,90'), iss: RS('5,00') });
   });
 
   // Os marcadores que a explicação pode usar são exatamente estas chaves —

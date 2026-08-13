@@ -9,6 +9,10 @@ describe('calcularApuracao', () => {
     const r = calcularApuracao({
       regimeCode: '4', anexo: null, competencia: '202506',
       receitas: [mk('202506', 5000)], atividadeMei: 'Prestacao de Servicos',
+      // Competência de 2025 → o mínimo daquele ano, passado como quem lê
+      // `parametros_fiscais` passaria. Prova de que o parâmetro atravessa até
+      // o valor da guia, e não só até `das-mei.ts`.
+      salarioMinimo: 1518,
     });
     expect(r.tipoApuracao).toBe('DAS-MEI');
     expect(r.valorImposto).toBe(80.90);

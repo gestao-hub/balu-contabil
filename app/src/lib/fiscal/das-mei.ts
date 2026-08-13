@@ -7,11 +7,13 @@
 // `salario_minimo`), lido em `lib/fiscal/parametros.ts`. Trocar de ano virou
 // INSERT de uma linha.
 //
-// ⚠️ O FALLBACK AINDA É O DE 2025, e isso é deliberado. O mínimo de 2026 não
-// foi conferido contra fonte oficial, e chutar valor de imposto é pior do que
-// ficar visivelmente desatualizado: quando estimativa e guia real divergem, a
-// explicação do Bloco 6A se recusa a aparecer (ver `valores-mei.ts`) em vez de
-// mentir. O conserto agora é uma linha em `parametros_fiscais`, não um commit.
+// O FALLBACK ACOMPANHA O ANO CORRENTE (R$ 1.621, 2026 — migration 0080). Ele
+// só entra em cena quando o SELECT falha, e nesse momento o cálculo quase
+// sempre é da competência atual; um fallback parado em 2025 devolveria o
+// número errado justamente no caso comum. A contrapartida é honesta e vale
+// dizer: com o banco fora do ar, reapurar uma competência de 2025 usaria o
+// mínimo de 2026. Precisão histórica depende do banco responder — é ele que
+// tem a vigência.
 //
 // A COMPOSIÇÃO É DADO, NÃO COMENTÁRIO. Antes, os três totais eram digitados à
 // mão e a quebra vivia num comentário — mudar o INSS exigia editar três números
@@ -19,8 +21,8 @@
 // divergirem. É também o que permite a explicação do Bloco 6A dizer
 // "{inss} de INSS" com o valor certo.
 
-/** Salário mínimo de 2025. Só é usado quando `parametros_fiscais` não responde. */
-export const SALARIO_MINIMO_FALLBACK = 1518;
+/** Salário mínimo de 2026. Só é usado quando `parametros_fiscais` não responde. */
+export const SALARIO_MINIMO_FALLBACK = 1621;
 
 /** LC 123/2006, art. 18-A, §3º, V — contribuição do MEI: 5% do salário mínimo. */
 export const ALIQUOTA_INSS_MEI = 0.05;

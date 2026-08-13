@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { valorDasMei } from '@/lib/fiscal/das-mei';
+import { valorDasMei, inssMensal } from '@/lib/fiscal/das-mei';
 import { brl } from '@/lib/fiscal/guia';
 
 // `buscarSituacaoAtualMei` chama `buscarExplicacao` diretamente — ela já tem
@@ -47,7 +47,11 @@ const ATIVIDADE = 'Prestacao de Servicos';
 // silêncio nem exigir editar um número solto aqui).
 const TOTAL_VALIDO = valorDasMei(ATIVIDADE);
 const TEXTO_CATALOGO = 'Você paga {inss} de INSS e {iss} de ISS.';
-const TEXTO_ESPERADO = `Você paga ${brl(75.90)} de INSS e ${brl(5.00)} de ISS.`;
+// Derivado de `inssMensal()` pela mesma razão que `TOTAL_VALIDO`: o cliente
+// falso deste arquivo não tem `parametros_fiscais`, então a cadeia cai no
+// fallback do módulo — e o texto esperado tem de acompanhar esse fallback, não
+// um número de um ano específico digitado aqui.
+const TEXTO_ESPERADO = `Você paga ${brl(inssMensal())} de INSS e ${brl(5.00)} de ISS.`;
 
 beforeEach(() => {
   h.buscarExplicacao.mockReset();
