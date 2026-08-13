@@ -1,33 +1,38 @@
 'use client';
 // @custom — Modal de lançamento manual de NF (escolhe tipo → form do tipo). Sem Focus.
 // Reusa os MESMOS forms da emissão (EmissaoForm/NfeForm/NfceForm) em modo='manual'.
-// Mesma trava de habilitação da emissão (listarTiposEmissaoAction): só os tipos
-// que a empresa pode emitir ficam clicáveis.
+//
+// SEM a trava de habilitação da emissão, e isso é o ponto do modal.
+//
+// Até 12/08/2026 ele chamava `listarTiposEmissaoAction()` e só deixava clicável
+// o que a Focus tivesse habilitado (`focus_habilita_*`). O efeito era o avesso do
+// propósito: quem emite pelo portal da prefeitura — o caso que faz o lançamento
+// manual existir — via os três tipos apagados e não conseguia registrar nada,
+// porque não estava habilitado a emitir PELA PLATAFORMA. Empresa sem certificado
+// ficava sem nenhum caminho para ter suas notas no app.
+//
+// Registrar uma nota que já existe não emite nada na Receita, e a action do
+// servidor (`prepararNotaManualAction`) já era escrita sem guard nenhum. O modal
+// é que discordava do servidor.
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, ArrowLeft, FileText, Package, ShoppingCart, Loader2 } from 'lucide-react';
-import {
-  listarTiposEmissaoAction,
-  prepararNotaManualAction,
-  type TiposHabilitados,
-  type PreparoNotaManual,
-} from '../actions';
+import { prepararNotaManualAction, type PreparoNotaManual } from '../actions';
 import EmissaoForm from './EmissaoForm';
 import NfeForm from './NfeForm';
 import NfceForm from './NfceForm';
 
 type Tipo = 'NFSe' | 'NFe' | 'NFCe';
-const CARDS: { key: Tipo; flag: keyof TiposHabilitados; titulo: string; sub: string; Icon: typeof FileText }[] = [
-  { key: 'NFSe', flag: 'nfse', titulo: 'NFS-e', sub: 'Serviço', Icon: FileText },
-  { key: 'NFe', flag: 'nfe', titulo: 'NF-e', sub: 'Produto (modelo 55)', Icon: Package },
-  { key: 'NFCe', flag: 'nfce', titulo: 'NFC-e', sub: 'Consumidor (modelo 65)', Icon: ShoppingCart },
+const CARDS: { key: Tipo; titulo: string; sub: string; Icon: typeof FileText }[] = [
+  { key: 'NFSe', titulo: 'NFS-e', sub: 'Serviço', Icon: FileText },
+  { key: 'NFe', titulo: 'NF-e', sub: 'Produto (modelo 55)', Icon: Package },
+  { key: 'NFCe', titulo: 'NFC-e', sub: 'Consumidor (modelo 65)', Icon: ShoppingCart },
 ];
 const LABEL: Record<Tipo, string> = { NFSe: 'NFS-e', NFe: 'NF-e', NFCe: 'NFC-e' };
 
 export default function NotaManualDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const router = useRouter();
-  const [tipos, setTipos] = useState<TiposHabilitados | null>(null);
   const [tipo, setTipo] = useState<Tipo | null>(null);
   const [preparo, setPreparo] = useState<PreparoNotaManual | null>(null);
   const [carregando, setCarregando] = useState(false);
@@ -39,16 +44,13 @@ export default function NotaManualDialog({ open, onClose }: { open: boolean; onC
     if (!open && d.open) d.close();
   }, [open]);
 
-  // Ao abrir: reseta e carrega os tipos habilitados (mesma trava da emissão).
+  // Ao abrir: volta para a escolha do tipo. Nada a carregar — os três tipos
+  // sempre podem ser registrados.
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
     setTipo(null);
     setPreparo(null);
-    setTipos(null);
     setCarregando(false);
-    listarTiposEmissaoAction().then((t) => { if (!cancelled) setTipos(t); });
-    return () => { cancelled = true; };
   }, [open]);
 
   async function escolher(t: Tipo) {
@@ -92,27 +94,19 @@ export default function NotaManualDialog({ open, onClose }: { open: boolean; onC
         </header>
 
         <div className="px-6 py-5">
-          {tipos === null || carregando ? (
+          {carregando ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
           ) : !tipo ? (
             <>
               <p className="text-sm text-muted-foreground mb-4">Escolha o tipo de documento.</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {CARDS.map(({ key, flag, titulo, sub, Icon }) => tipos[flag] ? (
+                {CARDS.map(({ key, titulo, sub, Icon }) => (
                   <button key={key} type="button" onClick={() => escolher(key)}
                     className="rounded-xl border border-border bg-surface-2 p-5 hover:border-primary hover:shadow-sm transition flex flex-col gap-2 text-left">
                     <span className="text-primary"><Icon className="size-6" /></span>
                     <span className="font-medium text-foreground">{titulo}</span>
                     <span className="text-xs text-muted-foreground">{sub}</span>
                   </button>
-                ) : (
-                  <div key={key} aria-disabled
-                    className="rounded-xl border border-border bg-surface p-5 opacity-50 cursor-not-allowed flex flex-col gap-2"
-                    title="Empresa não habilitada para este tipo">
-                    <span className="text-muted-foreground"><Icon className="size-6" /></span>
-                    <span className="font-medium text-muted-foreground">{titulo}</span>
-                    <span className="text-xs text-muted-foreground">{sub} · não habilitado</span>
-                  </div>
                 ))}
               </div>
             </>

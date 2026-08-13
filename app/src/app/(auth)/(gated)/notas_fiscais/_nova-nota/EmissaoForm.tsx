@@ -12,6 +12,7 @@ import {
   CODIGO_OUTRO_SENTINEL,
   isCodigoTributacaoValido,
 } from '@/lib/fiscal/codigos-tributacao';
+import SugestaoCodigoBox from './SugestaoCodigoBox';
 import { emitirNotaAction, lancarNotaManualAction, type CnaeOption } from '../actions';
 import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
 
@@ -50,6 +51,23 @@ export default function EmissaoForm({
   const [dataEmissao, setDataEmissao] = useState<string>(hojeBrt);
   const [clientErr, setClientErr] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+
+  /**
+   * Aplica um código vindo da sugestão (P10) — só por clique da pessoa.
+   *
+   * Hoje a sugestão só devolve códigos do catálogo, então o `else` é defesa: se
+   * o catálogo do servidor andar na frente do desta tela, o código cai no campo
+   * livre em vez de sumir num select que não tem a opção.
+   */
+  function aplicarCodigoSugerido(codigo: string) {
+    if (CODIGOS_TRIBUTACAO_FREQUENTES.some((c) => c.codigo === codigo)) {
+      setCodigoBase(codigo);
+    } else {
+      setCodigoBase(CODIGO_OUTRO_SENTINEL);
+      setCodigoOutro(codigo);
+    }
+    setClientErr(null);
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -200,6 +218,12 @@ export default function EmissaoForm({
           className="w-full rounded-lg border border-border bg-surface-2 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         />
         <p className="mt-1 text-xs text-muted-foreground">{descricao.length}/1000 caracteres</p>
+        <SugestaoCodigoBox
+          descricao={descricao}
+          cnae={cnae || null}
+          codigoAtual={codigoBase === CODIGO_OUTRO_SENTINEL ? codigoOutro : codigoBase}
+          onUsar={aplicarCodigoSugerido}
+        />
       </div>
 
       {/* Valor + Alíquota */}
