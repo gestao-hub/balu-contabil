@@ -77,6 +77,16 @@ export async function GET(req: Request) {
   const { data: vencidas, error: eVenc } = await admin.rpc('marcar_guias_vencidas');
   if (eVenc) console.error('[cron obrigacoes] marcar_guias_vencidas', eVenc.message);
 
+  // Alarme do parâmetro fiscal (0081). A 0079/0080 fizeram a TROCA do salário
+  // mínimo valer sozinha na data de vigência; o que sobrou de humano é alguém
+  // lembrar de cadastrar o valor novo — e foi esse elo que falhou em 2026, com
+  // sete meses estimando DAS-MEI pelo mínimo de 2025 sem nada reclamar.
+  //
+  // Não inventa valor: detecta que a vigência mais recente é de um ano anterior
+  // e avisa o AdminBalu, uma vez por ano (idempotente pela chave).
+  const { data: paramAvisos, error: eParam } = await admin.rpc('alertar_parametros_desatualizados');
+  if (eParam) console.error('[cron obrigacoes] alertar_parametros_desatualizados', eParam.message);
+
   // Não retorna cedo em falha desta RPC: fazia isso até esta sessão, e como
   // resultado uma falha transitória só no lado de e-mail calava também o
   // loop de WhatsApp (Bloco 6B) e o billing (Bloco 4A) — que não têm nenhuma
@@ -189,6 +199,7 @@ export async function GET(req: Request) {
     ok: true, criadas, enviados, pulados,
     ...(ePend ? { email_erro: ePend.message } : {}),
     guias_vencidas: eVenc ? null : (vencidas ?? 0),
+    parametros_desatualizados: eParam ? null : (paramAvisos ?? 0),
     whatsapp_enviados: whatsappEnviados, whatsapp_pulados: whatsappPulados,
     whatsapp_suprimidas: eSuprimir ? null : (suprimidas ?? 0),
     sla_avisos: eSla ? null : (slaAvisos ?? 0),

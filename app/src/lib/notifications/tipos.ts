@@ -16,7 +16,8 @@ export type NotificacaoTipo =
   | 'cert_vencido'
   | 'limite_faturamento'
   | 'honorario_a_vencer'
-  | 'abertura_etapa'; // Bloco 2
+  | 'abertura_etapa' // Bloco 2
+  | 'parametro_fiscal_desatualizado'; // 0081 — só para AdminBalu
 
 export const NOTIFICACAO_TIPOS: Record<NotificacaoTipo, { label: string; severidade: Severidade }> = {
   das_a_vencer: { label: 'DAS a vencer', severidade: 'warning' },
@@ -29,6 +30,7 @@ export const NOTIFICACAO_TIPOS: Record<NotificacaoTipo, { label: string; severid
   limite_faturamento: { label: 'Limite de faturamento', severidade: 'warning' },
   honorario_a_vencer: { label: 'Honorário a vencer', severidade: 'info' },
   abertura_etapa: { label: 'Andamento da abertura', severidade: 'info' },
+  parametro_fiscal_desatualizado: { label: 'Parâmetro fiscal desatualizado', severidade: 'warning' },
 };
 
 export const TIPOS_VALIDOS = Object.keys(NOTIFICACAO_TIPOS) as NotificacaoTipo[];

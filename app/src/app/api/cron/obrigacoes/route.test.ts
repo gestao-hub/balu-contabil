@@ -9,6 +9,7 @@ const h = vi.hoisted(() => {
     suprimidas: 0 as number,
     slaAvisos: 0 as number,
     guiasVencidas: 0 as number,
+    paramAvisos: 0 as number,
   };
 
   const rpc = vi.fn(async (nome: string) => {
@@ -17,6 +18,7 @@ const h = vi.hoisted(() => {
     if (nome === 'suprimir_whatsapp_superadas') return { data: estado.suprimidas, error: null };
     if (nome === 'materializar_sla_estourado') return { data: estado.slaAvisos, error: null };
     if (nome === 'marcar_guias_vencidas') return { data: estado.guiasVencidas, error: null };
+    if (nome === 'alertar_parametros_desatualizados') return { data: estado.paramAvisos, error: null };
     if (nome === 'notificacoes_pendentes_whatsapp') return { data: estado.pendWhats, error: null };
     throw new Error(`RPC inesperada no mock: ${nome}`);
   });
@@ -65,6 +67,7 @@ beforeEach(() => {
   h.estado.suprimidas = 0;
   h.estado.slaAvisos = 0;
   h.estado.guiasVencidas = 0;
+  h.estado.paramAvisos = 0;
   h.rpc.mockClear();
   h.enviarMensagem.mockClear();
 });
@@ -237,6 +240,7 @@ describe('GET /api/cron/obrigacoes — persistir guia vencida (0078)', () => {
     // que o supabase-js devolve em erro e o que queremos exercitar.
     h.rpc.mockImplementation(((async (nome: string) => {
       if (nome === 'marcar_guias_vencidas') return { data: null, error: { message: 'boom' } };
+      if (nome === 'alertar_parametros_desatualizados') return { data: 0, error: null };
       if (nome === 'materializar_obrigacoes') return { data: 0, error: null };
       if (nome === 'materializar_sla_estourado') return { data: 0, error: null };
       if (nome === 'suprimir_whatsapp_superadas') return { data: 0, error: null };
@@ -260,5 +264,53 @@ describe('GET /api/cron/obrigacoes — persistir guia vencida (0078)', () => {
     // O badge da tela continua calculando "vencida" sozinho, então falhar aqui
     // não muda nada para quem olha — some só o estado gravado daquele dia.
     expect(h.rpc.mock.calls.map((c) => c[0])).toContain('notificacoes_pendentes_whatsapp');
+  });
+});
+
+describe('GET /api/cron/obrigacoes — alarme de parâmetro fiscal (0081)', () => {
+  it('chama alertar_parametros_desatualizados e reporta a contagem', async () => {
+    h.estado.paramAvisos = 1;
+
+    const corpo = await (await GET(requisicaoFalsa())).json();
+
+    expect(h.rpc.mock.calls.map((c) => c[0])).toContain('alertar_parametros_desatualizados');
+    expect(corpo.parametros_desatualizados).toBe(1);
+  });
+
+  it('roda DEPOIS de materializar_obrigacoes', async () => {
+    await GET(requisicaoFalsa());
+
+    const nomes = h.rpc.mock.calls.map((c) => c[0] as string);
+    // Mesma disciplina do resto do cron: o que tem prazo legal primeiro. Um
+    // aviso interno ao AdminBalu nunca pode custar o dia de notificações.
+    expect(nomes.indexOf('materializar_obrigacoes'))
+      .toBeLessThan(nomes.indexOf('alertar_parametros_desatualizados'));
+  });
+
+  it('falha no alarme não derruba o cron', async () => {
+    const original = h.rpc.getMockImplementation()!;
+    h.rpc.mockImplementation(((async (nome: string) => {
+      if (nome === 'alertar_parametros_desatualizados') return { data: null, error: { message: 'boom' } };
+      if (nome === 'marcar_guias_vencidas') return { data: 0, error: null };
+      if (nome === 'materializar_obrigacoes') return { data: 0, error: null };
+      if (nome === 'materializar_sla_estourado') return { data: 0, error: null };
+      if (nome === 'suprimir_whatsapp_superadas') return { data: 0, error: null };
+      if (nome === 'notificacoes_pendentes_email') return { data: [], error: null };
+      if (nome === 'notificacoes_pendentes_whatsapp') return { data: [], error: null };
+      throw new Error(`RPC inesperada no mock: ${nome}`);
+    }) as unknown as typeof original));
+
+    let res: Response;
+    let corpo: Record<string, unknown>;
+    try {
+      res = await GET(requisicaoFalsa());
+      corpo = await res.json();
+    } finally {
+      h.rpc.mockImplementation(original);
+    }
+
+    expect(res.status).toBe(200);
+    expect(corpo.ok).toBe(true);
+    expect(corpo.parametros_desatualizados).toBeNull();
   });
 });
