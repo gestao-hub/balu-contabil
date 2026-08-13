@@ -1,9 +1,80 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-13 (sessão 23 — PR 4.2 e PR 4.3 entregues; **To Do do Trello caiu de 6 para 2**; `/code-review` encontrou que a varredura de UX media a tela errada).
+> **Última atualização:** 2026-08-13 (sessão 24 — **6 das 9 perguntas ao cliente respondidas**; minutas LGPD publicadas com controlador/DPO/foro reais e AdminBalu do Michel criado em produção).
 
-> ## 🆕 SESSÃO 23 (2026-08-13) — main `a453a9b`, deploy `nq9t8ip2k` Ready
+> ## 🆕 SESSÃO 24 (2026-08-13) — perguntas ao cliente, não código
+>
+> Sessão de **destravamento por resposta**, não de implementação. O Michel
+> respondeu 6 das 9 perguntas abertas no Trello. A lista "❓ Perguntas ao
+> cliente" caiu de **9 para 5**.
+>
+> ### O que foi escrito em produção
+>
+> **P15 — minutas LGPD.** Controlador **PIPER AUTOMAÇÕES E INTEGRAÇÕES LTDA**
+> (CNPJ 61.061.690/0001-83, R. Benfica 143, Jardim Eldorado, Apucarana/PR),
+> DPO **Eduardo Henrique Alves Machado** (contato@excluvia.com.br), foro da
+> **Comarca de Apucarana/PR**. Publicado via
+> `scripts/seed-documentos-lgpd.mjs`; conteúdo no banco confere byte a byte
+> com os arquivos (8880 e 6047 chars).
+>
+> Dois achados que a análise pegou antes de mexer:
+> 1. **Eram 5 placeholders, não 3.** O card pedia controlador e DPO; os Termos
+>    tinham o controlador em **dois** pontos (§1 e §90) e o **foro em §127**
+>    como `[a definir]`, que não constava do card e o cliente precisou responder.
+> 2. **Republicar a v1.0 podia corromper auditoria.** `aceites` guarda
+>    `(tipo, versao)` e o seed faz `ON CONFLICT DO UPDATE` — trocar o texto da
+>    1.0 faria quem aceitou constar como tendo aceito um texto inexistente.
+>    Sondagem só-leitura antes da decisão: **4 aceites, todos de contas
+>    internas** (walacesssantos, +e2e, +admin, testeefluxodeautomacao). Sem
+>    cliente real, sobrescrever é inofensivo e ninguém é forçado a re-aceitar.
+>    **Com aceite real a decisão teria sido v1.1 + re-aceite.**
+>
+> **P7 — AdminBalu do Michel.** `gestao@excluvia.com.br` **não tinha conta**.
+> Criada pela API admin com `email_confirm=true` (e-mail está inutilizável —
+> Resend em modo teste e Redirect URLs pendentes) e promovida conectando como
+> `postgres`. Id `77ae7969-35cb-4af6-b659-ad6404f8316e`, **1 linha** em
+> `role_types`, `type=AdminBalu`, verificado.
+>
+> A ordem importa e vale registrar: o trigger `handle_new_user_role` (0002) é
+> `SECURITY DEFINER` e cria **'Empresa'** por padrão; o guard
+> `tg_role_types_protege_admin` (0036) só aceita 'AdminBalu' quando
+> `current_user` é service_role/postgres/supabase_admin. Criar como Empresa e
+> **promover via postgres** é o caminho explicitamente autorizado — não depende
+> de como `current_user` se resolve dentro do SECURITY DEFINER. E com o
+> `UNIQUE(user_id)` da **0077** a operação é `UPDATE`, nunca `INSERT`: a nota
+> do card avisando que a constraint não existia estava **obsoleta**.
+>
+> ### Respostas que não geraram código
+>
+> - **P4 (DASN/DEFIS):** "atende como está" — fluxo assistido fica.
+> - **P5 (marca nos e-mails):** "manter a identidade principal como Balu" — é
+>   exatamente o estado atual, e mata a necessidade de domínio por escritório.
+> - **P6 (abertura de empresa):** "está completo" — o 4.3 da devolutiva era
+>   ruído de formulário; o wizard + checklist + minuta + timeline atendem.
+> - **P16 (separar ambientes):** "a forma mais segura possível", mas o usuário
+>   pediu para **deixar por último e parado**. O levantamento do que a
+>   separação exige ficou no card, incluindo uma superfície não óbvia: os
+>   runners de `scripts/`/`scratchpad/` têm o ref do projeto **hard-coded**.
+>
+> ### Pendências que esta sessão NÃO fechou
+>
+> - 🔴 **Revisão jurídica das minutas** (3º item do P15). Os dois documentos
+>   seguem com o aviso *"minuta técnica pendente de revisão por profissional
+>   habilitado"* **no ar em produção**. Por isso o card P15 não foi para
+>   Concluído.
+> - 🔴 **Resend sem domínio verificado** — modo teste, só entrega para
+>   `contato@excluvia.com.br`. Foi o que forçou o `email_confirm=true`.
+> - **P2, P3 e P11 continuam abertas** (os 3 lançáveis + definição de pronto;
+>   demonstração guiada; quantas empresas-piloto). O usuário adiou para um
+>   segundo momento. **P3 segue sendo a mais importante:** em 9 dos 12 itens da
+>   seção 2 o cliente escreveu "n vimos funcionar" — priorização feita antes da
+>   demo é priorização no escuro.
+> - Senha temporária do Michel ficou no terminal/transcrição — pedir troca.
+
+---
+
+> ## Histórico da sessão 23 (2026-08-13) — main `a453a9b`, deploy `nq9t8ip2k` Ready
 >
 > **PR 4.2 (UX responsiva) e PR 4.3 (README) fechados.** Restam **2 cards** no
 > To Do: P3.3 Open Finance e separação de ambiente — as duas dependem de custo,
