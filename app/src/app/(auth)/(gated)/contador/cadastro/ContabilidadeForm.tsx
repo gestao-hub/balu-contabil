@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ContabilidadeSchema, type ContabilidadeInput } from '@/types/zod';
 import { useToast } from '@/components/Toaster';
 import { criarContabilidadeAction } from '../actions';
-import { formatCnpj } from '@/lib/format/masks';
+import { formatCnpj, somenteDigitos } from '@/lib/format/masks';
 
 const UF_OPTIONS = [
   'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
@@ -74,7 +74,18 @@ export default function ContabilidadeForm({ inicial }: { inicial?: Inicial }) {
       <Field label="CNPJ" error={errors.cnpj} required>
         <input
           value={formatCnpj(form.cnpj)}
-          onChange={(e) => update('cnpj', e.target.value.replace(/\D/g, ''))}
+          // `somenteDigitos(…, 14)`: o `.replace()` solto que morava aqui era o
+          // único campo numérico do app sem teto — todos os outros cortam com
+          // `.slice(0, N)`, e a própria página deste formulário já cortava em 14
+          // ao ler o CNPJ da query string.
+          //
+          // Não era só inconsistência de estilo. `formatCnpj` corta em 14 para
+          // EXIBIR, então colar um número com dígitos a mais mostrava um CNPJ
+          // perfeito na tela enquanto o estado guardava o resto — e o
+          // `isValidCnpj` do submit, que exige exatamente 14, recusava. O
+          // usuário via um campo certo sendo chamado de errado, sem nada para
+          // corrigir.
+          onChange={(e) => update('cnpj', somenteDigitos(e.target.value, 14))}
           maxLength={18}
           className={inputCls}
         />

@@ -124,7 +124,7 @@ export async function iniciarApuracaoAction(
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('Code_regime_tributario, anexo_simples, atividade_mei')
+    .select('Code_regime_tributario, anexo_simples, atividade_mei, data_inicio_atividade')
     .eq('empresa_id', companyId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -150,7 +150,12 @@ export async function iniciarApuracaoAction(
       atividadeMei: (fiscal.atividade_mei ?? null) as string | null,
       tabelaSimples: parametros.tabelaSimples,
       salarioMinimo: parametros.salarioMinimo,
-      // dataInicioAtividade: não temos o campo no schema → sem anualização por ora
+      // Anualização do RBT12 (0082). Empresa com menos de 12 meses tem a
+      // receita projetada para 12 meses em vez de somar meses que não
+      // existiram — sem isso o RBT12 fica baixo demais, cai numa faixa
+      // inferior e produz alíquota menor que a devida. `undefined` quando o
+      // dado não veio da Receita: aí o cálculo segue como sempre foi.
+      dataInicioAtividade: (fiscal.data_inicio_atividade ?? undefined) as string | undefined,
     });
   } catch (e) {
     if (e instanceof RegimeNaoSuportadoError) return { ok: false, error: e.message };

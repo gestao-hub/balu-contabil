@@ -44,8 +44,14 @@ const h = vi.hoisted(() => {
   const rodarConciliacao = vi.fn(async () => ({
     conexoes: 0, importadas: 0, conciliadas: 0, sugestoes: 0, alertas: 0, erros: [],
   }));
+  // Mockada pela mesma razão que a conciliação: rodando de verdade contra o
+  // mock de banco deste arquivo ela falharia e cairia no try/catch do route,
+  // passando a impressão de que foi exercitada.
+  const rodarApuracaoAutomatica = vi.fn(async () => ({
+    competencia: '202607', elegiveis: 3, apuradas: 3, puladas: 0, erros: 0, interrompida: false,
+  }));
 
-  return { estado, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling, rodarConciliacao };
+  return { estado, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling, rodarConciliacao, rodarApuracaoAutomatica };
 });
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: h.createAdminClient }));
@@ -53,6 +59,7 @@ vi.mock('@/lib/clients/email', () => ({ sendEmail: h.sendEmail }));
 vi.mock('@/lib/billing/cron', () => ({ rodarBilling: h.rodarBilling }));
 vi.mock('@/lib/conciliacao/cron', () => ({ rodarConciliacao: h.rodarConciliacao }));
 vi.mock('@/lib/uazapi/cliente', () => ({ configDeEnv: h.configDeEnv, enviarMensagem: h.enviarMensagem }));
+vi.mock('@/lib/fiscal/apuracao-cron', () => ({ rodarApuracaoAutomatica: h.rodarApuracaoAutomatica }));
 
 import { GET } from './route';
 
@@ -70,6 +77,8 @@ beforeEach(() => {
   h.estado.paramAvisos = 0;
   h.rpc.mockClear();
   h.enviarMensagem.mockClear();
+  h.rodarApuracaoAutomatica.mockClear();
+  h.rodarBilling.mockClear();
 });
 
 describe('GET /api/cron/obrigacoes — linha digitável na mensagem de WhatsApp', () => {
@@ -312,5 +321,38 @@ describe('GET /api/cron/obrigacoes — alarme de parâmetro fiscal (0081)', () =
     expect(res.status).toBe(200);
     expect(corpo.ok).toBe(true);
     expect(corpo.parametros_desatualizados).toBeNull();
+  });
+});
+
+describe('GET /api/cron/obrigacoes — apuração mensal automática (P2.1)', () => {
+  it('roda e reporta o resultado', async () => {
+    const corpo = await (await GET(requisicaoFalsa())).json();
+
+    expect(h.rodarApuracaoAutomatica).toHaveBeenCalledTimes(1);
+    expect(corpo.apuracao).toMatchObject({ competencia: '202607', apuradas: 3 });
+  });
+
+  it('roda DEPOIS do billing — é a última da fila', async () => {
+    await GET(requisicaoFalsa());
+
+    // A ordem É a segurança: tudo que tem prazo legal já gravou, e a apuração
+    // é a única etapa que pode ser cortada no meio sem prejuízo (é mensal, o
+    // cron é diário). Invertesse isso e uma apuração lenta calaria o billing.
+    const tBilling = h.rodarBilling.mock.invocationCallOrder[0];
+    const tApuracao = h.rodarApuracaoAutomatica.mock.invocationCallOrder[0];
+    expect(tBilling).toBeLessThan(tApuracao);
+  });
+
+  it('apuração que explode não derruba o cron nem apaga o resto da resposta', async () => {
+    h.rodarApuracaoAutomatica.mockRejectedValueOnce(new Error('boom'));
+
+    const res = await GET(requisicaoFalsa());
+    const corpo = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(corpo.ok).toBe(true);
+    expect(corpo.apuracao).toMatchObject({ erro: expect.stringContaining('boom') });
+    // O que veio antes continua reportado — são etapas independentes.
+    expect(corpo.billing).toBeDefined();
   });
 });

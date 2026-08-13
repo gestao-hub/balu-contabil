@@ -10,6 +10,7 @@ import { sendEmail } from '@/lib/clients/email';
 import { renderNotificacaoEmail } from '@/lib/notifications/email-template';
 import { rodarBilling } from '@/lib/billing/cron';
 import { rodarConciliacao } from '@/lib/conciliacao/cron';
+import { rodarApuracaoAutomatica } from '@/lib/fiscal/apuracao-cron';
 import { configDeEnv, enviarMensagem } from '@/lib/uazapi/cliente';
 
 // TEMPO DE EXECUCAO — 60s, o teto do plano Hobby da Vercel.
@@ -195,6 +196,20 @@ export async function GET(req: Request) {
     billing = { erro: String(err) };
   }
 
+  // Apuração mensal automática (P2.1). ÚLTIMA DE TODAS, e é isso que a torna
+  // segura: tudo que tem prazo legal já gravou, e ela é a única etapa que pode
+  // ser cortada no meio sem prejuízo — é mensal, o cron é diário, e a fila
+  // ordena por quem está sem apurar há mais tempo, então o que não coube hoje
+  // entra amanhã na frente. Ela ainda se corta sozinha por orçamento próprio,
+  // porque timeout de wall-clock não é capturável por try/catch.
+  let apuracao: unknown = null;
+  try {
+    apuracao = await rodarApuracaoAutomatica(admin);
+  } catch (err) {
+    console.error('[cron obrigacoes] apuracao automatica falhou', err);
+    apuracao = { erro: String(err) };
+  }
+
   return NextResponse.json({
     ok: true, criadas, enviados, pulados,
     ...(ePend ? { email_erro: ePend.message } : {}),
@@ -205,5 +220,6 @@ export async function GET(req: Request) {
     sla_avisos: eSla ? null : (slaAvisos ?? 0),
     conciliacao,
     billing,
+    apuracao,
   });
 }

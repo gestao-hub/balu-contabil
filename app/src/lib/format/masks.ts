@@ -1,6 +1,18 @@
 // @custom — formatadores de máscara para inputs (CNPJ/CEP). Puros, sem deps.
 // O valor cru (dígitos) é o que persiste; estas funções só formatam para exibição.
 
+/**
+ * Só os dígitos, com teto — o que um input numérico deve guardar no estado.
+ *
+ * Existe porque `value.replace(/\D/g, '')` sem `.slice()` deixa o estado
+ * crescer além do que a máscara exibe: a tela mostra um documento completo e o
+ * estado carrega dígitos a mais, que só aparecem quando a validação do submit
+ * recusa um campo visivelmente correto.
+ */
+export function somenteDigitos(value: string, max: number): string {
+  return String(value ?? '').replace(/\D/g, '').slice(0, max);
+}
+
 /** "11222333000181" → "11.222.333/0001-81". Tolera entrada parcial ou já mascarada. */
 export function formatCnpj(value: string): string {
   const d = value.replace(/\D/g, '').slice(0, 14);

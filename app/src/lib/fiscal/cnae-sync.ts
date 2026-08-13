@@ -39,6 +39,22 @@ export async function sincronizarCnaesEmpresa(
         descricao: null, tipo: 'principal', fonte: 'focus', updated_at: now, deleted_at: null });
     }
 
+    // Início de atividade (0082): grava antes do early-return dos CNAEs, e de
+    // propósito. Um CNPJ sem CNAE na BrasilAPI ainda pode ter data de abertura,
+    // e ela é o que anualiza o RBT12 de empresa nova — perder o dado por causa
+    // de uma lista de CNAEs vazia seria alíquota errada por um motivo sem
+    // relação nenhuma. UPDATE e não upsert: a ficha fiscal já existe (foi ela
+    // que trouxe a empresa até aqui) e um upsert zeraria as colunas ausentes
+    // do payload, armadilha já provada neste repo.
+    if (data?.dataInicioAtividade) {
+      const { error: eData } = await supabase
+        .from('empresas_fiscais')
+        .update({ data_inicio_atividade: data.dataInicioAtividade })
+        .eq('empresa_id', companyId)
+        .is('deleted_at', null);
+      if (eData) console.warn('[sincronizarCnaesEmpresa] data_inicio_atividade', eData.message);
+    }
+
     if (rows.length === 0) return;
     // Full-replace: o índice único de company_cnaes é PARCIAL (WHERE deleted_at IS NULL),
     // e o Postgres não aceita ON CONFLICT contra índice parcial (42P10). Então apagamos os

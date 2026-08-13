@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatCnpj, formatCep, formatCnae } from './masks';
+import { formatCnpj, formatCep, formatCnae, somenteDigitos } from './masks';
 
 describe('formatCnpj', () => {
   it('formata CNPJ completo', () => {
@@ -56,5 +56,27 @@ describe('formatCnae', () => {
   });
   it('retorna vazio para entrada vazia (estado de mount do input)', () => {
     expect(formatCnae('')).toBe('');
+  });
+});
+
+
+describe('somenteDigitos', () => {
+  it('tira máscara e respeita o teto', () => {
+    expect(somenteDigitos('11.222.333/0001-81', 14)).toBe('11222333000181');
+    expect(somenteDigitos('112223330001812345', 14)).toBe('11222333000181');
+  });
+
+  it('o teto é o ponto: sem ele, tela e estado discordam', () => {
+    // `formatCnpj` corta em 14 para exibir. Se o estado guardasse mais, a tela
+    // mostraria um CNPJ perfeito e o submit recusaria o campo — sem nada
+    // visível para o usuário corrigir.
+    const colado = '112223330001819999';
+    expect(formatCnpj(colado)).toBe('11.222.333/0001-81');
+    expect(somenteDigitos(colado, 14)).toBe('11222333000181');
+  });
+
+  it('entrada vazia ou só com símbolos vira string vazia', () => {
+    expect(somenteDigitos('', 14)).toBe('');
+    expect(somenteDigitos('../--', 14)).toBe('');
   });
 });
