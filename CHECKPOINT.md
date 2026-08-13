@@ -57,6 +57,55 @@
 >   separação exige ficou no card, incluindo uma superfície não óbvia: os
 >   runners de `scripts/`/`scratchpad/` têm o ref do projeto **hard-coded**.
 >
+> ### P11 corrigido: a procuração e-CAC provavelmente não é necessária
+>
+> O card P11 dizia que cada piloto precisa de **certificado A1 e de procuração
+> eletrônica RFB**. **O segundo item está errado** no modelo que o app
+> implementa — e isso encolhe o caminho crítico do piloto.
+>
+> **O A1 continua sendo o gargalo real.** `lib/fiscal/serpro-procurador.ts`
+> monta um **Termo de Autorização XML** e o assina com a chave privada do
+> certificado **do cliente** (XMLDSig RSA-SHA256) → `/Apoiar` →
+> `autenticar_procurador_token`. Sem o A1 daquele CNPJ não há assinatura, nem
+> token, nem DAS. E o obstáculo é não-técnico: custa centenas de reais/ano,
+> exige validação presencial ou por vídeo do representante legal, depende do
+> dono da empresa, e **vence em 12 meses** — é esteira, não obstáculo único.
+>
+> **A procuração, não.** Rodada 6 (02/06/2026, PIPER + AL PISCINAS) registra:
+> *"o Termo XML assinado pelo cliente é a alternativa à procuração eCAC
+> manual"*. `/Apoiar` 200 → token no header → `/Consultar` devolveu **DAS reais
+> de 2025**. Antes do Termo, a chamada direta dava 403 `ICGERENCIADOR-022` por
+> falta de procuração — foi esse 403 que o Termo resolveu. Para **MEI** nem se
+> aplica: a tabela "Serviços × Procuração" marca `GERARDASPDF21` como `n/a`; o
+> código `00146` é exigência do **PGDAS-D** (Simples).
+>
+> ⚠️ **Contradição não resolvida:** o CHECKPOINT de 25/07 (sessão 7) diz *"falta
+> ainda: procuração RFB por cliente"* — **posterior** à rodada 6, que provou o
+> contrário. Leitura provável: segue existindo dependência de autorização por
+> CNPJ, mas satisfeita por cert + Termo assinado, não por ato manual no e-CAC.
+> **A prova existe com UM cliente só — confirmar com um segundo CNPJ antes de
+> montar o plano de piloto em cima disso.**
+>
+> **Ponto que faltava:** neste modelo o Balu **custodia o A1 e a chave privada
+> do cliente** (cifrados com `CERT_ENC_KEY`). Aquela chave assina em nome do
+> CNPJ — é consentimento explícito do piloto, não só upload de arquivo.
+>
+> ### P16: custo verificado (não exige Pro, necessariamente)
+>
+> supabase.com/pricing em 13/08/2026: **Free** = $0 com **2 projetos ativos**,
+> 500 MB, **pausa após 1 semana de inatividade**. **Pro** = **$25/mês**/org com
+> $10 de crédito de compute. **Projeto adicional** = **+$10/mês** (2 projetos =
+> $35). **Branching** exige Pro, a **$0,01344/branch/hora**.
+>
+> Ou seja: o segundo projeto **pode custar $0** no Free — o preço vem como
+> limitação (pausa + 500 MB). **O delta depende do plano atual de produção, que
+> ninguém verificou** (o MCP do Supabase aponta para conta errada; está no
+> painel de billing). Se for Free, fica a pergunta maior: SaaS fiscal com
+> cliente real sem backup diário e com teto de 500 MB é risco à parte.
+> Branching 24/7 ≈ $9,80/mês (empata com projeto), ~8h/dia ≈ $2/mês — **mas**
+> pressupõe migrations pela **CLI do Supabase**, e hoje tudo é aplicado por
+> runner manual `node+pg`. O custo escondido é mudança de processo.
+>
 > ### Pendências que esta sessão NÃO fechou
 >
 > - 🔴 **Revisão jurídica das minutas** (3º item do P15). Os dois documentos
@@ -71,6 +120,15 @@
 >   seção 2 o cliente escreveu "n vimos funcionar" — priorização feita antes da
 >   demo é priorização no escuro.
 > - Senha temporária do Michel ficou no terminal/transcrição — pedir troca.
+> - **Confirmar o Termo de Autorização com um segundo CNPJ** — a prova de que
+>   ele substitui a procuração e-CAC existe com um cliente só, e o plano de
+>   piloto inteiro depende disso. Teste barato: só precisa de um 2º certificado.
+> - **Descobrir em que plano o Supabase de produção está** (painel de billing) —
+>   sem isso o custo do P16 fica entre $0 e $10/mês, e a resposta muda a
+>   conversa com o cliente.
+> - A linha ambígua da **sessão 7** ("falta procuração RFB por cliente") segue
+>   no histórico deste arquivo, contradizendo a rodada 6. Não foi editada —
+>   histórico não se reescreve; a correção está no bloco da sessão 24.
 
 ---
 
