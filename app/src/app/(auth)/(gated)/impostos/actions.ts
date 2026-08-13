@@ -25,6 +25,11 @@ import { resumirReceitasAno } from '@/lib/fiscal/dasn/resumo';
 import { DasnCamposSchema, DasnRascunhoSchema, rotuloCampoDasn } from '@/lib/fiscal/dasn/campos';
 import { DefisCamposSchema, DefisRascunhoSchema, rotuloCampoDefis } from '@/lib/fiscal/defis/campos';
 import { mensagemDeIssues } from '@/lib/fiscal/declaracoes-anuais/erros';
+import {
+  BUCKET_COMPROVANTES_GUIA, caminhoComprovanteGuia, nomeExibivel, validarComprovanteGuia,
+} from '@/lib/fiscal/comprovante-guia';
+import { uploadToBucket, removeFromBucket, signedUrlDownload } from '@/lib/clients/supabase-storage';
+import { registrarAuditoria } from '@/lib/security/audit';
 import type { DeclaracaoAnualTipo } from '@/lib/fiscal/declaracoes-anuais/tipos';
 
 export type GuiaActionResult = { ok: true } | { ok: false; error: string };
@@ -723,4 +728,129 @@ export async function registrarDeclaracaoAnualAction(input: {
     if (r.ok) revalidatePath('/impostos');
     return r;
   });
+}
+
+// ── Comprovante de pagamento da guia (P3.5, migration 0084) ──────────────────
+//
+// POR QUE ANEXAR NÃO MARCA A GUIA COMO PAGA. Seria cômodo e está errado: "paga"
+// é estado fiscal, entra em relatório e some da fila de vencidas, e tem um
+// ponto de escrita único desde a 0072 (`registrar_pagamento_guia`, que também
+// resolve as notificações e grava auditoria numa transação). Um upload de
+// arquivo não pode disparar isso pela porta dos fundos — anexar documenta,
+// marcar paga é outro ato, com outro botão.
+
+export type ComprovanteGuiaResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * A guia é MESMO da empresa de quem está pedindo?
+ *
+ * Lê pelo client da SESSÃO de propósito: a RLS `guias_fiscais_select`
+ * (`user_owns_company`) é quem responde. Guia de outro dono volta vazia e a
+ * action para — sem que este arquivo precise reimplementar a regra de posse.
+ */
+async function guiaDoUsuario(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  guiaId: string,
+): Promise<{ id: string; company_id: string; comprovante_path: string | null; comprovante_nome: string | null } | null> {
+  const { data } = await supabase
+    .from('guias_fiscais')
+    .select('id, company_id, comprovante_path, comprovante_nome')
+    .eq('id', guiaId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (!data?.company_id) return null;
+  return data as { id: string; company_id: string; comprovante_path: string | null; comprovante_nome: string | null };
+}
+
+export async function anexarComprovanteGuiaAction(input: {
+  guiaId: string;
+  nome: string;
+  mime: string;
+  base64: string;
+}): Promise<ComprovanteGuiaResult> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão inválida.' };
+  if (!input.guiaId) return { ok: false, error: 'Guia não informada.' };
+
+  const guia = await guiaDoUsuario(supabase, input.guiaId);
+  if (!guia) return { ok: false, error: 'Guia não encontrada.' };
+
+  let bytes: Buffer;
+  try {
+    bytes = Buffer.from(input.base64, 'base64');
+  } catch {
+    return { ok: false, error: 'Não foi possível ler o arquivo.' };
+  }
+
+  // Valida ANTES de tocar no storage: recusar depois do upload deixaria o
+  // arquivo no bucket sem nenhuma linha apontando para ele.
+  const v = validarComprovanteGuia({ mime: input.mime, tamanho: bytes.byteLength });
+  if (!v.ok) return { ok: false, error: v.error };
+
+  const path = caminhoComprovanteGuia(guia.company_id, guia.id, input.mime);
+  try {
+    await uploadToBucket(BUCKET_COMPROVANTES_GUIA, path, bytes, input.mime);
+  } catch (e) {
+    return { ok: false, error: `Falha ao subir o comprovante: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  const { error, data: gravadas } = await supabase
+    .from('guias_fiscais')
+    .update({
+      comprovante_path: path,
+      comprovante_nome: nomeExibivel(input.nome),
+      comprovante_mime: input.mime,
+      comprovante_tamanho: bytes.byteLength,
+      comprovante_em: new Date().toISOString(),
+    })
+    .eq('id', guia.id)
+    .select('id');
+
+  // Upload feito e banco recusado deixaria um arquivo órfão no bucket — que
+  // ninguém alcança e ninguém apaga. Desfaz o que deu para desfazer. A exceção
+  // é a substituição: ali o path é o mesmo, e apagar destruiria o comprovante
+  // anterior, que continua sendo o válido enquanto o novo não gravou.
+  if (error || (gravadas?.length ?? 0) === 0) {
+    if (!guia.comprovante_path) await removeFromBucket(BUCKET_COMPROVANTES_GUIA, path).catch(() => {});
+    console.error('[guia/comprovante] update falhou', error?.message);
+    return { ok: false, error: 'O arquivo subiu, mas não foi possível vinculá-lo à guia. Tente de novo.' };
+  }
+
+  await registrarAuditoria({
+    actorUserId: user.id,
+    acao: guia.comprovante_path ? 'guia.comprovante_substituir' : 'guia.comprovante_anexar',
+    alvoTipo: 'guias_fiscais',
+    alvoId: guia.id,
+    meta: { nome: nomeExibivel(input.nome), mime: input.mime, bytes: bytes.byteLength },
+  });
+
+  revalidatePath('/impostos');
+  return { ok: true };
+}
+
+/**
+ * URL de download do comprovante, válida por poucos minutos.
+ *
+ * Pedida por clique, e não embutida na página: uma URL assinada renderizada no
+ * HTML vale para quem tiver o HTML, e a lista de guias é justamente a tela que
+ * um contador mostra com a mesa cheia de gente em volta.
+ */
+export async function urlComprovanteGuiaAction(
+  guiaId: string,
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão inválida.' };
+
+  const guia = await guiaDoUsuario(supabase, guiaId);
+  if (!guia?.comprovante_path) return { ok: false, error: 'Esta guia não tem comprovante anexado.' };
+
+  // Download forçado, nunca inline: aceitar PDF e imagem sem herdar o risco do
+  // formato depende disso (ver `signedUrlDownload`).
+  const url = await signedUrlDownload(
+    BUCKET_COMPROVANTES_GUIA, guia.comprovante_path, nomeExibivel(guia.comprovante_nome),
+  );
+  if (!url) return { ok: false, error: 'Não foi possível abrir o comprovante.' };
+  return { ok: true, url };
 }

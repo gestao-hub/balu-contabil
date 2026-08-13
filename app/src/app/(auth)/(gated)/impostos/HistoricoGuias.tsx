@@ -6,6 +6,7 @@ import { useMemo, useState, Fragment } from 'react';
 import { Archive, ChevronDown, ChevronRight } from 'lucide-react';
 import { brl, dataBR, competenciaLabel, statusGuiaBadge, isGuiaVencida } from '@/lib/fiscal/guia';
 import GuiaActions from './GuiaActions';
+import ComprovanteGuia from './ComprovanteGuia';
 
 export type GuiaRow = {
   id: string;
@@ -20,6 +21,9 @@ export type GuiaRow = {
   pdfUrl: string | null;
   linhaDigitavel: string | null;
   numero: string | null;
+  /** Nome do comprovante de pagamento anexado (0084), ou null. O path e a URL
+   *  nunca chegam ao cliente — a URL assinada é pedida por clique. */
+  comprovanteNome: string | null;
 };
 
 export default function HistoricoGuias({ initial }: { initial: GuiaRow[] }) {
@@ -73,28 +77,26 @@ export default function HistoricoGuias({ initial }: { initial: GuiaRow[] }) {
           {rows.map((g) => {
             const badge = statusGuiaBadge(g.statusVisual);
             const isOpen = expandedId === g.id;
-            const hasDetalhe =
+            // TODA linha expande, desde o comprovante (0084). Antes só expandia
+            // quando o SERPRO tinha devolvido detalhamento — e uma guia lançada
+            // à mão, que não tem principal/multa/juros, ficaria sem lugar nenhum
+            // para anexar a prova de pagamento. Justamente quem lança à mão é
+            // quem mais precisa guardar o recibo do banco.
+            const temDetalheSerpro =
               g.principal != null || g.multa != null || g.juros != null || !!g.pagamento || !!g.numero;
             return (
               <Fragment key={g.id}>
                 <tr className="hover:bg-surface-2">
                   <td className="px-4 py-3 font-medium text-foreground">
-                    {hasDetalhe ? (
-                      <button
-                        type="button"
-                        onClick={() => toggle(g.id)}
-                        aria-expanded={isOpen}
-                        className="inline-flex items-center gap-1.5 hover:text-primary"
-                      >
-                        {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                        {competenciaLabel(g.competencia)}
-                      </button>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="size-4" />
-                        {competenciaLabel(g.competencia)}
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggle(g.id)}
+                      aria-expanded={isOpen}
+                      className="inline-flex items-center gap-1.5 hover:text-primary"
+                    >
+                      {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                      {competenciaLabel(g.competencia)}
+                    </button>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground-2 tabular-nums">{dataBR(g.vencimento)}</td>
                   <td className="px-4 py-3 text-right text-foreground tabular-nums">{brl(g.valor)}</td>
@@ -134,6 +136,14 @@ export default function HistoricoGuias({ initial }: { initial: GuiaRow[] }) {
                           <dd className="tabular-nums text-foreground">{dataBR(g.pagamento)}</dd>
                         </div>
                       </dl>
+
+                      <div className="mt-3 border-t border-border pt-3">
+                        <p className="mb-2 text-xs text-muted-foreground">
+                          Comprovante de pagamento
+                          {!temDetalheSerpro && ' — guarde aqui o recibo do banco.'}
+                        </p>
+                        <ComprovanteGuia guiaId={g.id} nomeAtual={g.comprovanteNome} />
+                      </div>
                     </td>
                   </tr>
                 )}

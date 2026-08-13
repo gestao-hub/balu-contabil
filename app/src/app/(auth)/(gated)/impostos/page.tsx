@@ -79,7 +79,7 @@ export default async function ImpostosPage() {
         id, competencia_referencia, competencia_mes, competencia_ano,
         valor_total, valor_principal, valor_multa, valor_juros, valor_pago,
         data_vencimento, data_pagamento, status, numero_das, numero_guia,
-        url_pdf, url_guia, linha_digitavel
+        url_pdf, url_guia, linha_digitavel, comprovante_nome
       `)
       .eq('company_id', companyId)
       .is('deleted_at', null)

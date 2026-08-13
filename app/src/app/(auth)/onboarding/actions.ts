@@ -190,19 +190,23 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
     cookieStore.delete('balu_ref_convite');
   }
 
-  // Vincula a empresa ao perfil e define como atual. Não usamos o RPC
-  // add_company_to_profile: no banco ele escreve em company_id (não current_company)
-  // e assume um profile pré-existente — mas o trigger que criava profiles no signup
-  // não existe. Fazemos o upsert manual por user_id.
-  const { data: existingProfile } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  const { error: profErr } = existingProfile
-    ? await supabase.from('profiles').update({ current_company: row.id }).eq('user_id', user.id)
-    : await supabase.from('profiles').insert({ user_id: user.id, current_company: row.id });
+  // Vincula a empresa ao perfil e define como atual.
+  //
+  // VOLTAMOS A USAR `add_company_to_profile` (migration 0083). O bypass daqui
+  // existia por dois motivos reais, ambos corrigidos na função: ela escrevia
+  // `profiles.company_id`, coluna que o app não lê, e não criava o perfil
+  // quando ele não existia — que é o caso comum, já que o trigger de signup
+  // não existe.
+  //
+  // O upsert manual que morava aqui era "lê, e se não achar insere": duas abas
+  // criando empresa ao mesmo tempo inseriam dois perfis para o mesmo usuário, e
+  // o `.single()` que o resto do app usa passaria a ERRAR para essa pessoa. A
+  // função faz INSERT ... ON CONFLICT numa instrução só, contra o índice único
+  // que a 0083 criou.
+  const { error: profErr } = await supabase.rpc('add_company_to_profile', {
+    p_user_id: user.id,
+    p_company_id: row.id,
+  });
   if (profErr) return { ok: false, error: profErr.message };
 
   // empresas_fiscais + Focus + CNAEs — pós-processamento compartilhado com o

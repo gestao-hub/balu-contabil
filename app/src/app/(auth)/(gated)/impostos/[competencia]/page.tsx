@@ -37,7 +37,7 @@ export default async function CompetenciaDetalhe({ params }: { params: Promise<{
       .select('id, competencia_referencia, anexo_simples, aliquota_efetiva, rbt12, receita_mes, valor_imposto, status, payload_calculo')
       .eq('company_id', companyId).eq('competencia_referencia', competencia).is('deleted_at', null).maybeSingle(),
     supabase.from('guias_fiscais')
-      .select('id, competencia_referencia, competencia_mes, competencia_ano, valor_total, valor_principal, valor_multa, valor_juros, valor_pago, data_vencimento, data_pagamento, status, numero_das, numero_guia, url_pdf, url_guia, linha_digitavel')
+      .select('id, competencia_referencia, competencia_mes, competencia_ano, valor_total, valor_principal, valor_multa, valor_juros, valor_pago, data_vencimento, data_pagamento, status, numero_das, numero_guia, url_pdf, url_guia, linha_digitavel, comprovante_nome')
       .eq('company_id', companyId).eq('competencia_referencia', competencia).is('deleted_at', null).maybeSingle(),
     supabase.from('declaracoes_fiscais')
       .select('competencia_referencia, numero_declaracao, data_transmissao')

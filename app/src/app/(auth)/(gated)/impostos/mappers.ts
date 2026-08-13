@@ -36,5 +36,9 @@ export function toGuiaRowDetalhe(g: Record<string, unknown>): GuiaRow {
     pdfUrl: ((g.url_pdf as string) ?? (g.url_guia as string)) ?? null,
     linhaDigitavel: (g.linha_digitavel as string) ?? null,
     numero: ((g.numero_das as string) ?? (g.numero_guia as string)) ?? null,
+    // Só o NOME atravessa para o cliente (0084). `comprovante_path` fica no
+    // servidor: com o path na mão, a tela poderia tentar montar URL de storage,
+    // e o que autoriza o download é a signed URL pedida por clique.
+    comprovanteNome: (g.comprovante_nome as string | null) ?? null,
   };
 }

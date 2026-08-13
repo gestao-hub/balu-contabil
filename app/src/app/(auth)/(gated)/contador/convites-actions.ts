@@ -157,16 +157,17 @@ export async function aceitarConviteAction(token: string): Promise<ActionResult<
     // puro seria no-op nesse caso (current_company nunca é setado → o gate de
     // /onboarding prende o cliente antes de ele ver a empresa). Upsert por
     // user_id, mesmo padrão de createCompanyAction.
-    const { data: existingProfile } = await admin
-      .from('profiles')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
     // Propaga o erro (como createCompanyAction faz): se current_company não gravar,
     // o cliente cai de volta no gate de /onboarding e o "aceite" foi mentira.
-    const profErr = existingProfile
-      ? (await admin.from('profiles').update({ current_company: conv.company_id }).eq('user_id', user.id)).error
-      : (await admin.from('profiles').insert({ user_id: user.id, current_company: conv.company_id })).error;
+    //
+    // `add_company_to_profile` (0083) no lugar do "lê, e se não achar insere"
+    // que morava aqui: uma instrução só, com ON CONFLICT contra o índice único
+    // de `profiles(user_id)`. É o mesmo caminho que `createCompanyAction` usa —
+    // duas cópias da mesma regra eram duas chances de uma delas mudar sozinha.
+    const { error: profErr } = await admin.rpc('add_company_to_profile', {
+      p_user_id: user.id,
+      p_company_id: conv.company_id,
+    });
     if (profErr) {
       return { ok: false, error: 'Vínculo concluído, mas não foi possível abrir a empresa. Recarregue a página.' };
     }
