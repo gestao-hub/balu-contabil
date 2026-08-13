@@ -114,6 +114,23 @@
 >   e o app não a lê. Remover ao fim da configuração.
 > - Titularidade do domínio (Fatto) antes de amarrar e-mail e auth nele.
 >
+> ### Quadro ao fim da sessão
+>
+> **Concluído** ganhou 4: `Impostos P3.3` (fechado **por substituição**, não por
+> entrega — a infraestrutura de conciliação existe e roda com mock; o provedor é
+> que deixou de ser necessário), `P11`, `Open Finance` e `Asaas produção`.
+>
+> **To Do (3):** separação de ambiente · **avisos de pagamento SERPRO + Asaas**
+> (o próximo a executar) · Asaas em produção.
+>
+> Este último foi desmembrado ao fechar o card do Asaas, e o motivo importa: as
+> credenciais estão **só no `.env.local` da máquina do desenvolvedor**.
+> `vercel env ls production` não devolve **nenhuma** variável do Asaas — então,
+> em produção, qualquer chamada falha em `TOKEN_ASAAS_* nao configurado` e o
+> webhook rejeita todo evento por comparar o header contra string vazia.
+>
+> **Perguntas (3):** P3 (demo guiada, a mais importante), P15, P16.
+>
 > ---
 
 > ## Histórico da sessão 24 (2026-08-13) — perguntas ao cliente, não código
