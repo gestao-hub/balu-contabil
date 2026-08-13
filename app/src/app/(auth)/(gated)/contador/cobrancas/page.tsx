@@ -229,7 +229,7 @@ export default async function ContadorCobrancasPage({
           {aba.chave === 'todas' ? (
             <>
               Nenhuma cobrança emitida ainda. Você cobra a mensalidade em{' '}
-              <Link href="/contador/honorarios" className="text-primary hover:underline">
+              <Link href="/contador/honorarios" className="inline-flex min-h-6 items-center text-primary hover:underline">
                 Honorários
               </Link>{' '}
               e um serviço avulso pela ficha do cliente.

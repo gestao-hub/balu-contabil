@@ -51,7 +51,7 @@ export default async function FolhaPage() {
     <div className="mx-auto max-w-3xl px-4 py-6">
       <Link
         href="/impostos"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition"
+        className="inline-flex min-h-6 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition"
       >
         <ArrowLeft className="size-4" />
         Voltar

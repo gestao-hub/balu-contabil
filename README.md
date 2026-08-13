@@ -107,10 +107,14 @@ npm run dev                     # http://localhost:3000
 | `FOCUS_WEBHOOK_SECRET` | Autentica o callback da Focus |
 | `SERPRO_CONSUMER_KEY` / `SERPRO_CONSUMER_SECRET` | SERPRO Integra Contador |
 | `TOKEN_ASAAS_PRODUCAO` / `TOKEN_ASAAS_SANDBOX` | Cobrança (ver aviso abaixo) |
-| `UAZAPI_BASE_URL` / `UAZAPI_ADMIN_TOKEN` / `UAZAPI_WEBHOOK_SECRET` | WhatsApp |
-| `TOKEN_OPENROUTER` | IA que responde no WhatsApp |
+| `UAZAPI_BASE_URL` / `UAZAPI_TOKEN` / `UAZAPI_WEBHOOK_SECRET` | WhatsApp — **`UAZAPI_TOKEN`**, o da instância, é o que o app lê |
 | `RESEND_API_KEY` / `EMAIL_FROM` | E-mails transacionais |
 | `SUPABASE_PASSWORD` | Só para o runner de migrations (não é lida pelo app) |
+| `UAZAPI_ADMIN_TOKEN` | Só para provisionar instância pelos scripts (não é lida pelo app) |
+
+> **A chave da IA não é variável de ambiente.** Ela fica cifrada em `config_ia`
+> e se configura em `/admin/configuracoes/ia`. Procurar por `TOKEN_OPENROUTER`
+> no `.env` manda o operador ao lugar errado enquanto a IA segue desligada.
 
 > ⚠️ **Asaas:** as chaves de **produção** ficam em `app/.env.local` e são
 > habilitadas deliberadamente. Não troque o ambiente sem combinar — cobrança

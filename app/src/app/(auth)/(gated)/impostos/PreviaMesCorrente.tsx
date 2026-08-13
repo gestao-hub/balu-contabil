@@ -19,7 +19,7 @@ export default function PreviaMesCorrente({
           <span className="text-muted-foreground-2">· não vence ainda</span>
         </>
       ) : (
-        <Link href="/impostos/novo" className="text-primary hover:underline">
+        <Link href="/impostos/novo" className="inline-flex min-h-6 items-center text-primary hover:underline">
           · calcular agora
         </Link>
       )}

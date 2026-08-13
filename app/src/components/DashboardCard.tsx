@@ -42,7 +42,7 @@ export default function DashboardCard({
       {action && (
         <Link
           href={action.href}
-          className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-primary transition-all hover:gap-2"
+          className="mt-4 inline-flex min-h-6 items-center gap-1 text-sm font-semibold text-primary transition-all hover:gap-2"
         >
           {action.label}
           <ArrowRight className="size-4" />

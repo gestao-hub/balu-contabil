@@ -62,6 +62,6 @@ export async function consultarPagamentosDas(
     if (/ICGERENCIADOR-022|procura(c|ç)[aã]o/i.test(msg)) {
       return { ok: false, error: 'A empresa ainda não autorizou a Balu (Termo/procuração) na SERPRO.' };
     }
-    return { ok: false, error: traduzirErroSerpro(msg) };
+    return { ok: false, error: `Não foi possível consultar os pagamentos: ${traduzirErroSerpro(msg)}` };
   }
 }

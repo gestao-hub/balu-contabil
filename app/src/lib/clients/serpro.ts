@@ -299,12 +299,19 @@ async function requestComProcurador(
     },
   );
   if (status >= 400) {
-    // A SERPRO devolve um envelope com `mensagens[].texto` (códigos MSG_ISN_*); surfa-las
+    // A SERPRO devolve um envelope com `mensagens[].codigo/texto`; surfa-las
     // (o início do body é só o eco do request — inútil pra diagnóstico).
+    //
+    // O `codigo` VAI JUNTO, e não é enfeite: é ele que `traduzirErroSerpro`
+    // usa para reconhecer o caso (ex.: Aviso-DASNSIMEI-10008 = receita acima
+    // do teto do MEI) e é ele que o contador leva ao suporte da Receita.
+    // Descartá-lo aqui deixava a tradução lá na frente sem nada para casar.
     let detalhe = respBody.slice(0, 400);
     try {
-      const env = JSON.parse(respBody) as { mensagens?: Array<{ texto?: string }> };
-      const msgs = (env?.mensagens ?? []).map((m) => m.texto).filter(Boolean);
+      const env = JSON.parse(respBody) as { mensagens?: Array<{ codigo?: string; texto?: string }> };
+      const msgs = (env?.mensagens ?? [])
+        .map((m) => [m.codigo, m.texto].filter(Boolean).join(' ').trim())
+        .filter(Boolean);
       if (msgs.length) detalhe = msgs.join(' | ');
     } catch { /* mantém o slice */ }
     throw new Error(`SERPRO ${path} → ${status}: ${detalhe}`);

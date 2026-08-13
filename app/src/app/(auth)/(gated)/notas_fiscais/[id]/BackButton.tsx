@@ -14,7 +14,7 @@ export default function BackButton() {
         if (window.history.length > 1) router.back();
         else router.push('/notas_fiscais');
       }}
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition"
+      className="inline-flex min-h-6 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition"
     >
       <ArrowLeft className="size-4" />
       Voltar

@@ -240,7 +240,7 @@ export default function CreateCompanyDialog({
             </div>
           </div>
           {!forceCreate && (
-            <button type="button" onClick={onClose} aria-label="Fechar" className="text-muted-foreground hover:text-muted-foreground-2">
+            <button type="button" onClick={onClose} aria-label="Fechar" className="inline-flex size-6 items-center justify-center text-muted-foreground hover:text-muted-foreground-2">
               <X className="size-5" />
             </button>
           )}

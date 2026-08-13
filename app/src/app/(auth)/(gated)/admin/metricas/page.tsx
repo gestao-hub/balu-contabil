@@ -182,7 +182,7 @@ export default async function AdminMetricasPage() {
         <p className="mt-3 text-xs text-muted-foreground">
           &quot;Recebido&quot; e &quot;Em aberto&quot; são cobranças que o escritório emitiu para os
           clientes dele pela subconta (Bloco 4B) — dinheiro dele, não da Balu.{' '}
-          <Link href="/admin/contabilidades" className="text-primary hover:underline">
+          <Link href="/admin/contabilidades" className="inline-flex min-h-6 items-center text-primary hover:underline">
             Ver escritórios
           </Link>
         </p>

@@ -8,6 +8,7 @@ import { buildTermoXml, signTermoXml } from '@/lib/fiscal/serpro-termo';
 import { proximaMeiaNoiteSaoPaulo } from '@/lib/fiscal/serpro-expiracao';
 import { enviarTermoApoiar, Tipo } from '@/lib/clients/serpro';
 import { isInFutureISO } from '@/lib/fiscal/saude-empresa';
+import { traduzirErroSerpro } from '@/lib/fiscal/serpro-erro';
 
 type Material = { keyPem: string; certPem: string; cnpj: string | null; nome: string };
 type Result = { ok: true; token: string; expiration: string } | { ok: false; warning: string };
@@ -102,7 +103,10 @@ export async function garantirTokenProcurador(
       },
     });
   } catch (e) {
-    return { ok: false, warning: `Autenticação SERPRO (procurador) falhou — será refeita depois: ${e instanceof Error ? e.message.slice(0, 160) : ''}` };
+    // Passa pelo tradutor: este `warning` é devolvido AO USUÁRIO pelos seis
+    // wrappers (é o caminho de falha mais frequente da SERPRO) e sem isso
+    // vazava o envelope cru cortado no meio, contornando toda a tradução.
+    return { ok: false, warning: traduzirErroSerpro(e instanceof Error ? e.message : '') };
   }
 
   // 6. Persiste.

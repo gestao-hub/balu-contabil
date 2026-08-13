@@ -52,7 +52,7 @@ export default async function Page() {
       <div>
         <Link
           href="/admin/configuracoes"
-          className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          className="mb-3 inline-flex min-h-6 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
           Configurações

@@ -1,6 +1,32 @@
 import { describe, it, expect } from 'vitest';
 import { traduzirErroSerpro, extrairMensagensSerpro } from './serpro-erro';
 
+// A FORMA QUE CHEGA EM PRODUÇÃO. `lib/clients/serpro.ts` desembrulha o envelope
+// antes de lançar e entrega `[codigo] texto | [codigo] texto`. A primeira versão
+// destes testes só exercitava o JSON cru — que praticamente nunca chega aqui —,
+// e por isso a tabela de códigos passava nos testes sendo inalcançável no app.
+const prod = (...msgs: string[]) => `SERPRO /Declarar → 400: ${msgs.join(' | ')}`;
+
+describe('forma pré-parseada pelo client (a de produção)', () => {
+  it('reconhece código e texto sem JSON nenhum', () => {
+    expect(extrairMensagensSerpro(prod('[Erro-PGDASD-X1] Receita acima do limite'))).toEqual([
+      { codigo: 'Erro-PGDASD-X1', texto: 'Receita acima do limite' },
+    ]);
+  });
+
+  it('a tabela DASN-SIMEI dispara nesta forma — era o ponto cego', () => {
+    expect(traduzirErroSerpro(prod('[Aviso-DASNSIMEI-10008] receita acima'))).toMatch(/desenquadramento/i);
+  });
+
+  it('separa várias mensagens pelo pipe', () => {
+    expect(extrairMensagensSerpro(prod('[Aviso-A-1] um', '[Erro-B-2] dois'))).toHaveLength(2);
+  });
+
+  it('texto solto sem código não vira mensagem falsa', () => {
+    expect(extrairMensagensSerpro(prod('alguma coisa sem código'))).toEqual([]);
+  });
+});
+
 describe('extrairMensagensSerpro', () => {
   it('lê o envelope completo', () => {
     const raw =
@@ -118,5 +144,46 @@ describe('traduzirErroSerpro — fallback', () => {
 
   it('entrada vazia não vira string vazia na UI', () => {
     expect(traduzirErroSerpro('')).toMatch(/não explicou/);
+  });
+});
+
+describe('regressões apontadas na revisão', () => {
+  const prodMsg = (...m: string[]) => `SERPRO /Declarar → 400: ${m.join(' | ')}`;
+
+  it('ERRO vence AVISO quando os dois vêm juntos', () => {
+    // O aviso costuma ser ressalva informativa e vem ANTES no envelope;
+    // mostrá-lo esconderia o motivo real da falha.
+    const r = traduzirErroSerpro(prodMsg('[Aviso-PGDASD-E1] Recebida com ressalvas.', '[Erro-PGDASD-X] CNPJ bloqueado.'));
+    expect(r).toMatch(/CNPJ bloqueado/);
+    expect(r).not.toMatch(/ressalvas/);
+  });
+
+  it('palavra de transporte DENTRO do texto da Receita não vira frase de infra', () => {
+    // Um 400 legítimo falando de "procuração" precisa continuar mostrando o
+    // texto oficial, e não a frase genérica de e-CAC.
+    const r = traduzirErroSerpro(prodMsg('[Erro-PGDASD-Z] Prazo de entrega esgotado por timeout do sistema.'));
+    expect(r).toMatch(/Prazo de entrega esgotado/);
+    expect(r).not.toMatch(/demorou demais/);
+  });
+
+  it('timeout de rede real (sem status) continua sendo tratado como transporte', () => {
+    expect(traduzirErroSerpro('SERPRO /Declarar: timeout (25s).')).toMatch(/demorou/i);
+  });
+
+  it('JSON cortado NO MEIO do texto ainda é salvo', () => {
+    const cortado = 'SERPRO /Declarar → 400: {"mensagens":[{"codigo":"[Erro-A-1]","texto":"Mensagem que foi corta';
+    expect(traduzirErroSerpro(cortado)).toMatch(/Mensagem que foi corta/);
+  });
+
+  it('envelope ilegível NÃO vaza JSON para a tela', () => {
+    const r = traduzirErroSerpro('SERPRO /Declarar → 400: {"status":"400","dados":"lixo');
+    expect(r).not.toMatch(/[{[]/);
+    expect(r).toMatch(/não foi possível interpretar/i);
+  });
+
+  it('resposta não-JSON tem o prefixo de transporte removido', () => {
+    const r = traduzirErroSerpro('SERPRO /Declarar retornou não-JSON: Service Unavailable');
+    expect(r).not.toMatch(/retornou não-JSON/);
+    expect(r).toMatch(/Service Unavailable/);
   });
 });

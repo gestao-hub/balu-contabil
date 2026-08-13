@@ -185,9 +185,17 @@ async function verificarRota(page: Page, rota: string, exigirAutenticada = false
   // ter olhado nada. O teste precisa falhar quando não mediu o que prometeu.
   if (exigirAutenticada) {
     const atual = new URL(page.url()).pathname;
+    // TODOS os destinos de gate entram aqui, não só /login. Cada um deles é uma
+    // tela curta e simples que passaria no teste sem medir nada:
+    //   /login, /onboarding      → (auth) e (gated) layouts
+    //   /aceite                  → um único documento LGPD publicado sem aceite
+    //                              manda TODAS as rotas para cá
+    //   /contador/cadastro       → papel Contador sem escritório
+    //   /contador/aguardando     → escritório pendente ou suspenso
+    const GATES = /^\/(login|onboarding|aceite|contador\/(cadastro|aguardando))$/;
     expect(
-      /\/(login|onboarding)/.test(atual),
-      `${rota} redirecionou para ${atual} — a varredura não chegou a medir esta rota.`,
+      GATES.test(atual) || (atual !== rota && rota !== '/'),
+      `${rota} terminou em ${atual} — a varredura não chegou a medir esta rota.`,
     ).toBe(false);
   }
 
@@ -231,12 +239,63 @@ async function entrar(page: Page, comoEmail: string) {
 }
 
 test.describe('UX responsiva — 390×844', () => {
-  test.beforeAll(async () => {
+  /**
+   * Cria um usuário JÁ COM O PAPEL CERTO.
+   *
+   * O papel NÃO se insere à mão: o trigger `on_auth_user_created_role`
+   * (migration 0002) insere em `role_types` no momento do createUser, lendo
+   * `raw_user_meta_data->>'type'` e caindo em 'Empresa'. Um insert nosso depois
+   * ou falha (a coluna é `type`, não `role_type`) ou cria uma SEGUNDA linha —
+   * e `gate-context.ts` lê com `.maybeSingle()`, que ERRA com duas linhas,
+   * derrubando o usuário inteiro.
+   */
+  async function criarAtor(mail: string, tipo: 'Empresa' | 'Contador' | 'AdminBalu') {
     const { data, error } = await admin.auth.admin.createUser({
-      email, password: PASS, email_confirm: true,
+      email: mail, password: PASS, email_confirm: true,
+      user_metadata: { type: tipo },
     });
-    expect(error, `createUser falhou: ${error?.message}`).toBeNull();
-    userId = data.user!.id;
+    expect(error, `createUser ${tipo} falhou: ${error?.message}`).toBeNull();
+    const id = data.user!.id;
+
+    // Confere o que o trigger REALMENTE gravou. Sem isto, um papel errado vira
+    // varredura verde que não mediu o app daquele papel — foi exatamente o que
+    // aconteceu na primeira versão deste arquivo.
+    const { data: papel } = await admin
+      .from('role_types').select('type').eq('user_id', id).maybeSingle();
+    expect(papel?.type, `papel de ${mail} deveria ser ${tipo}`).toBe(tipo);
+    await aceitarLgpd(id);
+    return id;
+  }
+
+  /**
+   * Registra o aceite dos documentos LGPD vigentes.
+   *
+   * SEM ISTO A VARREDURA NÃO MEDE NADA: `(gated)/layout.tsx` manda para
+   * /aceite quando há qualquer documento publicado sem aceite na versão
+   * vigente — e /aceite é uma tela curta que passa nas duas checagens. Não é
+   * hipótese: com o banco atual, TODAS as 34 rotas autenticadas caíam lá.
+   *
+   * Mesma regra de `lib/lgpd/pendencia-aceite.ts`: vigente = a publicação mais
+   * recente de cada tipo.
+   */
+  async function aceitarLgpd(uid: string) {
+    const { data: docs } = await admin
+      .from('documento_versoes')
+      .select('tipo, versao, publicado_em')
+      .not('publicado_em', 'is', null)
+      .order('publicado_em', { ascending: false });
+
+    const vigentes = new Map<string, string>();
+    for (const d of docs ?? []) if (!vigentes.has(d.tipo)) vigentes.set(d.tipo, d.versao as string);
+    if (vigentes.size === 0) return;
+
+    const linhas = [...vigentes].map(([tipo, versao]) => ({ user_id: uid, tipo, versao, ip: '127.0.0.1' }));
+    const { error } = await admin.from('aceites').insert(linhas);
+    expect(error, `insert aceites falhou: ${error?.message}`).toBeNull();
+  }
+
+  test.beforeAll(async () => {
+    userId = await criarAtor(email, 'Empresa');
 
     const { data: c, error: cErr } = await admin.from('companies')
       .insert({ user_id: userId, nome: `Empresa Responsivo ${STAMP}` })
@@ -244,11 +303,18 @@ test.describe('UX responsiva — 390×844', () => {
     expect(cErr, `insert company falhou: ${cErr?.message}`).toBeNull();
     companyId = c!.id;
 
-    // Papel + perfil: sem os dois o gate manda para /onboarding e a varredura
-    // mediria a mesma tela 14 vezes.
-    await admin.from('role_types').insert({ user_id: userId, role_type: 'Empresa' });
-    await admin.from('profiles').insert({ user_id: userId, current_company: companyId });
-    await admin.from('empresas_fiscais').insert({ empresa_id: companyId });
+    // Upsert, não insert: nenhum trigger cria a linha de profiles hoje
+    // (conferido no banco — `handle_new_user` não existe e o único trigger em
+    // auth.users é o de papel), mas o upsert sobrevive caso um passe a criar.
+    // Apoia-se no índice único profiles_user_id_uidx da migration 0083.
+    // O erro É conferido: sem current_company o gated manda para /onboarding e
+    // a varredura não mede nada.
+    const { error: pErr } = await admin.from('profiles')
+      .upsert({ user_id: userId, current_company: companyId }, { onConflict: 'user_id' });
+    expect(pErr, `upsert profiles falhou: ${pErr?.message}`).toBeNull();
+
+    const { error: efErr } = await admin.from('empresas_fiscais').insert({ empresa_id: companyId });
+    expect(efErr, `insert empresas_fiscais falhou: ${efErr?.message}`).toBeNull();
 
     // --- contador: precisa de escritório APROVADO, senão para em /aguardando ---
     const { data: ct, error: ctErr } = await admin.from('contabilidades')
@@ -257,32 +323,50 @@ test.describe('UX responsiva — 390×844', () => {
     expect(ctErr, `insert contabilidade falhou: ${ctErr?.message}`).toBeNull();
     contabilidadeId = ct!.id;
 
-    const { data: uc, error: ucErr } = await admin.auth.admin.createUser({
-      email: emailContador, password: PASS, email_confirm: true,
-    });
-    expect(ucErr, `createUser contador falhou: ${ucErr?.message}`).toBeNull();
-    contadorId = uc.user!.id;
-    await admin.from('role_types').insert({ user_id: contadorId, role_type: 'Contador' });
-    await admin.from('contabilidade_membros').insert({ contabilidade_id: contabilidadeId, user_id: contadorId });
+    contadorId = await criarAtor(emailContador, 'Contador');
+    const { error: mErr } = await admin.from('contabilidade_membros')
+      .insert({ contabilidade_id: contabilidadeId, user_id: contadorId });
+    expect(mErr, `insert contabilidade_membros falhou: ${mErr?.message}`).toBeNull();
 
-    // --- admin ---
-    const { data: ua, error: uaErr } = await admin.auth.admin.createUser({
-      email: emailAdmin, password: PASS, email_confirm: true,
-    });
-    expect(uaErr, `createUser admin falhou: ${uaErr?.message}`).toBeNull();
-    adminId = ua.user!.id;
-    await admin.from('role_types').insert({ user_id: adminId, role_type: 'AdminBalu' });
+    adminId = await criarAtor(emailAdmin, 'AdminBalu');
   });
 
   test.afterAll(async () => {
     // Ordem importa: as filhas primeiro, senão a FK barra.
-    await admin.from('empresas_fiscais').delete().eq('empresa_id', companyId);
-    await admin.from('profiles').delete().eq('user_id', userId);
-    await admin.from('contabilidade_membros').delete().eq('contabilidade_id', contabilidadeId);
-    await admin.from('role_types').delete().in('user_id', [userId, contadorId, adminId].filter(Boolean));
-    await admin.from('companies').delete().eq('id', companyId);
-    await admin.from('contabilidades').delete().eq('id', contabilidadeId);
-    for (const id of [userId, contadorId, adminId]) if (id) await admin.auth.admin.deleteUser(id);
+    //
+    // Cada passo RECLAMA quando falha. Silenciar aqui era pior do que parece:
+    // este spec bate no Supabase compartilhado, então uma FK barrando o delete
+    // deixa ator descartável acumulando no banco a cada execução — e ninguém
+    // fica sabendo, porque o teste já passou.
+    const restos: string[] = [];
+    const limpar = async (rotulo: string, fn: () => Promise<{ error: unknown }>) => {
+      const { error } = await fn();
+      if (error) restos.push(`${rotulo}: ${(error as { message?: string })?.message ?? String(error)}`);
+    };
+
+    const ids = [userId, contadorId, adminId].filter(Boolean);
+    if (companyId) {
+      await limpar('empresas_fiscais', () => admin.from('empresas_fiscais').delete().eq('empresa_id', companyId));
+    }
+    if (ids.length) {
+      await limpar('aceites', () => admin.from('aceites').delete().in('user_id', ids));
+      await limpar('profiles', () => admin.from('profiles').delete().in('user_id', ids));
+      await limpar('role_types', () => admin.from('role_types').delete().in('user_id', ids));
+    }
+    if (contabilidadeId) {
+      await limpar('contabilidade_membros', () => admin.from('contabilidade_membros').delete().eq('contabilidade_id', contabilidadeId));
+    }
+    if (companyId) await limpar('companies', () => admin.from('companies').delete().eq('id', companyId));
+    if (contabilidadeId) await limpar('contabilidades', () => admin.from('contabilidades').delete().eq('id', contabilidadeId));
+
+    for (const id of ids) {
+      const { error } = await admin.auth.admin.deleteUser(id);
+      if (error) restos.push(`deleteUser ${id}: ${error.message}`);
+    }
+
+    // Não derruba a suíte por causa da faxina — mas grita, para o lixo não
+    // crescer em silêncio.
+    if (restos.length) console.warn(`[responsivo] limpeza incompleta:\n  ${restos.join('\n  ')}`);
   });
 
   test('públicas', async ({ page }) => {

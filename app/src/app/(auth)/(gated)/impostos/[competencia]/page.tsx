@@ -59,7 +59,7 @@ export default async function CompetenciaDetalhe({ params }: { params: Promise<{
 
   return (
     <main className="p-6 max-w-3xl">
-      <Link href="/impostos" className="inline-flex items-center gap-1 text-sm text-muted-foreground-2 hover:text-foreground">
+      <Link href="/impostos" className="inline-flex min-h-6 items-center gap-1 text-sm text-muted-foreground-2 hover:text-foreground">
         <ChevronLeft className="size-4" /> Voltar a Impostos
       </Link>
       <header className="mt-2 mb-6 flex items-center gap-3">

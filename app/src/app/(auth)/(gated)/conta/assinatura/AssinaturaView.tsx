@@ -270,7 +270,7 @@ export default function AssinaturaView({
             </div>
           ) : (
             <button
-              className="text-sm text-muted-foreground transition-colors hover:text-destructive"
+              className="inline-flex min-h-6 items-center text-sm text-muted-foreground transition-colors hover:text-destructive"
               onClick={() => setConfirmando(true)}
             >
               Cancelar assinatura

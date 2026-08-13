@@ -26,8 +26,39 @@ export type MensagemSerpro = { codigo: string; texto: string };
  * circulam: o primeiro vem de `throw new Error`, o segundo de resposta 200 com
  * aviso no envelope.
  */
+/**
+ * Separa o prefixo de transporte (`SERPRO /Declarar → 400:`) do corpo.
+ *
+ * Existe porque as heurísticas de transporte NÃO podem ser testadas contra o
+ * texto da Receita: um 400 legítimo cujo `texto` contenha "procuração" ou
+ * "tempo" viraria a frase genérica de infraestrutura, e a mensagem realmente
+ * acionável seria jogada fora.
+ */
+function partes(raw: string): { transporte: string; corpo: string } {
+  const m = raw.match(/^\s*SERPRO\s+\S*\s*(?:→|->)\s*(\d{3})\s*:\s*/i);
+  if (m) return { transporte: m[0], corpo: raw.slice(m[0].length) };
+  return { transporte: raw, corpo: raw };
+}
+
 export function extrairMensagensSerpro(raw: string): MensagemSerpro[] {
-  // O JSON começa na primeira chave; tudo antes é o prefixo do transporte.
+  // FORMA 1 — pré-parseada pelo client: `[Aviso-X-1] texto | [Erro-Y] outro`.
+  // `lib/clients/serpro.ts` desembrulha o envelope antes de lançar, então esta
+  // é a forma que chega em produção; a JSON crua abaixo aparece em resposta
+  // 200 com aviso e nos testes.
+  const { corpo } = partes(raw);
+  if (!corpo.includes('{')) {
+    const itens = corpo.split('|').map((p) => p.trim()).filter(Boolean);
+    const lidos = itens.map((p) => {
+      const m = p.match(/^\[?((?:Aviso|Erro|Sucesso|EntradaIncorreta)-[A-Za-z0-9_.-]+)\]?\s*(.*)$/i);
+      return m ? { codigo: m[1], texto: m[2].trim() } : { codigo: '', texto: p };
+    });
+    // Só vale como "mensagem da SERPRO" se algum código foi reconhecido;
+    // senão é texto solto e quem decide é o fallback.
+    if (lidos.some((x) => x.codigo)) return lidos.filter((x) => x.codigo || x.texto);
+    return [];
+  }
+
+  // FORMA 2 — envelope JSON cru.
   const inicio = raw.indexOf('{');
   if (inicio < 0) return [];
 
@@ -35,9 +66,9 @@ export function extrairMensagensSerpro(raw: string): MensagemSerpro[] {
   // JSON.parse do todo falha. Tentamos o todo e, se não der, garimpamos os
   // pares codigo/texto por regex — degradar para "achei uma mensagem" é melhor
   // que degradar para "não achei nada".
-  const corpo = raw.slice(inicio);
+  const json = raw.slice(inicio);
   try {
-    const env = JSON.parse(corpo) as { mensagens?: unknown };
+    const env = JSON.parse(json) as { mensagens?: unknown };
     if (Array.isArray(env.mensagens)) {
       return env.mensagens
         .map((m) => {
@@ -53,10 +84,14 @@ export function extrairMensagensSerpro(raw: string): MensagemSerpro[] {
     // cai no garimpo abaixo
   }
 
+  // Garimpo tolerante a CORTE: o `texto` pode não ter aspas de fechamento,
+  // porque o corte cai no meio do valor — que é exatamente o caso para o qual
+  // este garimpo existe. Exigir a aspa final fazia o salvamento falhar bem na
+  // hora em que era necessário, e o envelope cru vazava para a tela.
   const achados: MensagemSerpro[] = [];
-  const re = /"codigo"\s*:\s*"([^"]*)"\s*,\s*"texto"\s*:\s*"([^"]*)"/g;
+  const re = /"codigo"\s*:\s*"([^"]*)"\s*,\s*"texto"\s*:\s*"([^"]*)/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(corpo)) !== null) achados.push({ codigo: m[1], texto: m[2] });
+  while ((m = re.exec(json)) !== null) achados.push({ codigo: m[1], texto: m[2] });
   return achados;
 }
 
@@ -90,36 +125,47 @@ const DASNSIMEI: Record<string, string> = {
  * configuração nossa), depois código conhecido, depois o texto oficial.
  */
 export function traduzirErroSerpro(raw: string): string {
-  const lower = raw.toLowerCase();
+  const { transporte } = partes(raw);
+  const t = transporte.toLowerCase();
+  const tudo = raw.toLowerCase();
 
   // --- Transporte / configuração: nada disso o usuário causou ou resolve ---
-  if (lower.includes('consumer_key') || lower.includes('consumer_secret') || lower.includes('não configurados')) {
+  //
+  // As checagens de STATUS olham só o prefixo (`t`). Um 400 legítimo cujo texto
+  // da Receita contenha "tempo" ou "procuração" não pode virar a frase genérica
+  // de infraestrutura — isso jogaria fora justamente a mensagem acionável.
+  // As que olham a string inteira (`tudo`) são erros nossos, lançados por nós,
+  // que nunca chegam dentro de um envelope da SERPRO.
+  if (tudo.includes('consumer_key') || tudo.includes('consumer_secret') || tudo.includes('não configurados')) {
     return 'A integração com a SERPRO não está configurada. Avise o suporte da Balu.';
   }
-  if (lower.includes('mtls') || lower.includes('certificado do contratante')) {
+  if (tudo.includes('mtls') || tudo.includes('certificado do contratante')) {
     return 'O certificado da Balu na SERPRO não está configurado. Avise o suporte.';
   }
-  if (/→ 401|unauthorized/.test(lower)) {
+  if (/→ 401|unauthorized/.test(t)) {
     return 'A Balu perdeu a autorização na SERPRO. Avise o suporte — não é preciso fazer nada na sua empresa.';
   }
-  if (/→ 403|forbidden/.test(lower)) {
+  if (/→ 403|forbidden/.test(t)) {
     return 'A SERPRO recusou o acesso a esta empresa. Confira se a procuração eletrônica para a Balu está ativa no e-CAC.';
   }
-  if (/procuraç|procurac|termo de autoriza/.test(lower)) {
-    return 'A empresa ainda não autorizou a Balu na SERPRO. É preciso assinar a procuração eletrônica no e-CAC.';
-  }
-  if (lower.includes('timeout') || lower.includes('etimedout') || lower.includes('econnreset')) {
-    return 'A SERPRO demorou demais para responder. Tente de novo em alguns minutos.';
-  }
-  if (/→ 5\d\d/.test(lower) || lower.includes('bad gateway')) {
+  if (/→ 5\d\d/.test(t) || tudo.includes('bad gateway')) {
     return 'A SERPRO está instável agora. Tente de novo em alguns minutos — nada foi perdido.';
+  }
+  // Timeout/reset não têm status: são falha de rede, e aí não há corpo nenhum
+  // para confundir com texto da Receita.
+  if (/\btimeout\b|etimedout|econnreset|socket hang up/.test(tudo) && !/→ \d{3}/.test(t)) {
+    return 'A SERPRO demorou demais para responder. Tente de novo em alguns minutos.';
   }
 
   // --- Mensagem oficial: preferimos a Receita falando à nossa paráfrase ---
   const mensagens = extrairMensagensSerpro(raw);
-  // Aviso/Sucesso não são falha; se vier junto de erro, o erro é que interessa.
+  // Quem manda é o ERRO. Um "Aviso" costuma ser ressalva informativa e vem
+  // ANTES do erro no envelope — mostrá-lo esconderia o motivo real da falha.
   const relevante =
-    mensagens.find((m) => !/sucesso/i.test(m.codigo)) ?? mensagens[0] ?? null;
+    mensagens.find((m) => /^\[?(erro|entradaincorreta)/i.test(m.codigo)) ??
+    mensagens.find((m) => !/sucesso/i.test(m.codigo)) ??
+    mensagens[0] ??
+    null;
 
   if (relevante) {
     const cod = normalizarCodigo(relevante.codigo);
@@ -136,11 +182,18 @@ export function traduzirErroSerpro(raw: string): string {
     if (cod) return `A SERPRO recusou a operação (código ${cod}).`;
   }
 
-  // --- Último recurso: limpa o envelope de transporte, não vaza JSON ---
-  const limpo = raw
-    .replace(/^SERPRO\s+\/?\S+\s+→\s+\d+:\s*/i, '')
+  // --- Último recurso ---
+  // Nada de JSON na tela: se sobrou envelope, ele é DESCARTADO em vez de
+  // exibido cortado. Uma frase honesta de "não deu para ler" é melhor para o
+  // usuário do que meio objeto JSON, que não é acionável nem por ele nem pelo
+  // contador.
+  const limpo = partes(raw).corpo
+    .replace(/^SERPRO\s+\S+\s+retornou não-JSON:\s*/i, '')
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 200);
-  return limpo ? `Erro na SERPRO: ${limpo}` : 'A SERPRO recusou a operação e não explicou o motivo.';
+    .trim();
+  if (!limpo) return 'A SERPRO recusou a operação e não explicou o motivo.';
+  if (limpo.startsWith('{') || limpo.startsWith('[') || limpo.startsWith('<')) {
+    return 'A SERPRO recusou a operação e devolveu uma resposta que não foi possível interpretar. Tente de novo em alguns minutos.';
+  }
+  return `Erro na SERPRO: ${limpo.slice(0, 200)}`;
 }

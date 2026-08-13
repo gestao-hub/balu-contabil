@@ -192,7 +192,7 @@ export default async function ImpostosPage() {
         </p>
         <Link
           href="/impostos/folha"
-          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline mt-2"
+          className="inline-flex min-h-6 items-center gap-1.5 text-sm text-primary hover:underline mt-2"
         >
           Folha (Fator R)
         </Link>
