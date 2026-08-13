@@ -4,6 +4,7 @@ import { garantirAuthContratante } from '@/lib/fiscal/serpro-contratante';
 import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
 import { consultarComProcurador, Tipo } from '@/lib/clients/serpro';
 import { parseDasnSimeiLista, type DasnSimeiDeclaracao } from '@/lib/fiscal/serpro-dasn-simei-parse';
+import { traduzirErroSerpro } from '@/lib/fiscal/serpro-erro';
 
 type Result = { ok: true; declaracoes: DasnSimeiDeclaracao[] } | { ok: false; error: string };
 
@@ -53,6 +54,6 @@ export async function consultarDasnSimei(
     if (/ICGERENCIADOR-022|procura(c|ç)[aã]o/i.test(msg)) {
       return { ok: false, error: 'A empresa ainda não autorizou a Balu (Termo/procuração) na SERPRO.' };
     }
-    return { ok: false, error: `Falha ao consultar a SERPRO: ${msg.slice(0, 160)}` };
+    return { ok: false, error: traduzirErroSerpro(msg) };
   }
 }

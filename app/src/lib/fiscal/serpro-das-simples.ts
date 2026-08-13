@@ -4,6 +4,7 @@ import { garantirAuthContratante } from '@/lib/fiscal/serpro-contratante';
 import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
 import { emitirComProcurador, Tipo } from '@/lib/clients/serpro';
 import { parseDasSimples, type DasSimplesResult } from '@/lib/fiscal/serpro-das-simples-parse';
+import { traduzirErroSerpro } from '@/lib/fiscal/serpro-erro';
 
 type Result = { ok: true; result: DasSimplesResult } | { ok: false; error: string };
 
@@ -52,6 +53,6 @@ export async function gerarDasSimples(
     if (/ICGERENCIADOR-022|procura(c|ç)[aã]o/i.test(msg)) {
       return { ok: false, error: 'A empresa ainda não autorizou a Balu (Termo/procuração) na SERPRO.' };
     }
-    return { ok: false, error: `Falha ao gerar o DAS na SERPRO: ${msg.slice(0, 160)}` };
+    return { ok: false, error: traduzirErroSerpro(msg) };
   }
 }

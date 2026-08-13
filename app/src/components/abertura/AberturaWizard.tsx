@@ -356,7 +356,7 @@ function Field({ f, data, set, onCep, onToggleSede, disabled }: {
   );
 
   if (f.kind === 'checkbox') return (
-    <label className="flex items-center gap-2 text-sm text-muted-foreground-2 sm:col-span-2">
+    <label className="flex min-h-6 items-center gap-2 text-sm text-muted-foreground-2 sm:col-span-2">
       <input type="checkbox" checked={!!v}
         onChange={(e) => (onToggleSede ?? ((x: boolean) =>
           set(f.name as keyof AberturaData, x as AberturaData[keyof AberturaData])))(e.target.checked)} />

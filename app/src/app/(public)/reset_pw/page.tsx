@@ -49,7 +49,7 @@ function ResetPwInner() {
         {showUpdate ? <UpdatePasswordForm /> : <RequestResetForm />}
 
         <div className="mt-6 text-center text-sm">
-          <Link href="/login" className="text-primary hover:underline">
+          <Link href="/login" className="inline-flex min-h-[24px] items-center text-primary hover:underline">
             Voltar ao login
           </Link>
         </div>

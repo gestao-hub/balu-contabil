@@ -128,7 +128,7 @@ export default function RegimeTributarioForm({
       )}
 
       {mostraFatorR && (
-        <label className="sm:col-span-2 flex items-center gap-2 text-sm">
+        <label className="sm:col-span-2 flex min-h-6 items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={fatorR}

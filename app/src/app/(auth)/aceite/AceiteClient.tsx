@@ -56,7 +56,7 @@ export default function AceiteClient({ documentos }: Props) {
         ))}
       </div>
 
-      <label className="mt-6 flex items-center gap-2 text-sm text-foreground">
+      <label className="mt-6 flex min-h-6 items-center gap-2 text-sm text-foreground">
         <input
           type="checkbox"
           checked={concordo}

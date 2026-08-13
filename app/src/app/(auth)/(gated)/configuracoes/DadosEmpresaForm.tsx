@@ -151,7 +151,7 @@ export default function DadosEmpresaForm({ id, initial }: Props) {
           required={!form.sem_numero}
           className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm disabled:bg-surface-2 disabled:text-muted-foreground"
         />
-        <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground-2">
+        <label className="mt-1 flex min-h-6 items-center gap-2 text-xs text-muted-foreground-2">
           <input
             type="checkbox"
             checked={!!form.sem_numero}

@@ -148,7 +148,7 @@ export default function CadastroPage() {
                 href="/termos"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline"
+                className="inline-flex min-h-[24px] items-center text-primary hover:underline"
               >
                 termos de uso
               </a>
@@ -166,7 +166,7 @@ export default function CadastroPage() {
 
         <div className="mt-6 text-center text-sm">
           <span className="text-muted-foreground">Já tem conta? </span>
-          <Link href="/login" className="text-primary hover:underline">
+          <Link href="/login" className="inline-flex min-h-[24px] items-center text-primary hover:underline">
             Entrar
           </Link>
         </div>

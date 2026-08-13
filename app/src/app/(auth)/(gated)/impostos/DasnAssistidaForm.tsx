@@ -50,7 +50,7 @@ export default function DasnAssistidaForm({ resumo, inicial, onSalvar }: {
         <Campo label="Receita de serviços" valor={servico} onChange={setServico} />
       </div>
 
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex min-h-6 items-center gap-2 text-sm">
         <input type="checkbox" checked={empregado} onChange={(e) => setEmpregado(e.target.checked)} />
         <span>Teve empregado no ano</span>
       </label>

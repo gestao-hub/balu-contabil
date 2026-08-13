@@ -10,6 +10,7 @@ import { competenciaAddMonths } from '@/lib/fiscal/guia';
 import { idAtividadePadrao } from '@/lib/fiscal/pgdasd-atividade';
 import { montarDeclaracaoPgdasd, type PgdasdAtividade } from '@/lib/fiscal/pgdasd-declaracao';
 import { parseDeclaracaoPgdasd, type DeclaracaoPgdasdResult } from '@/lib/fiscal/serpro-pgdasd-parse';
+import { traduzirErroSerpro } from '@/lib/fiscal/serpro-erro';
 
 type Result = { ok: true; result: DeclaracaoPgdasdResult } | { ok: false; error: string };
 
@@ -123,6 +124,6 @@ export async function transmitirPgdasd(
     if (/ICGERENCIADOR-022|procura(c|ç)[aã]o/i.test(msg)) {
       return { ok: false, error: 'A empresa ainda não autorizou a Balu (Termo/procuração) na SERPRO.' };
     }
-    return { ok: false, error: `Falha na declaração (SERPRO): ${msg.slice(0, 600)}` };
+    return { ok: false, error: traduzirErroSerpro(msg) };
   }
 }

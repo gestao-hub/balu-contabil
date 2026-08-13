@@ -58,11 +58,13 @@ export default function LoginPage() {
           <SubmitButton />
         </form>
 
-        <div className="mt-6 flex items-center justify-between text-sm">
-          <Link href="/reset_pw" className="text-primary hover:underline">
+        {/* `-mx-1` compensa o padding novo para o texto continuar alinhado com
+            a borda do card: o alvo cresce, o desenho não muda. */}
+        <div className="mt-6 -mx-1 flex items-center justify-between text-sm">
+          <Link href="/reset_pw" className="inline-flex min-h-[24px] items-center px-1 py-0.5 text-primary hover:underline">
             Esqueci a senha
           </Link>
-          <Link href="/cadastro" className="text-primary hover:underline">
+          <Link href="/cadastro" className="inline-flex min-h-[24px] items-center px-1 py-0.5 text-primary hover:underline">
             Criar conta
           </Link>
         </div>

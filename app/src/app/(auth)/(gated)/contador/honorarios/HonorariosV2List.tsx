@@ -244,7 +244,7 @@ export default function HonorariosV2List({
           <option value="pago">Pago</option>
         </select>
 
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+        <label className="flex min-h-6 items-center gap-2 text-sm text-muted-foreground">
           Competência
           <input
             type="month"

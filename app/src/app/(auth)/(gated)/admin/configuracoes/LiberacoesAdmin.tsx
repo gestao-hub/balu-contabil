@@ -194,7 +194,7 @@ export default function LiberacoesAdmin({ titulares }: { titulares: TitularVm[] 
             className="w-full bg-transparent py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
         </label>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+        <label className="flex min-h-6 items-center gap-2 text-sm text-muted-foreground">
           <input
             type="checkbox" checked={soRelevantes}
             onChange={(e) => setSoRelevantes(e.target.checked)}

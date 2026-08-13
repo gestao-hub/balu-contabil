@@ -104,7 +104,7 @@ function CampoInput({ campo, valor, onChange }: {
 }) {
   if (campo.tipo === 'booleano') {
     return (
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex min-h-6 items-center gap-2 text-sm">
         <input type="checkbox" checked={valor === true} onChange={(e) => onChange(e.target.checked)} />
         <span>{campo.label}</span>
       </label>
