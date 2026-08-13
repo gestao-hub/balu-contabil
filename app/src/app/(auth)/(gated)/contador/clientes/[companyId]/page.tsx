@@ -12,6 +12,7 @@ import { registrarAuditoria } from '@/lib/security/audit';
 import type { TipoValor } from '@/lib/billing/avulso';
 import VisaoCliente from './VisaoCliente';
 import type { ServicoOpcao } from './CobrarDialog';
+import type { CertInfo } from './CertificadoCliente';
 
 export default async function ClienteDrillDown(
   { params, searchParams }: { params: Promise<{ companyId: string }>;
@@ -23,7 +24,9 @@ export default async function ClienteDrillDown(
   const { tab = 'notas' } = await searchParams;
   const supabase = await createServerClient();
   const { data: empresa } = await supabase.from('companies')
-    .select('id, nome, razao_social, cnpj, contabilidade_id').eq('id', companyId).maybeSingle();
+    // `user_id` entra só para decidir a ORIGEM do certificado (dono × escritório)
+    // na aba Certificado; não vai para o componente.
+    .select('id, nome, razao_social, cnpj, contabilidade_id, user_id').eq('id', companyId).maybeSingle();
   if (!empresa) notFound();
   // Guarda de escopo: `companies` também tem policy de SELECT para o dono da empresa —
   // sem isto, uma empresa do próprio contador (fora da carteira) passaria no maybeSingle().
@@ -34,7 +37,7 @@ export default async function ClienteDrillDown(
     alvoTipo: 'company', alvoId: companyId, contabilidadeId: ctx.contabilidade.id,
   });
 
-  const [{ data: notas }, { data: guias }, { data: declaracoes }, catalogo, subconta, gate] = await Promise.all([
+  const [{ data: notas }, { data: guias }, { data: declaracoes }, catalogo, subconta, gate, { data: certRow }] = await Promise.all([
     supabase.from('notas_fiscais')
       .select('id, tipo_documento, data_emissao, status, valor_total')
       .eq('company_id', companyId).order('data_emissao', { ascending: false }).limit(50),
@@ -61,6 +64,13 @@ export default async function ClienteDrillDown(
     // O gate de inadimplência do 4A alcança EMITIR COBRANÇA NOVA (decisão do
     // usuário, 27/07) — e é dito na entrada, não depois de preencher.
     assertAssinaturaEscritorio(ctx.contabilidade.id),
+    // Certificado A1 do cliente. Leitura pela SESSÃO: a policy
+    // `arquivos_aux_select_contador` já dá SELECT ao escritório dono da carteira
+    // (conferida no banco em 13/08/2026). Nenhum campo de chave privada sai
+    // daqui — só metadado de validade e procedência.
+    supabase.from('arquivos_auxiliares')
+      .select('storage_key, cert_not_after, cert_cnpj, cert_enviado_por, cert_enviado_em, updated_at')
+      .eq('company_id', companyId).is('deleted_at', null).maybeSingle(),
   ]);
 
   // Falha de leitura do catálogo NÃO pode chegar como "catálogo vazio": o
@@ -90,6 +100,18 @@ export default async function ClienteDrillDown(
       ? { href: '/contador/configuracoes/subconta', rotulo: 'Configurar conta de recebimento' }
       : null;
 
+  // Origem do certificado: quem subiu foi o dono da empresa ou alguém do
+  // escritório? `cert_enviado_por` é NULL em linha anterior à 0085 — e aí a tela
+  // diz "origem não registrada" em vez de chutar um responsável.
+  const enviadoPor = (certRow?.cert_enviado_por as string | null) ?? null;
+  const cert: CertInfo = {
+    presente: Boolean(certRow?.storage_key),
+    validoAte: (certRow?.cert_not_after as string | null) ?? null,
+    certCnpj: (certRow?.cert_cnpj as string | null) ?? null,
+    enviadoEm: (certRow?.cert_enviado_em as string | null) ?? null,
+    origem: !enviadoPor ? 'desconhecido' : enviadoPor === empresa.user_id ? 'cliente' : 'escritorio',
+  };
+
   return (
     <VisaoCliente
       empresa={empresa}
@@ -98,6 +120,7 @@ export default async function ClienteDrillDown(
       guias={guias ?? []}
       declaracoes={declaracoes ?? []}
       cobranca={{ servicos, podeCobrar, motivoBloqueio, linkBloqueio }}
+      cert={cert}
     />
   );
 }

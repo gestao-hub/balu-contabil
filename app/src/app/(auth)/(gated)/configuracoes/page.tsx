@@ -115,16 +115,22 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   let certEnviadoEm: string | null = null;
   let certValidoAte: string | null = null;
   let certStorageKey: string | null = null;
+  // O certificado pode ter sido enviado pelo escritório contábil (0085). O dono
+  // precisa VER isso: é a chave privada da empresa dele, e quem a colocou aqui
+  // deixou de ser obviamente ele mesmo.
+  let certPeloEscritorio = false;
   if ((active === 'fiscal' || active === 'diagnostico') && company) {
     const { data: cert } = await supabase
       .from('arquivos_auxiliares')
-      .select('created_at, updated_at, cert_not_after, storage_key')
+      .select('created_at, updated_at, cert_not_after, storage_key, cert_enviado_por')
       .eq('company_id', company.id as string)
       .is('deleted_at', null)
       .maybeSingle();
     certEnviadoEm = (cert?.updated_at as string | null) ?? (cert?.created_at as string | null) ?? null;
     certValidoAte = (cert?.cert_not_after as string | null) ?? null;
     certStorageKey = (cert?.storage_key as string | null) ?? null;
+    const enviadoPor = (cert?.cert_enviado_por as string | null) ?? null;
+    certPeloEscritorio = Boolean(enviadoPor) && user != null && enviadoPor !== user.id;
   }
 
   let contratanteConfigurado = false;
@@ -262,6 +268,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           companyId={company.id as string}
           certEnviadoEm={certEnviadoEm}
           certValidoAte={certValidoAte}
+          certPeloEscritorio={certPeloEscritorio}
           // Idem: nunca repassa nfse_senha_login/nfse_token_api (cifrados em
           // repouso) pro client — só indicadores de "já configurado".
           nfseInitial={

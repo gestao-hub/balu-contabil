@@ -11,6 +11,8 @@ type Props = {
   // Certificado
   certEnviadoEm: string | null;
   certValidoAte: string | null;
+  /** 0085: o certificado veio do escritório contábil, não do próprio dono. */
+  certPeloEscritorio: boolean;
   // NFS-e (mesmos props do antigo NfseForm). Credenciais (Task 10 — cifradas em
   // repouso) NUNCA chegam aqui em texto: só indicadores `*_configurado`.
   nfseInitial: {
@@ -37,6 +39,7 @@ export default function EmissaoFiscalTab(props: Props) {
           key={`cert-${props.companyId}`}
           enviadoEm={props.certEnviadoEm}
           validoAte={props.certValidoAte}
+          peloEscritorio={props.certPeloEscritorio}
         />
       </Section>
 

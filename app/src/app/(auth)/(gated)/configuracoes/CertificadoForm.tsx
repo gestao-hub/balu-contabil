@@ -7,7 +7,10 @@ import { useToast } from '@/components/Toaster';
 import PopupConfirm from '@/components/PopupConfirm';
 import { uploadCertificadoAction } from './actions';
 
-export default function CertificadoForm({ enviadoEm, validoAte }: { enviadoEm: string | null; validoAte?: string | null }) {
+export default function CertificadoForm(
+  { enviadoEm, validoAte, peloEscritorio = false }:
+  { enviadoEm: string | null; validoAte?: string | null; peloEscritorio?: boolean },
+) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadingRef = useRef(false); // latch síncrono contra duplo-envio
@@ -64,6 +67,17 @@ export default function CertificadoForm({ enviadoEm, validoAte }: { enviadoEm: s
             : 'Nenhum certificado enviado.'}
         </span>
       </div>
+
+      {/* Transparência da custódia (0085): quando quem subiu foi o escritório
+          contábil, o dono da empresa tem que saber — é a chave privada dele, e
+          ela assina em nome do CNPJ dele na SERPRO. */}
+      {peloEscritorio && (
+        <p className="rounded-lg border border-border bg-surface-2 px-4 py-3 text-xs text-muted-foreground-2">
+          Este certificado foi enviado pelo seu escritório contábil, que declarou ter sua
+          autorização para guardá-lo. Se você não autorizou, fale com o escritório e substitua o
+          arquivo aqui.
+        </p>
+      )}
 
       <label className="flex flex-col gap-1 text-sm">
         <span className="text-xs font-medium text-muted-foreground-2">Arquivo do certificado (.pfx / .p12)</span>

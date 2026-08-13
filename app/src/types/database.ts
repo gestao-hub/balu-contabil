@@ -232,6 +232,9 @@ export type Tables = {
     cert_subject_cn: string | null;
     cert_cnpj: string | null;
     cert_fingerprint: string | null;
+    // 0085 — quem subiu o certificado e quando (dono ou contador do escritório).
+    cert_enviado_por: string | null;
+    cert_enviado_em: string | null;
     created_at: string | null;
     updated_at: string | null;
     deleted_at: string | null;

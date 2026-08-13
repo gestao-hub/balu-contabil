@@ -9,11 +9,9 @@ import { CompanySchema, type CompanyInput, EmpresaFiscalSchema, type EmpresaFisc
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 import { syncEmpresaNaFocus, atualizarEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
 import { isAderenteNfsenNacional } from '@/lib/fiscal/municipios-nfsen-nacional';
-import { uploadCertificado as storageUploadCertificado } from '@/lib/clients/supabase-storage';
 import { validateCertificadoUpload } from '@/lib/fiscal/certificado';
-import { parsePkcs12, type CertMaterial } from '@/lib/fiscal/pkcs12';
-import { encryptBlob, cifrarCampo } from '@/lib/crypto/envelope';
-import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
+import { processarUploadCertificado } from '@/lib/fiscal/cert-upload';
+import { cifrarCampo } from '@/lib/crypto/envelope';
 import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
 import { camposOficiaisDaReceita } from '@/lib/fiscal/campos-empresa';
 import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
@@ -236,108 +234,15 @@ export async function uploadCertificadoAction(
   const companyId = (profile?.current_company ?? null) as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
-  // Abre o PFX legado com node-forge (valida a senha de verdade) e extrai metadados.
+  // O núcleo (abrir PFX, conferir CNPJ, cifrar, subir, gravar, token+Focus) mora
+  // em lib/fiscal/cert-upload.ts porque o contador sobe o certificado do cliente
+  // pelo painel (0085) e as duas telas precisam da MESMA implementação.
   const buf = Buffer.from(await file.arrayBuffer());
-  let material: CertMaterial;
-  try {
-    material = parsePkcs12(buf, senha);
-  } catch {
-    return { ok: false, error: 'Não foi possível abrir o certificado. Verifique o arquivo e a senha.' };
-  }
-  if (new Date(material.notAfter).getTime() < Date.now()) {
-    return { ok: false, error: `Certificado expirado em ${new Date(material.notAfter).toLocaleDateString('pt-BR')}.` };
-  }
-
-  // Re-cifra o material de chave (key+cert+cadeia) com a chave do app; a senha do cert é descartada.
-  let blob: Buffer;
-  try {
-    blob = encryptBlob(
-      Buffer.from(JSON.stringify({ keyPem: material.keyPem, certPem: material.certPem, chainPem: material.chainPem }), 'utf8'),
-    );
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Erro interno ao cifrar o certificado.' };
-  }
-
-  // Nome fixo: 1 cert por empresa; upsert:true sobrescreve no re-upload.
-  const CERT_FILENAME = 'certificado.enc';
-  // Decide insert vs update (registro existente da empresa).
-  const { data: existing } = await supabase
-    .from('arquivos_auxiliares')
-    .select('id')
-    .eq('company_id', companyId)
-    .is('deleted_at', null)
-    .maybeSingle();
-
-  let path: string;
-  try {
-    ({ path } = await storageUploadCertificado(blob, CERT_FILENAME, companyId));
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Falha ao enviar o arquivo.' };
-  }
-
-  const row = {
-    supabase_file_path: path,
-    storage_key: path,
-    cert_password: null,
-    cert_not_after: material.notAfter,
-    cert_subject_cn: material.subjectCN,
-    cert_cnpj: material.cnpj,
-    cert_fingerprint: material.fingerprintSha256,
-    updated_at: new Date().toISOString(),
-  };
-  if (existing) {
-    const { error } = await supabase.from('arquivos_auxiliares').update(row).eq('id', (existing as { id: string }).id);
-    if (error) return { ok: false, error: error.message };
-  } else {
-    const { error } = await supabase
-      .from('arquivos_auxiliares')
-      .insert({ company_id: companyId, ...row });
-    if (error) return { ok: false, error: error.message };
-  }
-
-  // Best-effort: gera o token_procurador (mTLS contratante + Termo assinado pela empresa).
-  // Falha não perde o certificado.
-  const warnings: string[] = [];
-  {
-    const r = await garantirTokenProcurador(supabase, companyId, {
-      keyPem: material.keyPem,
-      certPem: material.certPem,
-      cnpj: material.cnpj,
-      nome: material.subjectCN,
-    });
-    if (!r.ok) warnings.push(r.warning);
-  }
-
-  // Focus 2.2 (best-effort): se a empresa já tem cadastro na Focus, envia o
-  // PFX + senha (em base64) no mesmo PUT do payload base. Esse é o ÚNICO
-  // momento em que temos a senha original do PFX em memória; depois daqui ela
-  // é descartada (apenas o material PEM cifrado fica em Storage).
-  // Pular silenciosamente quando focus_empresa_id ainda não existe — esse caso
-  // é resolvido depois clicando "Sincronizar com Focus" no Diagnóstico (Focus 1).
-  const { data: fiscalForFocus } = await supabase
-    .from('empresas_fiscais')
-    .select('focus_empresa_id')
-    .eq('empresa_id', companyId)
-    .is('deleted_at', null)
-    .maybeSingle();
-  if (fiscalForFocus?.focus_empresa_id != null) {
-    const focusResult = await atualizarEmpresaNaFocus(supabase, companyId, 'hom', {
-      certificado: { base64: buf.toString('base64'), senha },
-    });
-    if (!focusResult.ok) {
-      warnings.push(`Certificado salvo localmente, mas falhou ao enviar pra Focus: ${focusResult.error.slice(0, 200)}`);
-    }
-  }
-
-  // Zera a senha do PFX da nossa stack frame (defesa em profundidade — após o
-  // return, o GC eventualmente coleta; explicitar reforça a intenção).
-  // Nota: strings em JS são imutáveis; isto não sobrescreve a string original,
-  // só remove a referência local. Pra apagar mesmo seria preciso Uint8Array.
-  // Mantemos `senha` como const pra não dar reatribuição — o ponto é doc.
+  const r = await processarUploadCertificado(supabase, companyId, { bytes: buf, senha }, user.id);
+  if (!r.ok) return r;
 
   revalidatePath('/configuracoes');
-  const warning = warnings.length ? warnings.join(' ') : undefined;
-  return { ok: true, warning };
+  return r.warnings.length ? { ok: true, warning: r.warnings.join(' ') } : { ok: true };
 }
 
 /**
