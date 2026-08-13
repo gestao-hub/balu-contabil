@@ -13,7 +13,9 @@
 
 ## 1. Quem somos
 
-O Balu é operado por **[Controlador: razão social + CNPJ]** ("Balu", "nós"),
+O Balu é operado por **PIPER AUTOMAÇÕES E INTEGRAÇÕES LTDA**, inscrita no CNPJ
+sob o nº **61.061.690/0001-83**, com sede na Rua Benfica, 143, Jardim Eldorado,
+CEP 86.802-470, Apucarana/PR ("Balu", "nós"),
 controlador dos dados pessoais tratados através da plataforma, nos termos da
 Lei nº 13.709/2018 (LGPD).
 
@@ -153,7 +155,8 @@ de terceiros.
 ## 12. Contato do Encarregado (DPO)
 
 Dúvidas, solicitações sobre seus dados pessoais ou exercício dos direitos do
-art. 18 podem ser enviadas para: **[Encarregado/DPO: nome + e-mail]**.
+art. 18 podem ser enviadas para o Encarregado (DPO)
+**Eduardo Henrique Alves Machado**, pelo e-mail **contato@excluvia.com.br**.
 
 ## 13. Alterações desta política
 

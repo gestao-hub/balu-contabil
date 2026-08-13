@@ -14,7 +14,8 @@
 
 O Balu é um SaaS de gestão fiscal voltado a Microempreendedores Individuais
 (MEI) e empresas optantes pelo Simples Nacional, oferecido por
-**[Controlador: razão social + CNPJ]**. O serviço apoia o cadastro de empresas
+**PIPER AUTOMAÇÕES E INTEGRAÇÕES LTDA**, inscrita no CNPJ sob o nº
+**61.061.690/0001-83**. O serviço apoia o cadastro de empresas
 e clientes, a emissão de notas fiscais de serviço, o cálculo e a transmissão
 de guias (DAS) e declarações fiscais, e a gestão do relacionamento entre o
 titular da empresa e um escritório de contabilidade, quando vinculado.
@@ -87,7 +88,8 @@ garantimos disponibilidade ininterrupta.
 ## 8. Propriedade intelectual
 
 O software, a marca, o layout e os demais elementos do Balu são de
-propriedade de **[Controlador: razão social + CNPJ]** ou de seus licenciantes.
+propriedade de **PIPER AUTOMAÇÕES E INTEGRAÇÕES LTDA** (CNPJ
+61.061.690/0001-83) ou de seus licenciantes.
 O uso do serviço não transfere a você qualquer direito de propriedade
 intelectual sobre a plataforma. Os dados que você insere no Balu (dados da
 sua empresa, dos seus clientes, seus documentos fiscais) continuam sendo seus.
@@ -124,7 +126,8 @@ data de publicação ficam registradas internamente. A versão atual é a **1.0*
 
 ## 13. Foro
 
-Fica eleito o foro **[a definir]** para dirimir eventuais controvérsias
+Fica eleito o foro da **Comarca de Apucarana/PR** para dirimir eventuais
+controvérsias
 decorrentes destes Termos, com renúncia a qualquer outro, por mais
 privilegiado que seja, ressalvadas as regras de competência do Código de
 Defesa do Consumidor quando aplicáveis.
