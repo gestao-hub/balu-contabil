@@ -1,9 +1,122 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-13 (sessão 24 — **6 das 9 perguntas ao cliente respondidas**; minutas LGPD publicadas com controlador/DPO/foro reais e AdminBalu do Michel criado em produção).
+> **Última atualização:** 2026-08-13 (sessão 25 — **domínio `balucontabil.com.br` no ar**, upload de certificado pelo contador em produção, e-mail destravado por ponte, e a Frente 3 redesenhada sem Open Finance).
 
-> ## 🆕 SESSÃO 24 (2026-08-13) — perguntas ao cliente, não código
+> ## 🆕 SESSÃO 25 (2026-08-13) — P11 vira código, domínio próprio e a saída do Open Finance
+>
+> ### 1. Upload do certificado A1 pelo contador — em produção (`7b47869`, migration `0085`)
+>
+> O Michel respondeu o P11: **até 30 empresas por regime**, o **e-CNPJ é
+> responsabilidade do cliente do contador**, e ele **consegue coletar o PFX e a
+> senha**. A análise achou que a resposta 3 descrevia uma operação que **o
+> produto não tinha**: `uploadCertificadoAction` resolve a empresa por
+> `profiles.current_company`, então só o dono subia o próprio certificado.
+>
+> Entregue: aba **Certificado** em `/contador/clientes/<id>`, escrita por
+> service_role com permissão provada em `companyDaCarteira` (a RLS do contador
+> segue SELECT-only — a decisão do Bloco A ficou intacta), declaração de
+> autorização do titular obrigatória, e rastro em três lugares (`audit_log`
+> `cert.upload_contador`, colunas `cert_enviado_por`/`cert_enviado_em` da 0085,
+> e a tela do empresário dizendo que o escritório enviou).
+>
+> **Trava de CNPJ nova, nos dois caminhos:** PFX de outro CNPJ era aceito em
+> silêncio e o erro só aparecia depois, disfarçado de falta de procuração — o
+> Termo é assinado com o CNPJ do certificado e o envelope do DAS declara o da
+> empresa. Com uma pessoa manuseando dezenas de PFX, isso deixou de ser hipótese.
+>
+> **Smoke com evidência de banco:** a linha apagada na limpeza tinha
+> `cert_enviado_por` = conta **Contador**, e `/configuracoes` não poderia tê-la
+> criado (o contador não tem `current_company`). O `audit_log` gravou **uma**
+> entrada — nenhuma para o upload recusado, confirmando o invariante com dado
+> real. Verificação: `tsc` 0 · vitest **1700** · build limpo.
+>
+> ### 2. Domínio `balucontabil.com.br` — no ar
+>
+> ⚠️ **O domínio não é da conta Hostinger que temos.** A API gerencia
+> `excluvia.com.br` (44 registros) e `autofisco.com.br` (4), e devolve **403
+> "Customer does not own"** só para ele. O RDAP do Registro.br diz: registrador
+> **HSTDOMAINS**, titular **Fatto Industria de Soluções em Concreto**, vence
+> **16/02/2027**. O usuário configurou os registros A à mão.
+>
+> Feito por aqui: apex e `www` adicionados ao projeto `balu-contabil`,
+> verificados, e **o certificado do apex teve de ser emitido na mão**
+> (`vercel certs issue`) — só o do `www` saiu sozinho. `https://balucontabil.com.br/login`
+> responde 200 e `/contador` redireciona para login.
+>
+> **Supabase Auth configurado via Management API** (token pessoal `sbp_` no
+> `.env.local`). Achado no caminho: o Site URL estava em `http://localhost:3000`
+> e **`https://balu-contabil.vercel.app/**` nunca esteve na allow list** — a
+> pendência aberta desde a sessão 3, que explica os links de e-mail caindo em
+> localhost. A lista foi somada, não substituída (o PATCH troca o campo inteiro):
+> 3 entradas antigas preservadas + apex, www e o domínio da Vercel.
+>
+> ### 3. E-mail destravado por ponte — `@baluhub.com.br`
+>
+> As duas chaves Resend do `.env.local` eram **restritas a envio** e de uma conta
+> (`piperhub.com.br`) diferente da que interessa. A conta certa tem
+> **`baluhub.com.br` verificado**, e ambas as contas estão no plano **Free, que
+> permite 1 domínio** — por isso `balucontabil.com.br` **não pôde ser cadastrado**
+> (403 de limite de plano).
+>
+> Solução provisória, sem tocar em Supabase nem Vercel: chave de envio nova,
+> restrita a `baluhub.com.br`, e `EMAIL_FROM=Balu <nao-responda@baluhub.com.br>`.
+> **Testado: 200 com a chave do app.** O e-mail agora chega a qualquer
+> destinatário, não só a `contato@excluvia.com.br`.
+>
+> 🔴 **O que isso NÃO resolve:** confirmação de cadastro e reset de senha **não
+> passam pelo Resend**. `smtp_host` é `null` — saem do remetente embutido do
+> Supabase, com `rate_limit_email_sent: 2`, ou seja **2 e-mails por hora**. Não
+> sustenta um dia de cadastros do piloto. O conserto é SMTP customizado no
+> Supabase apontando para o Resend.
+>
+> ### 4. Frente 3 do Bloco 7 redesenhada — Open Finance sai, SERPRO + Asaas entram
+>
+> Spec aprovada em `docs/superpowers/specs/2026-08-13-frente-3-avisos-de-pagamento-design.md`.
+> Motivo: Pluggy custa **a partir de R$ 2.500/mês**, e o item **não veio do
+> cliente** — entrou por decisão de escopo interna a partir do `planejamento.pdf`
+> (a devolutiva do Michel não tem uma única ocorrência de "conciliação").
+>
+> Quatro achados que sustentam o redesenho:
+> 1. 🔴 **A SERPRO não fornece Pix nem QR.** `parseDasSimples` devolve
+>    `codigoDeBarras` e `pdfBase64`, sem campo de Pix — e o PDF real de um DAS
+>    (competência 202604) tem 5 imagens: duas de 846×237 e três de 1×1. **Nenhum
+>    QR.** O que dá para mandar é a linha digitável.
+> 2. 🔴 **O sync da SERPRO é o quarto caminho de baixa e o único fora da RPC.**
+>    Baixa manual, sugestão de conciliação e cron passam por
+>    `registrar_pagamento_guia`; `impostos/actions.ts:383` grava `status:'paga'`
+>    por `upsert` direto — então descoberta de pagamento pela Receita **não
+>    notifica nem audita**.
+> 3. 🟡 **`tipos.ts` está 5 tipos atrás do banco** (CHECK aceita 16, o arquivo
+>    lista 11). Os órfãos chegam e **não aparecem na tela de preferências**.
+> 4. 🟡 **O `UAZAPI_TOKEN` foi removido de propósito** em 12/08 22:29 (arquivo
+>    `.env.local.antes-remover-uazapi-…`) — não é defeito de configuração, é
+>    decisão ligada ao número pessoal. Enquanto não voltar, **nada sai no
+>    WhatsApp, sem erro**.
+>
+> ### 5. Asaas — sandbox pronta, produção não
+>
+> `ASAAS_WEBHOOK_SECRET` (64 chars) e `ASAAS_WEBHOOK_EMAIL` gravados; **`ASAAS_ENV`
+> não foi tocada** (ausente = sandbox). A chave de sandbox autentica: conta
+> **MCB MARKETING LTDA** (michelbovo@gmail.com), e **nenhum webhook cadastrado**.
+> Cadastrar exige URL pública — e aí o evento de sandbox cai no banco de
+> produção, que é o risco do P16.
+>
+> ### Pendências desta sessão
+>
+> - **Deploy pendente:** `NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY` e `EMAIL_FROM`
+>   ainda são os antigos na Vercel. Três variáveis, um deploy.
+> - `www` **serve o app** em vez de redirecionar para o apex (ajuste de painel).
+> - `balucontabil.com.br` no Resend depende de plano Pro ($20/mês) ou de liberar
+>   a vaga do `baluhub.com.br`.
+> - SMTP customizado no Supabase (o teto de 2 e-mails/hora).
+> - `RESEND_FULL_ACCESS` segue no `.env.local` — credencial que apaga domínio,
+>   e o app não a lê. Remover ao fim da configuração.
+> - Titularidade do domínio (Fatto) antes de amarrar e-mail e auth nele.
+>
+> ---
+
+> ## Histórico da sessão 24 (2026-08-13) — perguntas ao cliente, não código
 >
 > Sessão de **destravamento por resposta**, não de implementação. O Michel
 > respondeu 6 das 9 perguntas abertas no Trello. A lista "❓ Perguntas ao
