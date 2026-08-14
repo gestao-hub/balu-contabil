@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-14 (sessão 27 — **revisão de código + auditoria de IDOR antes do lançamento**: 17 defeitos corrigidos, migrations 0089 e 0090 aplicadas, e os dois testes ponta a ponta de Server Action que faltavam — contador e empresário; o do contador achou 5 actions carimbando `audit_log` sem ter mexido em nada).
+> **Última atualização:** 2026-08-14 (sessão 27 — **endurecimento pré-lançamento**: 18 defeitos corrigidos, migrations 0089/0090 aplicadas, os dois testes ponta a ponta de Server Action que faltavam, o **buraco do MEI na Frente 3** fechado e provado em rodada real do cron, e a fila de e-mail revisada de 29 para 12).
 
 > ## 🆕 SESSÃO 27 (2026-08-14) — revisão pré-lançamento e auditoria de IDOR
 >
@@ -290,6 +290,114 @@
 > qualquer `test.skip` valer. Com string vazia o `createClient` lança e o
 > arquivo fica vermelho em vez de pulado — daí `URL_INERTE`, com endereço
 > impossível de propósito (loopback porta 1).
+>
+> ### 🔷 O buraco da Frente 3: o MEI estava fora, e a justificativa era falsa
+>
+> O card listava, em "fora de escopo", o aviso de DAS para MEI — **metade do
+> piloto**. O comentário no código dizia "a consulta de pagamentos do MEI não foi
+> investigada". Ela foi: `docs/investigations/SERPRO-INVESTIGACAO.md` registra
+> que o filtro usado ali, **código 9, "inclui DAS-MEI e DAS do Simples"**. Não era
+> limite da API — era um corte herdado de `impostos/actions.ts`, onde ele existe
+> por outro motivo (PGDAS-D é declaração do Simples; MEI declara por DASN-SIMEI).
+>
+> **E os testes provavam o código errado:** dois se chamavam "MEI fica de fora" e
+> usavam `Code_regime_tributario` **'3'** — que é Regime Normal. MEI é **'4'**. O
+> MEI de verdade nunca tinha sido testado.
+>
+> O que estava acontecendo: MEI **tem** DAS e o app **gera** essa guia
+> (`gerarDasMeiAction`, via PGMEI). Sem a varredura, o pagamento nunca era
+> reconhecido — a guia ficava aberta para sempre, virava `vencida`, e quem pagou
+> em dia aparecia em atraso para si e para o contador
+> (`painel_contador.das_vencidos`), mês após mês.
+>
+> Agora `REGIMES_COM_DAS = ['1','2','4']`. Regime Normal (3) segue fora, pelo
+> motivo certo: não recolhe DAS.
+>
+> ### 🔬 Rodada real do cron — o que ela provou e o que corrigiu
+>
+> Cron disparado contra produção com uma empresa MEI semeada:
+> `pagamentos_serpro: { elegiveis: 2, consultadas: 2, erros: 1, carimbos_falhos: 0 }`.
+> Antes da correção seria `elegiveis: 1` — **o MEI entrou na fila**. As duas
+> empresas foram carimbadas às 22:45:30, **inclusive a que falhou**: a fila gira,
+> confirmando em execução real o conserto do carimbo no `finally`.
+>
+> ⚠️ **E corrigiu uma coisa que eu tinha escrito errado.** Eu previa falha por
+> falta de Termo; o log real disse `Certificado da empresa não encontrado`. O
+> primeiro portão é o **certificado A1 da própria empresa**
+> (`arquivos_auxiliares.storage_key`), exigido por `garantirTokenProcurador`
+> ANTES da procuração — e a chamada **nem chega à SERPRO**. Vale para **todo
+> regime**, não só MEI. O comentário no código foi trocado pelo observado.
+>
+> Isso não obstrui o piloto: o P11 existe para o contador coletar o PFX e subir
+> pela tela do cliente. **Confirmado pelo usuário: o aviso alcança todo o piloto.**
+>
+> ❓ **Segue sem prova:** se o PAGAMENTOS71 devolve documentos de DAS-MEI. Nenhuma
+> chamada chegou lá (a MEI da base não tinha certificado). Verificável no
+> primeiro MEI do piloto com A1: rodar o cron e conferir
+> `pagamentos_serpro.baixadas > 0`.
+>
+> A semente (empresa MEI, guia e notificação) foi removida do banco.
+>
+> ### 📧 A fila de e-mail: 29 → 12, revisada aviso a aviso
+>
+> A rodada do cron foi feita com `RESEND_API_KEY` **em branco de propósito** —
+> havia 8 e-mails na fila para `allanbv00` e `allanvalle`, contas de junho com
+> atividade fiscal real. E-mail não se desenvia. Resultado: `enviados: 0,
+> pulados: 30`, fila intacta.
+>
+> Depois, cada aviso foi julgado **contra o fato que afirma**, não pela data:
+>
+> **Resolvidos (14)** — o fato deixou de existir:
+> - 11 `whatsapp_escalado`: `entidade_ref` **nulo em todos**; 3 com chave literal
+>   `smoke-6b-00N` e 8 da sessão de teste ao vivo de 12/08, de um número já
+>   removido. Dono: a conta de teste.
+> - 3 `abertura_etapa`: anunciam mudanças de 24/07 ("Enviado à Receita", "Na
+>   Prefeitura"); o processo seguiu, então a sequência se contradiz.
+>
+> **E-mail suprimido, aviso mantido no sino (3)** — o fato é verdade, a mensagem
+> não: os `honorario_a_vencer` seguem em aberto (R$ 1.890 e R$ 300), mas venceram
+> há 13 e 7 dias, e o texto diz "vencendo hoje". Só o e-mail foi cortado —
+> esconder obrigação em aberto é pior que uma data velha. É a distinção entre os
+> dois campos: `resolvida_em` = o fato acabou; `enviada_email_em` = não manda,
+> mas continua visível.
+>
+> **Intocados (12)** — conferidos competência a competência pela `chave`:
+> 8 `pgdas_pendente` + 3 `defis_pendente` (declarações realmente não
+> transmitidas) e 1 `das_vencido` (AL PISCINAS, 202604, **R$ 11.113,57**, vencida
+> em 20/05, sem pagamento). Silenciar qualquer um seria esconder obrigação fiscal
+> real.
+>
+> 🟡 **Achado de passagem, não tratado:** há **27 atendimentos de WhatsApp sem
+> atender** — 24 de 12/08 com telefone `38105654493205` (não é número brasileiro
+> válido; parece lixo do teste) e 3 de 31/07 com número plausível. Os avisos
+> resolvidos não estavam ligados a eles. A tela de atendimentos do contador
+> mostra essa fila.
+>
+> ### 📮 SMTP do Supabase — diagnóstico lido da Management API
+>
+> | | |
+> |---|---|
+> | `smtp_host` | **`null`** → remetente embutido |
+> | `rate_limit_email_sent` | **2 por HORA** |
+> | `mailer_autoconfirm` | `false` → confirmação exigida |
+> | `mailer_secure_email_change_enabled` | `true` → troca de e-mail gasta **2** |
+> | `site_url` / `uri_allow_list` | corretos (conserto da sessão 25) |
+>
+> **Governa só o Auth** (confirmação, reset, troca de e-mail, magic link). Os
+> avisos do app saem pelo Resend, direto do cron, e **não** têm esse teto — é a
+> confusão mais fácil de fazer.
+>
+> Três clientes se cadastrando na mesma hora: o terceiro não recebe nada, e a
+> tela não avisa. Uma troca de e-mail sozinha consome a hora inteira.
+>
+> **São DUAS mudanças, não uma:** apontar o SMTP para o Resend **e** subir o
+> `rate_limit_email_sent` — ele não sobe sozinho.
+>
+> ⚠️ Duas ressalvas: o remetente será **`@baluhub.com.br`**, não
+> `@balucontabil.com.br` (a conta Resend é Free, 1 domínio, e a vaga está com o
+> baluhub) — domínio diferente do site, o que pesa em filtro de spam. E o
+> **`PATCH` da Management API substitui o `uri_allow_list` inteiro**: um PATCH só
+> com campos de SMTP apaga as 6 entradas de hoje. Tem que reenviar a lista junto.
 
 > ## Histórico da sessão 26 (2026-08-14) — Frente 3: avisos de pagamento (SERPRO + Asaas)
 >
@@ -2136,16 +2244,21 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
    em que o token voltar.
 2. 🔴 **Três env vars na Vercel** (`NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY`,
    `EMAIL_FROM`) — um deploy resolve. Hoje produção usa os valores antigos.
-3. 🔴 **SMTP customizado no Supabase** — confirmação de cadastro e reset de senha
-   não passam pelo Resend; saem do remetente embutido com **2 e-mails/hora**. Não
-   sustenta um dia de cadastros do piloto.
+   ✅ A fila de e-mail já foi revisada (29 → 12) na sessão 27, então ligar o
+   Resend não descarrega mais aviso obsoleto. Os 12 que sobraram são obrigação
+   fiscal real — vão sair, e devem sair.
+3. 🔴 **SMTP customizado no Supabase** — `smtp_host` é `null` e
+   `rate_limit_email_sent` é **2 por hora** (lido da Management API em 14/08).
+   Governa só o Auth (cadastro, reset, troca de e-mail); os avisos do app saem
+   pelo Resend e não têm esse teto. **São duas mudanças:** apontar o SMTP E subir
+   o rate limit. ⚠️ O `PATCH` da Management API substitui o `uri_allow_list`
+   inteiro — reenviar a lista junto. Diagnóstico completo no bloco da sessão 27.
 4. 🟡 **Smoke manual da Frente 3** (6 critérios, roteiro no histórico da sessão 26).
 5. 🟡 **Asaas em produção** — as credenciais estão só no `.env.local`;
    `vercel env ls production` não devolve nenhuma.
 
 **Antes de mexer em qualquer coisa:** rodar `npx tsc --noEmit && npx vitest run &&
-npm run build`. A linha de base ao fim da sessão 27 é **tsc 0 · 1791 testes ·
-build limpo**.
+npm run build`. A linha de base ao fim da sessão 27 é **tsc 0 · 1794 testes · build limpo**.
 
 ## Convenções da sessão
 
