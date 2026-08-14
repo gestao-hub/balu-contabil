@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-14 (sessão 27 — **revisão de código + auditoria de IDOR antes do lançamento**: 16 defeitos corrigidos, migrations 0089 e 0090 aplicadas, e o teste ponta a ponta de Server Action que faltava — ele achou 5 actions carimbando `audit_log` sem ter mexido em nada).
+> **Última atualização:** 2026-08-14 (sessão 27 — **revisão de código + auditoria de IDOR antes do lançamento**: 17 defeitos corrigidos, migrations 0089 e 0090 aplicadas, e os dois testes ponta a ponta de Server Action que faltavam — contador e empresário; o do contador achou 5 actions carimbando `audit_log` sem ter mexido em nada).
 
 > ## 🆕 SESSÃO 27 (2026-08-14) — revisão pré-lançamento e auditoria de IDOR
 >
@@ -221,9 +221,41 @@
 >   versionado** — quem for rodar o teste precisa exportá-las.
 > - Seguem abertas as pendências de infra da sessão 25 (3 env vars na Vercel,
 >   `www`, SMTP do Supabase, `RESEND_FULL_ACCESS`) e o bloqueio do `UAZAPI_TOKEN`.
-> - **A camada de aplicação foi provada só para o contador.** As actions do lado
->   do empresário (impostos, notas, honorários) seguem cobertas por RLS + testes
->   unitários, sem exercício ponta a ponta. É o próximo alvo do mesmo método.
+> ### Lado do EMPRESÁRIO — a lacuna fechada ainda na mesma sessão
+>
+> `tests/idor-actions-empresario.spec.ts`, irmão do do contador. A diferença de
+> fundo: aqui quase tudo passa por `createServerClient()` (RLS ligada), então a
+> RLS **é** a defesa — o que o teste acrescenta é provar que as actions a
+> **honram**, e que nenhuma devolve sucesso para operação que não aconteceu.
+>
+> Cinco ataques, todos recusados, confirmado também no banco (guia não quitada,
+> notas alheias ainda `ativa`/`lancada`, nenhuma notificação alheia marcada):
+> guia de outro dono, **nota fiscal de outro dono** (a mais grave — documento com
+> efeito externo; a action lê a nota com `.eq('company_id')` ANTES de falar com a
+> Focus, então recusa sem chamar o provedor), notificação alheia, e cliente
+> alheio por `softDelete` e `update`.
+>
+> **Achado:** `marcarNotificacaoLidaAction` devolvia `ok:true` com id alheio —
+> **terceira aparição** da classe "zero linhas afetadas lido como sucesso". A RLS
+> bloqueava a escrita e nenhum dado foi tocado; como não há auditoria naquele
+> caminho, só a tela mentia. Corrigido do mesmo jeito.
+>
+> **Armadilha de teste corrigida de passagem:** `route.test.ts` comparava o texto
+> inteiro da mensagem de WhatsApp, que embute `siteUrl` — os dois testes passavam
+> só quando o ambiente **não** tinha `NEXT_PUBLIC_SITE_URL`, e ficavam vermelhos
+> para quem rodasse depois de `. ./.env.local`. A variável agora é pinada no
+> teste.
+>
+> ⚠️ **Rodar a suíte a partir de `app/`, nunca da raiz do repo.** Da raiz, o
+> vitest varre também os testes das 57 skills instaladas e o resultado vira
+> "68 arquivos falhando" — que não tem nada a ver com o produto.
+>
+> ### O que continua sem prova ponta a ponta
+>
+> As actions de `/conta` e `/conta/assinatura` (dinheiro da assinatura) e as de
+> `/configuracoes`. Todas escopam por `user.id` da sessão, sem id vindo do
+> cliente — por construção não têm superfície de IDOR —, mas isso é leitura de
+> código, não teste executado.
 
 > ## Histórico da sessão 26 (2026-08-14) — Frente 3: avisos de pagamento (SERPRO + Asaas)
 >
