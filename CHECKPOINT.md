@@ -290,11 +290,6 @@
 > qualquer `test.skip` valer. Com string vazia o `createClient` lança e o
 > arquivo fica vermelho em vez de pulado — daí `URL_INERTE`, com endereço
 > impossível de propósito (loopback porta 1).
->
-> 🟡 **A consequência, que está no Trello e não deve sumir:** enquanto não
-> existir banco de dev, essas oito specs **não rodam** — inclusive as duas que
-> acharam as seis actions carimbando `audit_log` esta semana. E **migration
-> continua estreando em produção**. Mitigação barata: dump antes de cada uma.
 
 > ## Histórico da sessão 26 (2026-08-14) — Frente 3: avisos de pagamento (SERPRO + Asaas)
 >
