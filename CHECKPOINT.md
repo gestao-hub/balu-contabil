@@ -256,6 +256,45 @@
 > `/configuracoes`. Todas escopam por `user.id` da sessão, sem id vindo do
 > cliente — por construção não têm superfície de IDOR —, mas isso é leitura de
 > código, não teste executado.
+>
+> ### 🔷 DECISÃO: um banco só, e ele é produção (14/08)
+>
+> Avaliada e **decidida pelo usuário** antes do lançamento: não haverá segundo
+> banco. O que muda é que a dívida deixou de ser implícita — e duas ações
+> tornaram a decisão real em vez de nominal.
+>
+> **A distinção que sustenta a decisão:** segurança e separação de ambiente são
+> eixos diferentes. Segurança está provada. Mas **nenhuma RLS protege contra o
+> `service_role`**, e é ele quem roda migration, seed e teste. O risco não é um
+> atacante; é a própria equipe.
+>
+> **Ação 1 — dado de teste fora.** O escritório `ZZ TESTE IDOR — Escritório B`
+> foi apagado inteiro (exportado antes para
+> `app/scratchpad/fixture-escritorio-b.json`, para renascer num futuro banco de
+> dev). O que NÃO foi apagado, classificado por atividade real e não por
+> palpite: `allanvalle@outlook.com` tem **2 notas fiscais e 4 guias** — é
+> atividade real; `allanbv00` tem empresa e honorário; `choicecarvalho` é
+> cadastro de alguém que nunca logou; e o "Escritório Teste Balu" + `ideapp`
+> ficaram de pé de propósito, porque são o palco da demonstração guiada do P3.
+>
+> **Ação 2 — a trava** (`app/tests/guarda-ambiente.ts`). A decisão colidia com a
+> própria suíte: **oito specs escreviam em produção**. O banco onde o teste pode
+> escrever agora tem de vir em `E2E_SUPABASE_URL` e ser diferente do que a
+> aplicação usa — sem ref de produção codificado, porque o que a aplicação
+> aponta É produção por definição. Ausente → pulado; apontando para produção →
+> **lança**. Verificado nos dois estados (40 pulados, zero vermelho; e recusa
+> explícita).
+>
+> ⚠️ Detalhe que custou uma rodada: cinco specs chamam `createClient()` em
+> escopo de `describe`, que o Playwright executa na **coleta**, antes de
+> qualquer `test.skip` valer. Com string vazia o `createClient` lança e o
+> arquivo fica vermelho em vez de pulado — daí `URL_INERTE`, com endereço
+> impossível de propósito (loopback porta 1).
+>
+> 🟡 **A consequência, que está no Trello e não deve sumir:** enquanto não
+> existir banco de dev, essas oito specs **não rodam** — inclusive as duas que
+> acharam as seis actions carimbando `audit_log` esta semana. E **migration
+> continua estreando em produção**. Mitigação barata: dump antes de cada uma.
 
 > ## Histórico da sessão 26 (2026-08-14) — Frente 3: avisos de pagamento (SERPRO + Asaas)
 >
