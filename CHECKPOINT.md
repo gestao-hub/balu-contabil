@@ -1,9 +1,231 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-14 (sessão 26 — **Frente 3 executada**: o sync da SERPRO deixa de dar baixa por fora da RPC, nasce o aviso `pagamento_confirmado` pelas duas fontes, a linha digitável vai em mensagem própria, e **57 skills instaladas em `.claude/skills/`, fora do versionamento**).
+> **Última atualização:** 2026-08-14 (sessão 27 — **revisão de código + auditoria de IDOR antes do lançamento**: 16 defeitos corrigidos, migrations 0089 e 0090 aplicadas, e o teste ponta a ponta de Server Action que faltava — ele achou 5 actions carimbando `audit_log` sem ter mexido em nada).
 
-> ## 🆕 SESSÃO 26 (2026-08-14) — Frente 3: avisos de pagamento (SERPRO + Asaas)
+> ## 🆕 SESSÃO 27 (2026-08-14) — revisão pré-lançamento e auditoria de IDOR
+>
+> Sessão de **endurecimento**, a pedido do usuário, com lançamento marcado para a
+> semana seguinte. Sem funcionalidade nova: revisão de código, caça a bug,
+> auditoria de IDOR e o teste que faltava. **16 correções**, migrations **0089** e
+> **0090** aplicadas em produção, `vitest` de **1749 → 1791**.
+>
+> ### 🔴 O defeito que podia calar o cron inteiro, num dia qualquer
+>
+> `sendEmail` fazia `fetch` **sem timeout e sem `try/catch`**, e o laço de e-mail
+> de `api/cron/obrigacoes` também não tinha `try/catch`. Um `fetch` rejeitado —
+> DNS, conexão cortada — derrubava o `GET` com 500, e **conciliação, pagamentos
+> da SERPRO, billing e apuração daquele dia simplesmente não rodavam**. Não era
+> problema de escala: bastava um blip de rede num destinatário, no dia um.
+>
+> O cliente irmão (`uazapi/cliente.ts`) já nascera com timeout e `catch` — o de
+> e-mail era o assimétrico. Agora tem os dois, com contrato coberto por teste.
+>
+> ### 🔴 Os dois laços que rodavam sem teto, antes de tudo que tem prazo
+>
+> O cabeçalho do cron sempre argumentou que a defesa contra o wall-clock é a
+> ORDEM. Só que os **dois primeiros** laços falam com terceiros e não tinham
+> teto: até 200 e-mails e 50 avisos de WhatsApp (cada um podendo virar duas
+> mensagens), sequenciais, dentro dos mesmos 60s. 200 chamadas de ~400ms passam
+> de 60s sozinhas — e o que morria era tudo **depois** deles, em silêncio.
+>
+> Agora: orçamento de 15s (e-mail) e 12s (WhatsApp), `try/catch` próprio, e
+> `email_restantes`/`whatsapp_restantes` na resposta. Um teste prova que o corte
+> **não** impede billing, SERPRO e apuração de rodarem.
+>
+> ### 🔴 O upsert apagava a linha digitável — e o comentário dizia o contrário
+>
+> A sessão 26 dividiu o upsert em "dois lotes homogêneos". **Eles não eram
+> homogêneos.** Conferido no fonte do `postgrest-js`: `defaultToNull = true` e
+> `columns` é a UNIÃO das chaves do array (`values.reduce(...Object.keys)`).
+> Chave ausente numa linha vai como NULL e, num ON CONFLICT DO UPDATE,
+> **sobrescreve o valor guardado**. Cada lote misturava linha rica (valores,
+> `linha_digitavel`, `codigo_barras`, `url_pdf`) com linha magra.
+>
+> Consequência: uma competência sem novidade zerava a linha digitável da guia —
+> o dado que a Frente 3 existe para mandar no WhatsApp.
+>
+> Corrigido por `lib/supabase/upsert-homogeneo.ts`: **um upsert por assinatura de
+> colunas**. A regra vale para qualquer chamador, e é o tipo de armadilha que
+> reaparece — o helper existe para que a próxima pessoa não precise redescobrir.
+>
+> ### 🔴 A baixa podia cair na guia errada (e o índice único NÃO protegia)
+>
+> O casamento é por `numero_das`, mas a escrita reencontrava a guia por
+> `competencia_referencia`. Essa coluna é **nullable**, e no Postgres NULL nunca
+> colide com NULL num índice único — então `uniq_guias_company_competencia`
+> **não impede** duas guias de competência nula na mesma empresa (importação
+> legada, `origem` default `'n8n'`).
+>
+> Com duas delas pagas, o `find` devolvia a mesma primeira linha nas duas voltas:
+> uma guia recebia a data de pagamento da outra e ganhava aviso de "pagamento
+> confirmado", e a realmente paga seguia em aberto cobrando o cliente.
+>
+> ⚠️ **Registro de honestidade:** eu tinha concluído que o índice único tornava
+> isso impossível. Não torna — só vi ao conferir a nulabilidade da coluna. O `id`
+> agora viaja no plano e volta nele.
+>
+> ### Outras correções da rodada
+>
+> - **Janela da SERPRO cruzava o ano errado.** O filtro do PAGAMENTOS71 é por
+>   DATA DE ARRECADAÇÃO, e o DAS de 12/AAAA é pago em janeiro de AAAA+1. Um
+>   pagamento de dezembro não alcançado antes da virada ficava **inalcançável
+>   para sempre**, com a empresa queimando uma chamada por dia numa janela que
+>   estruturalmente não podia ter a resposta. A varredura agora pede desde o ano
+>   anterior — o intervalo é livre, então é **uma chamada só**, sem custo de cota.
+> - **Empresa com certificado quebrado travava a fila.** O carimbo da 0088 estava
+>   dentro do `try`, depois da consulta — mas `consultarPagamentosDas` lança
+>   ANTES do try interno dela (PFX, token de procurador). A empresa nunca era
+>   carimbada e reencabeçava a fila todo dia. Foi para o `finally`, com o erro do
+>   próprio UPDATE lido (antes era descartado).
+> - **Truncamento silencioso.** Duas leituras de base sem `limit`: o PostgREST
+>   corta em `max-rows` e devolve `error: null`. Quem ficasse fora sumia da fila
+>   para sempre, com o resumo do cron reportando saúde. Agora há `.limit()`
+>   explícito e a flag `leitura_truncada`.
+> - **Falha de baixa reportada como sucesso** na tela de impostos (só ia para o
+>   `console.error` do servidor) — agora existe `avisoBaixas` e a tela mostra.
+> - **Três defeitos no aviso do Asaas:** erros de leitura descartados (falha de
+>   rede indistinguível de "sem destinatário", e como a chave é idempotente
+>   ninguém era avisado nunca mais); `??` em vez de `||` deixando `nome` vazio
+>   vencer a razão social; e cobrança avulsa apontando para `/honorarios`, onde
+>   ela não existe (é `/cobrancas`).
+> - **Guard de redirect contornável:** o parser da WHATWG normaliza `\` para `/`
+>   e ignora tab/CR/LF. `/\evil.com` e `/<tab>/evil.com` saíam do domínio.
+>   Extraído para `lib/notifications/rota-interna.ts` (testável — `route.ts` só
+>   exporta handler) e agora compara a ORIGEM resolvida pelo mesmo parser que o
+>   redirect vai usar.
+> - **`getLimitesFiscais` em UTC:** o teto do MEI passava a valer às 21h do dia
+>   31. Trocado por `ymdBrt()`.
+>
+> ### Migration 0089 — quatro defeitos na RPC de baixa
+>
+> 1. **Rajada de avisos na primeira sincronização.** A tela passava `'serpro'`,
+>    que a 0087 classifica como descoberta automática — então avisava. Mas é o
+>    dono clicando em "Atualizar". Num cliente novo em dia, até **12 avisos e 12
+>    e-mails** sobre pagamentos de meses atrás. Nasceu `'serpro_tela'`: audita
+>    igual, não avisa.
+> 2. **Aviso obsoleto sobrevivia à baixa.** `pagamento_nao_detectado` ficava de pé
+>    ao lado de "Pagamento confirmado", e ainda na fila de envio.
+> 3. **Guarda de `p_data_pagamento IS NULL`** — a idempotência depende de
+>    `data_pagamento IS NOT NULL`.
+> 4. **O `INSERT` do aviso foi envelopado em `BEGIN/EXCEPTION`.** Antes, qualquer
+>    falha ali desfazia a transação inteira — **inclusive a baixa da guia**. Como
+>    a conciliação já roda em produção chamando a mesma função, era caminho vivo
+>    para pagamento reconhecido deixar de ser registrado em silêncio.
+>
+> Provada em transação revertida: `serpro_tela` → baixa sem aviso; `serpro` →
+> avisa; data nula → recusa sem marcar; baixa resolve os **dois** avisos; origem
+> inventada → exceção.
+>
+> ### Auditoria de IDOR — o que foi provado, e como
+>
+> **Camada de banco, contra produção, com o papel `authenticated` simulado e
+> ROLLBACK:** 44/44 tabelas com RLS ligada; 48 policies de escrita, todas
+> amarradas ao usuário. Bloqueados: ler/escrever dado de outro dono, auto-promoção
+> a AdminBalu, auto-aprovar escritório, criar escritório já aprovado, entrar em
+> escritório alheio, tomar empresa de outro, escrever no catálogo fiscal, roubar
+> notificação, e tocar nas colunas que decidem o saque.
+>
+> As 4 `SECURITY DEFINER` que pareciam sem checagem **retornam `trigger`** — o
+> Postgres recusa chamá-las fora de um gatilho. `painel_contador` e
+> `resumo_escritorio` não recebem parâmetro e escopam por `minha_contabilidade()`.
+>
+> **Escritório B de teste criado** (`ZZ TESTE IDOR — Escritório B`, membro
+> `eufacopublicidade+contadorb@gmail.com`), porque o cenário A→B nunca tinha sido
+> executado — a base tinha um escritório só. `_teste-isolamento-escritorios.mjs`:
+> **48 tentativas, 24 em cada direção, todas bloqueadas**, com controle positivo
+> (B enxerga o próprio honorário de R$ 1.234,56 e A não). Teste que passa por
+> estar tudo vazio não prova nada.
+>
+> ### 🔴 O que só o teste de Server Action pegou
+>
+> `clientes-idor.spec.ts` é honesto sobre o próprio limite: *"as actions em si não
+> são chamáveis fora do Next"*. Mas as actions do contador usam
+> `createAdminClient()`, que **ignora RLS** — ali o único guard é o TypeScript.
+>
+> `tests/idor-actions-contador.spec.ts` fecha isso: login pela tela e cada action
+> invocada **pela rede**, com o protocolo real (`Next-Action` + id do
+> `server-reference-manifest.json`), passando ids do outro escritório.
+>
+> Na primeira execução achou: **`UPDATE`/`DELETE` que não casa nada não é erro no
+> PostgREST** (`error` volta null), e **cinco actions liam isso como sucesso** —
+> gravavam auditoria e devolviam `ok: true`. O `.eq('contabilidade_id')` impedia o
+> dano, mas o `audit_log` de produção ganhou de verdade a linha:
+>
+> ```
+> carteira.remover | actor = contador A | alvo = empresa do escritório B
+> ```
+>
+> Qualquer contador autenticado carimbava o audit_log com o UUID que quisesse — e
+> num produto com obrigação de LGPD o audit_log é justamente o registro que
+> precisa ser confiável quando alguém perguntar depois. **Nenhum teste de RLS
+> pegaria isso.**
+>
+> Corrigidas com `.select('id')` + recusa em zero linhas:
+> `removerClienteDaCarteiraAction`, `removerMembroAction`, e as quatro de
+> honorários (`update`, `marcarPago`, `desmarcarPago`, `delete`). O padrão certo
+> já existia em `marcarAtendidoAction` — mais um caso de uma cópia endurecida e as
+> outras ficando para trás.
+>
+> Os 3 carimbos falsos que o teste gerou foram removidos do `audit_log`, por
+> critério estreito (ação + ator + alvo + data).
+>
+> ⚠️ **Armadilha de ambiente que quase virou conclusão errada:** as três primeiras
+> execuções bateram no **build antigo** — `pkill -f "next start"` não mata o
+> processo no Windows, o `npm run start` seguinte falhou com `EADDRINUSE` e eu não
+> conferi o log. Cheguei a ver a correção "falhando" sem ela ter sido carregada.
+> **Matar pela porta** (`Get-NetTCPConnection -LocalPort … | Stop-Process`) e
+> conferir `EADDRINUSE=0` antes de reexecutar.
+>
+> ### Migration 0090 — privilégios órfãos
+>
+> Não havia vulnerabilidade aberta: cada privilégio já era neutralizado pela RLS.
+> O que a 0090 remove é a metade armada de uma armadilha de dois gatilhos —
+> `anon`/`authenticated` tinham `INSERT/UPDATE/DELETE` em 5 tabelas de catálogo
+> (incluindo `parametros_fiscais`, que decide o imposto de todo mundo, e
+> `documento_versoes`, que guarda o texto dos Termos já aceitos) e `INSERT` de 28
+> colunas em `contabilidades`. `notifications` caiu de **18 colunas de UPDATE para
+> uma** (`lida_em`).
+>
+> Verificado depois de aplicar: 10/10 do que precisa funcionar (SELECT do catálogo,
+> marcar notificação lida, service_role escrevendo) e 7/7 do que precisa estar
+> bloqueado.
+>
+> ### ⚠️ Dois binários saíram do `git add -A` para sempre
+>
+> O repositório é **PÚBLICO** (`gestao-hub/balu-contabil`, conferido pela API).
+> `app/Document supabase e focus.docx` tem **senha em texto claro** (3
+> ocorrências). Estava não rastreado desde julho, e a decisão vinha adiada há
+> semanas — resolvida pelo lado seguro: os dois arquivos foram para o
+> `.gitignore`, com o motivo escrito lá. Para versioná-los um dia, tire a senha do
+> documento; não tire a linha do `.gitignore`.
+>
+> Pelo mesmo motivo, o teste novo **não tem credencial nenhuma**: e-mail e senha
+> vêm de `E2E_CONTADOR_EMAIL`/`E2E_CONTADOR_SENHA`, e o escritório-alvo é
+> descoberto em tempo de execução. Sem env, ele se declara *skipped* — nunca passa
+> vazio.
+>
+> ### Verificação
+>
+> `tsc` **0** · vitest **1791** (era 1749; +42) · `next build` limpo · isolamento
+> no banco **48/48** · isolamento nas actions **3/3** (7 actions atacadas).
+>
+> ### Pendências desta sessão
+>
+> - **Escritório B mantido de propósito** — sem ele, nem o teste de isolamento nem
+>   o de Server Action rodam. Limpeza pronta em
+>   `app/scratchpad/_limpar-escritorio-b.mjs` (ids fixos, apaga também a conta de
+>   auth). ⚠️ O trigger criou um trial que vence em **21/08**, então por volta de
+>   **19/08** sai um e-mail de "trial acabando" para `+contadorb@gmail.com`.
+> - `E2E_CONTADOR_EMAIL`/`E2E_CONTADOR_SENHA` **não estão em lugar nenhum
+>   versionado** — quem for rodar o teste precisa exportá-las.
+> - Seguem abertas as pendências de infra da sessão 25 (3 env vars na Vercel,
+>   `www`, SMTP do Supabase, `RESEND_FULL_ACCESS`) e o bloqueio do `UAZAPI_TOKEN`.
+> - **A camada de aplicação foi provada só para o contador.** As actions do lado
+>   do empresário (impostos, notas, honorários) seguem cobertas por RLS + testes
+>   unitários, sem exercício ponta a ponta. É o próximo alvo do mesmo método.
+
+> ## Histórico da sessão 26 (2026-08-14) — Frente 3: avisos de pagamento (SERPRO + Asaas)
 >
 > Sessão de **execução**, do plano ao código. Spec já aprovada
 > (`docs/superpowers/specs/2026-08-13-frente-3-avisos-de-pagamento-design.md`);
@@ -1836,12 +2058,28 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 
 ## Próximo passo imediato
 
-**Bloco 3 com as 22 tasks feitas na branch `bloco-3-dasn-defis`.** O que falta é o **smoke manual do usuário** — mesmo protocolo dos Blocos 1 e 2:
-1. DASN: entrar como `walacesssantos@gmail.com` (o seed apontou o `current_company` dele para a empresa MEI) → `/impostos` → seção Declarações → conferir pré-preenchimento (R$ 4.500 = 2.300 comércio + 2.200 serviço), editar e salvar rascunho, registrar comprovante e verificar que **só a entrega cala o sino**.
-2. DEFIS: uma das 4 empresas Simples → `/impostos` → seção Declaração anual → accordions, sócios somando 100%, salvar rascunho.
-3. Contador: `/contador/clientes/<id>?tab=declaracoes` → card com situação e, havendo rascunho do cliente, o registro de comprovante.
+> ⚠️ Esta seção ficou **obsoleta por ~10 sessões** falando do Bloco 3 (já em main
+> desde a sessão 10). Reescrita na sessão 27. Se ela voltar a divergir do topo do
+> arquivo, o topo é que vale.
 
-Passando → merge `--no-ff` para `main` + push (auto-deploy) + `node app/scratchpad/seed-empresa-mei.mjs restore`. **Não rodar o `restore` antes do smoke** — sem o seed não há empresa MEI e a tela da DASN não aparece.
+**Lançamento na semana de 18/08.** O caminho crítico, na ordem:
+
+1. 🔴 **`UAZAPI_TOKEN`** — sem ele `enviarMensagem` devolve `{ok:false, skipped:true}`
+   e **nada chega a ninguém, sem erro**. Trava qualquer demonstração. A
+   coalescência da 0068 existe para que o backlog acumulado não vire rajada no dia
+   em que o token voltar.
+2. 🔴 **Três env vars na Vercel** (`NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY`,
+   `EMAIL_FROM`) — um deploy resolve. Hoje produção usa os valores antigos.
+3. 🔴 **SMTP customizado no Supabase** — confirmação de cadastro e reset de senha
+   não passam pelo Resend; saem do remetente embutido com **2 e-mails/hora**. Não
+   sustenta um dia de cadastros do piloto.
+4. 🟡 **Smoke manual da Frente 3** (6 critérios, roteiro no histórico da sessão 26).
+5. 🟡 **Asaas em produção** — as credenciais estão só no `.env.local`;
+   `vercel env ls production` não devolve nenhuma.
+
+**Antes de mexer em qualquer coisa:** rodar `npx tsc --noEmit && npx vitest run &&
+npm run build`. A linha de base ao fim da sessão 27 é **tsc 0 · 1791 testes ·
+build limpo**.
 
 ## Convenções da sessão
 

@@ -58,3 +58,21 @@ docs/**/*.pdf
 
 .vercel
 .env*
+
+# ── Artefatos do Playwright ──────────────────────────────────
+app/test-results/
+test-results/
+
+# ── Documentos soltos na árvore, FORA do versionamento ───────
+# O repositório é PÚBLICO (gestao-hub/balu-contabil). Estes dois estavam
+# não rastreados desde julho, e a decisão sobre eles ficou pendente no
+# CHECKPOINT por semanas. Resolvida em 14/08/2026 pelo lado seguro:
+#
+#   `Document supabase e focus.docx` tem SENHA EM TEXTO CLARO (3 ocorrências,
+#   conferido antes de decidir). Num repo público, um `git add -A` distraído
+#   publica credencial — e o histórico do git não esquece.
+#
+# Se algum dia precisarem ser versionados, o caminho é remover a senha do
+# documento primeiro, não remover a linha daqui.
+Balu-Levantamento-Lancamento-2026-07-23.pdf
+app/Document supabase e focus.docx
