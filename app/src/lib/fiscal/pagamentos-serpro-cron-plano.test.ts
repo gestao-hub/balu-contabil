@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  podeConsultar, ordenarFilaConsulta, dentroDoOrcamento, REGIMES_COM_DAS_SIMPLES,
+  podeConsultar, ordenarFilaConsulta, dentroDoOrcamento, REGIMES_COM_DAS,
   type EmpresaParaConsultar,
 } from './pagamentos-serpro-cron-plano';
 
@@ -14,11 +14,22 @@ describe('podeConsultar', () => {
     expect(podeConsultar(emp({ regimeCode: '2' }))).toBe(true);
   });
 
-  it('MEI fica de fora — limite declarado da frente, não descuido', () => {
-    // A consulta de pagamentos do MEI não foi investigada; metade do piloto é
-    // MEI e isso está escrito na spec como fora de escopo.
+  it('MEI (código 4) ENTRA na varredura', () => {
+    // Entrou em 14/08/2026. O corte antigo dizia "a consulta de pagamentos do
+    // MEI não foi investigada" — mas a investigação da casa
+    // (docs/investigations/SERPRO-INVESTIGACAO.md) registra que o filtro usado
+    // aqui, código 9, "inclui DAS-MEI e DAS do Simples". Metade do piloto é MEI,
+    // e sem isto o DAS-MEI pago nunca era reconhecido.
+    expect(podeConsultar(emp({ regimeCode: '4' }))).toBe(true);
+    expect(REGIMES_COM_DAS.has('4')).toBe(true);
+  });
+
+  it('Regime Normal (código 3) fica de fora — não recolhe DAS', () => {
+    // ⚠️ Os testes antigos chamavam o código 3 de "MEI". Não é: 3 é Regime
+    // Normal (Lucro Real/Presumido) e 4 é MEI. O limite estava provado com o
+    // código errado, e o MEI de verdade nunca foi testado.
     expect(podeConsultar(emp({ regimeCode: '3' }))).toBe(false);
-    expect(REGIMES_COM_DAS_SIMPLES.has('3')).toBe(false);
+    expect(REGIMES_COM_DAS.has('3')).toBe(false);
   });
 
   it('sem guia em aberto não gasta chamada SERPRO', () => {
@@ -49,7 +60,7 @@ describe('ordenarFilaConsulta', () => {
 
   it('filtra os inelegíveis antes de ordenar', () => {
     const fila = ordenarFilaConsulta([
-      emp({ companyId: 'mei', regimeCode: '3' }),
+      emp({ companyId: 'regime-normal', regimeCode: '3' }),
       emp({ companyId: 'quitada', guiasEmAberto: 0 }),
       emp({ companyId: 'ok' }),
     ]);

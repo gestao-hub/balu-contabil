@@ -84,7 +84,9 @@ describe('rodarPagamentosSerpro', () => {
     expect(h.consultar).not.toHaveBeenCalled();
   });
 
-  it('MEI não entra na varredura', async () => {
+  it('Regime Normal (3) não entra na varredura — não recolhe DAS', async () => {
+    // Este teste se chamava "MEI não entra" e usava o código 3, que é Regime
+    // Normal. MEI é 4, e desde 14/08/2026 ELE ENTRA — ver o teste abaixo.
     const { admin } = fazerAdmin({
       fiscais: [{ ...FISCAL_SIMPLES, Code_regime_tributario: '3' }],
       abertas: [{ company_id: 'emp1' }],
@@ -330,5 +332,50 @@ describe('rodarPagamentosSerpro — a janela de consulta cobre a virada do ano',
     expect(h.consultar).toHaveBeenCalledWith(
       expect.anything(), 'emp1', 2027, { desdeAno: 2026 },
     );
+  });
+});
+
+describe('rodarPagamentosSerpro — o MEI entrou (14/08/2026)', () => {
+  it('empresa MEI com guia em aberto É consultada e recebe baixa', async () => {
+    // O DAS-MEI é gerado pelo app (gerarDasMeiAction, via PGMEI) e ficava sem
+    // ninguém reconhecer o pagamento: a guia permanecia aberta para sempre,
+    // virava 'vencida', e o cliente que pagou em dia aparecia em atraso para si
+    // e para o contador (painel_contador.das_vencidos), mês após mês.
+    h.consultar.mockResolvedValue({ ok: true, pagamentos: [pagamento()] });
+    const { admin, rpc } = fazerAdmin({
+      fiscais: [{ ...FISCAL_SIMPLES, empresa_id: 'mei1', Code_regime_tributario: '4' }],
+      abertas: [{ company_id: 'mei1' }],
+      guiasDaEmpresa: [GUIA_ABERTA],
+    });
+
+    const r = await rodarPagamentosSerpro(admin);
+
+    expect(r).toMatchObject({ elegiveis: 1, consultadas: 1, baixadas: 1, erros: 0 });
+    expect(rpc).toHaveBeenCalledWith('registrar_pagamento_guia', expect.objectContaining({
+      p_origem: 'serpro',
+    }));
+  });
+
+  it('MEI sem Termo falha com erro traduzido, é carimbada e não trava a fila', async () => {
+    // PAGAMENTOS71 exige token de procurador — diferente do PGMEI, que gera o
+    // DAS-MEI sem procuração. Quem não assinou o Termo não pode travar a
+    // varredura dos outros.
+    h.consultar
+      .mockResolvedValueOnce({ ok: false, error: 'A empresa ainda não autorizou a Balu (Termo/procuração) na SERPRO.' })
+      .mockResolvedValueOnce({ ok: true, pagamentos: [pagamento()] });
+    const { admin, carimbos } = fazerAdmin({
+      fiscais: [
+        { ...FISCAL_SIMPLES, empresa_id: 'meiSemTermo', Code_regime_tributario: '4' },
+        { ...FISCAL_SIMPLES, empresa_id: 'simplesOk', Code_regime_tributario: '1' },
+      ],
+      abertas: [{ company_id: 'meiSemTermo' }, { company_id: 'simplesOk' }],
+      guiasDaEmpresa: [GUIA_ABERTA],
+    });
+
+    const r = await rodarPagamentosSerpro(admin);
+
+    expect(r.erros).toBe(1);
+    expect(r.baixadas).toBe(1);       // a outra empresa seguiu normalmente
+    expect(carimbos).toHaveLength(2); // as duas tiveram a vez delas
   });
 });

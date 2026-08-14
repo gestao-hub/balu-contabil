@@ -9,8 +9,9 @@
 //
 // O QUE ELA NÃO FAZ
 // Não CRIA guia. Quem descobre competências novas é a sincronização pela tela
-// (CONSDECLARACAO13); esta varredura só concilia o que já está gravado em
-// aberto. E não cobre MEI — ver `REGIMES_COM_DAS_SIMPLES`.
+// (CONSDECLARACAO13, Simples) e `gerarDasMeiAction` (PGMEI, MEI); esta varredura
+// só concilia o que já está gravado em aberto. Cobre Simples e MEI; Regime
+// Normal fica de fora porque não recolhe DAS — ver `REGIMES_COM_DAS`.
 //
 // É POLLING, e isso tem consequência declarada: o aviso chega no ritmo do cron,
 // e a compensação na Receita não é instantânea. "Pagou agora, avisou agora" não
@@ -20,7 +21,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { consultarPagamentosDas } from '@/lib/fiscal/serpro-pagamentos';
 import { planejarBaixas } from '@/lib/fiscal/pagamentos-das-match';
 import {
-  ordenarFilaConsulta, dentroDoOrcamento, REGIMES_COM_DAS_SIMPLES,
+  ordenarFilaConsulta, dentroDoOrcamento, REGIMES_COM_DAS,
   type EmpresaParaConsultar,
 } from '@/lib/fiscal/pagamentos-serpro-cron-plano';
 
@@ -102,7 +103,7 @@ export async function rodarPagamentosSerpro(
   const { data: fiscais, error: eFiscais } = await admin
     .from('empresas_fiscais')
     .select('empresa_id, Code_regime_tributario, consulta_pagamentos_serpro_em')
-    .in('Code_regime_tributario', [...REGIMES_COM_DAS_SIMPLES])
+    .in('Code_regime_tributario', [...REGIMES_COM_DAS])
     .is('deleted_at', null)
     .limit(TETO_EMPRESAS);
   if (eFiscais || !fiscais) {

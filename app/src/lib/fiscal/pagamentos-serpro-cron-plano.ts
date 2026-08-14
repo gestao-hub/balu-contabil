@@ -15,14 +15,34 @@ export type EmpresaParaConsultar = {
 };
 
 /**
- * Códigos de regime que este caminho cobre.
+ * Códigos de regime que este caminho cobre: Simples (1), Simples com excesso de
+ * sublimite (2) e **MEI (4)**.
  *
- * MESMO CORTE de `impostos/actions.ts` (o gate do PGDAS-D), e ele é a metade
- * declarada do escopo: **MEI fica de fora**. A consulta de pagamentos do MEI
- * não foi investigada, e como metade do piloto é MEI, isso está escrito na
- * spec como limite conhecido — não é descuido a descobrir em produção.
+ * ─── POR QUE O MEI ENTROU (14/08/2026) ──────────────────────────────────────
+ * A Frente 3 nasceu com MEI fora, e a justificativa escrita era "a consulta de
+ * pagamentos do MEI não foi investigada". Ela tinha sido: a investigação da
+ * própria casa (`docs/investigations/SERPRO-INVESTIGACAO.md`) diz, sobre o
+ * filtro que este caminho usa, que **"Código 9 = DAS. Inclui DAS-MEI e DAS do
+ * Simples."** Não era limitação da API — era um limite herdado de
+ * `impostos/actions.ts`, onde o corte existe por outro motivo (o PGDAS-D é
+ * declaração do Simples, e MEI declara por DASN-SIMEI).
+ *
+ * O que estava em jogo: MEI **tem** DAS, e o app **gera** essa guia
+ * (`gerarDasMeiAction`, via PGMEI). Sem esta varredura, o pagamento do MEI
+ * nunca era reconhecido — a guia ficava `data_pagamento IS NULL` para sempre,
+ * virava `vencida`, e o cliente que pagou em dia aparecia em atraso para ele
+ * mesmo e para o contador (`painel_contador.das_vencidos`), mês após mês.
+ * Metade do piloto é MEI.
+ *
+ * ⚠️ REGIME NORMAL (3) CONTINUA FORA, e por motivo diferente: ele não recolhe
+ * DAS nenhum. Não há o que conciliar.
+ *
+ * ⚠️ MEI SEM TERMO/PROCURAÇÃO: o PAGAMENTOS71 exige o token de procurador
+ * (diferente do PGMEI, que gera o DAS-MEI sem procuração). Quem não assinou o
+ * Termo falha com a mensagem traduzida, conta como erro, é carimbado e volta
+ * para o fim da fila — não trava a varredura dos outros.
  */
-export const REGIMES_COM_DAS_SIMPLES = new Set(['1', '2']);
+export const REGIMES_COM_DAS = new Set(['1', '2', '4']);
 
 /**
  * Só vale gastar uma chamada SERPRO por empresa que tenha o que conciliar.
@@ -33,7 +53,7 @@ export const REGIMES_COM_DAS_SIMPLES = new Set(['1', '2']);
  * jogar o resultado fora.
  */
 export function podeConsultar(e: EmpresaParaConsultar): boolean {
-  return REGIMES_COM_DAS_SIMPLES.has(e.regimeCode) && e.guiasEmAberto > 0;
+  return REGIMES_COM_DAS.has(e.regimeCode) && e.guiasEmAberto > 0;
 }
 
 /**
