@@ -20,6 +20,18 @@ excluviapainel.bubble
 # ── Claude Code (config local da máquina) ────────────────────
 .claude/settings.local.json
 
+# ── Skills: LOCAIS, nunca vão para o main ────────────────────
+# Decisão do usuário em 14/08/2026. São ferramenta de quem desenvolve, não
+# código do produto: 14 MB de material de terceiros que não é revisado aqui,
+# não é testado pela suíte e não muda o comportamento do app.
+#
+# Duas entradas porque são dois lugares: `skills/` é a pasta de ORIGEM (de onde
+# a instalação copia) e `.claude/skills/` é o que o Claude Code lê. Antes disto
+# NENHUMA das duas era ignorada — `git status` listava `skills/` como não
+# rastreada, e um `git add -A` teria empurrado tudo.
+skills/
+.claude/skills/
+
 # ── Repo de referência clonado (fora do versionamento) ───────
 superpowers-kanban/
 

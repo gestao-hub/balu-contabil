@@ -1,9 +1,230 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-13 (sessão 25 — **domínio `balucontabil.com.br` no ar**, upload de certificado pelo contador em produção, e-mail destravado por ponte, e a Frente 3 redesenhada sem Open Finance).
+> **Última atualização:** 2026-08-14 (sessão 26 — **Frente 3 executada**: o sync da SERPRO deixa de dar baixa por fora da RPC, nasce o aviso `pagamento_confirmado` pelas duas fontes, a linha digitável vai em mensagem própria, e **57 skills instaladas em `.claude/skills/`, fora do versionamento**).
 
-> ## 🆕 SESSÃO 25 (2026-08-13) — P11 vira código, domínio próprio e a saída do Open Finance
+> ## 🆕 SESSÃO 26 (2026-08-14) — Frente 3: avisos de pagamento (SERPRO + Asaas)
+>
+> Sessão de **execução**, do plano ao código. Spec já aprovada
+> (`docs/superpowers/specs/2026-08-13-frente-3-avisos-de-pagamento-design.md`);
+> plano escrito nesta sessão
+> (`docs/superpowers/plans/2026-08-14-frente-3-avisos-de-pagamento.md`) e as 6
+> tasks entregues. **Migrations 0086, 0087 e 0088 aplicadas em produção.**
+>
+> ### O que o levantamento achou antes de escrever código
+>
+> Dois achados que **travariam** a execução se descobertos no meio:
+>
+> 1. 🔴 **A RPC recusava a origem que a spec mandava usar.** `0072:28` faz
+>    `RAISE EXCEPTION` para `p_origem` fora de
+>    `('manual','conciliacao','conciliacao_confirmada')`. Chamar com `'serpro'`
+>    estourava em runtime — a spec pedia "origem própria" sem dizer que a
+>    validação mora dentro da função.
+> 2. 🔴 **A RPC resolvia notificações, mas não criava nenhuma.** Ninguém no
+>    sistema avisava "seu pagamento foi reconhecido". O aviso passou a nascer
+>    **dentro da RPC** (0087), e não em quem chama: assim os **quatro** caminhos
+>    de baixa ganham o aviso de uma vez, na mesma transação da auditoria. É a
+>    mesma decisão que fez a 0072 existir — notificar no chamador daria o aviso
+>    a um caminho só, e o quinto nasceria mudo.
+>
+> ### 1. Os tipos (migration `0086`)
+>
+> `pagamento_confirmado` no `CHECK` **e** em `tipos.ts`, junto com os **5
+> órfãos** que a análise da sessão 25 encontrou (o arquivo listava 11, o banco
+> aceitava 16). O CHECK vivo foi lido do banco antes de recriar — ritual que a
+> 0081 documenta depois do acidente da 0061.
+>
+> **O que impede o sexto órfão:** `tipos.test.ts` agora lê a migration mais
+> recente que recria a constraint e compara conjunto a conjunto, nas duas
+> direções. Nada mais obriga TypeScript e SQL a andarem juntos — este teste é a
+> obrigação.
+>
+> A exclusão da tela de preferências saiu do JSX para `TIPOS_PREFERENCIAVEIS`,
+> com o motivo escrito por exceção (`abertura_etapa` é transacional;
+> `parametro_fiscal_desatualizado` só vai para AdminBalu). A action de salvar
+> passou a usar a **mesma** lista — divergir faria um tipo fora do formulário
+> ser regravado como habilitado a cada submit.
+>
+> ### 2. O sync da SERPRO pela RPC (migration `0087`) — conserta defeito antigo
+>
+> `impostos/actions.ts` gravava `status:'paga'` por `upsert` direto: quando a
+> Receita revelava o DAS pago, **ninguém era notificado e nada ia para a
+> auditoria**. Agora os valores continuam vindo pelo upsert e a baixa é da RPC,
+> com origem `'serpro'`.
+>
+> **Segundo vazamento, achado ao consertar o primeiro:** o caminho de fallback
+> gravava `status: s.status`, e `s.status` do CONSDECLARACAO13 **pode ser
+> 'paga'** — baixa por fora da RPC de novo, e sem `data_pagamento`, que é o
+> sinal de idempotência dela. Corrigido junto.
+>
+> O upsert virou **dois lotes homogêneos**: linhas que falam de pagamento não
+> carregam `status`, e um array de chaves diferentes obrigaria a confiar em como
+> o PostgREST preenche o que falta — justamente na coluna disputada.
+>
+> **Prova no banco vivo, em transação revertida** (`_sonda-0087.mjs`): 1ª
+> chamada → `notificacao_criada: true`, 1 aviso de DAS resolvido, corpo "DAS de
+> 04/2026 · confirmado pela Receita"; 2ª chamada → `ja_estava_paga: true`, **sem
+> aviso novo**; origem `manual` → **nenhum** aviso; origem inventada → exceção.
+> Uma linha em `audit_log`.
+>
+> ⚠️ **Quem recebe:** só descoberta **automática** avisa (`serpro`,
+> `conciliacao`). Em `manual` e `conciliacao_confirmada` quem deu a baixa foi o
+> próprio dono olhando para a tela — devolver "seu pagamento foi confirmado"
+> seria contar a alguém o que essa pessoa acabou de fazer.
+>
+> ### 3. `rodarPagamentosSerpro` no cron (migration `0088`)
+>
+> Varredura diária: empresa do Simples **com guia em aberto** → PAGTOWEB →
+> baixa pela RPC. Entra depois da conciliação e antes do billing, com
+> `try/catch` próprio.
+>
+> **Orçamento de tempo (12s) não é zelo:** é uma chamada SERPRO por empresa
+> dentro de um `maxDuration` de 60s compartilhado, e timeout de wall-clock não é
+> capturável por `try/catch`. Com 30–60 empresas a varredura **não cabe** numa
+> rodada — por isso a fila ordena por quem esperou mais, e a 0088 existe: o
+> proxy óbvio (`max(guias.updated_at)`) não serve, porque consulta que não acha
+> pagamento não escreve nada e a empresa consultada todo dia continuaria
+> parecendo a mais antiga. O carimbo cai **com sucesso ou com falha** — registra
+> "já teve a vez dela", não "deu certo".
+>
+> ### 4. A linha digitável em mensagem própria
+>
+> Até aqui o número vinha na mesma mensagem, com rótulo em cima. No WhatsApp o
+> toque-e-segura copia a **mensagem inteira** — o cliente colava título, corpo e
+> link no campo do banco. Agora são duas mensagens, e a segunda tem só o número.
+>
+> **A assimetria do carimbo, decidida e testada:** `enviada_whatsapp_em` é um só
+> para um envio que virou dois. Carimbar na primeira deixaria "o código vai na
+> próxima mensagem" sem próxima mensagem, e sem retentativa; carimbar só no fim
+> faz a rodada seguinte reenviar as duas. Escolhido o segundo — aviso repetido
+> incomoda, aviso sem o código não serve. E se a primeira falha, a linha **não**
+> é enviada solta.
+>
+> ### 5. Asaas → aviso, no ponto compartilhado
+>
+> A spec mandava mexer na rota do webhook; o código dizia outra coisa. Quem
+> escreve o pagamento do escritório são **dois** caminhos (webhook e varredura
+> diária), e `aplicar-cobranca-escritorio.ts` existe porque os dois têm de
+> escrever igual. Notificar só na rota faria o pagamento descoberto pela
+> varredura passar em silêncio — o mesmo defeito do item 2, em outra tabela.
+>
+> Dois destinatários, duas frases: o **cliente** recebe a quitação, o
+> **escritório** o recebimento. O aviso sai depois do compare-and-swap ter
+> afetado linha (anunciar antes seria anunciar o que outro escritor pode ter
+> desfeito) e antes do `return` de quem não tem honorário — avulsa também é
+> dinheiro que entrou.
+>
+> ### Decisão de escopo: o critério de aceite 5 era falso, e não por causa desta frente
+>
+> A spec pedia que desligar `pagamento_confirmado` silenciasse as duas fontes.
+> **`notificacoes_pendentes_whatsapp` (0068) não consulta preferência nenhuma**,
+> e `notification_preferences` (0045) só tem `email_enabled` — o WhatsApp
+> ignorava a tela **para todos os 17 tipos**, desde sempre. O único controle é o
+> interruptor global do opt-in.
+>
+> Decisão do usuário: **escopo honesto** — o critério vale para e-mail, a tela
+> ganhou um aviso dizendo o que ela governa, e o conserto virou card próprio
+> ("Preferência de notificação por canal", To Do). Ampliar o escopo para
+> arrumar a preferência de um canal que ainda não fala trocaria entrega por
+> arrumação.
+>
+> ### Dívida da sessão 25 quitada de passagem
+>
+> `tsc` estava **vermelho** (3 erros em `cert-actions.test.ts`, do commit
+> `7b47869`), apesar de o CHECKPOINT da sessão 25 registrar "tsc 0". Mocks
+> declarados com aridade zero faziam `mock.calls[0][1]` não compilar — e é
+> justamente o argumento que aqueles testes leem para provar o anti-IDOR.
+> Corrigido.
+>
+> ### Verificação
+>
+> `tsc` **0** · vitest **1749** (era 1700; +49) · `next build` limpo ·
+> migrations 0086/0087/0088 aplicadas e conferidas no banco (CHECK com 17
+> tipos).
+>
+> ### 🔴 O bloqueio que nenhuma task remove
+>
+> Sem `UAZAPI_TOKEN`, `configDeEnv()` devolve `null` e `enviarMensagem` responde
+> `{ok:false, skipped:true}`: **tudo isto funciona no banco e não chega a
+> ninguém, sem erro nenhum**. O número anterior era pessoal e a remoção foi
+> deliberada (12/08). Provisionar a instância é pré-requisito de qualquer
+> demonstração ao cliente — e a coalescência da 0068 existe para que, no dia em
+> que o token voltar, o backlog acumulado não vire uma rajada.
+>
+> ### 6. Skills instaladas no projeto — e travadas fora do versionamento
+>
+> **57 skills** copiadas de `skills/` (pasta de origem) para **`.claude/skills/`**,
+> que é o que o Claude Code lê. Ficam **só nesta máquina**: decisão do usuário,
+> registrada no `.gitignore`.
+>
+> ⚠️ **A trava não existia.** Antes desta sessão nem `skills/` nem
+> `.claude/skills/` estavam no `.gitignore` — `git status` listava `?? skills/`,
+> e um `git add -A` teria empurrado 14 MB de material de terceiros para o repo
+> **público** `gestao-hub/balu-contabil`. Agora as duas entradas estão lá, e a
+> prova é `git add -A --dry-run`: **zero** linhas com "skill".
+>
+> (Detalhe que confunde: `git check-ignore -v skills/` — **com barra** — sempre
+> devolveu "ignorado" apontando para uma linha **vazia** do `.gitignore`. É
+> quirk do git com diretório e padrão vazio. Sem a barra, e para qualquer
+> arquivo dentro, o resultado era "não ignorado" — e o `git status` confirmava.
+> Quem for reconferir isto um dia: use o caminho **sem** barra final.)
+>
+> **Duas correções na instalação:**
+> 1. `skills/superpowers/` **não é uma skill** — é o clone do plugin inteiro
+>    (com `.git`, `commands/`, `hooks/`, `agents/`). Não foi instalado; as 14
+>    skills que ele contém já existem soltas no nível de cima, idênticas
+>    (conferido com `diff -rq`).
+> 2. `skills/using-superpowers/` estava **sem `SKILL.md`** — a cópia de topo é
+>    incompleta. Instalada a partir de `skills/superpowers/skills/using-superpowers/`,
+>    que tem o arquivo.
+>
+> **6 skills tinham `name:` divergente da pasta** (`aux-opensquad-copywriting`
+> declarava `name: opensquad-copywriting`, e mais cinco iguais). O `name` foi
+> alinhado à pasta **nas cópias instaladas**; a pasta de origem `skills/` ficou
+> intacta, como veio. Validação final: 57 skills, todas com `SKILL.md`, `name`
+> igual ao diretório e `description` presente — **0 problemas**.
+>
+> 🟡 **Ponto de atenção:** entre as instaladas está `using-superpowers`, cuja
+> própria descrição diz *"use when starting any conversation… requiring Skill
+> tool invocation before ANY response"*. Ela tende a disparar em toda conversa.
+> Se o comportamento incomodar, é a primeira a remover de `.claude/skills/`.
+>
+> As skills só aparecem para o Claude Code **na próxima sessão** — a descoberta
+> acontece no início da conversa.
+>
+> ### Pendências desta sessão
+>
+> - **Smoke manual do usuário** (roteiro abaixo) — o card está em **Review**,
+>   não em Concluído.
+> - **Commitado localmente, NÃO empurrado.** Continuam os 2 commits de docs da
+>   sessão 25 sem push, mais os 2 desta sessão.
+> - Dois arquivos binários seguem **não rastreados** na raiz e não entraram em
+>   commit nenhum: `Balu-Levantamento-Lancamento-2026-07-23.pdf` e
+>   `app/Document supabase e focus.docx`. Decidir se versiona ou ignora.
+> - As pendências de infra da sessão 25 seguem abertas (3 env vars na Vercel,
+>   `www`, Resend, SMTP do Supabase, `RESEND_FULL_ACCESS`).
+>
+> ### Roteiro de smoke (os 6 critérios de aceite)
+>
+> 1. **DAS com linha digitável:** com uma guia em aberto e `whatsapp_habilitado_em`
+>    preenchido, rodar o cron e conferir em `notifications` que a linha ficou
+>    pendente. Sem `UAZAPI_TOKEN` **nada sai** — o certo é `enviada_whatsapp_em`
+>    seguir `NULL` e o cron reportar `whatsapp_pulados`, nunca `enviados`.
+> 2. **DAS pago na Receita:** `/impostos` → "Atualizar" numa empresa do Simples
+>    com Termo válido. Conferir: guia `paga`, **uma** linha em `audit_log` com
+>    `origem: 'serpro'`, e **um** `pagamento_confirmado` com corpo "confirmado
+>    pela Receita".
+> 3. **Idempotência:** repetir o passo 2. Nada muda — nem data, nem auditoria,
+>    nem aviso novo.
+> 4. **Asaas:** pagar uma cobrança de escritório na sandbox e conferir os
+>    **dois** avisos (cliente e escritório) com frases diferentes.
+> 5. **Preferências:** `/conta` → aba Notificações → "Pagamento confirmado"
+>    aparece na lista, e os 5 tipos órfãos também. Desligar corta o **e-mail**
+>    (o aviso na tela e o WhatsApp continuam — ver o card novo).
+> 6. **Cron completo:** `GET /api/cron/obrigacoes` com o `CRON_SECRET` e
+>    conferir `pagamentos_serpro` na resposta.
+
+> ## Histórico da sessão 25 (2026-08-13) — P11 vira código, domínio próprio e a saída do Open Finance
 >
 > ### 1. Upload do certificado A1 pelo contador — em produção (`7b47869`, migration `0085`)
 >
