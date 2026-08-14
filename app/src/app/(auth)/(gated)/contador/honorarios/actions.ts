@@ -11,6 +11,28 @@ import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
+/**
+ * ─── ZERO LINHAS AFETADAS NÃO É SUCESSO ─────────────────────────────────────
+ *
+ * O `.eq('contabilidade_id', ctx.id)` de cada mutação aqui sempre impediu o
+ * dano — honorário de outro escritório nunca foi tocado. Mas UPDATE/DELETE que
+ * não casa nada NÃO é erro no PostgREST: `error` volta null, e as quatro ações
+ * liam isso como sucesso — gravavam auditoria e devolviam `ok: true`.
+ *
+ * Achado em 14/08/2026 pelo teste ponta a ponta (`tests/idor-actions-contador.spec.ts`),
+ * chamando `marcarPagoV2Action` com o id de um honorário de OUTRO escritório: o
+ * valor ficou intacto, e mesmo assim nasceu em `audit_log` um `honorario.pagar`
+ * dizendo que este contador quitou aquele honorário. Qualquer contador
+ * autenticado podia carimbar o audit_log com o UUID que quisesse.
+ *
+ * Nada disso apareceu nos testes de RLS, e não apareceria: estas ações usam
+ * `createAdminClient()`, que ignora RLS por definição.
+ *
+ * A mensagem é a mesma para "não existe" e "é de outro escritório", de
+ * propósito — a diferença entre as duas é justamente o que não se deve contar.
+ */
+const NAO_E_SEU = 'Honorário não encontrado na sua carteira.';
+
 /** Data de hoje em YYYY-MM-DD, ajustada para BRT (mesmo ajuste do legado honorarios/actions.ts). */
 function hojeBR(): string {
   const brt = new Date(Date.now() - 3 * 60 * 60 * 1000);
@@ -82,7 +104,7 @@ export async function updateHonorarioV2Action(id: string, input: unknown): Promi
     .maybeSingle();
   if (!empresa) return { ok: false, error: 'Cliente não pertence à sua carteira.' };
 
-  const { error } = await admin
+  const { data: afetadas, error } = await admin
     .from('honorarios')
     .update({
       empresa_cliente_id: parsed.data.empresa_cliente_id,
@@ -96,8 +118,10 @@ export async function updateHonorarioV2Action(id: string, input: unknown): Promi
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
-    .eq('contabilidade_id', ctx.id); // escopado (anti-IDOR)
+    .eq('contabilidade_id', ctx.id) // escopado (anti-IDOR)
+    .select('id');
   if (error) return { ok: false, error: error.message };
+  if (!afetadas || afetadas.length === 0) return { ok: false, error: NAO_E_SEU };
 
   await registrarAuditoria({
     actorUserId: ctx.userId, acao: 'honorario.editar',
@@ -116,7 +140,7 @@ export async function marcarPagoV2Action(id: string, forma_pagamento: string): P
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const admin = createAdminClient();
-  const { error } = await admin
+  const { data: afetadas, error } = await admin
     .from('honorarios')
     .update({
       data_pagamento: hojeBR(),
@@ -125,8 +149,10 @@ export async function marcarPagoV2Action(id: string, forma_pagamento: string): P
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
-    .eq('contabilidade_id', ctx.id);
+    .eq('contabilidade_id', ctx.id)
+    .select('id');
   if (error) return { ok: false, error: error.message };
+  if (!afetadas || afetadas.length === 0) return { ok: false, error: NAO_E_SEU };
 
   await registrarAuditoria({
     actorUserId: ctx.userId, acao: 'honorario.pagar',
@@ -145,7 +171,7 @@ export async function desmarcarPagoV2Action(id: string): Promise<ActionResult> {
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const admin = createAdminClient();
-  const { error } = await admin
+  const { data: afetadas, error } = await admin
     .from('honorarios')
     .update({
       data_pagamento: null,
@@ -154,8 +180,10 @@ export async function desmarcarPagoV2Action(id: string): Promise<ActionResult> {
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
-    .eq('contabilidade_id', ctx.id);
+    .eq('contabilidade_id', ctx.id)
+    .select('id');
   if (error) return { ok: false, error: error.message };
+  if (!afetadas || afetadas.length === 0) return { ok: false, error: NAO_E_SEU };
 
   await registrarAuditoria({
     actorUserId: ctx.userId, acao: 'honorario.despagar',
@@ -174,12 +202,14 @@ export async function deleteHonorarioV2Action(id: string): Promise<ActionResult>
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const admin = createAdminClient();
-  const { error } = await admin
+  const { data: afetadas, error } = await admin
     .from('honorarios')
     .delete()
     .eq('id', id)
-    .eq('contabilidade_id', ctx.id);
+    .eq('contabilidade_id', ctx.id)
+    .select('id');
   if (error) return { ok: false, error: error.message };
+  if (!afetadas || afetadas.length === 0) return { ok: false, error: NAO_E_SEU };
 
   await registrarAuditoria({
     actorUserId: ctx.userId, acao: 'honorario.excluir',

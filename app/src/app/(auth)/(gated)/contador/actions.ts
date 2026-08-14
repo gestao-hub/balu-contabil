@@ -162,17 +162,40 @@ export async function removerClienteDaCarteiraAction(companyId: string): Promise
   const g = await getContabilidadeCtx();
   if ('error' in g || !g.contabilidade) return { ok: false, error: 'Sem escritório.' };
   const admin = createAdminClient();
-  const { error } = await admin.from('companies')
+  // `.select('id')` NÃO é enfeite: sem ele não há como distinguir "removi" de
+  // "não havia o que remover". Ver o bloco abaixo.
+  const { data, error } = await admin.from('companies')
     .update({ contabilidade_id: null })
-    .eq('id', companyId).eq('contabilidade_id', g.contabilidade.id); // escopado (anti-IDOR)
-  if (!error) {
-    await registrarAuditoria({
-      actorUserId: g.userId, acao: 'carteira.remover',
-      alvoTipo: 'company', alvoId: companyId, contabilidadeId: g.contabilidade.id,
-    });
+    .eq('id', companyId).eq('contabilidade_id', g.contabilidade.id) // escopado (anti-IDOR)
+    .select('id');
+  if (error) return { ok: false, error: error.message };
+
+  // ─── ZERO LINHAS NÃO É SUCESSO ────────────────────────────────────────────
+  //
+  // O `.eq('contabilidade_id')` acima sempre impediu o dano: empresa de outro
+  // escritório não é alterada. Mas UPDATE que não casa nada NÃO é erro no
+  // PostgREST — `error` volta null — e o código anterior lia isso como
+  // "removido": gravava a auditoria e devolvia `ok: true`.
+  //
+  // Achado pelo teste ponta a ponta de 14/08/2026, invocando esta action com o
+  // id de um cliente de OUTRO escritório. O dado ficou intacto, como esperado, e
+  // mesmo assim nasceu em `audit_log` uma linha `carteira.remover` dizendo que
+  // este contador removeu aquele cliente. Qualquer contador autenticado podia
+  // carimbar o audit_log com o UUID que quisesse — e o audit_log é justamente
+  // o registro que existe para ser confiável quando alguém perguntar depois.
+  //
+  // O padrão certo já existia em `atendimentos/actions.ts` (`marcarAtendidoAction`):
+  // conferir linha afetada ANTES de auditar. Esta cópia é que tinha ficado para trás.
+  if (!data || data.length === 0) {
+    return { ok: false, error: 'Cliente não encontrado na sua carteira.' };
   }
+
+  await registrarAuditoria({
+    actorUserId: g.userId, acao: 'carteira.remover',
+    alvoTipo: 'company', alvoId: companyId, contabilidadeId: g.contabilidade.id,
+  });
   revalidatePath('/contador');
-  return error ? { ok: false, error: error.message } : { ok: true };
+  return { ok: true };
 }
 
 // Task 18: branding do escritório (nome exibido, WhatsApp de suporte, nome do
@@ -214,14 +237,24 @@ export async function removerMembroAction(userId: string): Promise<ActionResult>
   const { count } = await admin.from('contabilidade_membros')
     .select('*', { count: 'exact', head: true }).eq('contabilidade_id', g.contabilidade.id);
   if ((count ?? 0) <= 1) return { ok: false, error: 'O escritório precisa ter ao menos 1 membro.' };
-  const { error } = await admin.from('contabilidade_membros').delete()
-    .eq('contabilidade_id', g.contabilidade.id).eq('user_id', userId);
-  if (!error) {
-    await registrarAuditoria({
-      actorUserId: g.userId, acao: 'equipe.remover',
-      alvoTipo: 'user', alvoId: userId, contabilidadeId: g.contabilidade.id,
-    });
+  // Mesmo defeito, mesma correção de `removerClienteDaCarteiraAction`: DELETE
+  // que não casa ninguém não é erro, e sem conferir a linha afetada a action
+  // gravava `equipe.remover` para um usuário que nunca foi membro — poluindo o
+  // audit_log com uma remoção que não houve. Aqui o escopo é o próprio
+  // escritório, então não há alcance sobre o de ninguém mais; o que estava em
+  // jogo era a fidelidade do registro, e ela vale por si.
+  const { data, error } = await admin.from('contabilidade_membros').delete()
+    .eq('contabilidade_id', g.contabilidade.id).eq('user_id', userId)
+    .select('user_id');
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, error: 'Esta pessoa não faz parte da equipe do escritório.' };
   }
+
+  await registrarAuditoria({
+    actorUserId: g.userId, acao: 'equipe.remover',
+    alvoTipo: 'user', alvoId: userId, contabilidadeId: g.contabilidade.id,
+  });
   revalidatePath('/contador/equipe');
-  return error ? { ok: false, error: error.message } : { ok: true };
+  return { ok: true };
 }
