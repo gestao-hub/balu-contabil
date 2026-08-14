@@ -6,6 +6,7 @@ process.env.CRON_SECRET = SECRET;
 const h = vi.hoisted(() => {
   const estado = {
     pendWhats: [] as Array<Record<string, unknown>>,
+    pendEmail: [] as Array<Record<string, unknown>>,
     suprimidas: 0 as number,
     slaAvisos: 0 as number,
     guiasVencidas: 0 as number,
@@ -14,7 +15,7 @@ const h = vi.hoisted(() => {
 
   const rpc = vi.fn(async (nome: string) => {
     if (nome === 'materializar_obrigacoes') return { data: 0, error: null };
-    if (nome === 'notificacoes_pendentes_email') return { data: [], error: null };
+    if (nome === 'notificacoes_pendentes_email') return { data: estado.pendEmail, error: null };
     if (nome === 'suprimir_whatsapp_superadas') return { data: estado.suprimidas, error: null };
     if (nome === 'materializar_sla_estourado') return { data: estado.slaAvisos, error: null };
     if (nome === 'marcar_guias_vencidas') return { data: estado.guiasVencidas, error: null };
@@ -82,6 +83,7 @@ function requisicaoFalsa() {
 
 beforeEach(() => {
   h.estado.pendWhats = [];
+  h.estado.pendEmail = [];
   h.estado.suprimidas = 0;
   h.estado.slaAvisos = 0;
   h.estado.guiasVencidas = 0;
@@ -459,5 +461,94 @@ describe('GET /api/cron/obrigacoes — apuração mensal automática (P2.1)', ()
     expect(corpo.apuracao).toMatchObject({ erro: expect.stringContaining('boom') });
     // O que veio antes continua reportado — são etapas independentes.
     expect(corpo.billing).toBeDefined();
+  });
+});
+
+// ─── Correções de 14/08/2026 (rodada de revisão) ────────────────────────────
+
+describe('GET /api/cron/obrigacoes — os laços de aviso têm teto de tempo', () => {
+  function avisosDeEmail(n: number) {
+    return Array.from({ length: n }, (_, i) => ({
+      id: `notif${i}`, titulo: 'DAS a vencer', corpo: 'corpo', norma: null,
+      action_href: '/impostos', escritorio_nome: null, destinatario_email: `c${i}@x.com`,
+    }));
+  }
+
+  it('e-mail: para no orçamento e REPORTA quantos ficaram, em vez de estourar o wall-clock', async () => {
+    // Sem teto, 200 envios sequenciais passam dos 60s de maxDuration sozinhos —
+    // e o que morre não é o laço, é tudo que vem DEPOIS dele (conciliação,
+    // SERPRO, billing, apuração), em silêncio.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-14T12:00:00Z'));
+    h.estado.pendEmail = avisosDeEmail(50);
+    // Cada envio "custa" 6s de relógio; o orçamento é 15s.
+    h.sendEmail.mockImplementation(async () => {
+      vi.advanceTimersByTime(6_000);
+      return { ok: true };
+    });
+
+    try {
+      const json = await (await GET(requisicaoFalsa())).json();
+      expect(json.enviados).toBeLessThan(50);
+      expect(json.email_restantes).toBeGreaterThan(0);
+      expect(json.enviados + json.pulados + json.email_restantes).toBe(50);
+    } finally {
+      vi.useRealTimers();
+      h.sendEmail.mockReset();
+      h.sendEmail.mockResolvedValue({ ok: true });
+    }
+  });
+
+  it('e-mail: fila pequena passa inteira e não reporta resto', async () => {
+    h.estado.pendEmail = avisosDeEmail(3);
+    const json = await (await GET(requisicaoFalsa())).json();
+    expect(json.enviados).toBe(3);
+    expect(json.email_restantes).toBe(0);
+  });
+
+  it('o corte de e-mail NÃO impede billing, SERPRO e apuração de rodarem', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-14T12:00:00Z'));
+    h.estado.pendEmail = avisosDeEmail(50);
+    h.sendEmail.mockImplementation(async () => {
+      vi.advanceTimersByTime(6_000);
+      return { ok: true };
+    });
+
+    try {
+      await GET(requisicaoFalsa());
+      expect(h.rodarPagamentosSerpro).toHaveBeenCalled();
+      expect(h.rodarBilling).toHaveBeenCalled();
+      expect(h.rodarApuracaoAutomatica).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      h.sendEmail.mockReset();
+      h.sendEmail.mockResolvedValue({ ok: true });
+    }
+  });
+});
+
+describe('GET /api/cron/obrigacoes — uma exceção no e-mail não cala o resto do cron', () => {
+  it('sendEmail lançando não derruba o GET nem as etapas seguintes', async () => {
+    // `sendEmail` foi endurecido para nunca lançar, mas o laço também passou a
+    // ter try/catch: a resiliência do cron não pode depender do bom
+    // comportamento de um cliente HTTP.
+    h.estado.pendEmail = [{
+      id: 'n1', titulo: 't', corpo: 'c', norma: null, action_href: '/impostos',
+      escritorio_nome: null, destinatario_email: 'a@b.com',
+    }];
+    h.sendEmail.mockRejectedValueOnce(new TypeError('fetch failed'));
+
+    try {
+      const resp = await GET(requisicaoFalsa());
+      expect(resp.status).toBe(200);
+      const json = await resp.json();
+      expect(json.ok).toBe(true);
+      expect(h.rodarBilling).toHaveBeenCalled();
+      expect(h.rodarApuracaoAutomatica).toHaveBeenCalled();
+    } finally {
+      h.sendEmail.mockReset();
+      h.sendEmail.mockResolvedValue({ ok: true });
+    }
   });
 });

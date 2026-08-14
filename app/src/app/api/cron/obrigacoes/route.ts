@@ -12,6 +12,7 @@ import { rodarBilling } from '@/lib/billing/cron';
 import { rodarConciliacao } from '@/lib/conciliacao/cron';
 import { rodarApuracaoAutomatica } from '@/lib/fiscal/apuracao-cron';
 import { rodarPagamentosSerpro } from '@/lib/fiscal/pagamentos-serpro-cron';
+import { dentroDoOrcamento } from '@/lib/fiscal/apuracao-cron-plano';
 import { configDeEnv, enviarMensagem } from '@/lib/uazapi/cliente';
 
 // TEMPO DE EXECUCAO — 60s, o teto do plano Hobby da Vercel.
@@ -25,6 +26,32 @@ import { configDeEnv, enviarMensagem } from '@/lib/uazapi/cliente';
 // sacrificada — ou seja, a rede de seguranca do escritorio cujo webhook nunca
 // chega seria justamente o que deixaria de existir, em silencio.
 export const maxDuration = 60;
+
+// ── ORÇAMENTO DOS DOIS LAÇOS DE AVISO ───────────────────────────────────────
+//
+// O comentário acima sempre disse que a defesa contra o wall-clock é a ORDEM —
+// o que depende de terceiro roda por último e é o primeiro a ser sacrificado.
+// Só que os DOIS PRIMEIROS laços daqui também falam com terceiros, e rodavam
+// SEM teto: até 200 e-mails e até 50 avisos de WhatsApp (cada um podendo virar
+// duas mensagens), todos em sequência. A conta não fechava — 200 chamadas de
+// ~400ms já passam de 60s sozinhas — e o que morria não era o laço: era tudo
+// que vem DEPOIS dele (conciliação, pagamentos da SERPRO, billing, apuração),
+// em silêncio, porque timeout de wall-clock não é capturável por try/catch e o
+// resumo nunca chega a ser gravado.
+//
+// A ordem estava certa; faltava o teto. Com ele, um dia de volume alto atrasa
+// avisos — que retentam na rodada seguinte, porque o carimbo só cai no sucesso
+// — em vez de calar as etapas com prazo.
+//
+// Os números: ~27s para os dois laços deixam ~33s para conciliação, SERPRO
+// (12s de orçamento próprio), billing e apuração (orçamento próprio). Os custos
+// estimados são o caso TÍPICO, não o timeout: orçar pelo pior caso de cada item
+// faria o laço não começar quase nunca.
+const ORCAMENTO_EMAIL_MS = 15_000;
+const CUSTO_EMAIL_MS = 1_000;
+const ORCAMENTO_WHATSAPP_MS = 12_000;
+/** Um item de WhatsApp pode virar DUAS mensagens (aviso + linha digitável). */
+const CUSTO_WHATSAPP_MS = 1_500;
 
 // Achado no brainstorming do item "pagamento do DAS no WhatsApp": a SERPRO
 // nao devolve Pix para DAS em nenhum servico identificado (GERARDAS12 nem
@@ -113,26 +140,43 @@ export async function GET(req: Request) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://balu-contabil.vercel.app';
   let enviados = 0;
   let pulados = 0;
-  for (const n of pend ?? []) {
-    const html = renderNotificacaoEmail({
-      titulo: n.titulo,
-      corpo: n.corpo,
-      norma: n.norma,
-      actionUrl: `${siteUrl}${n.action_href ?? '/'}`,
-      escritorioNome: n.escritorio_nome,
-    });
-    const r = await sendEmail({
-      to: n.destinatario_email,
-      subject: n.titulo,
-      html,
-      fromName: n.escritorio_nome ?? undefined,
-    });
-    if (r.ok) {
-      await admin.from('notifications').update({ enviada_email_em: new Date().toISOString() }).eq('id', n.id);
-      enviados++;
-    } else {
-      pulados++;
+  let emailRestantes = 0;
+  // `try` próprio, pelo mesmo motivo das etapas de baixo: este laço não pode
+  // ser o que impede a conciliação e o billing de rodarem. O que sobra sem
+  // enviar continua pendente (`enviada_email_em` só é carimbado no sucesso) e
+  // a rodada de amanhã retenta.
+  try {
+    const inicioEmail = Date.now();
+    const fila = pend ?? [];
+    for (let i = 0; i < fila.length; i++) {
+      if (!dentroDoOrcamento(inicioEmail, Date.now(), ORCAMENTO_EMAIL_MS, CUSTO_EMAIL_MS)) {
+        emailRestantes = fila.length - i;
+        console.warn(`[cron obrigacoes] orçamento de e-mail esgotado, ${emailRestantes} ficaram para a próxima rodada`);
+        break;
+      }
+      const n = fila[i];
+      const html = renderNotificacaoEmail({
+        titulo: n.titulo,
+        corpo: n.corpo,
+        norma: n.norma,
+        actionUrl: `${siteUrl}${n.action_href ?? '/'}`,
+        escritorioNome: n.escritorio_nome,
+      });
+      const r = await sendEmail({
+        to: n.destinatario_email,
+        subject: n.titulo,
+        html,
+        fromName: n.escritorio_nome ?? undefined,
+      });
+      if (r.ok) {
+        await admin.from('notifications').update({ enviada_email_em: new Date().toISOString() }).eq('id', n.id);
+        enviados++;
+      } else {
+        pulados++;
+      }
     }
+  } catch (err) {
+    console.error('[cron obrigacoes] laço de e-mail falhou', err);
   }
 
   // Terceiro loop (Bloco 6B): WhatsApp via uazapi. Mesma idempotência do
@@ -152,11 +196,23 @@ export async function GET(req: Request) {
   const { data: pendWhats, error: ePendWhats } = await admin.rpc('notificacoes_pendentes_whatsapp', { p_limite: 50 });
   let whatsappEnviados = 0;
   let whatsappPulados = 0;
+  let whatsappRestantes = 0;
   if (ePendWhats) {
     console.error('[cron obrigacoes] notificacoes_pendentes_whatsapp', ePendWhats.message);
   } else {
     const cfgUazapi = configDeEnv();
-    for (const n of pendWhats ?? []) {
+    const inicioWhats = Date.now();
+    const filaWhats = pendWhats ?? [];
+    for (let i = 0; i < filaWhats.length; i++) {
+      // Mesmo teto do laço de e-mail, e pelo mesmo motivo: este laço roda ANTES
+      // da conciliação, da SERPRO, do billing e da apuração. Cada item pode
+      // custar DUAS chamadas HTTP.
+      if (!dentroDoOrcamento(inicioWhats, Date.now(), ORCAMENTO_WHATSAPP_MS, CUSTO_WHATSAPP_MS)) {
+        whatsappRestantes = filaWhats.length - i;
+        console.warn(`[cron obrigacoes] orçamento de WhatsApp esgotado, ${whatsappRestantes} ficaram para a próxima rodada`);
+        break;
+      }
+      const n = filaWhats[i];
       const msg = montarTextoWhatsapp({
         titulo: n.titulo,
         corpo: n.corpo,
@@ -263,6 +319,11 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true, criadas, enviados, pulados,
     ...(ePend ? { email_erro: ePend.message } : {}),
+    // Fila que não coube no orçamento. Zero é o normal; número > 0 é o sinal
+    // de que o volume passou do que cabe numa rodada — e o único jeito de
+    // saber disso sem ler log, já que o resto do cron segue normalmente.
+    email_restantes: emailRestantes,
+    whatsapp_restantes: whatsappRestantes,
     guias_vencidas: eVenc ? null : (vencidas ?? 0),
     parametros_desatualizados: eParam ? null : (paramAvisos ?? 0),
     whatsapp_enviados: whatsappEnviados, whatsapp_pulados: whatsappPulados,
