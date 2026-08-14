@@ -201,7 +201,7 @@ async function sincronizarUmEscritorio(
     const ids = pagamentos.map((p) => p.id).filter(Boolean);
     const { data: linhas, error } = await sb
       .from('cobrancas_escritorio')
-      .select('id, status, pago_em, honorario_id, contabilidade_id, asaas_charge_id')
+      .select('id, status, pago_em, honorario_id, contabilidade_id, asaas_charge_id, empresa_cliente_id, descricao')
       .eq('contabilidade_id', contabilidadeId)
       .in('asaas_charge_id', ids);
     // Erro de LEITURA nao pode virar "nenhuma cobranca conhecida" e seguir em

@@ -79,7 +79,7 @@ async function cobrancaDoEscritorio(
 ): Promise<NextResponse> {
   const { data: cob, error: erroBusca } = await sb
     .from('cobrancas_escritorio')
-    .select('id, status, pago_em, honorario_id, contabilidade_id')
+    .select('id, status, pago_em, honorario_id, contabilidade_id, empresa_cliente_id, descricao')
     .eq('asaas_charge_id', efeito.chargeId)
     .maybeSingle();
 

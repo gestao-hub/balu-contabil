@@ -6,7 +6,7 @@ import { soDigitosWhatsapp } from '@/lib/whatsapp/numero';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getSiteUrl } from '@/lib/site-url';
-import { TIPOS_VALIDOS } from '@/lib/notifications/tipos';
+import { TIPOS_PREFERENCIAVEIS } from '@/lib/notifications/tipos';
 
 export type ContaActionResult = { ok: true; message?: string } | { ok: false; error: string };
 export type ActionResult<T = unknown> = { ok: true; data: T } | { ok: false; error: string };
@@ -123,15 +123,19 @@ export async function deleteAccountAction(): Promise<ContaActionResult> {
 /** Salva as preferências de notificação por e-mail (opt-out por tipo). As notificações
  *  no app sempre aparecem — este formulário controla apenas o envio de e-mail.
  *  Ausência de linha em `notification_preferences` equivale a "e-mail habilitado"
- *  (default). `abertura_etapa` é excluído (é transacional do Bloco 2, não recorrente). */
+ *  (default).
+ *
+ *  A lista é `TIPOS_PREFERENCIAVEIS`, a MESMA que a tela renderiza — e tem de
+ *  continuar sendo. Um tipo gravado aqui e ausente do formulário nunca aparece
+ *  em `desativar_email`, então cada submit o regravaria como habilitado: o
+ *  usuário não conseguiria desligá-lo nem por outro caminho. */
 export async function salvarPreferenciasNotificacaoAction(fd: FormData): Promise<ContaActionResult> {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
 
   const desativados = fd.getAll('desativar_email').map(String);
-  const rows = TIPOS_VALIDOS
-    .filter((tipo) => tipo !== 'abertura_etapa')
+  const rows = TIPOS_PREFERENCIAVEIS
     .map((tipo) => ({
       owner_user_id: user.id,
       tipo,

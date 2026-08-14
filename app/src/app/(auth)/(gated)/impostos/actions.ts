@@ -8,7 +8,7 @@ import type { ResultadoApuracao } from '@/lib/fiscal/apuracao-types';
 import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
 import { consultarDeclaracoesSimples } from '@/lib/fiscal/serpro-consulta';
 import { consultarPagamentosDas } from '@/lib/fiscal/serpro-pagamentos';
-import type { PagamentoDas } from '@/lib/fiscal/serpro-pagamentos-parse';
+import { casarPagamento, indexarPagamentos, planejarBaixas } from '@/lib/fiscal/pagamentos-das-match';
 import { consultarDasnSimei } from '@/lib/fiscal/serpro-dasn-simei';
 import { gerarDasSimples } from '@/lib/fiscal/serpro-das-simples';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
@@ -265,15 +265,6 @@ export async function gerarDasMeiAction(competencia: string): Promise<GerarDasRe
 export type ConsultaDasResult = { ok: true; count: number } | { ok: false; error: string };
 
 /**
- * Normaliza um número de DAS para casamento: só dígitos, sem zeros à esquerda.
- * O CONSDECLARACAO13 traz "07202610733758790" e o PAGAMENTOS71 "7202610733758790" —
- * mesmo documento, só diferindo no zero inicial.
- */
-function normalizarNumeroDas(v: string | null | undefined): string {
-  return String(v ?? '').replace(/\D+/g, '').replace(/^0+/, '');
-}
-
-/**
  * Consulta na SERPRO (PGDAS-D / CONSDECLARACAO13) as declarações/DAS do ano-calendário atual
  * e faz upsert da SITUAÇÃO em guias_fiscais. Só Simples. Read-only na SERPRO (não emite/declara).
  */
@@ -312,11 +303,14 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
   if (!pagtos.ok) {
     return { ok: false, error: 'A SERPRO está instável agora (consulta de pagamentos falhou). Tente atualizar de novo em instantes.' };
   }
-  const pagPorDocumento = new Map<string, PagamentoDas>();
-  for (const p of pagtos.pagamentos) {
-    const chave = normalizarNumeroDas(p.numeroDocumento);
-    if (chave) pagPorDocumento.set(chave, p);
-  }
+  // Casamento e decisão de baixa moram em `lib/fiscal/pagamentos-das-match.ts`,
+  // compartilhados com a varredura diária do cron — duas cópias da normalização
+  // do número do documento divergiriam em silêncio.
+  const pagPorDocumento = indexarPagamentos(pagtos.pagamentos);
+  const plano = planejarBaixas(
+    r.situacoes.map((s) => ({ competencia: s.competencia, numeroDas: s.numeroDas })),
+    pagtos.pagamentos,
+  );
 
   // Uma linha por competência (situação do CONSDECLARACAO13), enriquecida em 2 fontes:
   //  - PAGA: casa o DAS pago do PAGAMENTOS71 pelo NÚMERO DO DOCUMENTO (não por competência —
@@ -324,7 +318,14 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
   //    CONSDECLARACAO13, é ignorado de graça).
   //  - EM ABERTO (declarada e não paga): GERARDAS12 traz valor + vencimento + linha digitável + PDF.
   //    É 1 chamada SERPRO por competência em aberto → só roda nas declaradas não pagas.
-  const rows: Record<string, unknown>[] = [];
+  // DUAS listas, e o motivo é de contrato, não de estilo. Quem decide "guia
+  // paga" agora é a RPC — então nenhuma linha que fale de pagamento pode
+  // carregar `status`. Como o PostgREST monta um INSERT só para o lote, um
+  // array com chaves diferentes obrigaria a confiar em como ele preenche o que
+  // falta (NULL? default?) para uma coluna que é justamente a disputada. Dois
+  // upserts homogêneos custam um round-trip e não deixam essa dúvida em pé.
+  const rowsComStatus: Record<string, unknown>[] = [];
+  const rowsSemStatus: Record<string, unknown>[] = [];
   for (const s of r.situacoes) {
     const base = {
       company_id: companyId,
@@ -338,17 +339,18 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
       deleted_at: null,
     };
 
-    const pag = s.numeroDas ? pagPorDocumento.get(normalizarNumeroDas(s.numeroDas)) : undefined;
+    const pag = casarPagamento(s.numeroDas, pagPorDocumento);
     if (pag) {
-      rows.push({
+      // Os VALORES continuam vindo por upsert — a RPC não escreve valor nenhum.
+      // `status` e `data_pagamento` é que saíram daqui: eram o quarto caminho de
+      // baixa, e o único fora do ponto de escrita único.
+      rowsSemStatus.push({
         ...base,
-        status: 'paga',
         valor_total: pag.valorTotal,
         valor_principal: pag.valorPrincipal,
         valor_multa: pag.valorMulta,
         valor_juros: pag.valorJuros,
         data_vencimento: pag.dataVencimento,
-        data_pagamento: pag.dataPagamento,
       });
       continue;
     }
@@ -358,7 +360,7 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
       const das = await gerarDasSimples(supabase, companyId, s.competencia);
       if (das.ok && !das.result.semValor) {
         const d = das.result;
-        rows.push({
+        rowsComStatus.push({
           ...base,
           numero_das: d.numeroDas ?? s.numeroDas,
           status: 'gerada',
@@ -377,14 +379,77 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
     }
 
     // Só situação: sem valores no payload → o upsert preserva o que já estava gravado.
-    rows.push({ ...base, status: s.status });
+    //
+    // ⚠️ SEGUNDO VAZAMENTO, encontrado ao rotear o primeiro: `s.status` vem do
+    // CONSDECLARACAO13 e pode ser 'paga'. Gravá-lo aqui seria dar baixa por
+    // fora da RPC de novo — sem aviso, sem auditoria e, pior, sem
+    // `data_pagamento`, que é o sinal de idempotência da própria RPC. Quando a
+    // listagem diz "paga" e o PAGAMENTOS71 não trouxe o documento com data,
+    // não temos o que a baixa exige: preservamos o que já está gravado e a
+    // próxima consulta reencontra o pagamento.
+    if (s.status === 'paga') rowsSemStatus.push({ ...base });
+    else rowsComStatus.push({ ...base, status: s.status });
   }
 
-  if (rows.length > 0) {
-    const { error } = await supabase
+  // O `.select()` não é enfeite: a guia pode estar NASCENDO neste mesmo upsert
+  // (primeira sincronização da empresa), e sem o id devolvido não há como
+  // chamar a RPC de baixa em seguida.
+  type GuiaSalva = { id: string; competencia_referencia: string | null };
+  const salvas: GuiaSalva[] = [];
+  for (const lote of [rowsComStatus, rowsSemStatus]) {
+    if (lote.length === 0) continue;
+    const { data, error } = await supabase
       .from('guias_fiscais')
-      .upsert(rows, { onConflict: 'company_id,competencia_referencia' });
+      .upsert(lote, { onConflict: 'company_id,competencia_referencia' })
+      .select('id, competencia_referencia');
     if (error) return { ok: false, error: `Falha ao salvar a listagem: ${error.message}` };
+    salvas.push(...((data ?? []) as GuiaSalva[]));
+  }
+
+  // ─── A BAIXA, PELO PONTO DE ESCRITA ÚNICO (migration 0072/0087) ────────────
+  //
+  // Até 14/08/2026 este sync gravava `status: 'paga'` no upsert acima. Era o
+  // QUARTO caminho de baixa e o único fora da RPC — e a consequência não era
+  // teórica: quando a Receita revelava que o DAS estava pago, ninguém era
+  // notificado e nada ia para a auditoria. O cliente via a guia mudar de cor
+  // sozinha, sem aviso e sem resposta para "por que isto ficou pago?".
+  //
+  // Erro em uma competência NÃO derruba as outras (mesmo padrão de
+  // `lib/conciliacao/cron.ts`): a guia fica em aberto e a próxima consulta
+  // tenta de novo — o pagamento continua no PAGAMENTOS71.
+  let baixadas = 0;
+  const errosDeBaixa: string[] = [];
+  for (const { competencia, dataPagamento } of plano.baixas) {
+    const guia = salvas.find((g) => g.competencia_referencia === competencia);
+    if (!guia) { errosDeBaixa.push(`${competencia}: guia não retornada pelo upsert`); continue; }
+
+    const { data: res, error: eBaixa } = await supabase.rpc('registrar_pagamento_guia', {
+      p_guia_id: guia.id,
+      p_data_pagamento: dataPagamento,
+      // A autorização da RPC é `user_owns_company`, e aqui `companyId` veio de
+      // `profiles.current_company` — o próprio titular. Reaproveitar esta action
+      // no painel do contador (que só tem SELECT sobre a carteira) faria a RPC
+      // devolver `nao_autorizado`: aquele caminho precisaria de service_role.
+      p_origem: 'serpro',
+      p_transacao_id: null,
+    });
+    if (eBaixa) { errosDeBaixa.push(`${competencia}: ${eBaixa.message}`); continue; }
+
+    const baixa = res as { ok?: boolean; motivo?: string; ja_estava_paga?: boolean } | null;
+    if (!baixa?.ok) { errosDeBaixa.push(`${competencia}: ${baixa?.motivo ?? 'falha desconhecida'}`); continue; }
+    // `ja_estava_paga` não conta: a RPC é idempotente e devolve ok=true para
+    // guia já quitada. Somar isso faria o número reportar baixa nova a cada
+    // sincronização sobre a mesma guia.
+    if (!baixa.ja_estava_paga) baixadas++;
+  }
+  if (baixadas > 0) {
+    console.info(`[consultarDeclaracoes] ${baixadas} guia(s) baixada(s) pela Receita (origem serpro)`);
+  }
+  if (errosDeBaixa.length > 0) {
+    console.error('[consultarDeclaracoes] baixas não registradas', errosDeBaixa.join(' | '));
+  }
+  if (plano.semDataDePagamento > 0) {
+    console.warn(`[consultarDeclaracoes] ${plano.semDataDePagamento} DAS pago(s) sem data de arrecadação — baixa adiada`);
   }
 
   // Declarações (numeroDeclaracao/dataTransmissao) vão p/ a tabela própria — separadas do DAS.

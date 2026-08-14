@@ -33,8 +33,13 @@ const h = vi.hoisted(() => {
 
   const createAdminClient = vi.fn(() => ({ rpc, from }));
   const sendEmail = vi.fn(async () => ({ ok: true }));
+  // O retorno é o `EnvioResultado` de `lib/uazapi/cliente` — inclui a falha.
+  // Sem declarar a união, `mockResolvedValueOnce({ ok: false, erro })` não
+  // compila, e os testes de falha de envio não teriam como existir.
   const enviarMensagem = vi.fn(
-    async (_cfg: unknown, _msg: { telefone: string; texto: string }) => ({ ok: true }),
+    async (
+      _cfg: unknown, _msg: { telefone: string; texto: string },
+    ): Promise<{ ok: true } | { ok: false; skipped?: true; erro?: string }> => ({ ok: true }),
   );
   const configDeEnv = vi.fn(() => null);
   const rodarBilling = vi.fn(async () => ({ reconciliadas: 0 }));
@@ -50,8 +55,13 @@ const h = vi.hoisted(() => {
   const rodarApuracaoAutomatica = vi.fn(async () => ({
     competencia: '202607', elegiveis: 3, apuradas: 3, puladas: 0, erros: 0, interrompida: false,
   }));
+  // Frente 3. Mockada pelo mesmo motivo das duas acima — e aqui o motivo é mais
+  // forte: rodando de verdade, ela FALARIA COM A SERPRO.
+  const rodarPagamentosSerpro = vi.fn(async () => ({
+    elegiveis: 2, consultadas: 2, baixadas: 1, sem_data: 0, erros: 0, cortada_por_orcamento: false,
+  }));
 
-  return { estado, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling, rodarConciliacao, rodarApuracaoAutomatica };
+  return { estado, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling, rodarConciliacao, rodarApuracaoAutomatica, rodarPagamentosSerpro };
 });
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: h.createAdminClient }));
@@ -60,6 +70,7 @@ vi.mock('@/lib/billing/cron', () => ({ rodarBilling: h.rodarBilling }));
 vi.mock('@/lib/conciliacao/cron', () => ({ rodarConciliacao: h.rodarConciliacao }));
 vi.mock('@/lib/uazapi/cliente', () => ({ configDeEnv: h.configDeEnv, enviarMensagem: h.enviarMensagem }));
 vi.mock('@/lib/fiscal/apuracao-cron', () => ({ rodarApuracaoAutomatica: h.rodarApuracaoAutomatica }));
+vi.mock('@/lib/fiscal/pagamentos-serpro-cron', () => ({ rodarPagamentosSerpro: h.rodarPagamentosSerpro }));
 
 import { GET } from './route';
 
@@ -79,6 +90,8 @@ beforeEach(() => {
   h.enviarMensagem.mockClear();
   h.rodarApuracaoAutomatica.mockClear();
   h.rodarBilling.mockClear();
+  h.rodarPagamentosSerpro.mockClear();
+  h.rodarConciliacao.mockClear();
 });
 
 describe('GET /api/cron/obrigacoes — linha digitável na mensagem de WhatsApp', () => {
@@ -93,18 +106,74 @@ describe('GET /api/cron/obrigacoes — linha digitável na mensagem de WhatsApp'
 
     await GET(requisicaoFalsa());
 
-    // Texto exato (não só stringContaining) para provar a ORDEM: título,
-    // corpo, código de pagamento, e só depois o link — cobre o caso de
-    // linha_digitavel + action_href juntos.
-    const chamada = h.enviarMensagem.mock.calls[0][1] as { telefone: string; texto: string };
-    expect(chamada.telefone).toBe('+5511999990000');
-    expect(chamada.texto).toBe(
+    // DUAS mensagens: o aviso, e a linha digitável SOZINHA.
+    //
+    // Texto exato (não só stringContaining) porque o que se prova aqui é que a
+    // segunda mensagem não tem NADA além do número — no WhatsApp o
+    // toque-e-segura copia a mensagem inteira, então qualquer palavra a mais
+    // vai junto para o campo do banco.
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(2);
+
+    const aviso = h.enviarMensagem.mock.calls[0][1] as { telefone: string; texto: string };
+    expect(aviso.telefone).toBe('+5511999990000');
+    expect(aviso.texto).toBe(
       'Seu DAS está próximo do vencimento\n\n' +
       'Seu DAS vence em 3 dia(s). Pague pelo app para ficar em dia.\n\n' +
-      'Código para pagar (copie e cole no app do seu banco):\n' +
-      '85810.00019 03605.999999 00000.000000 1 00000000008090\n\n' +
+      'O código para pagar vai na próxima mensagem — é só tocar e segurar para copiar.\n\n' +
       'https://balu-contabil.vercel.app/impostos',
     );
+
+    const codigo = h.enviarMensagem.mock.calls[1][1] as { telefone: string; texto: string };
+    expect(codigo.telefone).toBe('+5511999990000');
+    expect(codigo.texto).toBe('85810.00019 03605.999999 00000.000000 1 00000000008090');
+  });
+
+  it('sem linha digitável, manda UMA mensagem só', async () => {
+    h.estado.pendWhats = [{
+      id: 'n1b', owner_user_id: 'u1', tipo: 'pgdas_pendente',
+      titulo: 'Título', corpo: 'Corpo', action_href: null, whatsapp_numero: '+5511999990000',
+      linha_digitavel: null,
+    }];
+
+    await GET(requisicaoFalsa());
+
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(1);
+  });
+
+  it('se o aviso falha, a linha digitável NÃO é enviada solta', async () => {
+    // Um número sem nada em volta chegando ao cliente é pior que silêncio.
+    h.estado.pendWhats = [{
+      id: 'n1c', owner_user_id: 'u1', tipo: 'das_a_vencer',
+      titulo: 'Título', corpo: 'Corpo', action_href: null, whatsapp_numero: '+5511999990000',
+      linha_digitavel: '85810.00019',
+    }];
+    h.enviarMensagem.mockResolvedValueOnce({ ok: false, erro: 'uazapi respondeu 500' });
+
+    const corpo = await (await GET(requisicaoFalsa())).json();
+
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(1);
+    expect(corpo.whatsapp_enviados).toBe(0);
+    expect(corpo.whatsapp_pulados).toBe(1);
+  });
+
+  it('se só a linha falha, nada é carimbado — a rodada seguinte reenvia as duas', async () => {
+    // Carimbar aqui deixaria o cliente com "o código vai na próxima mensagem" e
+    // nenhuma próxima mensagem, sem retentativa. Aviso repetido incomoda; aviso
+    // sem o código para pagar não serve.
+    h.estado.pendWhats = [{
+      id: 'n1d', owner_user_id: 'u1', tipo: 'das_a_vencer',
+      titulo: 'Título', corpo: 'Corpo', action_href: null, whatsapp_numero: '+5511999990000',
+      linha_digitavel: '85810.00019',
+    }];
+    h.enviarMensagem
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: false, erro: 'uazapi respondeu 500' });
+
+    const corpo = await (await GET(requisicaoFalsa())).json();
+
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(2);
+    expect(corpo.whatsapp_enviados).toBe(0);
+    expect(corpo.whatsapp_pulados).toBe(1);
   });
 
   it('notificação DAS sem linha_digitavel (null): mensagem igual ao formato atual', async () => {
@@ -134,7 +203,7 @@ describe('GET /api/cron/obrigacoes — linha digitável na mensagem de WhatsApp'
     await GET(requisicaoFalsa());
 
     const chamada = h.enviarMensagem.mock.calls[0][1] as { texto: string };
-    expect(chamada.texto).not.toContain('Código para pagar');
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(1);
     expect(chamada.texto).toBe('Título\n\nCorpo');
   });
 
@@ -148,7 +217,7 @@ describe('GET /api/cron/obrigacoes — linha digitável na mensagem de WhatsApp'
     await GET(requisicaoFalsa());
 
     const chamada = h.enviarMensagem.mock.calls[0][1] as { texto: string };
-    expect(chamada.texto).not.toContain('Código para pagar');
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(1);
     expect(chamada.texto).toBe('Título\n\nCorpo');
   });
 
@@ -163,8 +232,9 @@ describe('GET /api/cron/obrigacoes — linha digitável na mensagem de WhatsApp'
 
     await GET(requisicaoFalsa());
 
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(1);
     const chamada = h.enviarMensagem.mock.calls[0][1] as { texto: string };
-    expect(chamada.texto).not.toContain('Código para pagar');
+    expect(chamada.texto).not.toContain('código para pagar');
   });
 });
 
@@ -321,6 +391,41 @@ describe('GET /api/cron/obrigacoes — alarme de parâmetro fiscal (0081)', () =
     expect(res.status).toBe(200);
     expect(corpo.ok).toBe(true);
     expect(corpo.parametros_desatualizados).toBeNull();
+  });
+});
+
+describe('GET /api/cron/obrigacoes — pagamentos na Receita (Frente 3)', () => {
+  it('roda e reporta o resultado', async () => {
+    const corpo = await (await GET(requisicaoFalsa())).json();
+
+    expect(h.rodarPagamentosSerpro).toHaveBeenCalledTimes(1);
+    expect(corpo.pagamentos_serpro).toMatchObject({ consultadas: 2, baixadas: 1 });
+  });
+
+  it('roda DEPOIS da conciliação e ANTES do billing', async () => {
+    await GET(requisicaoFalsa());
+
+    // Mesma disciplina de ordem do resto da rota: obrigação fiscal primeiro,
+    // HTTP de terceiro por último. A varredura da SERPRO é a chamada mais cara
+    // do cron — antes da materialização, ela custaria o que tem prazo legal.
+    const tConciliacao = h.rodarConciliacao.mock.invocationCallOrder[0];
+    const tSerpro = h.rodarPagamentosSerpro.mock.invocationCallOrder[0];
+    const tBilling = h.rodarBilling.mock.invocationCallOrder[0];
+    expect(tConciliacao).toBeLessThan(tSerpro);
+    expect(tSerpro).toBeLessThan(tBilling);
+  });
+
+  it('SERPRO fora do ar não derruba o cron nem cala o billing', async () => {
+    h.rodarPagamentosSerpro.mockRejectedValueOnce(new Error('serpro 503'));
+
+    const res = await GET(requisicaoFalsa());
+    const corpo = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(corpo.ok).toBe(true);
+    expect(corpo.pagamentos_serpro).toMatchObject({ erro: expect.stringContaining('503') });
+    expect(corpo.billing).toBeDefined();
+    expect(corpo.apuracao).toBeDefined();
   });
 });
 

@@ -2,10 +2,14 @@
 // @custom — Bloco 1 (Motor de Obrigações + Notificações), Task 9: aba "Notificações"
 // da conta — opt-out de e-mail por tipo. O checkbox marcado significa "desativar
 // e-mail" para aquele tipo; as notificações no app sempre aparecem, independente
-// desta preferência. `abertura_etapa` fica de fora (transacional do Bloco 2).
+// desta preferência.
+//
+// ⚠️ Esta tela governa E-MAIL, não WhatsApp: `notificacoes_pendentes_whatsapp`
+// (0068) não consulta `notification_preferences`, e a tabela sequer tem coluna
+// de canal. No WhatsApp o controle é o interruptor global do opt-in, abaixo.
 
 import { createServerClient } from '@/lib/supabase/server';
-import { NOTIFICACAO_TIPOS, TIPOS_VALIDOS } from '@/lib/notifications/tipos';
+import { NOTIFICACAO_TIPOS, TIPOS_PREFERENCIAVEIS } from '@/lib/notifications/tipos';
 import { salvarPreferenciasNotificacaoAction } from './actions';
 import WhatsappOptInForm from './WhatsappOptInForm';
 
@@ -26,7 +30,10 @@ export default async function PreferenciasNotificacao() {
     (data ?? []).filter((r) => !r.email_enabled).map((r) => r.tipo as string),
   );
 
-  const tipos = TIPOS_VALIDOS.filter((t) => t !== 'abertura_etapa');
+  // Quem decide as exclusões é `lib/notifications/tipos.ts`, com o motivo de
+  // cada uma escrito lá — a tela só renderiza. `salvarPreferenciasNotificacaoAction`
+  // grava exatamente esta mesma lista.
+  const tipos = TIPOS_PREFERENCIAVEIS;
 
   // notification_preferences é escopada por RLS via sessão (sem getUser() explícito);
   // profiles precisa do id do titular para o filtro `user_id = user.id` (Task 1/3).

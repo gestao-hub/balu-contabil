@@ -32,6 +32,10 @@ export type CobrancaDoEscritorio = {
   pago_em: string | null;
   honorario_id: string | null;
   contabilidade_id: string;
+  /** Quem pagou. Sem isto não há a quem mandar a quitação (Frente 3). */
+  empresa_cliente_id: string;
+  /** Aparece no corpo do aviso — é como o cliente reconhece a cobrança. */
+  descricao: string | null;
 };
 
 /**
@@ -124,6 +128,13 @@ export async function aplicarPagamentoNaCobranca(
     return { ok: true, mudou: false, motivo: 'perdeu_corrida' };
   }
 
+  // O aviso sai DEPOIS do compare-and-swap ter afetado linha e ANTES do
+  // `return` de quem não tem honorário: cobrança avulsa também é dinheiro que
+  // entrou, e o cliente que a pagou merece a confirmação do mesmo jeito.
+  // Avisar antes do CAS seria anunciar um pagamento que outro escritor pode ter
+  // desfeito no mesmo instante.
+  if (novo.status === 'paga') await avisarPagamentoConfirmado(sb, cob, origem);
+
   // ─── O SEMÁFORO DO HONORÁRIO (decisão 7.4) ────────────────────────────────
   // Onde há cobrança pela subconta, quem move o semáforo é o Asaas — e fica
   // MARCADO como tal, para não se confundir com a marcação manual do contador.
@@ -163,4 +174,85 @@ export async function aplicarPagamentoNaCobranca(
   }
 
   return { ok: true, mudou: true, status: novo.status };
+}
+
+/**
+ * O aviso de "pagamento confirmado" pelo Asaas (Frente 3, §3.3).
+ *
+ * MORA AQUI, E NÃO NA ROTA DO WEBHOOK. A spec dizia webhook; o código diz que
+ * quem escreve o pagamento do escritório são DOIS caminhos — o webhook e a
+ * varredura diária — e este módulo existe porque os dois têm de escrever a
+ * mesma coisa. Notificar só na rota faria o pagamento descoberto pela varredura
+ * passar em silêncio, que é exatamente o defeito que a Frente 3 veio consertar
+ * do lado da SERPRO, repetido em outra tabela.
+ *
+ * DOIS DESTINATÁRIOS, DUAS FRASES (decisão aprovada no card):
+ *  - o CLIENTE recebe a quitação — "seu pagamento foi confirmado";
+ *  - o ESCRITÓRIO recebe o recebimento — "entrou o pagamento de fulano".
+ * É o mesmo fato, mas quem lê é outro e o que ele precisa saber é outro.
+ *
+ * Falha aqui LOGA E SEGUE: o dinheiro já foi escrito, e um aviso que não saiu
+ * não pode desfazer isso nem derrubar quem chamou.
+ */
+async function avisarPagamentoConfirmado(
+  sb: SupabaseClient, cob: CobrancaDoEscritorio, origem: 'webhook' | 'reconciliacao',
+): Promise<void> {
+  try {
+    const { data: empresa } = await sb
+      .from('companies').select('user_id, nome, razao_social')
+      .eq('id', cob.empresa_cliente_id).maybeSingle();
+
+    const { data: membros } = await sb
+      .from('contabilidade_membros').select('user_id')
+      .eq('contabilidade_id', cob.contabilidade_id);
+
+    const oQue = cob.descricao?.trim() || 'Cobrança do escritório';
+    const cliente = (empresa?.nome as string | null)
+      ?? (empresa?.razao_social as string | null) ?? 'seu cliente';
+
+    const linhas: Record<string, unknown>[] = [];
+
+    // Empresa sem dono (cadastrada pelo contador antes de o cliente aceitar o
+    // convite) não tem a quem avisar — `companies.user_id` é nullable.
+    if (empresa?.user_id) {
+      linhas.push({
+        owner_user_id: empresa.user_id,
+        company_id: cob.empresa_cliente_id,
+        tipo: 'pagamento_confirmado',
+        severidade: 'info',
+        titulo: 'Pagamento confirmado',
+        corpo: `${oQue} · confirmado pelo Asaas. Nada a fazer.`,
+        entidade_ref: cob.id,
+        action_href: '/honorarios',
+        // O Asaas REENTREGA eventos — a tabela `cobrancas_escritorio` já carrega
+        // essa cicatriz no índice único de `asaas_charge_id` (0053). A chave
+        // única por cobrança + o índice (owner_user_id, chave) da 0045 fazem a
+        // idempotência ser do banco, não da esperança.
+        chave: `pagamento_confirmado:cobranca:${cob.id}`,
+      });
+    }
+
+    for (const m of membros ?? []) {
+      linhas.push({
+        owner_user_id: m.user_id,
+        company_id: null, // aviso do escritório, não de uma empresa (mesma forma da 0070)
+        tipo: 'pagamento_confirmado',
+        severidade: 'info',
+        titulo: 'Pagamento recebido',
+        corpo: `Entrou o pagamento de ${cliente} — ${oQue}.`,
+        entidade_ref: cob.id,
+        action_href: '/contador/cobrancas',
+        chave: `pagamento_confirmado:cobranca:${cob.id}:escritorio`,
+      });
+    }
+
+    if (linhas.length === 0) return;
+
+    const { error } = await sb
+      .from('notifications')
+      .upsert(linhas, { onConflict: 'owner_user_id,chave', ignoreDuplicates: true });
+    if (error) console.error(`[4b ${origem}] aviso de pagamento nao criado`, cob.id, error.message);
+  } catch (e) {
+    console.error(`[4b ${origem}] aviso de pagamento falhou`, cob.id, e instanceof Error ? e.message : e);
+  }
 }

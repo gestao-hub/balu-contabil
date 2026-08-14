@@ -11,6 +11,7 @@ import { renderNotificacaoEmail } from '@/lib/notifications/email-template';
 import { rodarBilling } from '@/lib/billing/cron';
 import { rodarConciliacao } from '@/lib/conciliacao/cron';
 import { rodarApuracaoAutomatica } from '@/lib/fiscal/apuracao-cron';
+import { rodarPagamentosSerpro } from '@/lib/fiscal/pagamentos-serpro-cron';
 import { configDeEnv, enviarMensagem } from '@/lib/uazapi/cliente';
 
 // TEMPO DE EXECUCAO — 60s, o teto do plano Hobby da Vercel.
@@ -32,20 +33,30 @@ export const maxDuration = 60;
 // digitavel do boleto, ja persistida em guias_fiscais desde a geracao da
 // guia. Funcao pura para poder testar a montagem da mensagem sem mockar
 // rede/banco.
+//
+// DUAS MENSAGENS, E O MOTIVO É O DEDO DO CLIENTE (Frente 3, Task 4)
+// Até 14/08/2026 isto devolvia UMA string com o rótulo "Código para pagar…"
+// logo acima do número. No WhatsApp, o toque-e-segura copia a MENSAGEM
+// INTEIRA — então quem tentava copiar a linha digitável levava junto o título,
+// o corpo, o rótulo e o link, e colava isso no campo do banco. A linha vai
+// sozinha, numa mensagem só dela, sem nada em volta.
+// NÃO é `export` de propósito: `route.ts` só pode exportar handler HTTP, e o
+// `next build` recusa o resto (o `tsc --noEmit` do app pega isso pelos tipos
+// gerados em `.next/types`). Mesma cicatriz de `api/webhooks/asaas/route.ts`.
 function montarTextoWhatsapp(n: {
   titulo: string;
   corpo: string;
   action_href: string | null;
   linha_digitavel: string | null;
   siteUrl: string;
-}): string {
+}): { corpo: string; linhaDigitavel: string | null } {
+  const linhaDigitavel = n.linha_digitavel?.trim() || null;
   const linhas = [n.titulo, '', n.corpo];
-  const linhaDigitavel = n.linha_digitavel?.trim();
   if (linhaDigitavel) {
-    linhas.push('', 'Código para pagar (copie e cole no app do seu banco):', linhaDigitavel);
+    linhas.push('', 'O código para pagar vai na próxima mensagem — é só tocar e segurar para copiar.');
   }
   if (n.action_href) linhas.push('', `${n.siteUrl}${n.action_href}`);
-  return linhas.join('\n');
+  return { corpo: linhas.join('\n'), linhaDigitavel };
 }
 
 export async function GET(req: Request) {
@@ -146,21 +157,46 @@ export async function GET(req: Request) {
   } else {
     const cfgUazapi = configDeEnv();
     for (const n of pendWhats ?? []) {
-      const r = await enviarMensagem(cfgUazapi, {
-        telefone: n.whatsapp_numero,
-        texto: montarTextoWhatsapp({
-          titulo: n.titulo,
-          corpo: n.corpo,
-          action_href: n.action_href,
-          linha_digitavel: n.linha_digitavel,
-          siteUrl,
-        }),
+      const msg = montarTextoWhatsapp({
+        titulo: n.titulo,
+        corpo: n.corpo,
+        action_href: n.action_href,
+        linha_digitavel: n.linha_digitavel,
+        siteUrl,
       });
-      if (r.ok) {
+
+      const r = await enviarMensagem(cfgUazapi, { telefone: n.whatsapp_numero, texto: msg.corpo });
+
+      // ── O CARIMBO SÓ CAI QUANDO AS DUAS MENSAGENS PASSAM ─────────────────
+      //
+      // `enviada_whatsapp_em` é um carimbo só para um envio que agora tem duas
+      // partes, e alguma assimetria é inevitável. Das duas formas de errar,
+      // esta é a menos ruim:
+      //
+      //  - carimbar no sucesso da PRIMEIRA deixaria o cliente com um aviso
+      //    dizendo "o código vai na próxima mensagem" e nenhuma próxima
+      //    mensagem — a promessa quebrada, e sem retentativa;
+      //  - carimbar só no fim faz a rodada seguinte reenviar as duas. Aviso
+      //    repetido incomoda; aviso sem o código para pagar não serve.
+      //
+      // E se a primeira falha, a linha NÃO é enviada: um número solto, sem
+      // nada em volta, chegando ao cliente é pior que silêncio.
+      let ok = r.ok;
+      if (r.ok && msg.linhaDigitavel) {
+        const rLinha = await enviarMensagem(cfgUazapi, {
+          telefone: n.whatsapp_numero, texto: msg.linhaDigitavel,
+        });
+        if (!rLinha.ok) {
+          console.error('[cron obrigacoes] linha digitável não enviada', rLinha.erro ?? 'desconhecido');
+          ok = false;
+        }
+      }
+
+      if (ok) {
         await admin.from('notifications').update({ enviada_whatsapp_em: new Date().toISOString() }).eq('id', n.id);
         whatsappEnviados++;
       } else {
-        console.error('[cron obrigacoes] falha ao enviar whatsapp', r.erro ?? 'desconhecido');
+        if (!r.ok) console.error('[cron obrigacoes] falha ao enviar whatsapp', r.erro ?? 'desconhecido');
         whatsappPulados++;
       }
     }
@@ -177,6 +213,20 @@ export async function GET(req: Request) {
   } catch (err) {
     console.error('[cron obrigacoes] conciliacao falhou', err);
     conciliacao = { erro: String(err) };
+  }
+
+  // Frente 3: DAS pago descoberto na Receita. Entra DEPOIS da conciliação
+  // bancária e ANTES do billing, pela mesma disciplina de ordem já estabelecida
+  // aqui — o que é obrigação fiscal primeiro, o que depende de HTTP de terceiro
+  // por último. Isolada em try/catch, e com orçamento de tempo próprio: é uma
+  // chamada SERPRO por empresa, a mais cara do cron, e timeout de wall-clock
+  // não é capturável por try/catch — a única defesa é o laço se cortar antes.
+  let pagamentosSerpro: unknown = null;
+  try {
+    pagamentosSerpro = await rodarPagamentosSerpro(admin);
+  } catch (err) {
+    console.error('[cron obrigacoes] pagamentos serpro falhou', err);
+    pagamentosSerpro = { erro: String(err) };
   }
 
   // Billing (Bloco 4A) roda AQUI e não em cron próprio: o plano Hobby da
@@ -219,6 +269,7 @@ export async function GET(req: Request) {
     whatsapp_suprimidas: eSuprimir ? null : (suprimidas ?? 0),
     sla_avisos: eSla ? null : (slaAvisos ?? 0),
     conciliacao,
+    pagamentos_serpro: pagamentosSerpro,
     billing,
     apuracao,
   });

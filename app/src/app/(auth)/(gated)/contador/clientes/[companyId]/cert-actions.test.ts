@@ -33,9 +33,14 @@ const h = vi.hoisted(() => {
   };
   return {
     estado,
-    processar: vi.fn(async () => estado.processar),
-    companyDaCarteira: vi.fn(async () => estado.alvo),
-    registrarAuditoria: vi.fn(async () => {}),
+    // Os `...args: unknown[]` não são enfeite: sem eles o TS infere aridade
+    // ZERO e `mock.calls[0]` vira a tupla vazia `[]` — então os asserts que
+    // leem o ARGUMENTO (o companyId provado, o evento de auditoria) não
+    // compilam. Como o mock é justamente o que prova COM QUAL empresa a ação
+    // chamou o núcleo, a assinatura precisa admitir argumentos.
+    processar: vi.fn(async (..._args: unknown[]) => estado.processar),
+    companyDaCarteira: vi.fn(async (..._args: unknown[]) => estado.alvo),
+    registrarAuditoria: vi.fn(async (..._args: unknown[]) => {}),
     revalidatePath: vi.fn(),
   };
 });
