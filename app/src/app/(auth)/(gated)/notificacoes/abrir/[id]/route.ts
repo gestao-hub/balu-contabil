@@ -8,15 +8,10 @@
 // ser a do aviso antes do redirect, e o link que aponta pra cá diz o nome dela.
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-
-/**
- * `action_href` vem do banco. Só rota interna passa: uma barra, nunca duas
- * (`//evil.com` é URL absoluta protocol-relative) e nada de esquema.
- */
-function rotaInterna(href: string | null): string | null {
-  if (!href || !href.startsWith('/') || href.startsWith('//')) return null;
-  return href;
-}
+// O guard mora em `lib/` e não aqui: `route.ts` só pode exportar handler HTTP,
+// então uma função de segurança escrita neste arquivo não teria como ser
+// coberta por teste. Mesmo motivo de `api/webhooks/segredo.ts`.
+import { rotaInterna } from '@/lib/notifications/rota-interna';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -55,5 +50,5 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
   }
 
-  return irPara(rotaInterna(n.action_href) ?? '/notificacoes');
+  return irPara(rotaInterna(n.action_href, origem) ?? '/notificacoes');
 }

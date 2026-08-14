@@ -186,3 +186,91 @@ describe('avisos de pagamento confirmado (Asaas)', () => {
       .toContain('Razão Social LTDA');
   });
 });
+
+// ─── Correções de 14/08/2026 (rodada de revisão) ────────────────────────────
+
+describe('avisos de pagamento — o nome do cliente', () => {
+  it('nome VAZIO cai para a razão social (com `??` o "" vencia e deixava buraco)', async () => {
+    // `companies.nome` é nullable E aceita string vazia. Com `??`, só null/
+    // undefined caíam para o fallback: o corpo saía "Entrou o pagamento de  —
+    // Honorário de maio.", com a razão social ali do lado sem ser usada.
+    const { sb, notificacoes } = fazerClient({
+      empresa: { user_id: 'user_cliente', nome: '', razao_social: 'AL Piscinas LTDA' },
+      membros: [{ user_id: 'user_contador' }],
+    });
+
+    await aplicarPagamentoNaCobranca(sb, COBRANCA, PAGO, 'webhook');
+
+    const linhas = notificacoes[0].linhas as Record<string, unknown>[];
+    const escritorio = linhas.find((l) => l.owner_user_id === 'user_contador')!;
+    expect(escritorio.corpo).toContain('AL Piscinas LTDA');
+    expect(escritorio.corpo).not.toContain('de  —');
+  });
+
+  it('nome só com espaços também cai para a razão social', async () => {
+    const { sb, notificacoes } = fazerClient({
+      empresa: { user_id: null, nome: '   ', razao_social: 'Fulano ME' },
+      membros: [{ user_id: 'user_contador' }],
+    });
+
+    await aplicarPagamentoNaCobranca(sb, COBRANCA, PAGO, 'webhook');
+
+    const linhas = notificacoes[0].linhas as Record<string, unknown>[];
+    expect((linhas[0].corpo as string)).toContain('Fulano ME');
+  });
+
+  it('sem nome e sem razão social: o texto genérico, nunca um buraco', async () => {
+    const { sb, notificacoes } = fazerClient({
+      empresa: { user_id: null, nome: null, razao_social: null },
+      membros: [{ user_id: 'user_contador' }],
+    });
+
+    await aplicarPagamentoNaCobranca(sb, COBRANCA, PAGO, 'webhook');
+
+    const linhas = notificacoes[0].linhas as Record<string, unknown>[];
+    expect((linhas[0].corpo as string)).toContain('seu cliente');
+  });
+});
+
+describe('avisos de pagamento — para onde o aviso do CLIENTE leva', () => {
+  it('cobrança AVULSA aponta para /cobrancas — ela não existe em /honorarios', async () => {
+    // `/honorarios` lê a tabela `honorarios`; a avulsa (honorario_id null) só
+    // existe em `cobrancas_escritorio`, que do lado do cliente é `/cobrancas`.
+    // Apontar para /honorarios entregava lista vazia a quem acabou de pagar.
+    const { sb, notificacoes } = fazerClient({
+      empresa: { user_id: 'user_cliente', nome: 'Cliente', razao_social: null },
+      membros: [],
+    });
+
+    await aplicarPagamentoNaCobranca(sb, { ...COBRANCA, honorario_id: null }, PAGO, 'webhook');
+
+    const linhas = notificacoes[0].linhas as Record<string, unknown>[];
+    const cliente = linhas.find((l) => l.owner_user_id === 'user_cliente')!;
+    expect(cliente.action_href).toBe('/cobrancas');
+  });
+
+  it('cobrança de HONORÁRIO continua apontando para /honorarios', async () => {
+    const { sb, notificacoes } = fazerClient({
+      empresa: { user_id: 'user_cliente', nome: 'Cliente', razao_social: null },
+      membros: [],
+    });
+
+    await aplicarPagamentoNaCobranca(sb, { ...COBRANCA, honorario_id: 'hon1' }, PAGO, 'webhook');
+
+    const linhas = notificacoes[0].linhas as Record<string, unknown>[];
+    const cliente = linhas.find((l) => l.owner_user_id === 'user_cliente')!;
+    expect(cliente.action_href).toBe('/honorarios');
+  });
+
+  it('o aviso do ESCRITÓRIO aponta para /contador/cobrancas nos dois casos', async () => {
+    for (const honorarioId of [null, 'hon1']) {
+      const { sb, notificacoes } = fazerClient({
+        empresa: { user_id: null, nome: 'Cliente', razao_social: null },
+        membros: [{ user_id: 'user_contador' }],
+      });
+      await aplicarPagamentoNaCobranca(sb, { ...COBRANCA, honorario_id: honorarioId }, PAGO, 'webhook');
+      const linhas = notificacoes[0].linhas as Record<string, unknown>[];
+      expect(linhas[0].action_href).toBe('/contador/cobrancas');
+    }
+  });
+});

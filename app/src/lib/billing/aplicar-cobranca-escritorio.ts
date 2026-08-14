@@ -198,17 +198,42 @@ async function avisarPagamentoConfirmado(
   sb: SupabaseClient, cob: CobrancaDoEscritorio, origem: 'webhook' | 'reconciliacao',
 ): Promise<void> {
   try {
-    const { data: empresa } = await sb
+    // Os DOIS erros são LIDOS. Sem isso, uma falha de leitura (5xx transitório,
+    // cache de schema velho) devolvia `data: null` e era indistinguível de
+    // "não há destinatário": a função saía pelo `linhas.length === 0` abaixo
+    // sem UMA linha de log. E como a `chave` é idempotente e o dinheiro já foi
+    // escrito pelo compare-and-swap, a reconciliação seguinte devolve
+    // `sem_efeito` e nunca mais passa por aqui — o cliente que pagou jamais
+    // seria avisado, e nada apontaria para o motivo.
+    const { data: empresa, error: eEmpresa } = await sb
       .from('companies').select('user_id, nome, razao_social')
       .eq('id', cob.empresa_cliente_id).maybeSingle();
+    if (eEmpresa) {
+      console.error(`[4b ${origem}] leitura da empresa falhou, cliente pode ficar sem aviso`, cob.id, eEmpresa.message);
+    }
 
-    const { data: membros } = await sb
+    const { data: membros, error: eMembros } = await sb
       .from('contabilidade_membros').select('user_id')
       .eq('contabilidade_id', cob.contabilidade_id);
+    if (eMembros) {
+      console.error(`[4b ${origem}] leitura dos membros falhou, escritório pode ficar sem aviso`, cob.id, eMembros.message);
+    }
 
     const oQue = cob.descricao?.trim() || 'Cobrança do escritório';
-    const cliente = (empresa?.nome as string | null)
-      ?? (empresa?.razao_social as string | null) ?? 'seu cliente';
+    // `||` e não `??`: `companies.nome` é nullable E pode estar gravado como
+    // string vazia (o formulário do contador aceita). Com `??`, o '' vencia o
+    // fallback e o corpo saía "Entrou o pagamento de  — Honorário de maio."
+    // — buraco no lugar do nome, com a razão social ali do lado sem ser usada.
+    const cliente = (empresa?.nome as string | null)?.trim()
+      || (empresa?.razao_social as string | null)?.trim()
+      || 'seu cliente';
+
+    // Para onde o CLIENTE vai ao tocar no aviso. Honorário mora em
+    // `/honorarios`; cobrança avulsa NÃO TEM linha lá — ela só existe em
+    // `cobrancas_escritorio`, que do lado do cliente é `/cobrancas`. Mandar
+    // avulsa para `/honorarios` entregava uma lista vazia a quem acabou de
+    // pagar. (O aviso do escritório já aponta certo, para `/contador/cobrancas`.)
+    const destinoCliente = cob.honorario_id ? '/honorarios' : '/cobrancas';
 
     const linhas: Record<string, unknown>[] = [];
 
@@ -223,7 +248,7 @@ async function avisarPagamentoConfirmado(
         titulo: 'Pagamento confirmado',
         corpo: `${oQue} · confirmado pelo Asaas. Nada a fazer.`,
         entidade_ref: cob.id,
-        action_href: '/honorarios',
+        action_href: destinoCliente,
         // O Asaas REENTREGA eventos — a tabela `cobrancas_escritorio` já carrega
         // essa cicatriz no índice único de `asaas_charge_id` (0053). A chave
         // única por cobrança + o índice (owner_user_id, chave) da 0045 fazem a
