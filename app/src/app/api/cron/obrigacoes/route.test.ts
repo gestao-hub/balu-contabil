@@ -3,6 +3,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const SECRET = 'segredo-teste-cron-obrigacoes';
 process.env.CRON_SECRET = SECRET;
 
+// PINADO, e não por capricho. As asserções de mensagem de WhatsApp comparam o
+// texto INTEIRO, que embute `siteUrl` — e o route lê `NEXT_PUBLIC_SITE_URL` com
+// fallback para o domínio da Vercel. Sem esta linha o teste passava só quando o
+// ambiente NÃO tinha a variável: quem rodasse depois de `. ./.env.local`
+// (onde ela é `http://localhost:3000`) via dois testes vermelhos sem ter mexido
+// em nada. Teste que depende de o ambiente estar vazio é armadilha para a
+// próxima pessoa.
+process.env.NEXT_PUBLIC_SITE_URL = 'https://balu-contabil.vercel.app';
+
 const h = vi.hoisted(() => {
   const estado = {
     pendWhats: [] as Array<Record<string, unknown>>,
