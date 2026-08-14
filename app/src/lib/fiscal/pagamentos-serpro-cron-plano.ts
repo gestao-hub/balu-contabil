@@ -37,10 +37,24 @@ export type EmpresaParaConsultar = {
  * ⚠️ REGIME NORMAL (3) CONTINUA FORA, e por motivo diferente: ele não recolhe
  * DAS nenhum. Não há o que conciliar.
  *
- * ⚠️ MEI SEM TERMO/PROCURAÇÃO: o PAGAMENTOS71 exige o token de procurador
- * (diferente do PGMEI, que gera o DAS-MEI sem procuração). Quem não assinou o
- * Termo falha com a mensagem traduzida, conta como erro, é carimbado e volta
- * para o fim da fila — não trava a varredura dos outros.
+ * ⚠️ O PORTÃO É O CERTIFICADO A1 DA EMPRESA, e vem ANTES do Termo — observado
+ * numa rodada real do cron em 14/08/2026, não deduzido. Uma empresa MEI sem
+ * certificado falhou com "Certificado da empresa não encontrado", e a chamada
+ * **nem chegou à SERPRO**: `garantirTokenProcurador` exige
+ * `arquivos_auxiliares.storage_key` da própria empresa antes de tentar a
+ * procuração. Isso vale para TODO regime, não só para MEI — o PAGAMENTOS71
+ * precisa do token de procurador (diferente do PGMEI, que gera o DAS-MEI sem
+ * procuração).
+ *
+ * Quem não tem certificado (ou não assinou o Termo) falha com a mensagem
+ * traduzida, conta como erro, **é carimbado** e volta ao fim da fila — não
+ * trava a varredura dos outros. Também verificado na mesma rodada.
+ *
+ * ❓ O QUE CONTINUA SEM PROVA: se o PAGAMENTOS71 devolve documentos de DAS-MEI.
+ * A documentação da casa diz que o código 9 os inclui, mas nenhuma chamada
+ * chegou lá ainda — na rodada de 14/08 a única empresa MEI da base não tinha
+ * certificado. É verificável no primeiro MEI do piloto com o A1 carregado:
+ * rodar o cron e conferir `pagamentos_serpro.baixadas`.
  */
 export const REGIMES_COM_DAS = new Set(['1', '2', '4']);
 
