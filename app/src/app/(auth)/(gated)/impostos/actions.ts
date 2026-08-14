@@ -9,6 +9,7 @@ import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
 import { consultarDeclaracoesSimples } from '@/lib/fiscal/serpro-consulta';
 import { consultarPagamentosDas } from '@/lib/fiscal/serpro-pagamentos';
 import { casarPagamento, indexarPagamentos, planejarBaixas } from '@/lib/fiscal/pagamentos-das-match';
+import { agruparPorColunas } from '@/lib/supabase/upsert-homogeneo';
 import { consultarDasnSimei } from '@/lib/fiscal/serpro-dasn-simei';
 import { gerarDasSimples } from '@/lib/fiscal/serpro-das-simples';
 import { calcularApuracao, RegimeNaoSuportadoError } from '@/lib/fiscal/apuracao';
@@ -262,7 +263,17 @@ export async function gerarDasMeiAction(competencia: string): Promise<GerarDasRe
   return { ok: true, semValor: false };
 }
 
-export type ConsultaDasResult = { ok: true; count: number } | { ok: false; error: string };
+export type ConsultaDasResult =
+  /**
+   * `avisoBaixas` existe porque "importou a listagem" e "marcou como pagas as
+   * que a Receita diz pagas" são DUAS coisas, e a segunda podia falhar inteira
+   * em silêncio: a baixa saiu do upsert (onde o erro abortava a action) para
+   * uma RPC por competência, cujo retorno `{ok:false}` só ia para o
+   * `console.error` do servidor. A tela dizia sucesso, as guias apareciam sem
+   * pagamento, e o usuário não tinha sinal nenhum de que valia tentar de novo.
+   */
+  | { ok: true; count: number; avisoBaixas?: string }
+  | { ok: false; error: string };
 
 /**
  * Consulta na SERPRO (PGDAS-D / CONSDECLARACAO13) as declarações/DAS do ano-calendário atual
@@ -318,12 +329,25 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
   //    CONSDECLARACAO13, é ignorado de graça).
   //  - EM ABERTO (declarada e não paga): GERARDAS12 traz valor + vencimento + linha digitável + PDF.
   //    É 1 chamada SERPRO por competência em aberto → só roda nas declaradas não pagas.
+  //
   // DUAS listas, e o motivo é de contrato, não de estilo. Quem decide "guia
   // paga" agora é a RPC — então nenhuma linha que fale de pagamento pode
-  // carregar `status`. Como o PostgREST monta um INSERT só para o lote, um
-  // array com chaves diferentes obrigaria a confiar em como ele preenche o que
-  // falta (NULL? default?) para uma coluna que é justamente a disputada. Dois
-  // upserts homogêneos custam um round-trip e não deixam essa dúvida em pé.
+  // carregar `status`.
+  //
+  // ⚠️ SEPARAR POR `status` NÃO BASTA, e a versão anterior deste comentário
+  // afirmava que bastava. O `postgrest-js` monta `columns=` com a UNIÃO das
+  // chaves do array e manda NULL para a linha que não tem cada uma delas
+  // (`defaultToNull` é `true`) — e num ON CONFLICT DO UPDATE esse NULL APAGA o
+  // que estava gravado. Os dois lotes continuavam misturando linha rica
+  // (valores, `linha_digitavel`, `codigo_barras`, `url_pdf`) com linha magra
+  // (só a situação), então uma competência sem novidade zerava a linha
+  // digitável da guia — justamente o dado que o aviso de WhatsApp existe para
+  // entregar.
+  //
+  // Quem garante o lote homogêneo de verdade é `agruparPorColunas`, na hora do
+  // upsert: um statement por assinatura de colunas. A separação por `status`
+  // fica por outro motivo, que continua válido — a coluna disputada não pode
+  // sequer aparecer no `columns=` de quem fala de pagamento.
   const rowsComStatus: Record<string, unknown>[] = [];
   const rowsSemStatus: Record<string, unknown>[] = [];
   for (const s of r.situacoes) {
@@ -396,14 +420,18 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
   // chamar a RPC de baixa em seguida.
   type GuiaSalva = { id: string; competencia_referencia: string | null };
   const salvas: GuiaSalva[] = [];
-  for (const lote of [rowsComStatus, rowsSemStatus]) {
-    if (lote.length === 0) continue;
-    const { data, error } = await supabase
-      .from('guias_fiscais')
-      .upsert(lote, { onConflict: 'company_id,competencia_referencia' })
-      .select('id, competencia_referencia');
-    if (error) return { ok: false, error: `Falha ao salvar a listagem: ${error.message}` };
-    salvas.push(...((data ?? []) as GuiaSalva[]));
+  for (const grupo of [rowsComStatus, rowsSemStatus]) {
+    // Um upsert por assinatura de colunas — ver `agruparPorColunas`. Custa um
+    // round-trip por formato distinto (na prática 2 ou 3), e é o que impede o
+    // NULL da união de colunas de apagar dado gravado.
+    for (const lote of agruparPorColunas(grupo)) {
+      const { data, error } = await supabase
+        .from('guias_fiscais')
+        .upsert(lote.linhas, { onConflict: 'company_id,competencia_referencia' })
+        .select('id, competencia_referencia');
+      if (error) return { ok: false, error: `Falha ao salvar a listagem: ${error.message}` };
+      salvas.push(...((data ?? []) as GuiaSalva[]));
+    }
   }
 
   // ─── A BAIXA, PELO PONTO DE ESCRITA ÚNICO (migration 0072/0087) ────────────
@@ -430,7 +458,25 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
       // `profiles.current_company` — o próprio titular. Reaproveitar esta action
       // no painel do contador (que só tem SELECT sobre a carteira) faria a RPC
       // devolver `nao_autorizado`: aquele caminho precisaria de service_role.
-      p_origem: 'serpro',
+      //
+      // ── 'serpro_tela', E NÃO 'serpro' (migration 0089) ───────────────────
+      //
+      // Esta chamada é o usuário CLICANDO em "Atualizar". Mandando 'serpro' ela
+      // era classificada como descoberta AUTOMÁTICA e a 0087 avisava — então na
+      // primeira sincronização de um cliente novo o ano inteiro era descoberto
+      // de uma vez e saía um `pagamento_confirmado` por competência (até 12
+      // avisos, e 12 e-mails, porque `notificacoes_pendentes_email` não filtra
+      // por tipo) sobre pagamentos feitos meses atrás — para alguém que está
+      // olhando as guias ficarem verdes na própria tela. É a regra que o
+      // cabeçalho da 0087 enuncia ("notificação que repete ato do usuário é
+      // como o cliente aprende a ignorar as outras"), aplicada ao caso errado.
+      //
+      // 'serpro_tela' audita igual e não avisa. A varredura diária do cron
+      // continua em 'serpro', que é a descoberta automática de verdade.
+      //
+      // ⚠️ A função RECUSA origem fora da lista. Esta string depende da 0089
+      // estar aplicada — o que já está (conferido no banco em 14/08/2026).
+      p_origem: 'serpro_tela',
       p_transacao_id: null,
     });
     if (eBaixa) { errosDeBaixa.push(`${competencia}: ${eBaixa.message}`); continue; }
@@ -471,7 +517,14 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
   }
 
   revalidatePath('/impostos');
-  return { ok: true, count: r.situacoes.length };
+  // A listagem foi salva; o que pode ter falhado é a BAIXA. Devolver isso à
+  // tela em vez de deixar só no log do servidor: sem o aviso, a guia aparece
+  // em aberto, o usuário conclui que a Receita não registrou o pagamento dele,
+  // e não tem motivo para tentar de novo — que é exatamente o que resolveria.
+  const avisoBaixas = errosDeBaixa.length > 0
+    ? `A listagem foi atualizada, mas ${errosDeBaixa.length} pagamento(s) não puderam ser confirmados agora. Tente atualizar de novo em instantes.`
+    : undefined;
+  return { ok: true, count: r.situacoes.length, ...(avisoBaixas ? { avisoBaixas } : {}) };
 }
 
 /**

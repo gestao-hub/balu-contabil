@@ -4,17 +4,27 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { SALARIO_MINIMO_FALLBACK } from './das-mei';
 import { TABELA_SIMPLES_FALLBACK, type TabelaSimples } from './simples';
 import { lerTabelaSimples, dataDaCompetencia } from './parametros-schema';
+import { ymdBrt } from './tempo-brt';
 
 export type LimitesFiscais = { mei: number; simples: number };
 export const LIMITES_FALLBACK: LimitesFiscais = { mei: 81000, simples: 4800000 }; // LC 123/2006
 
-/** Lê os tetos vigentes de parametros_fiscais (maior vigencia_inicio <= hoje). */
+/**
+ * Lê os tetos vigentes de parametros_fiscais (maior vigencia_inicio <= hoje).
+ *
+ * "Hoje" é BRT, não UTC. Vigência fiscal é data de CALENDÁRIO brasileiro, e a
+ * Vercel roda em UTC: com `toISOString()` a data já virou nas últimas 3h do dia
+ * daqui, e um teto novo (o limite do MEI muda em 1º de janeiro) passava a valer
+ * às 21h do dia 31 — mudando o semáforo de "irregular" antes da hora. É o
+ * mesmo erro de 1 dia que `ymdBrt` existe para eliminar, e que o resto do
+ * domínio fiscal já evita.
+ */
 export async function getLimitesFiscais(supabase: SupabaseClient): Promise<LimitesFiscais> {
   const { data } = await supabase
     .from('parametros_fiscais')
     .select('chave, valor, vigencia_inicio')
     .in('chave', ['limite_mei', 'limite_simples'])
-    .lte('vigencia_inicio', new Date().toISOString().slice(0, 10))
+    .lte('vigencia_inicio', ymdBrt())
     .order('vigencia_inicio', { ascending: false });
   const pick = (k: string) => Number(data?.find((r) => r.chave === k)?.valor);
   return {

@@ -18,6 +18,10 @@ export default function GateInicialSerpro() {
         toast('error', r.error);
         return;
       }
+      // A listagem veio, mas alguma baixa pode ter falhado. Sem este aviso a
+      // guia aparece em aberto e o usuário conclui que a Receita não registrou
+      // o pagamento — quando o que faltou foi só gravar aqui.
+      if (r.avisoBaixas) toast('warning', r.avisoBaixas);
       const m = await marcarSincronizacaoInicialAction();
       if (!m.ok) {
         // Dados foram salvos; o gate reaparecerá mas o usuário pode tentar de novo.

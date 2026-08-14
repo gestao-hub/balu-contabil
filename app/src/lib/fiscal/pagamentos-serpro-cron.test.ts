@@ -22,7 +22,10 @@ function fazerAdmin(estado: {
   rpcResposta?: unknown;
   rpcErro?: { message: string } | null;
 }) {
-  const rpc = vi.fn(async () => ({
+  // Aridade declarada: mock sem parâmetros faz `rpc.mock.calls[0][1]` não
+  // compilar, e é justamente o argumento que os testes de identidade da guia
+  // precisam ler.
+  const rpc = vi.fn(async (_nome: string, _args?: Record<string, unknown>) => ({
     data: estado.rpcResposta ?? { ok: true, ja_estava_paga: false },
     error: estado.rpcErro ?? null,
   }));
@@ -32,7 +35,7 @@ function fazerAdmin(estado: {
     let usouEq = false;
     const q: Record<string, unknown> = {};
     const encadeia = () => q;
-    for (const m of ['select', 'is', 'neq', 'order', 'limit']) q[m] = vi.fn(encadeia);
+    for (const m of ['select', 'is', 'neq', 'order', 'limit', 'in']) q[m] = vi.fn(encadeia);
     q.eq = vi.fn(() => { usouEq = true; return q; });
     q.update = vi.fn((vals: unknown) => {
       carimbos.push(vals);
@@ -205,5 +208,127 @@ describe('rodarPagamentosSerpro', () => {
     expect(r.cortada_por_orcamento).toBe(true);
     expect(r.consultadas).toBe(0);
     expect(r.elegiveis).toBe(2);
+  });
+});
+
+// ─── Correções de 14/08/2026 (rodada de revisão) ────────────────────────────
+
+describe('rodarPagamentosSerpro — o carimbo da vez (0088) não pode ser pulado', () => {
+  it('EXCEÇÃO na consulta ainda carimba — senão a empresa volta à frente da fila todo dia', async () => {
+    // `consultarPagamentosDas` lança ANTES do try interno dela quando o PFX do
+    // contratante ou o token de procurador falham. O carimbo morava depois da
+    // consulta, dentro do try: a empresa com certificado quebrado nunca era
+    // carimbada, e como '' ordena antes de qualquer ISO, ela reencabeçava a
+    // fila todo dia e comia o orçamento das outras.
+    h.consultar.mockRejectedValue(new Error('PFX ilegível'));
+    const { admin, carimbos } = fazerAdmin({
+      fiscais: [FISCAL_SIMPLES],
+      abertas: [{ company_id: 'emp1' }],
+    });
+
+    const r = await rodarPagamentosSerpro(admin);
+
+    expect(r.erros).toBe(1);
+    expect(carimbos).toHaveLength(1);
+    expect(carimbos[0]).toHaveProperty('consulta_pagamentos_serpro_em');
+  });
+
+  it('sucesso também carimba, uma vez só', async () => {
+    h.consultar.mockResolvedValue({ ok: true, pagamentos: [] });
+    const { admin, carimbos } = fazerAdmin({
+      fiscais: [FISCAL_SIMPLES],
+      abertas: [{ company_id: 'emp1' }],
+    });
+
+    await rodarPagamentosSerpro(admin);
+    expect(carimbos).toHaveLength(1);
+  });
+
+  it('empresa cortada pelo orçamento NÃO é carimbada — ela não teve a vez dela', async () => {
+    h.consultar.mockResolvedValue({ ok: true, pagamentos: [] });
+    const { admin, carimbos } = fazerAdmin({
+      fiscais: [FISCAL_SIMPLES],
+      abertas: [{ company_id: 'emp1' }],
+    });
+
+    await rodarPagamentosSerpro(admin, { orcamentoMs: 0 });
+    expect(carimbos).toHaveLength(0);
+  });
+});
+
+describe('rodarPagamentosSerpro — a baixa vai na guia que CASOU', () => {
+  it('duas guias de competência NULA: cada baixa cai na sua, não duas vezes na primeira', async () => {
+    // `competencia_referencia` é nullable e NULL não colide com NULL num índice
+    // único — então `uniq_guias_company_competencia` permite duas guias nulas na
+    // mesma empresa (importação legada). Reencontrar a guia por competência
+    // fazia as duas baixas caírem na primeira linha.
+    h.consultar.mockResolvedValue({
+      ok: true,
+      pagamentos: [
+        pagamento({ numeroDocumento: '111', dataPagamento: '2026-05-18' }),
+        pagamento({ numeroDocumento: '222', dataPagamento: '2026-06-19' }),
+      ],
+    });
+    const { admin, rpc } = fazerAdmin({
+      fiscais: [FISCAL_SIMPLES],
+      abertas: [{ company_id: 'emp1' }],
+      guiasDaEmpresa: [
+        { id: 'gA', competencia_referencia: null, numero_das: '111' },
+        { id: 'gB', competencia_referencia: null, numero_das: '222' },
+      ],
+    });
+
+    await rodarPagamentosSerpro(admin);
+
+    const ids = rpc.mock.calls.map((c) => (c[1] as { p_guia_id: string }).p_guia_id);
+    expect(ids).toEqual(['gA', 'gB']);
+
+    // E cada uma com a data do SEU documento — trocar a guia trocaria a data.
+    const datas = rpc.mock.calls.map((c) => (c[1] as { p_data_pagamento: string }).p_data_pagamento);
+    expect(datas).toEqual(['2026-05-18', '2026-06-19']);
+  });
+});
+
+describe('rodarPagamentosSerpro — truncamento silencioso da leitura de base', () => {
+  it('leitura no teto acende `leitura_truncada` em vez de parecer saudável', async () => {
+    // O PostgREST corta em `max-rows` e devolve error null. Quem ficou fora da
+    // página teria guiasEmAberto 0 e sumiria da fila para sempre, com o resumo
+    // do cron reportando tudo certo.
+    h.consultar.mockResolvedValue({ ok: true, pagamentos: [] });
+    const muitas = Array.from({ length: 5_000 }, (_, i) => ({ company_id: `emp${i}` }));
+    const { admin } = fazerAdmin({ fiscais: [FISCAL_SIMPLES], abertas: muitas });
+
+    const r = await rodarPagamentosSerpro(admin);
+    expect(r.leitura_truncada).toBe(true);
+  });
+
+  it('base pequena não acende o alarme', async () => {
+    h.consultar.mockResolvedValue({ ok: true, pagamentos: [] });
+    const { admin } = fazerAdmin({
+      fiscais: [FISCAL_SIMPLES],
+      abertas: [{ company_id: 'emp1' }],
+    });
+
+    const r = await rodarPagamentosSerpro(admin);
+    expect(r.leitura_truncada).toBe(false);
+  });
+});
+
+describe('rodarPagamentosSerpro — a janela de consulta cobre a virada do ano', () => {
+  it('pede desde o ano ANTERIOR — o DAS de dezembro é pago em janeiro', async () => {
+    // Sem isto, um pagamento feito em dezembro e não alcançado antes da virada
+    // fica fora de toda janela futura: a guia nunca é baixada e a empresa
+    // queima uma chamada SERPRO por dia para sempre.
+    h.consultar.mockResolvedValue({ ok: true, pagamentos: [] });
+    const { admin } = fazerAdmin({
+      fiscais: [FISCAL_SIMPLES],
+      abertas: [{ company_id: 'emp1' }],
+    });
+
+    await rodarPagamentosSerpro(admin, { agora: new Date('2027-01-03T12:00:00Z') });
+
+    expect(h.consultar).toHaveBeenCalledWith(
+      expect.anything(), 'emp1', 2027, { desdeAno: 2026 },
+    );
   });
 });

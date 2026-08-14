@@ -9,15 +9,31 @@ import { traduzirErroSerpro } from '@/lib/fiscal/serpro-erro';
 type Result = { ok: true; pagamentos: PagamentoDas[] } | { ok: false; error: string };
 
 /**
- * Consulta DAS pagos do ano via PAGTOWEB / PAGAMENTOS71.
+ * Consulta DAS pagos via PAGTOWEB / PAGAMENTOS71.
  * Só retorna documentos efetivamente pagos (dataArrecadacao preenchida).
  * Read-only na SERPRO — não persiste (quem chama decide o upsert).
+ *
+ * ⚠️ A JANELA É DE DATA DE ARRECADAÇÃO (quando PAGOU), não de competência.
+ * As duas não coincidem: o DAS da competência 12/AAAA vence no dia 20 de
+ * JANEIRO de AAAA+1, então o pagamento dele cai no ano seguinte ao da
+ * competência. Uma janela de um ano civil só, portanto, nunca contém o
+ * pagamento da última competência daquele ano.
+ *
+ * `desdeAno` estica o começo da janela para trás. É UMA chamada só — o
+ * `intervaloDataArrecadacao` é um intervalo livre, não um seletor de ano — então
+ * ampliar não custa cota de contrato a mais.
+ *
+ * ⚠️ `tamanhoDaPagina` é 100 e NÃO há laço de paginação: janela larga demais
+ * passa a arriscar corte silencioso. Com DAS mensal, dois anos são ~24
+ * documentos — folgado. Esticar muito além disso exige paginar antes.
  */
 export async function consultarPagamentosDas(
   supabase: SupabaseClient,
   companyId: string,
   ano: number,
+  opts: { desdeAno?: number } = {},
 ): Promise<Result> {
+  const anoInicial = Math.min(opts.desdeAno ?? ano, ano);
   const { data: company } = await supabase.from('companies').select('cnpj').eq('id', companyId).single();
   const empresaCnpj = String(company?.cnpj ?? '').replace(/\D+/g, '');
   if (!empresaCnpj) return { ok: false, error: 'CNPJ da empresa ausente.' };
@@ -38,7 +54,7 @@ export async function consultarPagamentosDas(
       dados: JSON.stringify({
         codigoTipoDocumentoLista: ['9'],
         intervaloDataArrecadacao: {
-          dataInicial: `${ano}-01-01`,
+          dataInicial: `${anoInicial}-01-01`,
           dataFinal: `${ano}-12-31`,
         },
         primeiroDaPagina: 0,

@@ -42,7 +42,28 @@ export function casarPagamento(
   return chave ? indice.get(chave) : undefined;
 }
 
-export type BaixaPlanejada = { competencia: string; dataPagamento: string; pagamento: PagamentoDas };
+export type BaixaPlanejada = {
+  /**
+   * A IDENTIDADE DA LINHA QUE FOI CASADA, quando o chamador a conhece.
+   *
+   * O casamento é por `numeroDas`; a competência é só carona. Quem chama a
+   * partir de linhas do BANCO precisa disto porque `guias_fiscais
+   * .competencia_referencia` é NULLABLE — e `UNIQUE (company_id,
+   * competencia_referencia)` não impede duas linhas NULL na mesma empresa
+   * (no Postgres, NULL nunca colide com NULL num índice único). Reencontrar a
+   * guia por competência depois do plano faria o `find` devolver a PRIMEIRA
+   * linha de competência nula: a baixa cairia na guia errada, com a data de
+   * pagamento de outra, e a guia realmente paga continuaria cobrando o cliente.
+   *
+   * Opcional porque o outro chamador (a sincronização da tela) planeja sobre
+   * situações vindas da SERPRO, que ainda não têm linha no banco — lá o id só
+   * existe depois do upsert.
+   */
+  id?: string;
+  competencia: string;
+  dataPagamento: string;
+  pagamento: PagamentoDas;
+};
 
 export type PlanoDeBaixa = {
   /** As baixas que podem ser registradas pela RPC. */
@@ -64,7 +85,7 @@ export type PlanoDeBaixa = {
  * receber baixa. Não escreve nada — quem escreve é `registrar_pagamento_guia`.
  */
 export function planejarBaixas(
-  declaradas: { competencia: string; numeroDas: string | null }[],
+  declaradas: { id?: string; competencia: string; numeroDas: string | null }[],
   pagamentos: PagamentoDas[],
 ): PlanoDeBaixa {
   const indice = indexarPagamentos(pagamentos);
@@ -75,7 +96,10 @@ export function planejarBaixas(
     const pagamento = casarPagamento(d.numeroDas, indice);
     if (!pagamento) continue;
     if (pagamento.dataPagamento) {
-      baixas.push({ competencia: d.competencia, dataPagamento: pagamento.dataPagamento, pagamento });
+      // `id` viaja junto: é ele que amarra a baixa à linha exata que casou.
+      baixas.push({
+        id: d.id, competencia: d.competencia, dataPagamento: pagamento.dataPagamento, pagamento,
+      });
     } else {
       semDataDePagamento++;
     }
