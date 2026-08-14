@@ -1,6 +1,7 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'node:fs';
+import { ambienteDestrutivo, MOTIVO_SKIP } from './guarda-ambiente';
 
 /**
  * IDOR entre escritórios — nas SERVER ACTIONS, não só na RLS.
@@ -32,7 +33,10 @@ import { readFileSync } from 'node:fs';
  * Exige, no ambiente:
  *   E2E_CONTADOR_EMAIL   e-mail de um contador de teste, membro de um escritório aprovado
  *   E2E_CONTADOR_SENHA   senha dele
- *   NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY
+ *   E2E_SUPABASE_URL / E2E_SUPABASE_ANON_KEY / E2E_SUPABASE_SERVICE_ROLE_KEY
+ *
+ * ⚠️ O banco tem de ser de DESENVOLVIMENTO. A trava de `guarda-ambiente.ts`
+ * recusa rodar se `E2E_SUPABASE_URL` for o mesmo que a aplicação usa.
  *
  * O escritório-ALVO e os ids dele são DESCOBERTOS em tempo de execução (o
  * primeiro escritório aprovado do qual este contador não é membro). Sem um
@@ -40,7 +44,7 @@ import { readFileSync } from 'node:fs';
  * vazio — teste que passa por falta de dado é pior que teste nenhum.
  *
  * ─── COMO RODAR ─────────────────────────────────────────────────────────────
- *   set -a; . ./.env.local; set +a
+ *   export E2E_SUPABASE_URL=... E2E_SUPABASE_ANON_KEY=... E2E_SUPABASE_SERVICE_ROLE_KEY=...
  *   export E2E_CONTADOR_EMAIL=... E2E_CONTADOR_SENHA=...
  *   npm run build && PORT=3100 npm run start
  *   E2E_BASE_URL=http://localhost:3100 npx playwright test tests/idor-actions-contador.spec.ts
@@ -51,8 +55,12 @@ import { readFileSync } from 'node:fs';
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const EMAIL = process.env.E2E_CONTADOR_EMAIL ?? '';
 const SENHA = process.env.E2E_CONTADOR_SENHA ?? '';
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+// TRAVA DE AMBIENTE: este teste invoca acoes REAIS contra dados REAIS. Desde
+// 14/08/2026 o banco da aplicacao e producao e so producao, entao o alvo tem de
+// vir de E2E_SUPABASE_URL. Ver tests/guarda-ambiente.ts.
+const AMBIENTE = ambienteDestrutivo();
+const SB_URL = AMBIENTE?.url ?? '';
+const SERVICE = AMBIENTE?.service ?? '';
 
 type Acao = { id: string; rota: string };
 
@@ -102,8 +110,8 @@ test.describe('IDOR entre escritórios — Server Actions do contador', () => {
     // vale dentro de um hook ou teste. Sem credencial no ambiente, o arquivo se
     // declara pulado — nunca "passa" por não ter o que fazer.
     test.skip(
-      !EMAIL || !SENHA || !SB_URL || !SERVICE,
-      'faltam E2E_CONTADOR_EMAIL / E2E_CONTADOR_SENHA / env do Supabase',
+      !AMBIENTE || !EMAIL || !SENHA,
+      !AMBIENTE ? MOTIVO_SKIP : 'faltam E2E_CONTADOR_EMAIL / E2E_CONTADOR_SENHA',
     );
     IDS = idsDoManifest();
 

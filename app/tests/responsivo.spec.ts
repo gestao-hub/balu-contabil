@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { ambienteDestrutivo, MOTIVO_SKIP, URL_INERTE, CHAVE_INERTE } from './guarda-ambiente';
 import { createClient } from '@supabase/supabase-js';
 
 // PR 4.2 — passe de UX responsiva: 390×844 (iPhone 12/13/14, o corte que o card
@@ -21,8 +22,18 @@ import { createClient } from '@supabase/supabase-js';
 
 // NÃO chamar de `URL`: isso sombreia o construtor global e quebra o
 // `new URL(page.url())` lá embaixo com "URL is not a constructor".
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// ─── TRAVA DE AMBIENTE ──────────────────────────────────────────────────────
+// Este arquivo CRIA E APAGA dados via service_role. Desde 14/08/2026 o Supabase
+// da aplicacao e producao e so producao, entao o alvo tem de vir de
+// E2E_SUPABASE_URL e ser outro banco. Sem ele, a suite se declara skipped;
+// apontando para producao, ela lanca. Ver tests/guarda-ambiente.ts.
+const AMBIENTE = ambienteDestrutivo();
+const SUPABASE_URL = AMBIENTE?.url ?? URL_INERTE;
+const SERVICE = AMBIENTE?.service ?? CHAVE_INERTE;
+// Sem ambiente configurado, o arquivo inteiro se declara skipped — a forma
+// com callback e a unica que o Playwright aceita em escopo de arquivo.
+test.skip(() => !AMBIENTE, MOTIVO_SKIP);
+
 const admin = createClient(SUPABASE_URL, SERVICE, { auth: { persistSession: false } });
 
 const STAMP = Date.now();

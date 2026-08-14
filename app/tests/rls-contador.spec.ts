@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { ambienteDestrutivo, MOTIVO_SKIP, URL_INERTE, CHAVE_INERTE } from './guarda-ambiente';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Gate de segurança do Bloco A: matriz de isolamento RLS da fronteira do contador.
@@ -7,9 +8,19 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // via admin (service_role), e testa cada ator com a anon key + signInWithPassword.
 // Não hermético. Rodar: set -a; . ./.env.local; set +a; npx playwright test rls-contador --reporter=line
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// ─── TRAVA DE AMBIENTE ──────────────────────────────────────────────────────
+// Este arquivo CRIA E APAGA dados via service_role. Desde 14/08/2026 o Supabase
+// da aplicacao e producao e so producao, entao o alvo tem de vir de
+// E2E_SUPABASE_URL e ser outro banco. Sem ele, a suite se declara skipped;
+// apontando para producao, ela lanca. Ver tests/guarda-ambiente.ts.
+const AMBIENTE = ambienteDestrutivo();
+const URL = AMBIENTE?.url ?? URL_INERTE;
+const ANON = AMBIENTE?.anon ?? CHAVE_INERTE;
+const SERVICE = AMBIENTE?.service ?? CHAVE_INERTE;
+// Sem ambiente configurado, o arquivo inteiro se declara skipped — a forma
+// com callback e a unica que o Playwright aceita em escopo de arquivo.
+test.skip(() => !AMBIENTE, MOTIVO_SKIP);
+
 
 const STAMP = Date.now();
 const PASS = 'senha-teste-rls-123';

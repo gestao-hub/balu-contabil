@@ -1,6 +1,7 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'node:fs';
+import { ambienteDestrutivo, MOTIVO_SKIP } from './guarda-ambiente';
 
 /**
  * IDOR entre EMPRESÁRIOS — nas Server Actions.
@@ -20,14 +21,16 @@ import { readFileSync } from 'node:fs';
  *
  * ─── CONFIGURAÇÃO (nada de segredo aqui — o repo é público) ─────────────────
  *   E2E_EMPRESARIO_EMAIL / E2E_EMPRESARIO_SENHA
- *   NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
+ *   E2E_SUPABASE_URL / E2E_SUPABASE_ANON_KEY / E2E_SUPABASE_SERVICE_ROLE_KEY
+ *
+ * ⚠️ O banco tem de ser de DESENVOLVIMENTO — ver `guarda-ambiente.ts`.
  *
  * Os ALVOS são descobertos em tempo de execução (guia, nota, notificação e
  * cliente de OUTRO dono). Cada caso se declara skipped se não houver alvo —
  * nunca passa vazio.
  *
  * ─── COMO RODAR ─────────────────────────────────────────────────────────────
- *   set -a; . ./.env.local; set +a
+ *   export E2E_SUPABASE_URL=... E2E_SUPABASE_ANON_KEY=... E2E_SUPABASE_SERVICE_ROLE_KEY=...
  *   export E2E_EMPRESARIO_EMAIL=... E2E_EMPRESARIO_SENHA=...
  *   npm run build && PORT=3100 npm run start
  *   E2E_BASE_URL=http://localhost:3100 npx playwright test tests/idor-actions-empresario.spec.ts
@@ -36,8 +39,12 @@ import { readFileSync } from 'node:fs';
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const EMAIL = process.env.E2E_EMPRESARIO_EMAIL ?? '';
 const SENHA = process.env.E2E_EMPRESARIO_SENHA ?? '';
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+// TRAVA DE AMBIENTE: este teste invoca acoes REAIS contra dados REAIS. Desde
+// 14/08/2026 o banco da aplicacao e producao e so producao, entao o alvo tem de
+// vir de E2E_SUPABASE_URL. Ver tests/guarda-ambiente.ts.
+const AMBIENTE = ambienteDestrutivo();
+const SB_URL = AMBIENTE?.url ?? '';
+const SERVICE = AMBIENTE?.service ?? '';
 
 type Acao = { id: string; rota: string };
 
@@ -81,8 +88,8 @@ test.describe('IDOR entre empresários — Server Actions', () => {
 
   test.beforeAll(async ({ browser }) => {
     test.skip(
-      !EMAIL || !SENHA || !SB_URL || !SERVICE,
-      'faltam E2E_EMPRESARIO_EMAIL / E2E_EMPRESARIO_SENHA / env do Supabase',
+      !AMBIENTE || !EMAIL || !SENHA,
+      !AMBIENTE ? MOTIVO_SKIP : 'faltam E2E_EMPRESARIO_EMAIL / E2E_EMPRESARIO_SENHA',
     );
     IDS = idsDoManifest();
 
