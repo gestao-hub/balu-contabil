@@ -1,9 +1,100 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-14 (sessão 27 — **endurecimento pré-lançamento**: 18 defeitos corrigidos, migrations 0089/0090 aplicadas, os dois testes ponta a ponta de Server Action que faltavam, o **buraco do MEI na Frente 3** fechado e provado em rodada real do cron, e a fila de e-mail revisada de 29 para 12).
+> **Última atualização:** 2026-08-19 (sessão 28 — **SMTP customizado ligado e provado**: o Auth do Supabase agora sai pelo Resend em nao-responda@balucontabil.com.br, teto de 2→30/hora; e o **domínio caiu no mesmo dia**: a edição de DNS pôs os registros do Resend e levou os registros A do site.)
 
-> ## 🆕 SESSÃO 27 (2026-08-14) — revisão pré-lançamento e auditoria de IDOR
+> ## 🆕 SESSÃO 28 (2026-08-19) — o e-mail de autenticação saiu do gargalo, e o domínio caiu no mesmo dia
+>
+> ### ✅ SMTP customizado no Supabase — fechado e provado
+>
+> Terceiro item do caminho crítico da sessão 27. O Auth deixou de usar o
+> remetente embutido do Supabase (`smtp_host: null`, **2 e-mails por hora**) e
+> passou a sair pelo Resend:
+>
+> ```
+> smtp_host smtp.resend.com · smtp_port 465 · smtp_user resend
+> smtp_admin_email nao-responda@balucontabil.com.br · smtp_sender_name Balu
+> rate_limit_email_sent 2 -> 30
+> ```
+>
+> **Prova, não leitura de configuração:** `POST /auth/v1/recover` de verdade
+> contra produção → o Resend registra `delivered` às 16:57 UTC, remetente
+> `"Balu" <nao-responda@balucontabil.com.br>`, assunto "Link para redefinir sua
+> senha · Balu" — e o usuário confirmou o recebimento na caixa de entrada.
+>
+> O `PATCH` foi feito por `scratchpad/_supabase-smtp.mjs`, com modo de ensaio e
+> releitura: `uri_allow_list` reenviada junto e conferida depois (6 entradas,
+> **nenhuma sumiu**). A armadilha documentada não se realizou porque foi tratada.
+>
+> ### 🔑 A conta do Resend mudou de baixo dos pés
+>
+> `balucontabil.com.br` foi verificado hoje (10:08 BRT) numa conta Resend, e o
+> usuário disse ter posto "a chave nova" no `.env.local`. **Não era ela.** Testado
+> por envio real:
+>
+> - `RESEND_API_KEY` (a que o app lê) → **403** em `balucontabil.com.br`; é da
+>   conta antiga, restrita a `baluhub.com.br`.
+> - `RESEND_FULL_ACCESS` → é a chave da conta nova, a que tem o domínio.
+>
+> Decisão do usuário: usar a full-access **por enquanto**, no Supabase e no app.
+> ⚠️ **Dívida deliberada:** é uma chave de administração total (pode apagar
+> domínio e criar chaves) dentro da configuração de produção. A criação de uma
+> chave restrita via API foi bloqueada pelo classificador — o passo é manual, no
+> painel do Resend (`Sending access`, domínio `balucontabil.com.br`), e então
+> substituir em `RESEND_API_KEY`, no `smtp_pass` do Supabase e na Vercel.
+>
+> `.env.local` local já aponta para a conta nova (`RESEND_API_KEY` = full-access,
+> `EMAIL_FROM = Balu <nao-responda@balucontabil.com.br>`), com envio provado.
+> **Produção segue na conta antiga** — a Vercel ainda tem a chave `baluhub`, que
+> funciona; mas se a conta antiga for desativada, o e-mail do app para sem erro.
+>
+> ### 🔴 O domínio saiu do ar — hoje, pela mesma edição de DNS
+>
+> ```
+> balucontabil.com.br      -> sem registro A
+> www.balucontabil.com.br  -> NXDOMAIN
+> SOA serial               -> 2026081905 (zona editada hoje, 5ª revisão)
+> ```
+>
+> Conferido no autoritativo `ns1.dns-parking.com`, não só em resolvedor público.
+> Os três registros do Resend (DKIM `resend._domainkey`, SPF e MX de `send`)
+> **estão lá e corretos** — o que saiu foi o A do site. Quem editou pôs o e-mail
+> e tirou a web.
+>
+> O lado Vercel está de pé: o domínio está no time (add 13/08 por `luan-4913`) e
+> o projeto reivindica apex e `www`; falta só a zona apontar. A Vercel pede
+> `A @ 76.76.21.21` e `A www 76.76.21.21`.
+>
+> **Consequência composta:** o `site_url` do Supabase é
+> `https://balucontabil.com.br`. Então o e-mail de autenticação **chega** (acabou
+> de chegar) e o link dentro dele **não abre**. Os dois consertos são
+> independentes e ambos são necessários.
+>
+> A zona é administrada por terceiro (Hostinger, conta que não é a nossa — a
+> chave que temos gerencia `excluvia` e `autofisco`). Pedido pronto para repassar
+> em `docs/reference/2026-08-19-pedido-dns-balucontabil.md`, incluindo o aviso
+> explícito de **não remover** os registros do Resend — a armadilha de hoje na
+> direção contrária.
+>
+> ### Linha de base reconferida no início da sessão
+>
+> `tsc` **0** · vitest **1794 passaram** / 36 pulados · árvore limpa em `main`
+> (`b146eb0`). Último deploy de produção: 14/08.
+>
+> ### O que continua aberto do caminho crítico
+>
+> 1. 🔴 **DNS** — acima. Bloqueia o domínio inteiro.
+> 2. 🔴 **`UAZAPI_TOKEN`** — conferido nesta sessão: não existe **nem** no
+>    `.env.local` **nem** na Vercel (só `UAZAPI_BASE_URL` e
+>    `UAZAPI_WEBHOOK_SECRET`, postos em 12/08). WhatsApp segue mudo e sem erro.
+> 3. 🟡 **Env vars da Vercel** — `NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY` e
+>    `EMAIL_FROM` existem lá há 27–28 dias com os valores antigos. Precisam ser
+>    reescritas (agora também por causa da troca de conta do Resend) + deploy.
+> 4. 🟡 **Asaas** — **nenhuma** variável Asaas na Vercel de produção; as chaves
+>    de produção existem só no `.env.local`.
+> 5. 🟡 **Smoke manual da Frente 3** — não rodou.
+
+> ## SESSÃO 27 (2026-08-14) — revisão pré-lançamento e auditoria de IDOR
 >
 > Sessão de **endurecimento**, a pedido do usuário, com lançamento marcado para a
 > semana seguinte. Sem funcionalidade nova: revisão de código, caça a bug,
