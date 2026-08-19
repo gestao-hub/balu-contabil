@@ -13,7 +13,8 @@ import { rodarConciliacao } from '@/lib/conciliacao/cron';
 import { rodarApuracaoAutomatica } from '@/lib/fiscal/apuracao-cron';
 import { rodarPagamentosSerpro } from '@/lib/fiscal/pagamentos-serpro-cron';
 import { dentroDoOrcamento } from '@/lib/fiscal/apuracao-cron-plano';
-import { configDeEnv, enviarMensagem } from '@/lib/uazapi/cliente';
+import { enviarMensagem, type ConfigUazapi } from '@/lib/uazapi/cliente';
+import { configDaPlataforma, escritorioPorId } from '@/lib/uazapi/instancia';
 
 // TEMPO DE EXECUCAO — 60s, o teto do plano Hobby da Vercel.
 //
@@ -197,12 +198,61 @@ export async function GET(req: Request) {
   let whatsappEnviados = 0;
   let whatsappPulados = 0;
   let whatsappRestantes = 0;
+  let whatsappSemCanal = 0;
   if (ePendWhats) {
     console.error('[cron obrigacoes] notificacoes_pendentes_whatsapp', ePendWhats.message);
   } else {
-    const cfgUazapi = configDeEnv();
+    const cfgPlataforma = configDaPlataforma();
     const inicioWhats = Date.now();
     const filaWhats = pendWhats ?? [];
+
+    // ═══ CADA AVISO SAI PELA INSTÂNCIA DO ESCRITÓRIO DO CLIENTE (0091) ═══
+    //
+    // `notificacoes_pendentes_whatsapp` não devolve a empresa, então o vínculo
+    // é resolvido em lote — duas leituras por rodada, não duas por notificação.
+    const canalPorNotificacao = new Map<string, ConfigUazapi | null>();
+    if (filaWhats.length) {
+      const { data: notifs } = await admin
+        .from('notifications').select('id, company_id')
+        .in('id', filaWhats.map((n: { id: string }) => n.id));
+      const empresaDe = new Map(
+        ((notifs ?? []) as { id: string; company_id: string | null }[])
+          .map((n) => [n.id, n.company_id]));
+
+      const idsEmpresa = [...new Set([...empresaDe.values()].filter(Boolean))] as string[];
+      const { data: empresas } = idsEmpresa.length
+        ? await admin.from('companies').select('id, contabilidade_id').in('id', idsEmpresa)
+        : { data: [] };
+      const contabDe = new Map(
+        ((empresas ?? []) as { id: string; contabilidade_id: string | null }[])
+          .map((c) => [c.id, c.contabilidade_id]));
+
+      const canalDoEscritorio = new Map<string, ConfigUazapi | null>();
+      for (const cid of [...new Set([...contabDe.values()].filter(Boolean))] as string[]) {
+        canalDoEscritorio.set(cid, (await escritorioPorId(admin, cid))?.config ?? null);
+      }
+
+      for (const n of filaWhats as { id: string }[]) {
+        const empresa = empresaDe.get(n.id) ?? null;
+        const cid = empresa ? contabDe.get(empresa) ?? null : null;
+        // ⚠️ REGRA DA VIRADA — leitura da decisão D2 (19/08/2026), registrada
+        // por escrito porque ela ADAPTA a decisão em vez de segui-la ao pé da
+        // letra, e isso não pode passar despercebido:
+        //
+        // D2 diz "escritório sem canal conectado → o aviso NÃO sai". A intenção
+        // é não mandar aviso fiscal por um número que o cliente não reconhece.
+        // Mas HOJE nenhum escritório tem instância: aplicar D2 literalmente
+        // silenciaria o WhatsApp de toda a base na semana do lançamento — o
+        // oposto do que a decisão quer proteger.
+        //
+        // Regra adotada, igual à do webhook (`clientesDoCanal`): o cliente é
+        // atendido pelo canal do escritório dele quando existe; enquanto não
+        // existir, pelo número OFICIAL da plataforma, que é reconhecível. Nunca
+        // pelo número de OUTRO escritório. Quando o escritório conecta, seus
+        // clientes migram sozinhos.
+        canalPorNotificacao.set(n.id, (cid ? canalDoEscritorio.get(cid) : null) ?? cfgPlataforma);
+      }
+    }
     for (let i = 0; i < filaWhats.length; i++) {
       // Mesmo teto do laço de e-mail, e pelo mesmo motivo: este laço roda ANTES
       // da conciliação, da SERPRO, do billing e da apuração. Cada item pode
@@ -221,7 +271,15 @@ export async function GET(req: Request) {
         siteUrl,
       });
 
-      const r = await enviarMensagem(cfgUazapi, { telefone: n.whatsapp_numero, texto: msg.corpo });
+      const canal = canalPorNotificacao.get(n.id) ?? null;
+      if (!canal) {
+        // Sem canal NENHUM (nem escritório, nem plataforma): não se manda por um
+        // número qualquer. Contado para aparecer no resumo em vez de virar
+        // silêncio — o modo de falhar que este arquivo mais combate.
+        whatsappSemCanal++;
+        continue;
+      }
+      const r = await enviarMensagem(canal, { telefone: n.whatsapp_numero, texto: msg.corpo });
 
       // ── O CARIMBO SÓ CAI QUANDO AS DUAS MENSAGENS PASSAM ─────────────────
       //
@@ -239,7 +297,7 @@ export async function GET(req: Request) {
       // nada em volta, chegando ao cliente é pior que silêncio.
       let ok = r.ok;
       if (r.ok && msg.linhaDigitavel) {
-        const rLinha = await enviarMensagem(cfgUazapi, {
+        const rLinha = await enviarMensagem(canal, {
           telefone: n.whatsapp_numero, texto: msg.linhaDigitavel,
         });
         if (!rLinha.ok) {
@@ -324,6 +382,7 @@ export async function GET(req: Request) {
     // saber disso sem ler log, já que o resto do cron segue normalmente.
     email_restantes: emailRestantes,
     whatsapp_restantes: whatsappRestantes,
+    whatsapp_sem_canal: whatsappSemCanal,
     guias_vencidas: eVenc ? null : (vencidas ?? 0),
     parametros_desatualizados: eParam ? null : (paramAvisos ?? 0),
     whatsapp_enviados: whatsappEnviados, whatsapp_pulados: whatsappPulados,

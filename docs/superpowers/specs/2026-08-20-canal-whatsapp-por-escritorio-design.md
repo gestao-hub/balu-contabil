@@ -1,6 +1,6 @@
 # Canal de WhatsApp por escritório — multi-tenant do atendimento com IA
 
-> **Data:** 2026-08-19 · **Status:** proposta, aguardando aprovação
+> **Data:** 2026-08-19 · **Status:** APROVADA — decisões fechadas na §0, em execução
 > **Origem:** pedido do usuário em 19/08/2026, verificado contra o código no
 > mesmo dia. **Lançamento marcado para 24/08 (segunda-feira).**
 > **Seams principais:** `lib/uazapi/cliente.ts`, `lib/uazapi/payload.ts`,
@@ -8,6 +8,29 @@
 > `app/api/cron/obrigacoes/route.ts`, tabela `contabilidades`.
 
 ---
+
+## 0. Decisões tomadas com o usuário (19/08/2026)
+
+Fechadas antes da implementação, porque ele **não estará na sessão**. Nenhuma
+delas se rediscute amanhã; se algo aqui se mostrar impossível, para-se e
+registra-se, em vez de escolher sozinho.
+
+| # | Decisão | Consequência no código |
+|---|---|---|
+| D1 | **Executar na ordem do plano, parando em ponto seguro** — rápido e assertivo, mas nunca deixando algo pela metade | Cada task termina verde e deployável (§ordem de corte do plano) |
+| D2 | **Escritório sem canal conectado → o aviso NÃO sai por WhatsApp** | Cron conta `whatsapp_sem_canal`; e-mail e sino continuam cobrindo o cliente. Aviso fiscal de número desconhecido parece golpe |
+| D3 | **Modo ESCRITÓRIO entra agora**, não na fase 2 | Task 11 sobe para a fase 1 (§3.5) |
+| D4 | **Carteira completa no modo escritório**: agregados, lista com nomes e consulta a um cliente específico — sempre escopada ao escritório do canal | É a maior superfície de vazamento da frente; exige o teste de isolamento mais rigoroso |
+| D5 | **A IA pode dizer:** nome do escritório, prazo de resposta (SLA) e WhatsApp de suporte. **Nunca:** CNPJ, CRC, credenciais, e-mail, **nem o nome do contador responsável** (dado pessoal de funcionário) | Allowlist da §3.4 fechada nesses três campos |
+| D6 | **Provisionamento self-service**: o próprio contador conecta pela tela | ⚠️ Cada instância é um recurso no servidor uazapi. Se houver cobrança por instância, o custo cresce por escritório **sem teto** — levantar com o fornecedor antes de abrir para todos |
+| D7 | **O número pessoal do usuário fica conectado durante a implementação** e é desconectado ao fim, junto com o desligamento do webhook e a limpeza das conversas de terceiros | Sem isso, a frente iria a produção sem nenhuma mensagem real ter passado pela trava nova |
+| D8 | **A instância da plataforma permanece.** O número oficial do Balu (o do admin) entra nela antes do lançamento | O `?s=` legado deixa de ser "transição" e vira o canal permanente das empresas **sem escritório** |
+
+**Leitura de D8 registrada para não virar suposição amanhã:** a instância da
+plataforma atende as empresas **sem escritório** (self-service). Cliente que TEM
+escritório e escrever nela recebe orientação para procurar o número do escritório
+dele — não recebe dado fiscal, pelo mesmo motivo da trava da §3.3. Se essa
+leitura estiver errada, é uma constante a mudar, não um redesenho.
 
 ## 1. O pedido, na frase do usuário
 

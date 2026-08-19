@@ -52,7 +52,12 @@ import { buscarSituacaoAtualMei } from '@/lib/explicacoes/situacao-atual-mei';
 import { montarPromptAtendimento, comSaudacao } from '@/lib/atendimento/prompt';
 import { gerarTexto } from '@/lib/ai/cliente';
 import { lerChaveIa } from '@/lib/ai/config-ia';
-import { enviarMensagem, configDeEnv } from '@/lib/uazapi/cliente';
+import { enviarMensagem, type ConfigUazapi } from '@/lib/uazapi/cliente';
+import {
+  escritorioPorWebhookToken, escritorioPorId, configDaPlataforma, type EscritorioDoCanal,
+} from '@/lib/uazapi/instancia';
+import { resumoDaCarteira, textoDaCarteira } from '@/lib/atendimento/carteira';
+import { getLimitesFiscais } from '@/lib/fiscal/parametros';
 import { competenciaReferenciaBrt } from '@/lib/fiscal/guia';
 import { variantesDoNumero } from '@/lib/whatsapp/numero';
 import { normalizarEntrada, formaDoPayload } from '@/lib/uazapi/payload';
@@ -76,6 +81,72 @@ type PayloadUazapi = { messageId: string; from: string; text: string };
 
 type TrocaAnterior = { pergunta: string; resposta: string | null };
 
+type PerfilCasado = { user_id: string; current_company: string | null; whatsapp_numero: string | null };
+
+/**
+ * Quem escreveu é MEMBRO do escritório dono do canal? (modo ESCRITÓRIO)
+ *
+ * Consultado por `contabilidade_id` + os user_ids que casaram com o telefone —
+ * nunca "todos os membros", que traria a equipe inteira para a memória por uma
+ * mensagem só.
+ */
+async function membroDoEscritorio(
+  admin: SupabaseClient, contabilidadeId: string, perfis: PerfilCasado[],
+): Promise<PerfilCasado | null> {
+  if (!perfis.length) return null;
+  const { data } = await admin
+    .from('contabilidade_membros').select('user_id')
+    .eq('contabilidade_id', contabilidadeId)
+    .in('user_id', perfis.map((p) => p.user_id));
+
+  const ids = new Set(((data ?? []) as { user_id: string }[]).map((m) => m.user_id));
+  return perfis.find((p) => ids.has(p.user_id)) ?? null;
+}
+
+/**
+ * A TRAVA: dos perfis que casaram com o telefone, quais podem ser atendidos
+ * NESTE canal.
+ *
+ * Canal de escritório → só empresa daquele escritório. Perfil de outro
+ * escritório some daqui e cai no ramo "sem cadastro", que é a recusa neutra:
+ * confirmar que a pessoa é cliente de outra contabilidade já seria vazamento.
+ *
+ * Canal da plataforma → empresa SEM escritório (decisão D8) **e**, durante a
+ * virada, empresa cujo escritório ainda não conectou canal próprio. Sem essa
+ * segunda metade existiria uma janela em que o cliente não é atendido em lugar
+ * nenhum: o escritório dele ainda não tem número, e a plataforma já o recusa.
+ * Quando o escritório conecta, o cliente migra sozinho — sem script de
+ * migração e sem data marcada.
+ */
+async function clientesDoCanal(
+  admin: SupabaseClient, perfis: PerfilCasado[], escritorio: EscritorioDoCanal | null,
+): Promise<PerfilCasado[]> {
+  const ids = perfis.map((p) => p.current_company).filter(Boolean) as string[];
+  if (!ids.length) return [];
+
+  const { data } = await admin.from('companies').select('id, contabilidade_id').in('id', ids);
+  const empresas = (data ?? []) as { id: string; contabilidade_id: string | null }[];
+  const contabDe = new Map(empresas.map((c) => [c.id, c.contabilidade_id]));
+
+  if (escritorio) {
+    return perfis.filter((p) => p.current_company && contabDe.get(p.current_company) === escritorio.id);
+  }
+
+  const comEscritorio = [...new Set(empresas.map((c) => c.contabilidade_id).filter(Boolean))] as string[];
+  const jaTemCanalProprio = new Set<string>();
+  if (comEscritorio.length) {
+    const { data: cs } = await admin
+      .from('contabilidades').select('id').in('id', comEscritorio).eq('uazapi_status', 'conectado');
+    for (const c of (cs ?? []) as { id: string }[]) jaTemCanalProprio.add(c.id);
+  }
+
+  return perfis.filter((p) => {
+    if (!p.current_company) return false;
+    const cid = contabDe.get(p.current_company) ?? null;
+    return !cid || !jaTemCanalProprio.has(cid);
+  });
+}
+
 /**
  * Últimas trocas do MESMO telefone, do mais antigo para o mais recente — é
  * assim que se lê uma conversa.
@@ -85,12 +156,25 @@ type TrocaAnterior = { pergunta: string; resposta: string | null };
  */
 async function lerHistorico(
   admin: SupabaseClient, telefone: string, atendimentoId: string,
+  escopo?: { contabilidadeId?: string | null },
 ): Promise<TrocaAnterior[]> {
-  const { data } = await admin
+  // ESCOPO, não só telefone (furo B, corrigido em 19/08/2026). Antes daqui a
+  // busca era só por `telefone`: um número que trocasse de empresa levaria a
+  // conversa antiga para dentro do prompt da nova — vazamento de conteúdo
+  // entre carteiras, invisível para todo mundo.
+  let q = admin
     .from('whatsapp_atendimentos')
     .select('mensagem_recebida, resposta_enviada, created_at')
     .eq('telefone', telefone)
-    .neq('id', atendimentoId)
+    .neq('id', atendimentoId);
+
+  // `is(null)` quando não há escritório: conversa do canal da plataforma não se
+  // mistura com a de canal de escritório, nos dois sentidos.
+  q = escopo?.contabilidadeId
+    ? q.eq('contabilidade_id', escopo.contabilidadeId)
+    : q.is('contabilidade_id', null);
+
+  const { data } = await q
     .order('created_at', { ascending: false })
     .limit(4);
 
@@ -121,6 +205,8 @@ async function responderComIa(
     historico: TrocaAnterior[];
     contextoJuridico: Parameters<typeof montarPromptAtendimento>[0]['contextoJuridico'];
     tipoPergunta: TipoPergunta;
+    escritorio?: Parameters<typeof montarPromptAtendimento>[0]['escritorio'];
+    carteiraTexto?: string | null;
     /** O que dizer se a IA falhar. Difere por ramo: prometer que "o contador
      *  vai retornar" a um número que não é cliente de escritório nenhum é
      *  mentir para quem escreveu — ninguém vai retornar. */
@@ -145,6 +231,8 @@ async function responderComIa(
         historico: e.historico,
         contextoJuridico: e.contextoJuridico,
         tipoPergunta: e.tipoPergunta,
+        escritorio: e.escritorio ?? null,
+        carteiraTexto: e.carteiraTexto ?? null,
       }),
       // Tem gente esperando no WhatsApp: 3 tentativas de 15s, e não uma só de
       // 60s. Um 429 transitório do provedor deixou de virar não-atendimento.
@@ -168,6 +256,71 @@ async function responderComIa(
 }
 
 
+
+/**
+ * Modo ESCRITÓRIO — quem escreveu é o contador, e a conversa é sobre a carteira
+ * dele (decisões D3/D4 de 19/08/2026).
+ *
+ * NÃO escala: escalar para o contador uma pergunta feita PELO contador seria
+ * mandá-lo notificar a si mesmo.
+ *
+ * O isolamento aqui não depende de instrução no prompt: `resumoDaCarteira` só
+ * enxerga o escritório passado por parâmetro, porque o filtro está dentro do
+ * SQL de `painel_contador_por_id`.
+ */
+async function atenderContador(
+  admin: SupabaseClient,
+  ctx: {
+    entrada: { messageId: string; from: string; text: string };
+    atendimentoId: string;
+    escritorio: EscritorioDoCanal;
+    membro: PerfilCasado;
+    canal: ConfigUazapi | null;
+  },
+): Promise<NextResponse> {
+  const limites = await getLimitesFiscais(admin);
+  const resumo = await resumoDaCarteira(admin, ctx.escritorio.id, limites);
+  const historico = await lerHistorico(admin, ctx.entrada.from, ctx.atendimentoId, {
+    contabilidadeId: ctx.escritorio.id,
+  });
+
+  const gerada = await responderComIa(admin, {
+    pergunta: ctx.entrada.text,
+    // O contador não tem "situação fiscal própria" — o que ele tem é carteira.
+    situacaoFiscalTexto: null,
+    primeiraInteracao: historico.length === 0,
+    historico,
+    contextoJuridico: await buscarContextoPorPergunta(admin, ctx.entrada.text),
+    tipoPergunta: 'especifica',
+    escritorio: {
+      nome: ctx.escritorio.nome,
+      slaHoras: ctx.escritorio.slaHoras,
+      whatsappSuporte: ctx.escritorio.whatsappSuporte,
+    },
+    carteiraTexto: resumo ? textoDaCarteira(resumo) : null,
+    textoDeFalha: 'Não consegui consultar a carteira agora. Tente de novo em instantes '
+      + 'ou abra o painel do escritório.',
+  });
+
+  const texto = comSaudacao(gerada.resposta, historico.length === 0);
+  const envio = await enviarMensagem(ctx.canal, { telefone: ctx.entrada.from, texto });
+  if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+
+  const { error } = await admin.from('whatsapp_atendimentos')
+    .update({
+      profile_user_id: ctx.membro.user_id,
+      contabilidade_id: ctx.escritorio.id,
+      resposta_enviada: texto,
+      // Conversa com o próprio contador nasce resolvida: não há terceiro a
+      // acionar, e deixar `false` encheria a fila de SLA dele com as próprias
+      // perguntas.
+      resolvido: envio.ok,
+    })
+    .eq('id', ctx.atendimentoId);
+  if (error) console.error('[webhook uazapi] falha ao gravar atendimento do contador:', error.message);
+
+  return NextResponse.json({ ok: true, reason: 'modo_escritorio' }, { status: 200 });
+}
 
 /**
  * Escalação de atendimento não resolvido: notifica o membro mais antigo do
@@ -245,7 +398,21 @@ export async function POST(req: Request) {
   // `rate_limited` (200, sem retry da uazapi) — um atendimento perdido sem
   // custar nada ao atacante. A checagem de segredo é comparação em tempo
   // constante, sem round-trip a banco: cabe vir antes.
-  if (!segredoDaQuery(req, 's', process.env.UAZAPI_WEBHOOK_SECRET ?? '')) {
+  //
+  // DOIS CANAIS, DOIS SEGREDOS (migration 0091):
+  //
+  //   ?t=<token do escritório>  → canal de um escritório. O token identifica o
+  //                               TENANT e autentica ao mesmo tempo: ele é
+  //                               único, tem 256 bits e só nós o colocamos na
+  //                               URL, no provisionamento.
+  //   ?s=<UAZAPI_WEBHOOK_SECRET> → canal da plataforma, que atende as empresas
+  //                               SEM escritório (decisão D8).
+  //
+  // O `t` é conferido contra o banco mais abaixo (precisa do admin client);
+  // aqui só barramos quem não trouxe credencial NENHUMA, para o rate-limit
+  // continuar protegido como o parágrafo acima descreve.
+  const tokenDoCanal = new URL(req.url).searchParams.get('t');
+  if (!tokenDoCanal && !segredoDaQuery(req, 's', process.env.UAZAPI_WEBHOOK_SECRET ?? '')) {
     return NextResponse.json({ ok: false, reason: 'unauthorized' }, { status: 200 });
   }
   // O payload da uazapi NÃO tem a forma que este arquivo supôs até 12/08/2026
@@ -296,6 +463,35 @@ export async function POST(req: Request) {
   try {
     admin = createAdminClient();
 
+    // ═══ TENANT DO CANAL (migration 0091) ═══
+    //
+    // Resolvido ANTES do claim: token desconhecido não pode gerar linha em
+    // `whatsapp_atendimentos`. Gravar mensagem vinda de um canal que não é
+    // nosso encheria a auditoria de origem não identificável.
+    const escritorioDoCanal = tokenDoCanal
+      ? await escritorioPorWebhookToken(admin, tokenDoCanal)
+      : null;
+
+    if (tokenDoCanal && !escritorioDoCanal) {
+      try {
+        await admin.from('audit_log').insert({
+          acao: 'uazapi.canal_desconhecido',
+          alvo_tipo: 'webhook',
+          // Nunca o token nem o conteúdo: só o bastante para saber que
+          // aconteceu e com que forma.
+          meta: { tamanho_token: tokenDoCanal.length },
+        });
+      } catch (e) {
+        console.error('[webhook uazapi] canal desconhecido e falha ao auditar:', e);
+      }
+      return NextResponse.json({ ok: false, reason: 'canal_desconhecido' }, { status: 200 });
+    }
+
+    // Por onde a RESPOSTA sai: sempre a mesma instância que recebeu. Responder
+    // por outro número faria o cliente ver a pergunta num chat e a resposta em
+    // outro — e, num canal de escritório, com a marca errada.
+    const canalDeSaida = escritorioDoCanal?.config ?? configDaPlataforma();
+
     // Idempotência via CLAIM atômico: o INSERT abaixo é a própria linha de
     // auditoria (usada pelo resto do fluxo e, no caminho de telefone
     // desconhecido, a ÚNICA gravação necessária). Confiar na UNIQUE
@@ -311,6 +507,11 @@ export async function POST(req: Request) {
       .insert({
         message_id_externo: entrada.messageId, telefone: entrada.from,
         mensagem_recebida: entrada.text, resolvido: false,
+        // Carimbado JÁ no claim, não só na escalação. Duas razões: o escopo do
+        // histórico depende dele (ver `lerHistorico`), e a fila de SLA do
+        // escritório passa a enxergar a conversa desde a primeira mensagem, e
+        // não só quando alguém escala.
+        contabilidade_id: escritorioDoCanal?.id ?? null,
       })
       .select('id')
       .single();
@@ -339,14 +540,59 @@ export async function POST(req: Request) {
     // o 9, outro sem). Pegamos o primeiro e avisamos — cadastro duplicado é
     // problema de dado, não motivo para não atender ninguém.
     const candidatos = variantesDoNumero(entrada.from);
-    const { data: perfis } = await admin
+    const { data: perfisBrutos } = await admin
       .from('profiles').select('user_id, current_company, whatsapp_numero')
       .in('whatsapp_numero', candidatos)
-      .limit(2);
-    if ((perfis?.length ?? 0) > 1) {
-      console.warn('[webhook uazapi] mais de um perfil casa com o numero', candidatos[0]);
+      .limit(10);
+    const perfis = (perfisBrutos ?? []) as PerfilCasado[];
+
+    // ═══ MODO ESCRITÓRIO (decisões D3/D4) ═══
+    // O número é de um MEMBRO do escritório dono do canal? Então quem escreve
+    // é o contador, não um cliente — e a conversa é sobre a carteira dele.
+    const membro = escritorioDoCanal
+      ? await membroDoEscritorio(admin, escritorioDoCanal.id, perfis)
+      : null;
+
+    // ═══ A TRAVA DE ISOLAMENTO (§3.3 da spec) ═══
+    // Só continua como CLIENTE quem pertence ao escritório DESTE canal. Perfil
+    // de outro escritório cai no mesmo lugar que "número não cadastrado" — a
+    // recusa não pode revelar que a pessoa é cliente de outra contabilidade.
+    const clientes = membro ? [] : await clientesDoCanal(admin, perfis, escritorioDoCanal);
+
+    // Mais de um perfil sobrando DEPOIS do filtro por escritório: não se
+    // adivinha. Antes daqui o código pegava `perfis[0]` com um console.warn —
+    // e uma das duas respostas levaria dado da empresa errada.
+    if (clientes.length > 1) {
+      try {
+        await admin.from('audit_log').insert({
+          acao: 'uazapi.numero_ambiguo', alvo_tipo: 'webhook',
+          meta: {
+            perfis: clientes.length,
+            // Telefone mascarado; conteúdo da mensagem NUNCA vai para auditoria.
+            telefone: entrada.from.slice(0, 4) + '…' + entrada.from.slice(-2),
+            contabilidade_id: escritorioDoCanal?.id ?? null,
+          },
+        });
+      } catch (e) {
+        console.error('[webhook uazapi] numero ambiguo e falha ao auditar:', e);
+      }
+      const envio = await enviarMensagem(canalDeSaida, {
+        telefone: entrada.from,
+        texto: 'Encontramos mais de um cadastro com este número e, por segurança, '
+          + 'não vamos responder com dados de nenhum deles. Fale com seu contador '
+          + 'para corrigir o cadastro.',
+      });
+      if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+      return NextResponse.json({ ok: true, reason: 'numero_ambiguo' }, { status: 200 });
     }
-    const profile = perfis?.[0] ?? null;
+
+    const profile = clientes[0] ?? null;
+
+    if (membro) {
+      return await atenderContador(admin, {
+        entrada, atendimentoId, escritorio: escritorioDoCanal!, membro, canal: canalDeSaida,
+      });
+    }
 
     if (!profile?.current_company) {
       // NÃO responder a qualquer desconhecido. Achado em 12/08/2026: a
@@ -391,7 +637,7 @@ export async function POST(req: Request) {
       //   • qualquer outra pergunta → a base jurídica (415 documentos da
       //     legislação vigente) responde sozinha, sem depender de cadastro.
       if (temMarcaPessoal(entrada.text)) {
-        const envio = await enviarMensagem(configDeEnv(), {
+        const envio = await enviarMensagem(canalDeSaida, {
           telefone: entrada.from,
           texto: 'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.',
         });
@@ -399,7 +645,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, reason: 'telefone_desconhecido' }, { status: 200 });
       }
 
-      const historicoSemConta = await lerHistorico(admin, entrada.from, atendimentoId);
+      const historicoSemConta = await lerHistorico(admin, entrada.from, atendimentoId,
+        { contabilidadeId: escritorioDoCanal?.id ?? null });
       const respostaGeral = await responderComIa(admin, {
         pergunta: entrada.text,
         // Sem empresa não há situação fiscal — e o prompt já trata essa ausência
@@ -410,6 +657,12 @@ export async function POST(req: Request) {
         historico: historicoSemConta,
         contextoJuridico: await buscarContextoPorPergunta(admin, entrada.text),
         tipoPergunta: 'geral',
+        // O nome do escritório dono do canal não é vazamento: quem escreveu já
+        // conhece o número para o qual escreveu.
+        escritorio: escritorioDoCanal ? {
+          nome: escritorioDoCanal.nome, slaHoras: escritorioDoCanal.slaHoras,
+          whatsappSuporte: escritorioDoCanal.whatsappSuporte,
+        } : null,
         // Quem escreve aqui não é cliente de escritório nenhum: não há contador
         // para "retornar em breve". O convite a repetir é o que resta de
         // honesto — e mantém a porta aberta.
@@ -421,7 +674,7 @@ export async function POST(req: Request) {
       // mundo, e só na primeira mensagem da conversa.
       const textoGeral = comSaudacao(respostaGeral.resposta, historicoSemConta.length === 0);
 
-      const envioGeral = await enviarMensagem(configDeEnv(), {
+      const envioGeral = await enviarMensagem(canalDeSaida, {
         telefone: entrada.from, texto: textoGeral,
       });
       if (!envioGeral.ok) {
@@ -452,7 +705,8 @@ export async function POST(req: Request) {
     // cada pergunta era tratada como se fosse a primeira, e o cliente tinha de
     // repetir o contexto a cada frase. Agora as últimas trocas do MESMO
     // telefone entram no prompt.
-    const historico = await lerHistorico(admin, entrada.from, atendimentoId);
+    const historico = await lerHistorico(admin, entrada.from, atendimentoId,
+      { contabilidadeId: escritorioDoCanal?.id ?? null });
     const primeiraInteracao = historico.length === 0;
 
     // BASE JURÍDICA como apoio (415 documentos da legislação vigente, mantidos
@@ -473,6 +727,16 @@ export async function POST(req: Request) {
     // determina quando um humano é acionado.
     const tipoPergunta = classificarPergunta(entrada.text);
 
+    // O escritório que o cliente pode conhecer: o dono do canal quando há um;
+    // no canal da plataforma, o escritório da empresa dele (que pode existir
+    // mesmo sem canal próprio ainda). É o que responde "a qual escritório eu
+    // estou vinculado?" sem escalar.
+    const escritorioDoCliente = escritorioDoCanal ?? await escritorioPorId(
+      admin,
+      (await admin.from('companies').select('contabilidade_id').eq('id', companyId).maybeSingle())
+        .data?.contabilidade_id ?? null,
+    );
+
     const gerada = await responderComIa(admin, {
       pergunta: entrada.text,
       situacaoFiscalTexto: situacao?.texto ?? null,
@@ -480,6 +744,10 @@ export async function POST(req: Request) {
       historico,
       contextoJuridico,
       tipoPergunta,
+      escritorio: escritorioDoCliente ? {
+        nome: escritorioDoCliente.nome, slaHoras: escritorioDoCliente.slaHoras,
+        whatsappSuporte: escritorioDoCliente.whatsappSuporte,
+      } : null,
       // Aqui a promessa é verdadeira: `resolvido:false` aciona a escalação
       // logo abaixo, e o escritório vê a conversa em /contador/atendimentos.
       textoDeFalha: 'Não consegui responder agora — o contador vai retornar em breve.',
@@ -490,7 +758,7 @@ export async function POST(req: Request) {
     const resposta = comSaudacao(gerada.resposta, primeiraInteracao);
     let resolvido = gerada.resolvido;
 
-    const envio = await enviarMensagem(configDeEnv(), { telefone: entrada.from, texto: resposta });
+    const envio = await enviarMensagem(canalDeSaida, { telefone: entrada.from, texto: resposta });
     if (!envio.ok) {
       console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
       // "Resolvido" só pode significar que a necessidade do cliente foi

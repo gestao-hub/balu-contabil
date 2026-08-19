@@ -20,6 +20,9 @@ const h = vi.hoisted(() => {
     slaAvisos: 0 as number,
     guiasVencidas: 0 as number,
     paramAvisos: 0 as number,
+    // 0091 — leituras em lote do roteamento por escritório.
+    linhasPorTabela: {} as Record<string, Array<Record<string, unknown>>>,
+    escritorio: null as null | { config: { baseUrl: string; token: string } | null },
   };
 
   const rpc = vi.fn(async (nome: string) => {
@@ -35,13 +38,28 @@ const h = vi.hoisted(() => {
 
   // Nenhum teste deste arquivo faz asserção sobre o UPDATE final — só precisa
   // não lançar, pra não travar o loop de WhatsApp do GET.
-  const from = vi.fn((_tabela: string) => ({
+  // 0091: o laço de WhatsApp resolve o canal do escritório de cada cliente com
+  // duas leituras em lote (notifications → companies). Sem `select` aqui, o
+  // cron morria antes de chegar ao envio.
+  const from = vi.fn((tabela: string) => ({
     update: (_valores: Record<string, unknown>) => ({
       eq: async () => ({ data: null, error: null }),
     }),
+    select: (_cols: string) => {
+      const b = {
+        eq: () => b, in: () => b, is: () => b, lte: () => b, gte: () => b,
+        order: () => b, limit: () => b,
+        maybeSingle: async () => ({ data: null, error: null }),
+        then: (resolve: (v: unknown) => void) =>
+          resolve({ data: estado.linhasPorTabela[tabela] ?? [], error: null }),
+      };
+      return b;
+    },
   }));
 
   const createAdminClient = vi.fn(() => ({ rpc, from }));
+  const configDaPlataforma = vi.fn(() => ({ baseUrl: 'https://p.uazapi.com', token: 'tok-plataforma' }));
+  const escritorioPorId = vi.fn(async () => estado.escritorio);
   const sendEmail = vi.fn(async () => ({ ok: true }));
   // O retorno é o `EnvioResultado` de `lib/uazapi/cliente` — inclui a falha.
   // Sem declarar a união, `mockResolvedValueOnce({ ok: false, erro })` não
@@ -71,7 +89,7 @@ const h = vi.hoisted(() => {
     elegiveis: 2, consultadas: 2, baixadas: 1, sem_data: 0, erros: 0, cortada_por_orcamento: false,
   }));
 
-  return { estado, rpc, from, createAdminClient, sendEmail, enviarMensagem, configDeEnv, rodarBilling, rodarConciliacao, rodarApuracaoAutomatica, rodarPagamentosSerpro };
+  return { estado, rpc, from, createAdminClient, configDaPlataforma, escritorioPorId, sendEmail, enviarMensagem, configDeEnv, rodarBilling, rodarConciliacao, rodarApuracaoAutomatica, rodarPagamentosSerpro };
 });
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: h.createAdminClient }));
@@ -79,6 +97,9 @@ vi.mock('@/lib/clients/email', () => ({ sendEmail: h.sendEmail }));
 vi.mock('@/lib/billing/cron', () => ({ rodarBilling: h.rodarBilling }));
 vi.mock('@/lib/conciliacao/cron', () => ({ rodarConciliacao: h.rodarConciliacao }));
 vi.mock('@/lib/uazapi/cliente', () => ({ configDeEnv: h.configDeEnv, enviarMensagem: h.enviarMensagem }));
+vi.mock('@/lib/uazapi/instancia', () => ({
+  configDaPlataforma: h.configDaPlataforma, escritorioPorId: h.escritorioPorId,
+}));
 vi.mock('@/lib/fiscal/apuracao-cron', () => ({ rodarApuracaoAutomatica: h.rodarApuracaoAutomatica }));
 vi.mock('@/lib/fiscal/pagamentos-serpro-cron', () => ({ rodarPagamentosSerpro: h.rodarPagamentosSerpro }));
 
@@ -97,6 +118,10 @@ beforeEach(() => {
   h.estado.slaAvisos = 0;
   h.estado.guiasVencidas = 0;
   h.estado.paramAvisos = 0;
+  h.estado.linhasPorTabela = {};
+  h.estado.escritorio = null;
+  h.configDaPlataforma.mockClear();
+  h.escritorioPorId.mockClear();
   h.rpc.mockClear();
   h.enviarMensagem.mockClear();
   h.rodarApuracaoAutomatica.mockClear();
@@ -559,5 +584,54 @@ describe('GET /api/cron/obrigacoes — uma exceção no e-mail não cala o resto
       h.sendEmail.mockReset();
       h.sendEmail.mockResolvedValue({ ok: true });
     }
+  });
+});
+
+// ═══ 0091 — cada aviso sai pela instancia do escritorio do cliente ═══
+describe('GET /api/cron/obrigacoes — roteamento do WhatsApp por escritorio', () => {
+  function prepararUmAviso(companyId: string | null, contabilidadeId: string | null) {
+    h.estado.pendWhats = [{
+      id: 'n1', titulo: 'DAS a vencer', corpo: 'Sua guia vence dia 20.',
+      action_href: '/impostos', whatsapp_numero: '5532987006789', linha_digitavel: null,
+    }];
+    h.estado.linhasPorTabela = {
+      notifications: [{ id: 'n1', company_id: companyId }],
+      companies: companyId ? [{ id: companyId, contabilidade_id: contabilidadeId }] : [],
+    };
+  }
+
+  it('CRITERIO 6: cliente de escritorio COM instancia recebe pelo numero do escritorio', async () => {
+    prepararUmAviso('empresa_1', 'contab_A');
+    h.estado.escritorio = { config: { baseUrl: 'https://a.uazapi.com', token: 'tok-A' } };
+
+    await GET(requisicaoFalsa());
+
+    const [cfg] = h.enviarMensagem.mock.calls[0] as unknown as [{ token: string }];
+    expect(cfg.token).toBe('tok-A');   // nunca o da plataforma
+  });
+
+  it('escritorio SEM instancia ainda usa o numero oficial da plataforma (regra da virada)', async () => {
+    // Decisao D2 adaptada e registrada no codigo: aplicar "nao envia" ao pe da
+    // letra hoje silenciaria toda a base, porque nenhum escritorio tem canal.
+    prepararUmAviso('empresa_1', 'contab_A');
+    h.estado.escritorio = { config: null };
+
+    await GET(requisicaoFalsa());
+
+    const [cfg] = h.enviarMensagem.mock.calls[0] as unknown as [{ token: string }];
+    expect(cfg.token).toBe('tok-plataforma');
+  });
+
+  it('sem canal NENHUM: conta whatsapp_sem_canal e nao envia por numero qualquer', async () => {
+    prepararUmAviso('empresa_1', 'contab_A');
+    h.estado.escritorio = { config: null };
+    h.configDaPlataforma.mockReturnValueOnce(null as unknown as { baseUrl: string; token: string });
+
+    const res = await GET(requisicaoFalsa());
+    const body = await res.json();
+
+    expect(body.whatsapp_sem_canal).toBe(1);
+    expect(body.whatsapp_enviados).toBe(0);
+    expect(h.enviarMensagem).not.toHaveBeenCalled();
   });
 });

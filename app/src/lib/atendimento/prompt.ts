@@ -71,6 +71,17 @@ export type EntradaAtendimento = {
    *  Balu aparece uma vez, nunca se repete (quem decide isto é o webhook,
    *  consultando se já existe atendimento anterior para este telefone). */
   primeiraInteracao?: boolean;
+  /** O escritório dono do canal (migration 0091).
+   *
+   *  ALLOWLIST FECHADA (decisão D5, 19/08/2026): nome, prazo de resposta e
+   *  WhatsApp de suporte. CNPJ, CRC, e-mail e o nome do contador responsável
+   *  NÃO entram — e a garantia é esta struct não ter os campos, não a
+   *  obediência do modelo. */
+  escritorio?: { nome: string; slaHoras: number | null; whatsappSuporte: string | null } | null;
+  /** Modo ESCRITÓRIO: resumo da carteira, já em texto e já sem dado sensível
+   *  (ver `lib/atendimento/carteira.ts`). Só é montado quando quem escreve é
+   *  membro do escritório dono do canal. */
+  carteiraTexto?: string | null;
 };
 
 export function montarPromptAtendimento(e: EntradaAtendimento): string {
@@ -119,6 +130,38 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
       ]
     : [];
 
+  // Dados do escritório — allowlist da decisão D5. O bloco só existe quando há
+  // escritório; sem ele, o modelo não tem o que dizer e não inventa nome.
+  const escritorio = e.escritorio
+    ? [
+        `A empresa de quem escreve é atendida pelo escritório de contabilidade "${e.escritorio.nome}".`,
+        ...(e.escritorio.slaHoras
+          ? [`Prazo de resposta combinado com esse escritório: ${e.escritorio.slaHoras} horas.`] : []),
+        ...(e.escritorio.whatsappSuporte
+          ? [`WhatsApp de suporte do escritório: ${e.escritorio.whatsappSuporte}.`] : []),
+        'Você PODE informar essas três coisas se perguntarem. NÃO existe nenhum',
+        'outro dado do escritório disponível para você: se pedirem CNPJ, CRC,',
+        'e-mail, endereço ou o nome do contador responsável, diga com naturalidade',
+        'que não tem essa informação e ofereça o contato de suporte acima.',
+        '',
+      ]
+    : [];
+
+  // Modo ESCRITÓRIO: quem escreve é membro do escritório, não cliente final.
+  const carteira = e.carteiraTexto
+    ? [
+        'QUEM ESTÁ FALANDO COM VOCÊ É O PRÓPRIO CONTADOR do escritório, não um',
+        'cliente final. Trate-o como colega de trabalho: pode usar os termos',
+        'técnicos direto, sem explicar o que é DAS ou PGDAS-D.',
+        `Situação da carteira dele: ${e.carteiraTexto}`,
+        'Esses números e nomes são da carteira DELE e podem ser ditos a ele.',
+        'Você NÃO tem dados de clientes de outros escritórios — se ele perguntar',
+        'por uma empresa que não está na carteira acima, diga que não localizou',
+        'essa empresa na carteira dele.',
+        '',
+      ]
+    : [];
+
   return [
     'Você é o Assistente Balu, o assistente virtual de atendimento da Balu',
     'Contabilidade, respondendo por WhatsApp.',
@@ -152,6 +195,8 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
     'Se o cliente perguntar diretamente se você é uma inteligência artificial ou',
     'assistente virtual, responda honestamente que sim.',
     ...apresentacao,
+    ...escritorio,
+    ...carteira,
     ...memoria,
     ...juridico,
     `Pergunta do cliente: "${e.pergunta}"`,
