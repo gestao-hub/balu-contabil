@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-19 (sessão 28 — **SMTP customizado ligado e provado**: o Auth do Supabase agora sai pelo Resend em nao-responda@balucontabil.com.br, teto de 2→30/hora; e o **domínio caiu no mesmo dia**: a edição de DNS pôs os registros do Resend e levou os registros A do site.)
+> **Última atualização:** 2026-08-19 (sessão 28 — **SMTP customizado ligado e provado**: o Auth do Supabase agora sai pelo Resend em nao-responda@balucontabil.com.br, teto de 2→30/hora; e o **domínio caiu e voltou no mesmo dia**: a edição de DNS pôs os registros do Resend e levou os registros A do site, restaurados no fim da tarde e verificados ponta a ponta.)
 
 > ## 🆕 SESSÃO 28 (2026-08-19) — o e-mail de autenticação saiu do gargalo, e o domínio caiu no mesmo dia
 >
@@ -93,6 +93,45 @@
 > 4. 🟡 **Asaas** — **nenhuma** variável Asaas na Vercel de produção; as chaves
 >    de produção existem só no `.env.local`.
 > 5. 🟡 **Smoke manual da Frente 3** — não rodou.
+>
+> ### Fechamento da sessão — o que mais saiu daqui
+>
+> - **Descrição completa da plataforma** em
+>   `docs/product/2026-08-19-PLATAFORMA-BALU-visao-geral.md`, escrita a pedido do
+>   usuário para servir de contexto a apresentações. Levantada do **código e do
+>   banco**, não do material antigo — e por isso corrige o quadro de blocos deste
+>   arquivo, que ainda mostra os blocos 4 a 7 como não iniciados. As migrations
+>   dizem o contrário: billing com subconta (0050–0055), IA (0056), WhatsApp
+>   (0061), base jurídica (0062–0063), SLA (0070), conciliação (0071–0073).
+>   ⚠️ **Quem for atualizar a tabela de blocos, use o código como fonte.**
+> - **Correção pega pelo usuário:** o documento afirmava que o escritório tem
+>   **domínio próprio**. Não tem — a `0075` arquivou a funcionalidade em 12/08
+>   (o cliente não pediu; veio do PRD Master), e não sobrou uma referência sequer
+>   no código. O SLA fica, esse ele pediu. O texto foi corrigido em três pontos e
+>   ganhou uma linha em "o que o Balu NÃO faz", para a função não ressuscitar num
+>   slide.
+> - Números conferidos no banco vivo para o documento: **44 tabelas · 36 RPCs ·
+>   90 policies de RLS**; e no repo: 48 telas, 91 migrations, ~67.500 linhas.
+> - Commit `5b4dd67` (checkpoint + os dois documentos). **Sem push** — o
+>   repositório é público e o push não foi pedido.
+>
+> ### ✅ E o DNS voltou, ainda na mesma sessão
+>
+> O terceiro aplicou os dois registros. Verificado **no autoritativo e no
+> 8.8.8.8**: apex e `www` em `76.76.21.21`; `https://balucontabil.com.br` responde
+> **307 → /login**, com certificado da Vercel já emitido; a tela carrega
+> (`<title>Balu — Gestão Fiscal</title>`).
+>
+> **O que mais importava conferir:** os três registros do Resend (DKIM, SPF e MX
+> de `send`) **sobreviveram** à edição, e o domínio segue `verified` com envio
+> habilitado. A armadilha da manhã não se repetiu na direção contrária.
+>
+> Link de autenticação provado sem depender da caixa de entrada: um link de
+> recuperação gerado pela API admin e seguido com `curl` faz `verify` → domínio →
+> `/login`, HTTP 200 em 2 saltos. `/reset_pw`, `/login`, `/auth/callback` e
+> `/auth/confirm` respondem sob o domínio.
+>
+
 
 > ## SESSÃO 27 (2026-08-14) — revisão pré-lançamento e auditoria de IDOR
 >
@@ -2279,17 +2318,22 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 
 > ⚠️ Duas numerações convivem: a **antiga A–E** (PRD-Balu-V2, blocos A e E já em main) e a **nova 1–7** do `PRD-MASTER-Balu-2026-07-24.md`, que é a válida desde a sessão 5. A tabela A–E abaixo fica como histórico.
 
-**Numeração vigente (Master PRD):** 1 (obrigações/notificações) → 2 (abertura completa) → **3 (DASN/DEFIS assistidas — próximo)** → 4 (billing Asaas 🔒) → 5 (produção fiscal 🔒) → 6 (WhatsApp/IA 🔒) → 7 (domínio/SLA/conciliação 🔒)
+**Numeração vigente (Master PRD) — tabela conferida contra o código e as migrations em 19/08/2026** (ela vinha desatualizada: mostrava 4 a 7 como não iniciados, e três deles estão em `main` há semanas):
 
 | Bloco (Master PRD) | Spec | Plano | Implementação |
 |---|---|---|---|
-| 1 — motor de obrigações/notificações | ✅ aprovada | ✅ escrito (12 tasks) | ✅ **em main** (0045, 0045b, **0047**) |
+| 1 — motor de obrigações/notificações | ✅ aprovada | ✅ escrito (12 tasks) | ✅ **em main** (0045, 0045b, 0047) |
 | 2 — abertura digital completa | ✅ aprovada | ✅ escrito (7 tasks) | ✅ **em main** (0046) — merge `6f01f1e` |
-| 3 — DASN-SIMEI assistida + DEFIS | ✅ aprovada | ✅ escrito (22 tasks) | 🟡 **22/22 na branch `bloco-3-dasn-defis`** (0048, 0049) — aguarda smoke manual + merge |
-| 4 — billing Asaas 🔒 | ⬜ | ⬜ | ⬜ |
-| 5 — produção fiscal 🔒 | ⬜ | ⬜ | ⬜ |
-| 6 — WhatsApp (Envia.Click) + IA (Claude) 🔒 | ⬜ | ⬜ | ⬜ |
-| 7 — domínio + SLA + conciliação 🔒 | ⬜ | ⬜ | ⬜ |
+| 3 — DASN-SIMEI assistida + DEFIS | ✅ aprovada | ✅ escrito (22 tasks) | ✅ **em main** (0048, 0049) desde a sessão 10 |
+| 4 — billing Asaas | ✅ 4A + 4B | ✅ escrito | ✅ **em main** (0050–0055) — 🔒 roda em **sandbox**; produção depende de credencial + webhook com URL pública |
+| 5 — produção fiscal | ⬜ | ⬜ | ⬜ **não iniciado** — `notas_fiscais/actions.ts` segue com `env: FocusEnv = 'hom'` fixo (emissão NFSe/NFe/NFCe, cancelamento e polling) |
+| 6 — WhatsApp + IA | ✅ 6A + 6B | ✅ escrito | ✅ **em main** (0056 IA, 0061 WhatsApp, 0062–0063 base jurídica, 0064/0068 linha digitável e coalescência) — ⚠️ o canal é **uazapi**, não Envia.Click como o PRD previa; 🔒 falta `UAZAPI_TOKEN` |
+| 7 — SLA + conciliação | ✅ aprovada | ✅ escrito | 🟡 **em main com dois desvios**: (a) **domínio próprio arquivado** pela 0075 (12/08 — o cliente não pediu; veio do PRD Master); (b) conciliação por **Open Finance trocada** por SERPRO + Asaas na Frente 3 (0071–0073, 0086–0088), com o Open Finance atrás de adaptador e mock. SLA entregue (0070) |
+
+⚠️ **Para quem for atualizar esta tabela:** use as migrations e o código como
+fonte, não o histórico deste arquivo. Foi assim que ela ficou ~15 sessões
+mentindo sobre os blocos 4, 6 e 7.
+
 
 **Histórico (numeração antiga A–E):**
 
@@ -2323,36 +2367,54 @@ O código do app está congelado desde 15/06/2026 (commit `52a0844`). Em 22/07 f
 
 ## Próximo passo imediato
 
-> ⚠️ Esta seção ficou **obsoleta por ~10 sessões** falando do Bloco 3 (já em main
-> desde a sessão 10). Reescrita na sessão 27. Se ela voltar a divergir do topo do
-> arquivo, o topo é que vale.
+> ⚠️ Reescrita na **sessão 28 (19/08)**. Se voltar a divergir do topo do arquivo,
+> o topo é que vale.
 
-**Lançamento na semana de 18/08.** O caminho crítico, na ordem:
+**O caminho crítico, na ordem:**
 
-1. 🔴 **`UAZAPI_TOKEN`** — sem ele `enviarMensagem` devolve `{ok:false, skipped:true}`
-   e **nada chega a ninguém, sem erro**. Trava qualquer demonstração. A
-   coalescência da 0068 existe para que o backlog acumulado não vire rajada no dia
-   em que o token voltar.
-2. 🔴 **Três env vars na Vercel** (`NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY`,
-   `EMAIL_FROM`) — um deploy resolve. Hoje produção usa os valores antigos.
-   ✅ A fila de e-mail já foi revisada (29 → 12) na sessão 27, então ligar o
-   Resend não descarrega mais aviso obsoleto. Os 12 que sobraram são obrigação
-   fiscal real — vão sair, e devem sair.
-3. 🔴 **SMTP customizado no Supabase** — `smtp_host` é `null` e
-   `rate_limit_email_sent` é **2 por hora** (lido da Management API em 14/08).
-   Governa só o Auth (cadastro, reset, troca de e-mail); os avisos do app saem
-   pelo Resend e não têm esse teto. **São duas mudanças:** apontar o SMTP E subir
-   o rate limit. ⚠️ O `PATCH` da Management API substitui o `uri_allow_list`
-   inteiro — reenviar a lista junto. Diagnóstico completo no bloco da sessão 27.
-4. 🟡 **Smoke manual da Frente 3** (6 critérios, roteiro no histórico da sessão 26).
-5. 🟡 **Asaas em produção** — as credenciais estão só no `.env.local`;
-   `vercel env ls production` não devolve nenhuma.
+1. ✅ **DNS de `balucontabil.com.br` — RESOLVIDO em 19/08**, no fim da sessão 28.
+   Apex e `www` em `76.76.21.21`, HTTPS respondendo 307 → /login com certificado
+   emitido, e os três registros do Resend intactos. Verificação completa no bloco
+   da sessão 28. O pedido usado fica em
+   `docs/reference/2026-08-19-pedido-dns-balucontabil.md` — vale como modelo se a
+   zona for mexida de novo, porque ela é administrada por terceiro.
+2. 🔴 **`UAZAPI_TOKEN`** — sem ele `enviarMensagem` devolve
+   `{ok:false, skipped:true}` e **nada chega a ninguém, sem erro**. Conferido em
+   19/08: não existe nem no `.env.local` nem na Vercel. Lembrar que a remoção foi
+   **deliberada** (12/08, número pessoal) — não é defeito de configuração a ser
+   "consertado" sem falar com o usuário. A coalescência da 0068 existe para que o
+   backlog acumulado não vire rajada no dia em que o token voltar.
+3. 🟡 **Três env vars na Vercel** (`NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY`,
+   `EMAIL_FROM`) — elas **existem** lá há 27–28 dias, mas com os valores antigos.
+   E agora há um motivo novo: a `RESEND_API_KEY` de produção é da **conta antiga**
+   do Resend (restrita a `baluhub.com.br`). Funciona hoje; se aquela conta for
+   desativada, o e-mail do app para **sem erro**. Reescrever as três + deploy.
+   ⚠️ **Por que `NEXT_PUBLIC_SITE_URL` decide sozinha:** `lib/site-url.ts` **nunca**
+   deriva a origem de header de request — é defesa deliberada contra Host Header
+   Injection. Então todo link de e-mail (confirmação, reset, convite) sai com o
+   valor dessa env var, e hoje ele é o antigo. O valor em produção **não é
+   legível** (Sensitive na Vercel, e a variável não aparece no bundle do cliente):
+   a única forma de acabar com a dúvida é reescrever e deployar.
+4. 🟡 **Chave restrita do Resend** — o `smtp_pass` do Supabase e o `.env.local`
+   usam hoje a **full-access**, por decisão do usuário ("por enquanto"). Criar
+   uma `sending_access` restrita a `balucontabil.com.br` **pelo painel** (via API
+   é bloqueado pelo classificador) e trocar nos três lugares.
+5. 🟡 **Smoke manual da Frente 3** (6 critérios, roteiro no histórico da sessão 26).
+6. 🟡 **Asaas em produção** — as credenciais estão só no `.env.local`;
+   `vercel env ls production` não devolve nenhuma, e `ASAAS_ENV` ausente
+   significa **sandbox**.
+
+✅ **Saiu da lista em 19/08:** SMTP customizado no Supabase — feito, e provado com
+um reset de senha real (`delivered` no Resend + recebimento confirmado pelo
+usuário). Teto de 2 → 30 e-mails/hora. Detalhes no bloco da sessão 28.
 
 **Antes de mexer em qualquer coisa:** rodar `npx tsc --noEmit && npx vitest run &&
-npm run build`. A linha de base ao fim da sessão 27 é **tsc 0 · 1794 testes · build limpo**.
+npm run build` **a partir de `app/`, nunca da raiz** (da raiz o vitest varre as 57
+skills instaladas e o resultado não tem nada a ver com o produto). Linha de base
+reconferida em 19/08: **tsc 0 · 1794 testes passando · 36 pulados**.
 
 ## Convenções da sessão
 
-- Rodar ferramentas a partir de `balu/` (raiz do git). Specs/planos via skills brainstorming → writing-plans.
+- Rodar **git** a partir de `balu/` (raiz do repo); rodar **`tsc`, `vitest` e `next build` a partir de `app/`** — da raiz o vitest varre também os testes das 57 skills instaladas e o vermelho não tem relação com o produto (sessão 27). Specs/planos via skills brainstorming → writing-plans.
 - Git identity local: Walace <eufacopublicidade@gmail.com>.
 - Banco: `docs/reference/db_atual.sql` é a fonte da verdade do schema (a `0001` é idealizada e diverge — ver `docs/investigations/DB-DIVERGENCIA.md`); migrations aplicadas manualmente no SQL Editor.
