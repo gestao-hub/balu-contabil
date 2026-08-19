@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { montarPromptAtendimento } from './prompt';
+import { montarPromptAtendimento, comSaudacao, SAUDACAO_INICIAL } from './prompt';
 
 describe('prompt de atendimento', () => {
   it('inclui a pergunta do cliente e a situacao fiscal, pede resposta estruturada', () => {
@@ -25,11 +25,14 @@ describe('prompt de atendimento', () => {
     expect(p.toLowerCase()).not.toMatch(/primeira mensagem|saudação/);
   });
 
-  it('com primeiraInteracao, instrui a saudar como Assistente Balu uma unica vez', () => {
+  it('com primeiraInteracao, avisa que a saudacao ja vem pronta e PROIBE cumprimentar', () => {
+    // Mudou em 19/08/2026: a saudação virou texto fixo em código
+    // (`SAUDACAO_INICIAL`), então o prompt deixou de PEDIR a apresentação e
+    // passou a proibi-la — senão a mensagem chega com duas aberturas.
     const p = montarPromptAtendimento({ pergunta: 'oi', situacaoFiscalTexto: null, primeiraInteracao: true });
-    expect(p).toContain('Assistente Balu');
     expect(p.toLowerCase()).toMatch(/primeira mensagem/);
-    expect(p.toLowerCase()).toMatch(/não repita/);
+    expect(p).toMatch(/NÃO cumprimente/);
+    expect(p).toMatch(/começe direto|comece direto/i);
   });
 
   it('instrui a admitir ser IA se perguntado diretamente', () => {
@@ -55,5 +58,67 @@ describe('prompt de atendimento', () => {
     expect(montarPromptAtendimento(s)).toBe(montarPromptAtendimento(s));
     expect(montarPromptAtendimento({ ...s, primeiraInteracao: true }))
       .toBe(montarPromptAtendimento({ ...s, primeiraInteracao: true }));
+  });
+});
+
+describe('assimetria de registro — entende informal, responde profissional', () => {
+  const p = montarPromptAtendimento({ pergunta: 'qnt eh o mei', situacaoFiscalTexto: null, tipoPergunta: 'geral' });
+
+  it('manda COMPREENDER giria, abreviacao e erro de digitacao', () => {
+    expect(p).toMatch(/gíria/i);
+    expect(p).toMatch(/qnt eh o mei/);          // exemplo real de entrada torta
+    expect(p).toMatch(/sem pedir para reformular/i);
+  });
+
+  it('manda RESPONDER em portugues correto, sem giria', () => {
+    // O pedido do usuario em 19/08/2026: a IA precisa ENTENDER o modo casual,
+    // mas nunca responder nele. Sem esta metade, o modelo espelha o registro de
+    // quem escreveu — foi o que o prompt anterior permitia ao autorizar
+    // "expressoes do dia a dia".
+    expect(p).toMatch(/NUNCA use gíria/);
+    expect(p).toMatch(/nem imite o jeito de escrever de quem/i);
+    expect(p).toMatch(/português correto/i);
+  });
+
+  it('nao volta a autorizar linguagem informal na saida', () => {
+    expect(p).not.toMatch(/pode usar expressões do dia a dia/i);
+    expect(p).not.toMatch(/como se fala no WhatsApp/i);
+  });
+
+  it('proibe o nao-atendimento', () => {
+    expect(p).toMatch(/NUNCA responda apenas/);
+    expect(p).toMatch(/ficar sem resposta/i);
+  });
+});
+
+describe('saudacao inicial — texto fixo, definido pelo usuario', () => {
+  it('e exatamente a frase acordada, ja com a ortografia corrigida', () => {
+    expect(SAUDACAO_INICIAL).toBe(
+      'Olá! Sou o Balu, assistente do sistema Balu Contábil. Diga-me como posso ajudá-lo hoje.');
+    // Os quatro erros do texto original nao podem voltar.
+    expect(SAUDACAO_INICIAL).toMatch(/^Olá!/);          // pontuacao apos a interjeicao
+    expect(SAUDACAO_INICIAL).toContain('Balu, assistente');  // virgula do aposto
+    expect(SAUDACAO_INICIAL).toContain('ajudá-lo');     // acento agudo
+    expect(SAUDACAO_INICIAL).not.toMatch(/ajuda-lo|Balucontábil|me diga/i);
+  });
+
+  it('so aparece na PRIMEIRA mensagem da conversa', () => {
+    expect(comSaudacao('O MEI é ...', true)).toBe(SAUDACAO_INICIAL + '\n\nO MEI é ...');
+    expect(comSaudacao('O MEI é ...', false)).toBe('O MEI é ...');
+  });
+
+  it('nao duplica se o modelo desobedecer e ja cumprimentar', () => {
+    const jaComSaudacao = SAUDACAO_INICIAL + '\n\nO ICMS é estadual.';
+    expect(comSaudacao(jaComSaudacao, true)).toBe(jaComSaudacao);
+  });
+
+  it('o prompt PROIBE o modelo de cumprimentar por conta propria', () => {
+    // Antes o prompt PEDIA a saudacao ao modelo, que devolvia uma parafrase
+    // diferente a cada conversa. Agora quem cumprimenta e o codigo.
+    const p = montarPromptAtendimento({
+      pergunta: 'o que é MEI?', situacaoFiscalTexto: null, primeiraInteracao: true,
+    });
+    expect(p).toMatch(/NÃO cumprimente/);
+    expect(p).not.toMatch(/comece com uma saudação/i);
   });
 });

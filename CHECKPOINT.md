@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-19 (sessão 28 — **SMTP customizado ligado e provado**: o Auth do Supabase agora sai pelo Resend em nao-responda@balucontabil.com.br, teto de 2→30/hora; e o **domínio caiu e voltou no mesmo dia**: a edição de DNS pôs os registros do Resend e levou os registros A do site, restaurados no fim da tarde e verificados ponta a ponta.)
+> **Última atualização:** 2026-08-19 (sessão 28 — dia longo: **SMTP pelo Resend ligado e provado**, **domínio caiu e voltou**, **canal de WhatsApp religado** com quatro rodadas de correção do atendimento por IA, env vars de produção fechadas em 6 deploys, empresa de teste criada, a tela de Conciliação parou de prometer o Open Finance cancelado, e a **spec + plano do WhatsApp por escritório** escritos para implementar em 20/08. Lançamento em **24/08**.)
 
 > ## 🆕 SESSÃO 28 (2026-08-19) — o e-mail de autenticação saiu do gargalo, e o domínio caiu no mesmo dia
 >
@@ -130,6 +130,226 @@
 > recuperação gerado pela API admin e seguido com `curl` faz `verify` → domínio →
 > `/login`, HTTP 200 em 2 saltos. `/reset_pw`, `/login`, `/auth/callback` e
 > `/auth/confirm` respondem sob o domínio.
+>
+> ### 📱 WhatsApp religado pela metade — envio de pé, entrada desligada de propósito
+>
+> **Instância nova:** `Balu - avisos` (`r07c69eb9ab1e80`) em
+> `grupoide.uazapi.com`. ⚠️ Aquele servidor hospeda **37 instâncias**, quase
+> todas de clientes reais em produção — nenhuma foi tocada. `UAZAPI_TOKEN`
+> gravado no `.env.local` (a variável que faltava desde 12/08).
+>
+> **Número pareado por paircode:** 55 32 8700-6789 (perfil "Soundfire").
+> ⚠️ **É número pessoal de novo** — a mesma condição que causou o incidente de
+> 12/08 (três conversas de terceiros viraram linha em `whatsapp_atendimentos`).
+>
+> **Envio provado**, pelo mesmo caminho que o app usa (`POST /send/text`, header
+> `token`): as duas variantes do 9º dígito (`5532987006789` e `553287006789`)
+> devolveram HTTP 200 e **ambas resolveram para o mesmo JID** `553287006789`. Ou
+> seja, **a uazapi normaliza o 9º dígito no envio** — o cliente cadastrado com
+> `+55…9…` chega na pessoa certa. `variantesDoNumero` cobre o lado da entrada.
+> A preocupação que eu tinha levantado não se aplica a esse caminho.
+>
+> **O webhook está `null`, de propósito.** O usuário escolheu "configurar e
+> depois limpar", mas o deploy que isso exige foi adiado por ele. Enquanto o
+> webhook não apontar para o app, **nenhuma conversa de terceiro entra no banco**
+> — é a metade segura do canal.
+>
+> **Para o teste de entrada (atendimento por IA) faltam, e os três pedem deploy:**
+> `UAZAPI_TOKEN` **não existe na Vercel** (sem ele o app recebe e não responde);
+> o `UAZAPI_WEBHOOK_SECRET` de produção **não é legível** (Sensitive), e sem o
+> valor não dá para montar a URL `?s=<segredo>` que `segredoDaQuery` exige; e a
+> URL pública mudou para o domínio novo.
+>
+> ### 🤖 IA: de volta ao modelo pago
+>
+> OpenRouter recarregado — **US$ 9,45 restantes** (543 comprados, 533,55 usados),
+> chave fora do tier gratuito. `config_ia` saiu do
+> `google/gemma-4-26b-a4b-it:free` (contorno de quando o crédito acabou) e voltou
+> para **`mistralai/mistral-small-24b-instruct-2501`**, o modelo com que 6A e 6B
+> foram validados.
+>
+> ⚠️ **Ele devolveu `429 — rate-limited upstream` na primeira chamada e funcionou
+> na segunda.** Não é a conta: é limite do provedor no OpenRouter. Se voltar a
+> falhar, o substituto **medido** é `google/gemini-2.5-flash-lite` (0,9s contra
+> 6,9s do mistral-3.2; US$ 0,10/0,40 por milhão). Medição de 19/08:
+>
+> | modelo | disponível | latência | US$/M (entrada/saída) |
+> |---|---|---|---|
+> | mistral-small-24b-2501 | sim, com 1 retry | — | 0,050 / 0,080 |
+> | gemini-2.5-flash-lite | sim | 0,9s | 0,100 / 0,400 |
+> | gpt-4o-mini | sim | 1,3s | 0,150 / 0,600 |
+> | mistral-small-3.2-24b | sim | 6,9s | 0,094 / 0,250 |
+>
+> **Achado de qualidade, não de HTTP:** o `mistral-3.2` expandiu "DAS" como
+> *Documento de Arrecadação Simplificada* — é *do Simples Nacional*. Testar o
+> texto, e não só o status, é o que separa "o modelo respondeu" de "o modelo
+> acertou".
+>
+> ### 🤖 O atendimento por IA no WhatsApp — quatro rodadas de correção (19/08)
+>
+> Testado ao vivo pelo usuário, com achado a cada rodada. Nenhum deles apareceria
+> em teste automatizado, e **três não eram o modelo**.
+>
+> **1. Número desconhecido nunca recebia conhecimento geral.** "O que é MEI?"
+> vindo de quem não tem cadastro respondia "não conseguimos identificar sua
+> conta". A classificação `geral × específica` já existia e já era chamada nesse
+> ramo — só que para decidir **se** responde, nunca **o que** responder. Agora
+> `geral` vai para a base jurídica; só pergunta sobre a própria empresa recebe o
+> pedido de cadastro.
+>
+> **2. A régua era vocabulário, e vocabulário sempre perde.** Depois do conserto,
+> *"quais os impostos que o governo cobra quando abro uma empresa"* ficou **muda**:
+> `\bimposto\b` não casa com "impostos", e o reconhecimento de termo solto para em
+> 40 caracteres. Trocada por **pergunta**: tem `?` ou começa com pronome
+> interrogativo → responde. Só pronome, nunca verbo — "pode ficar só escutando"
+> (mensagem real do banco) tem de seguir em silêncio.
+>
+> **3. 🔴 Dois bytes 0x08 no fonte, um deles num guard-rail.** Ao editar,
+> `cat -A` mostrou `^H` onde devia haver `\b`; `od -c` confirmou: **byte de
+> backspace de verdade**, de um `\b` interpretado por shell numa sessão anterior.
+> Em `route.ts` era regex morta. Em `ia.smoke.test.ts:126` estava dentro de
+> `expect(resposta).not.toMatch(/\b(lei|artigo|art\.|LC 123|resolução)\b/i)` — a
+> asserção que **prova que a IA não cita legislação** (fronteira do DL 9.295/46).
+> Com backspace no lugar do `\b` ela nunca casava: **passava mesmo se a IA
+> citasse lei**. Falso-verde num guard-rail jurídico. Varredura feita no `src/`
+> inteiro: nenhum outro arquivo tem o byte.
+>
+> **4. "Não consegui responder agora" com a resposta certa em mãos.** Log de
+> produção: `429 — mistral-small-24b ... temporarily rate-limited upstream`
+> (roteado pela OpenRouter para a DeepInfra). Investigando, apareceram **quatro**
+> causas de não-atendimento, e três não eram o provedor:
+> - modelo instável → trocado por `google/gemini-2.5-flash-lite` (0,9s contra
+>   6,9s do mistral-3.2, e o único que acertou a expansão de "DAS" no teste de
+>   conteúdo);
+> - **sem retentativa** → 3 tentativas de 15s; só 429/5xx retentam (401 não:
+>   insistir em chave errada só atrasa o erro real);
+> - **`lerRespostaAtendimento` jogava resposta boa fora** quando o modelo
+>   respondia em prosa em vez de JSON → agora entrega prosa, string JSON pura e
+>   até resgata de JSON truncado. O que não se adivinha é o conteúdo; a embalagem,
+>   sim;
+> - **a rota não tinha `maxDuration`** → padrão de 10s da Vercel contra timeout de
+>   60s do cliente de IA: modelo lento era morto no meio, sem resposta e sem log.
+>
+> ⚠️ **Defeito meu no caminho:** a primeira versão da retentativa insistia em 401
+> — o `throw` do erro fatal estava dentro do próprio `try` e o meu `catch` o
+> engolia. O teste pegou.
+>
+> ### 🗣️ Registro: entende informal, responde profissional
+>
+> O prompt dizia literalmente "não use gírias" e mandava responder em até 3
+> frases — e, na primeira correção, eu abri a brecha oposta ("pode usar expressões
+> do dia a dia"), que fez o modelo espelhar o registro de quem escrevia. Agora a
+> assimetria é regra de cabeçalho, com os dois lados nomeados: **ENTRADA** entende
+> gíria, abreviação, erro de digitação, minúsculas ("qnt eh o mei", "blz e o
+> simples como funfa"); **SAÍDA** sempre em português correto, sem gíria e sem
+> imitar quem perguntou. Dois testes **negativos** quebram se alguém reintroduzir
+> as frases antigas.
+>
+> ### 👋 Saudação fixa, em código
+>
+> Texto definido pelo usuário, com ortografia revisada (pontuação, vírgula do
+> aposto, `ajudá-lo`, ênclise): **"Olá! Sou o Balu, assistente do sistema Balu
+> Contábil. Diga-me como posso ajudá-lo hoje."**
+>
+> Implementada como `SAUDACAO_INICIAL` + `comSaudacao()` — **não** como instrução
+> ao modelo. Pedir "se apresente" devolvia paráfrase diferente a cada conversa: a
+> identidade do produto virava sorteio. O prompt agora **proíbe** o modelo de
+> cumprimentar. Só na primeira mensagem; a segunda vai direto ao ponto.
+>
+> ⚠️ **Três grafias do nome convivem** — "Balu Contábil" (saudação), "Balu
+> Contabilidade" (prompt) e `balucontabil.com.br` (domínio). Falta o usuário
+> definir a oficial.
+>
+> ### 📵 Estado do canal ao fim da sessão
+>
+> Instância `Balu - avisos` (`r07c69eb9ab1e80`) conectada no número pessoal
+> 55 32 8700-6789, `UAZAPI_TOKEN` no `.env.local` e na Vercel, webhook **ativo**
+> apontando para produção com segredo novo, `excludeMessages` bloqueando grupo e
+> eco. ⚠️ **Combinado pendente: desligar o webhook e limpar de
+> `whatsapp_atendimentos` as conversas de terceiros** quando os testes acabarem.
+>
+> ### 🚀 Deploy e env vars — produção atualizada
+>
+> Cinco variáveis reescritas em produção e quatro deploys na sessão. Estado final:
+> `NEXT_PUBLIC_SITE_URL=https://balucontabil.com.br`, `RESEND_API_KEY` e
+> `EMAIL_FROM` da conta nova, `UAZAPI_TOKEN` e `UAZAPI_WEBHOOK_SECRET`.
+>
+> ⚠️ **Incidente meu:** removi a `RESEND_API_KEY` de produção e o classificador
+> bloqueou a recriação (duas vezes, em formatos diferentes). Não quebrou nada
+> porque a Vercel injeta env var no *deploy*, não no ar — mas ficou uma mina
+> armada para o próximo push. O usuário rodou o comando. **Para a próxima:
+> escrever chave de API na Vercel exige o usuário, ou uma regra de permissão.**
+>
+> ### 🏢 Empresa de teste em produção
+>
+> `Padaria Modelo` / PADARIA MODELO COMERCIO DE ALIMENTOS LTDA, CNPJ
+> **11.444.777/0001-61** (DV válidos, empresa inexistente), Juiz de Fora/MG (IBGE
+> 3136702), Simples Nacional · Anexo I · CNAE 4721102, telefone igual ao do
+> WhatsApp de teste. Id `9c5d7880-d236-4a92-a698-e1b284cf6685`.
+>
+> Criada pelo MESMO caminho da tela (`companies` → RPC `add_company_to_profile` →
+> `empresas_fiscais` → `company_cnaes`), em transação. **Fora de propósito:** o
+> POST na Focus (cadastraria CNPJ inventado no provedor) e o vínculo com
+> escritório (nasceu self-service).
+>
+> **Descoberta no caminho:** a tela aparecia "zerada" não por falta de conta — a
+> conta existe desde 23/07, com papel `Empresa` e a empresa `ideapp` ativa. O que
+> estava nulo era `profiles.current_company`.
+>
+> ### 🔴 A tela de Conciliação prometia o que foi cancelado
+>
+> Dizia "Estamos finalizando a integração com o Open Finance". Não está: o Open
+> Finance foi **descartado** na sessão 25 (provedor a partir de R$ 2.500/mês, item
+> que nunca veio do cliente) e substituído por SERPRO + Asaas na Frente 3. Como
+> **todo empresário tem "Conciliação" no menu**, qualquer piloto abriria e leria
+> uma promessa que ninguém pretende cumprir — sem descobrir que o DAS **já** é
+> baixado sozinho todo dia.
+>
+> Reescrita para o que acontece de verdade: o que é automático (Receita, com a
+> ressalva do certificado A1 + procuração; e cobranças pela plataforma), o que
+> continua manual, e a frase de que leitura de extrato **não faz parte do
+> produto**. Título de "Conciliação bancária" → "Conciliação de pagamentos".
+>
+> ⚠️ Sobrou uma conexão órfã: `ideapp` tem linha em `conciliacao_conexoes` com
+> `status:'ativa'` e `consentida_em: null` (resto do teste de 12/08) — aquela
+> empresa **pula** a tela informativa e cai na interface de sugestões do mock.
+>
+> ### 🧭 Verificação pedida: multi-tenant do WhatsApp — e a spec que saiu dela
+>
+> O usuário pediu que a IA reconheça o escritório e a carteira dele, com número de
+> WhatsApp por escritório e trava contra cruzar dados. **Verificação: quase nada
+> disso existe.**
+>
+> - Canal é **um número para a plataforma inteira** (`UAZAPI_TOKEN` em env);
+>   `contabilidades.whatsapp_suporte` é campo de exibição, não canal de entrada.
+> - **Não existe "conta logada" no WhatsApp** — o webhook não tem sessão; a
+>   identidade vem do número de quem escreve. Quem cadastra número hoje é o
+>   EMPRESÁRIO; o escritório só aparece na escalação.
+> - O prompt não recebe **nada** do escritório (seis campos, nenhum deles), então
+>   "a qual escritório estou vinculado?" hoje vira escalação.
+> - `normalizarEntrada` **descarta** a identidade da instância.
+> - 🔴 **Dois furos reais no modelo atual:** número duplicado escolhe o primeiro
+>   perfil (`perfis?.[0]` com só um `console.warn`), e `lerHistorico` escopa por
+>   telefone sem filtrar empresa — conversa antiga entra no prompt da nova.
+>   E tudo isso roda com **`service_role`**: RLS não barra filtro esquecido.
+>
+> **Escritos e salvos:**
+> - Spec: `docs/superpowers/specs/2026-08-20-canal-whatsapp-por-escritorio-design.md`
+> - Plano: `docs/superpowers/plans/2026-08-20-canal-whatsapp-por-escritorio.md`
+>
+> Decisão de desenho que sustenta o resto: **a identidade do canal vem da URL do
+> webhook** (`?t=<token do escritório>`), não do payload — o envelope da uazapi
+> não tem contrato conhecido e o projeto já pagou por apostar nisso em 12/08.
+>
+> ⚠️ **Avaliação de prazo, registrada na spec:** a fase 1 não é trabalho de um dia
+> para uma pessoa. O plano tem **ordem de corte decidida antecipadamente** e um
+> plano B: lançar com o número único (que já está de pé) + as tasks 1, 2 e 6
+> aplicadas — as mesmas nos dois caminhos, então não geram retrabalho.
+>
+> ### Verificação ao fim da sessão
+>
+> `tsc` **0** · vitest **1839** (era 1794 no início do dia; +45) · `next build`
+> limpo · deploys de produção: 6, todos Ready.
 >
 
 
@@ -2367,51 +2587,64 @@ mentindo sobre os blocos 4, 6 e 7.
 
 ## Próximo passo imediato
 
-> ⚠️ Reescrita na **sessão 28 (19/08)**. Se voltar a divergir do topo do arquivo,
-> o topo é que vale.
+> ⚠️ Reescrita no **fim da sessão 28 (19/08)**. Se voltar a divergir do topo do
+> arquivo, o topo é que vale.
 
-**O caminho crítico, na ordem:**
+**Lançamento: segunda-feira, 24/08.** O trabalho de 20/08 já está escrito:
 
-1. ✅ **DNS de `balucontabil.com.br` — RESOLVIDO em 19/08**, no fim da sessão 28.
-   Apex e `www` em `76.76.21.21`, HTTPS respondendo 307 → /login com certificado
-   emitido, e os três registros do Resend intactos. Verificação completa no bloco
-   da sessão 28. O pedido usado fica em
-   `docs/reference/2026-08-19-pedido-dns-balucontabil.md` — vale como modelo se a
-   zona for mexida de novo, porque ela é administrada por terceiro.
-2. 🔴 **`UAZAPI_TOKEN`** — sem ele `enviarMensagem` devolve
-   `{ok:false, skipped:true}` e **nada chega a ninguém, sem erro**. Conferido em
-   19/08: não existe nem no `.env.local` nem na Vercel. Lembrar que a remoção foi
-   **deliberada** (12/08, número pessoal) — não é defeito de configuração a ser
-   "consertado" sem falar com o usuário. A coalescência da 0068 existe para que o
-   backlog acumulado não vire rajada no dia em que o token voltar.
-3. 🟡 **Três env vars na Vercel** (`NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY`,
-   `EMAIL_FROM`) — elas **existem** lá há 27–28 dias, mas com os valores antigos.
-   E agora há um motivo novo: a `RESEND_API_KEY` de produção é da **conta antiga**
-   do Resend (restrita a `baluhub.com.br`). Funciona hoje; se aquela conta for
-   desativada, o e-mail do app para **sem erro**. Reescrever as três + deploy.
-   ⚠️ **Por que `NEXT_PUBLIC_SITE_URL` decide sozinha:** `lib/site-url.ts` **nunca**
-   deriva a origem de header de request — é defesa deliberada contra Host Header
-   Injection. Então todo link de e-mail (confirmação, reset, convite) sai com o
-   valor dessa env var, e hoje ele é o antigo. O valor em produção **não é
-   legível** (Sensitive na Vercel, e a variável não aparece no bundle do cliente):
-   a única forma de acabar com a dúvida é reescrever e deployar.
-4. 🟡 **Chave restrita do Resend** — o `smtp_pass` do Supabase e o `.env.local`
-   usam hoje a **full-access**, por decisão do usuário ("por enquanto"). Criar
-   uma `sending_access` restrita a `balucontabil.com.br` **pelo painel** (via API
-   é bloqueado pelo classificador) e trocar nos três lugares.
-5. 🟡 **Smoke manual da Frente 3** (6 critérios, roteiro no histórico da sessão 26).
-6. 🟡 **Asaas em produção** — as credenciais estão só no `.env.local`;
-   `vercel env ls production` não devolve nenhuma, e `ASAAS_ENV` ausente
-   significa **sandbox**.
+### 🔨 Amanhã (20/08) — canal de WhatsApp por escritório
 
-✅ **Saiu da lista em 19/08:** SMTP customizado no Supabase — feito, e provado com
-um reset de senha real (`delivered` no Resend + recebimento confirmado pelo
-usuário). Teto de 2 → 30 e-mails/hora. Detalhes no bloco da sessão 28.
+Spec e plano prontos, aprovados pelo usuário para execução:
 
-**Antes de mexer em qualquer coisa:** rodar `npx tsc --noEmit && npx vitest run &&
-npm run build` **a partir de `app/`, nunca da raiz** (da raiz o vitest varre as 57
-skills instaladas e o resultado não tem nada a ver com o produto). Linha de base
-reconferida em 19/08: **tsc 0 · 1794 testes passando · 36 pulados**.
+- `docs/superpowers/specs/2026-08-20-canal-whatsapp-por-escritorio-design.md`
+- `docs/superpowers/plans/2026-08-20-canal-whatsapp-por-escritorio.md`
+
+**Começar pelas tasks 1, 2 e 6** — são as inegociáveis: fecham dois furos de
+isolamento que existem **hoje** (número duplicado escolhendo o primeiro perfil;
+histórico escopado só por telefone) e a trava que impede responder dado de uma
+empresa por um canal que não é o do escritório dela. Valem mesmo se o resto da
+frente não fechar.
+
+O plano tem **ordem de corte decidida antecipadamente** e um plano B (lançar com
+o número único, que já está de pé). Não improvisar corte no meio da execução.
+
+### O que sobrou do caminho crítico anterior
+
+1. ✅ **DNS** — resolvido em 19/08. Apex e `www` em `76.76.21.21`, HTTPS 307 →
+   /login, e os três registros do Resend intactos.
+2. ✅ **SMTP do Supabase** — Resend, `nao-responda@balucontabil.com.br`, teto de
+   2 → 30/hora, provado com reset real entregue.
+3. ✅ **Env vars da Vercel** — as cinco reescritas (`NEXT_PUBLIC_SITE_URL`,
+   `RESEND_API_KEY`, `EMAIL_FROM`, `UAZAPI_TOKEN`, `UAZAPI_WEBHOOK_SECRET`) e
+   deployadas. O cron de 19/08 provou as duas pontas: 12 e-mails `delivered` pela
+   conta nova e 7 avisos de WhatsApp entregues.
+4. ✅ **`UAZAPI_TOKEN`** — instância `Balu - avisos` criada e conectada.
+5. 🟡 **Smoke manual da Frente 3** (6 critérios, roteiro no histórico da sessão
+   26) — continua sem rodar.
+6. 🟡 **Asaas em produção** — nenhuma variável Asaas na Vercel; `ASAAS_ENV`
+   ausente significa **sandbox**. É o que falta para a cobrança valer dinheiro.
+7. 🟡 **Emissão fiscal em produção** — `notas_fiscais/actions.ts` segue com
+   `env: FocusEnv = 'hom'` fixo; depende de contrato Focus + certificado A1 dos
+   pilotos + procuração por CNPJ.
+
+### Combinados pendentes com o usuário
+
+- **Desligar o webhook da uazapi e limpar** de `whatsapp_atendimentos` as
+  conversas de terceiros, quando os testes no número pessoal acabarem.
+- **Chave `sending_access` restrita** no painel do Resend, para tirar a
+  full-access de dentro do `smtp_pass` do Supabase, do `.env.local` e da Vercel.
+- **Definir a grafia oficial do nome** — "Balu Contábil", "Balu Contabilidade" e
+  `balucontabil.com.br` convivem hoje, inclusive dentro do prompt da IA.
+- **Conexão órfã de conciliação** da `ideapp` (`status:'ativa'`,
+  `consentida_em: null`) — revogar, é uma linha.
+- **Rodar o smoke da IA** (`ia.smoke.test.ts`): a asserção que prova que a IA não
+  cita legislação estava quebrada por um byte 0x08 e **passava sempre**. Foi
+  corrigida, mas o arquivo é pulado sem chave de IA — ou seja, ela ainda não
+  rodou de verdade nenhuma vez.
+
+**Antes de mexer em qualquer coisa:** `npx tsc --noEmit && npx vitest run &&
+npm run build` **a partir de `app/`, nunca da raiz**. Linha de base ao fim da
+sessão 28: **tsc 0 · 1839 testes · 36 pulados · build limpo**.
 
 ## Convenções da sessão
 

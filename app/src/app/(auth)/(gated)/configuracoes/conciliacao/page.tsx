@@ -1,4 +1,17 @@
-// Bloco 7, Task 12 — conciliação bancária: consentimento e sugestões.
+// Bloco 7, Task 12 — conciliação de pagamentos: sugestões e (legado) consentimento.
+//
+// ═══ CORRIGIDO EM 19/08/2026 — a tela prometia o que foi CANCELADO ═══
+//
+// Ela dizia "Estamos finalizando a integração com o Open Finance. Assim que
+// estiver disponível...". Não está sendo finalizada: o Open Finance foi
+// DESCARTADO na sessão 25 — o provedor de mercado custa a partir de
+// R$ 2.500/mês e o item nunca veio do cliente (entrou por decisão de escopo
+// interna). A Frente 3 substituiu a leitura de extrato por SERPRO + Asaas.
+//
+// O texto era pior que um bug de layout: todo empresário tem "Conciliação" no
+// menu, abria e via uma promessa de entrega que ninguém pretende cumprir — e,
+// pior, não ficava sabendo que o pagamento do DAS JÁ é reconhecido sozinho por
+// outro caminho, todo dia, pelo cron.
 //
 // As sugestões NÃO são persistidas: a página recalcula com `casar()`, a mesma
 // função pura que o cron usa. Uma tabela de sugestões seria estado derivado
@@ -116,21 +129,42 @@ export default async function ConciliacaoPage() {
       <header className="mb-6">
         <div className="mb-1 flex items-center gap-2">
           <Landmark className="size-5 text-primary" />
-          <h1 className="text-2xl font-semibold text-foreground">Conciliação bancária</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Conciliação de pagamentos</h1>
         </div>
         <p className="text-sm text-muted-foreground">
-          Identificamos o pagamento das suas guias direto no extrato, para você não precisar
-          marcar nada à mão.
+          Como o pagamento das suas guias e cobranças é reconhecido.
         </p>
       </header>
 
       {!disponivel && !conectada ? (
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <p className="text-sm text-muted-foreground">
-            Estamos finalizando a integração com o Open Finance. Assim que estiver disponível,
-            você poderá conectar sua conta aqui e o pagamento das guias passa a ser reconhecido
-            sozinho. Por enquanto, continue marcando o pagamento em <strong>Impostos</strong>.
-          </p>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-surface p-5">
+            <h2 className="mb-3 text-sm font-semibold text-foreground">O que já é automático</h2>
+            <ul className="space-y-3 text-sm text-muted-foreground">
+              <li>
+                <strong className="text-foreground">DAS pago em qualquer banco.</strong>{' '}
+                Todo dia consultamos os pagamentos na Receita Federal e damos baixa na guia
+                sozinhos, sem você marcar nada. Para isso funcionar, a empresa precisa ter o
+                certificado digital A1 enviado e a procuração eletrônica ativa.
+              </li>
+              <li>
+                <strong className="text-foreground">Cobranças emitidas pela plataforma.</strong>{' '}
+                Honorários e mensalidades cobrados por aqui são baixados assim que o provedor
+                de pagamento confirma.
+              </li>
+            </ul>
+          </div>
+
+          <div className="rounded-xl border border-border bg-surface p-5">
+            <h2 className="mb-3 text-sm font-semibold text-foreground">O que continua manual</h2>
+            <p className="text-sm text-muted-foreground">
+              Pagamentos que não passam por nenhum desses dois caminhos você marca em{' '}
+              <strong>Impostos</strong>, na guia correspondente. A leitura direta do extrato
+              bancário (Open Finance) <strong>não faz parte do produto</strong> — o
+              reconhecimento vem da Receita e do provedor de pagamento, que são as fontes que
+              confirmam a quitação de verdade.
+            </p>
+          </div>
         </div>
       ) : (
       <ConciliacaoClient

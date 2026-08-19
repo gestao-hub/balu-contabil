@@ -13,6 +13,21 @@ import type { ConfigProvedor } from './tipos';
 
 const TIMEOUT_MS = 60_000;
 const MAX_TOKENS = 1024;
+/** Espera antes de cada retentativa (ms), em ordem. */
+const ESPERA_MS = [400, 1_200];
+
+/** Falha que costuma passar sozinha: fila do provedor ou instabilidade dele. */
+function transitorio(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+export type OpcoesGeracao = {
+  /** Quantas tentativas no total (1 = comportamento antigo, sem retentativa). */
+  tentativas?: number;
+  /** Teto por tentativa. O padrão (60s) serve ao lote do 6A; o atendimento por
+   *  WhatsApp usa um valor menor, porque tem gente esperando do outro lado. */
+  timeoutMs?: number;
+};
 
 function urlDe(cfg: ConfigProvedor): string {
   const base = cfg.provedor === 'personalizado' ? cfg.base_url : URL_PADRAO[cfg.provedor];
@@ -31,7 +46,9 @@ function urlDe(cfg: ConfigProvedor): string {
  * corpo (alguns devolvem). Mesma regra que a varredura do 4B teve de aprender:
  * a mensagem é montada longe daqui e não dá para confiar nela.
  */
-export async function gerarTexto(cfg: ConfigProvedor, prompt: string): Promise<string> {
+export async function gerarTexto(
+  cfg: ConfigProvedor, prompt: string, opcoes?: OpcoesGeracao,
+): Promise<string> {
   const url = urlDe(cfg);
   const anthropic = ehAnthropic(cfg.provedor);
 
@@ -67,23 +84,67 @@ export async function gerarTexto(cfg: ConfigProvedor, prompt: string): Promise<s
 
   const body = { model: cfg.modelo, ...limite, messages: [{ role: 'user', content: prompt }] };
 
-  const res = await fetch(url, {
-    method: 'POST', headers, body: JSON.stringify(body),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
+  // ═══ RETENTATIVA EM FALHA TRANSITÓRIA (19/08/2026) ═══
+  //
+  // Um cliente perguntou "qual a alíquota de ICMS vigente?" pelo WhatsApp e
+  // recebeu "não consegui responder agora". O log de produção mostrou o
+  // motivo: HTTP 429 — `mistral-small-24b ... is temporarily rate-limited
+  // upstream`, roteado pela OpenRouter para a DeepInfra. A pergunta estava
+  // certa, o crédito estava lá, a rota estava certa; um blip de fila do
+  // provedor virou um não-atendimento.
+  //
+  // Só 429 e 5xx retentam — 4xx de verdade (chave errada, modelo inexistente)
+  // não melhora com insistência e a espera só atrasaria o erro real.
+  const ultima = opcoes?.tentativas ?? 1;
+  let erroFinal: unknown;
 
-  if (!res.ok) {
-    const bruto = (await res.text()).slice(0, 300);
-    const limpo = cfg.chave ? bruto.split(cfg.chave).join('***') : bruto;
-    throw new Error(`Provedor respondeu ${res.status}: ${limpo}`);
+  for (let tentativa = 1; tentativa <= ultima; tentativa++) {
+    const ultimaTentativa = tentativa === ultima;
+    // Espera curta e crescente. Longa demais estouraria o orçamento da função
+    // e o cliente ficaria olhando para o WhatsApp sem nada chegar.
+    const esperar = () => new Promise((r) => setTimeout(r, ESPERA_MS[tentativa - 1] ?? 1_500));
+
+    let res: Response;
+    try {
+      // SÓ a chamada de rede mora no try. Com o tratamento de status aqui
+      // dentro, o `throw` de um erro FATAL (401, modelo inexistente) caía no
+      // próprio catch, virava "transitório" e era retentado — insistir numa
+      // chave errada só atrasa o erro real.
+      res = await fetch(url, {
+        method: 'POST', headers, body: JSON.stringify(body),
+        signal: AbortSignal.timeout(opcoes?.timeoutMs ?? TIMEOUT_MS),
+      });
+    } catch (e) {
+      // Rede caída ou timeout do AbortSignal: transitório por natureza.
+      erroFinal = e;
+      if (ultimaTentativa) throw e;
+      await esperar();
+      continue;
+    }
+
+    if (!res.ok) {
+      const bruto = (await res.text()).slice(0, 300);
+      const limpo = cfg.chave ? bruto.split(cfg.chave).join('***') : bruto;
+      const erro = new Error(`Provedor respondeu ${res.status}: ${limpo}`);
+      if (!transitorio(res.status) || ultimaTentativa) throw erro;
+      erroFinal = erro;
+      await esperar();
+      continue;
+    }
+
+    const j = (await res.json()) as Record<string, unknown>;
+    const texto = anthropic
+      ? (j.content as Array<{ type: string; text?: string }> | undefined)
+          ?.find((b) => b.type === 'text')?.text
+      : (j.choices as Array<{ message?: { content?: string } }> | undefined)?.[0]?.message?.content;
+
+    if (texto && texto.trim()) return texto.trim();
+
+    const vazio = new Error('Provedor respondeu sem texto.');
+    if (ultimaTentativa) throw vazio;
+    erroFinal = vazio;
+    await esperar();
   }
 
-  const j = (await res.json()) as Record<string, unknown>;
-  const texto = anthropic
-    ? (j.content as Array<{ type: string; text?: string }> | undefined)
-        ?.find((b) => b.type === 'text')?.text
-    : (j.choices as Array<{ message?: { content?: string } }> | undefined)?.[0]?.message?.content;
-
-  if (!texto || !texto.trim()) throw new Error('Provedor respondeu sem texto.');
-  return texto.trim();
+  throw erroFinal instanceof Error ? erroFinal : new Error('Falha ao gerar texto.');
 }

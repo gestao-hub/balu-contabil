@@ -125,3 +125,46 @@ describe('cliente de IA', () => {
       .rejects.toThrow(/sem texto/i);
   });
 });
+
+describe('retentativa em falha transitoria', () => {
+  const CFG = { provedor: 'openrouter', modelo: 'm', base_url: null, chave: 'k' } as const;
+  const erro = (status: number) =>
+    ({ ok: false, status, text: async () => 'upstream ocupado', json: async () => ({}) }) as Response;
+
+  it('429 seguido de sucesso: o cliente final nunca ve a falha', async () => {
+    // O caso REAL de 19/08/2026: "qual a aliquota de icms vigente?" recebeu
+    // "nao consegui responder agora" porque o modelo estava rate-limited
+    // upstream por alguns segundos.
+    const spy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(erro(429))
+      .mockResolvedValueOnce(resposta({ choices: [{ message: { content: 'o ICMS e estadual' } }] }));
+
+    const r = await gerarTexto(CFG, 'p', { tentativas: 3 });
+
+    expect(r).toBe('o ICMS e estadual');
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('5xx tambem retenta', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(erro(503))
+      .mockResolvedValueOnce(resposta({ choices: [{ message: { content: 'ok' } }] }));
+
+    expect(await gerarTexto(CFG, 'p', { tentativas: 2 })).toBe('ok');
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('401 NAO retenta: insistir em chave errada so atrasa o erro real', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(erro(401));
+
+    await expect(gerarTexto(CFG, 'p', { tentativas: 3 })).rejects.toThrow(/401/);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem opcoes, mantem o comportamento antigo: uma tentativa so', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(erro(429));
+
+    await expect(gerarTexto(CFG, 'p')).rejects.toThrow(/429/);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});

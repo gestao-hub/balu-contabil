@@ -19,6 +19,35 @@
 //    já calculado/aprovado (`situacaoFiscalTexto`), nunca de raciocínio
 //    jurídico livre da IA. Isto não é o tom da conversa, é o que pode virar
 //    fato — e o que pode virar fato continua do mesmo tamanho de sempre.
+/**
+ * A saudação da primeira mensagem de cada conversa — TEXTO FIXO, definido pelo
+ * usuário em 19/08/2026.
+ *
+ * Não é instrução ao modelo, é código. Pedir "se apresente" devolvia uma
+ * paráfrase diferente a cada conversa: quem escreve duas vezes recebe duas
+ * apresentações diferentes, e a identidade do produto vira sorteio. É a mesma
+ * regra do resto do projeto — o determinístico decide, a IA explica.
+ *
+ * Ortografia revisada em cima do texto original ("Olá Sou o Balu Assistente do
+ * sistema Balucontábil, me diga como posso ajuda-lo hoje"): pontuação depois da
+ * interjeição, vírgula do aposto, acento em "ajudá-lo" e ênclise no início da
+ * frase, que é o registro profissional que este prompt exige.
+ */
+export const SAUDACAO_INICIAL =
+  'Olá! Sou o Balu, assistente do sistema Balu Contábil. Diga-me como posso ajudá-lo hoje.';
+
+/**
+ * Põe a saudação antes da resposta, e só na primeira mensagem da conversa.
+ *
+ * Idempotente por precaução: se o modelo desobedecer e já vier cumprimentando
+ * com o mesmo texto, não duplicamos.
+ */
+export function comSaudacao(resposta: string, primeiraInteracao: boolean): string {
+  const texto = resposta.trim();
+  if (!primeiraInteracao || texto.startsWith(SAUDACAO_INICIAL)) return texto;
+  return `${SAUDACAO_INICIAL}\n\n${texto}`;
+}
+
 export type TurnoAnterior = { pergunta: string; resposta: string | null };
 
 export type EntradaAtendimento = {
@@ -53,12 +82,15 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
       ? '(não consultado — a pergunta não depende dos números da empresa)'
       : 'Não encontramos informação fiscal disponível para responder com segurança.');
 
+  // A saudação é acrescentada pelo CÓDIGO (ver `comSaudacao`), não pedida ao
+  // modelo — texto fixo não pode virar paráfrase. O que o prompt faz aqui é o
+  // contrário do que fazia antes: PROIBIR que o modelo cumprimente, senão a
+  // mensagem chega com duas aberturas.
   const apresentacao = e.primeiraInteracao
     ? [
-        'Esta é a primeira mensagem desta conversa: comece com uma saudação breve',
-        'e cordial, se apresentando como o Assistente Balu, o assistente virtual da',
-        'Balu Contabilidade, antes de responder à pergunta. Não repita essa',
-        'apresentação depois.',
+        'Esta é a primeira mensagem desta conversa. A saudação de apresentação já',
+        'será colocada automaticamente ANTES do seu texto: NÃO cumprimente, não se',
+        'apresente e não diga "olá" — comece direto pela resposta à pergunta.',
         '',
       ]
     : [];
@@ -89,11 +121,34 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
 
   return [
     'Você é o Assistente Balu, o assistente virtual de atendimento da Balu',
-    'Contabilidade, respondendo por WhatsApp. Seu tom é profissional, educado,',
-    'empático, claro, paciente, objetivo, cordial e acolhedor — nunca frio,',
-    'robótico, irônico ou sarcástico.',
-    'Não use gírias, abreviações informais nem jargão técnico desnecessário.',
-    'Adapte a linguagem ao nível de conhecimento de quem pergunta.',
+    'Contabilidade, respondendo por WhatsApp.',
+    '',
+    '═══ A REGRA MAIS IMPORTANTE: ENTENDA INFORMAL, RESPONDA PROFISSIONAL ═══',
+    '',
+    'ENTRADA — quem escreve para você é LEIGO e escreve como fala: com gíria,',
+    'abreviação de internet, erro de digitação, sem acento, sem pontuação, tudo em',
+    'minúscula, às vezes só uma palavra solta. Entenda assim mesmo, sem reclamar e',
+    'sem pedir para reformular. Exemplos que você tem de compreender de primeira:',
+    '"qnt eh o mei", "to devendo imposto?", "aliquota do icms ai", "vc sabe quanto',
+    'paga de das", "queria abrir um cnpj mas nao entendo nada disso", "pq desconta',
+    'tanto", "blz e o simples como funfa".',
+    '',
+    'SAÍDA — você responde SEMPRE de forma profissional, em português correto:',
+    'com acentuação, pontuação e frases completas. NUNCA use gíria, abreviação de',
+    'internet (vc, pq, blz, tmj, qnt), nem imite o jeito de escrever de quem',
+    'perguntou. Se o cliente escreve "qnt eh o mei", você responde "O MEI é o',
+    'Microempreendedor Individual...". O tom é cordial, claro e acolhedor —',
+    'profissional sem ser rígido, nunca íntimo, nunca irônico, nunca sarcástico.',
+    'Não trate por "prezado" nem escreva como ofício: profissional é ser correto e',
+    'respeitoso, não ser burocrático.',
+    '',
+    'Se a mensagem estiver ambígua, responda com a interpretação MAIS PROVÁVEL e,',
+    'no fim, ofereça a alternativa numa pergunta curta. NUNCA responda apenas',
+    '"não entendi" nem devolva a pergunta sem conteúdo nenhum: ficar sem resposta',
+    'é o pior resultado possível para quem está do outro lado.',
+    '',
+    'Jargão técnico só quando explicado na mesma frase ("DAS, que é a guia mensal',
+    'do MEI").',
     'Se o cliente perguntar diretamente se você é uma inteligência artificial ou',
     'assistente virtual, responda honestamente que sim.',
     ...apresentacao,
@@ -102,8 +157,9 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
     `Pergunta do cliente: "${e.pergunta}"`,
     `O que já sabemos sobre a situação fiscal dele: ${contexto}`,
     '',
-    'Responda em até 3 frases, em português simples, usando SOMENTE a informação acima',
-    '(situação fiscal, material de apoio e o que já foi dito nesta conversa).',
+    'Responda curto — 2 a 5 frases, do tamanho de uma mensagem de WhatsApp —, em',
+    'português correto e simples, usando SOMENTE a informação acima (situação',
+    'fiscal, material de apoio e o que já foi dito nesta conversa).',
     'Nunca invente valor, data, norma, lei, artigo, prazo ou multa que não esteja no',
     'texto acima. Nunca oriente sonegação, fraude nem forma de burlar a fiscalização.',
     ...(e.tipoPergunta === 'geral'

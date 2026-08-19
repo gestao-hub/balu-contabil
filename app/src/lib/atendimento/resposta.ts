@@ -51,20 +51,55 @@ function acharChave(o: Record<string, unknown>, alvo: string, sinonimos: string[
 }
 
 export function lerRespostaAtendimento(bruto: string): RespostaAtendimento | null {
-  let j: unknown;
-  try { j = JSON.parse(semCerca(bruto)); } catch { return null; }
-  if (!j || typeof j !== 'object' || Array.isArray(j)) return null;
+  const limpo = semCerca(String(bruto ?? '')).trim();
+  if (!limpo) return null;
 
-  const o = j as Record<string, unknown>;
+  let j: unknown = null;
+  let parseou = true;
+  try { j = JSON.parse(limpo); } catch { parseou = false; }
 
-  const texto = acharChave(o, 'resposta', ['mensagem', 'answer', 'reply', 'text']);
-  if (typeof texto !== 'string' || !texto.trim()) return null;
+  if (j && typeof j === 'object' && !Array.isArray(j)) {
+    const o = j as Record<string, unknown>;
+    const texto = acharChave(o, 'resposta', ['mensagem', 'answer', 'reply', 'text']);
+    if (typeof texto === 'string' && texto.trim()) {
+      const sinal = acharChave(o, 'resolvido', ['resolved', 'solucionado', 'finalizado']);
+      // Só `true` de verdade fecha o atendimento. String "true" também vale —
+      // modelo às vezes devolve booleano como texto —, e qualquer outra coisa
+      // (inclusive ausência) cai no lado seguro.
+      const resolvido = sinal === true || (typeof sinal === 'string' && sinal.trim().toLowerCase() === 'true');
+      return { resposta: texto.trim(), resolvido };
+    }
+  }
 
-  const sinal = acharChave(o, 'resolvido', ['resolved', 'solucionado', 'finalizado']);
-  // Só `true` de verdade fecha o atendimento. String "true" também vale —
-  // modelo às vezes devolve booleano como texto —, e qualquer outra coisa
-  // (inclusive ausência) cai no lado seguro.
-  const resolvido = sinal === true || (typeof sinal === 'string' && sinal.trim().toLowerCase() === 'true');
+  // ═══ SALVAMENTO DE TEXTO CORRIDO (19/08/2026) ═══
+  //
+  // O modelo às vezes ignora o formato e responde em prosa — a explicação
+  // CERTA, sem as chaves. Até aqui isso virava `null`, e o cliente recebia
+  // "não consegui responder agora" com a resposta boa no lixo. É a mesma
+  // classe do caso `"resovido"` que originou este arquivo, um passo adiante:
+  // o que não se adivinha é o CONTEÚDO; a embalagem, sim.
+  //
+  // JSON malformado NÃO entra aqui: mandar chave e chave-de-fechamento ao
+  // cliente seria pior que o fallback. Tentamos extrair a chave `resposta` de
+  // um JSON truncado e, falhando, desistimos.
+  if (parseou) {
+    // Uma string JSON pura ("O ICMS é ...") é resposta utilizável: o modelo
+    // acertou o conteúdo e errou só o envelope.
+    if (typeof j === 'string' && j.trim()) return { resposta: j.trim(), resolvido: false };
+    // JSON VÁLIDO sem resposta dentro — `null`, `[]`, um número. Não há texto a
+    // entregar, e mandar a palavra "null" ao cliente seria pior que o fallback.
+    return null;
+  }
 
-  return { resposta: texto.trim(), resolvido };
+  if (/^[[{]/.test(limpo)) {
+    const resgatado = limpo.match(/"respo?s?t?a?"\s*:\s*"((?:[^"\\]|\\.)*)"/i)?.[1];
+    if (resgatado?.trim()) {
+      return { resposta: resgatado.replace(/\\"/g, '"').replace(/\\n/g, '\n').trim(), resolvido: false };
+    }
+    return null;
+  }
+
+  // Prosa limpa: entrega ao cliente e mantém `resolvido:false`, que aciona o
+  // contador quando existe um. Responder E escalar é o lado seguro; calar não é.
+  return { resposta: limpo, resolvido: false };
 }

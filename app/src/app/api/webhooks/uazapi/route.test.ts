@@ -252,12 +252,11 @@ describe('webhook uazapi', () => {
     expect(h.updates).toHaveLength(0);
   });
 
-  it('telefone desconhecido: avisa o remetente e grava o atendimento sem resolver', async () => {
+  it('telefone desconhecido perguntando sobre A EMPRESA DELE: avisa e nao chama IA', async () => {
     h.estado.profile = null;
-    // Texto com cara de dúvida fiscal: é o único caso em que o aviso sai para
-    // um número não cadastrado. "oi" solto agora passa em silêncio (ver o
-    // teste seguinte) — o assistente não fala com quem não perguntou nada.
-    const res = await POST(requisicaoFalsa({ messageId: 'm2', from: '5532987006789', text: 'qual o limite do MEI?' }, SEGREDO));
+    // Pergunta que DEPENDE dos números daquela empresa. Sem conta não há o que
+    // responder, e o aviso de cadastrar o número é a resposta certa.
+    const res = await POST(requisicaoFalsa({ messageId: 'm2', from: '5532987006789', text: 'quanto é o meu DAS deste mês?' }, SEGREDO));
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.reason).toBe('telefone_desconhecido');
@@ -270,6 +269,59 @@ describe('webhook uazapi', () => {
     expect(grav?.valores).toMatchObject({
       message_id_externo: 'm2', telefone: '5532987006789', resolvido: false,
     });
+  });
+
+  it('telefone desconhecido com duvida GERAL: responde pela base juridica', async () => {
+    // Defeito relatado em 19/08/2026: "o que é MEI?" vindo de número não
+    // cadastrado recebia "não conseguimos identificar sua conta". Conhecimento
+    // geral não depende de cadastro nenhum — recusar era negar o que o app sabe
+    // fazer a alguém que pode virar cliente.
+    h.estado.profile = null;
+    h.estado.textoGerado = JSON.stringify({ resposta: 'O MEI é o Microempreendedor Individual.', resolvido: true });
+
+    const res = await POST(requisicaoFalsa({ messageId: 'm2-geral', from: '5532987006791', text: 'o que é MEI?' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.reason).toBe('duvida_geral_sem_conta');
+    expect(h.gerarTexto).toHaveBeenCalledTimes(1);
+    // O texto enviado é a resposta da IA, NUNCA o aviso de conta não encontrada.
+    const [, msg] = h.enviarMensagem.mock.calls[0] as [unknown, { texto: string }];
+    expect(msg.texto).toContain('O MEI é o Microempreendedor Individual.');
+    expect(msg.texto).not.toMatch(/identificar sua conta/i);
+    // A linha do claim vira auditoria completa: sem este UPDATE ela ficaria com
+    // `resposta_enviada` nula, como se ninguém tivesse sido atendido.
+    const upd = h.updates.find((u) => u.tabela === 'whatsapp_atendimentos');
+    // Grava o que foi ENVIADO — saudação inclusa. Se guardasse só o miolo, o
+    // histórico da conversa (que alimenta o prompt) divergiria do que o cliente leu.
+    expect(upd?.valores.resposta_enviada).toContain('O MEI é o Microempreendedor Individual.');
+  });
+
+  it('a pergunta REAL que ficou muda em 19/08/2026 agora e respondida', async () => {
+    // "quais os impostos que o governo cobra quando abro uma empresa" chegou
+    // pelo WhatsApp e NAO recebeu nada: `imposto` estava no singular na lista e
+    // a frase passava dos 40 caracteres do reconhecimento de termo solto. A
+    // regua passou a ser PERGUNTA, nao vocabulario.
+    h.estado.profile = null;
+    const res = await POST(requisicaoFalsa(
+      { messageId: 'm2-real', from: '5532991511415', text: 'quais os impostos que o governo cobra quando abro uma empresa' },
+      SEGREDO));
+    const body = await res.json();
+
+    expect(body.reason).toBe('duvida_geral_sem_conta');
+    expect(h.gerarTexto).toHaveBeenCalledTimes(1);
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(1);
+  });
+
+  it('termo fiscal solto de desconhecido ("regime tributario") tambem e respondido', async () => {
+    // A régua do que conta como dúvida fiscal é a MESMA nos dois ramos
+    // (TERMO_FISCAL, em lib/atendimento/classificar) — duas listas divergentes
+    // fariam o assistente responder num caminho e calar no outro.
+    h.estado.profile = null;
+    const res = await POST(requisicaoFalsa({ messageId: 'm2-termo', from: '5532987006793', text: 'regime tributário' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.reason).toBe('duvida_geral_sem_conta');
+    expect(h.gerarTexto).toHaveBeenCalledTimes(1);
   });
 
   it('numero desconhecido com conversa fiada NAO recebe mensagem automatica', async () => {
@@ -294,11 +346,12 @@ describe('webhook uazapi', () => {
 
     expect(body.ok).toBe(true);
     expect(h.enviarMensagem).toHaveBeenCalledWith(
-      expect.anything(), expect.objectContaining({ texto: 'Seu DAS está em dia.' }),
+      expect.anything(), expect.objectContaining({ texto: expect.stringContaining('Seu DAS está em dia.') }),
     );
     expect(h.inserts.filter((i) => i.tabela === 'notifications')).toHaveLength(0);
     const grav = h.updates.find((i) => i.tabela === 'whatsapp_atendimentos');
-    expect(grav?.valores).toMatchObject({ resolvido: true, resposta_enviada: 'Seu DAS está em dia.' });
+    expect(grav?.valores).toMatchObject({ resolvido: true });
+    expect(grav?.valores.resposta_enviada).toContain('Seu DAS está em dia.');
   });
 
   it('resolvido=false com escritorio vinculado: escala para o membro mais antigo', async () => {
@@ -405,7 +458,7 @@ describe('webhook uazapi', () => {
     expect(body.ok).toBe(true);
     expect(h.enviarMensagem).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ texto: 'Resposta cercada.' }),
+      expect.objectContaining({ texto: expect.stringContaining('Resposta cercada.') }),
     );
   });
 
@@ -546,5 +599,32 @@ describe('webhook uazapi', () => {
     const chamada = h.gerarTexto.mock.calls[0];
     const promptEnviado = String(chamada?.[1] ?? chamada?.[0]);
     expect(promptEnviado.toLowerCase()).not.toMatch(/primeira mensagem/);
+  });
+});
+
+describe('saudacao da primeira mensagem', () => {
+  it('a PRIMEIRA mensagem da conversa vem com a saudacao fixa', async () => {
+    h.estado.interacaoAnterior = null;              // nenhuma troca anterior
+    h.estado.textoGerado = JSON.stringify({ resposta: 'O MEI é o Microempreendedor Individual.', resolvido: true });
+
+    await POST(requisicaoFalsa({ messageId: 'saud-1', from: '5532987006789', text: 'o que é mei?' }, SEGREDO));
+
+    const [, msg] = h.enviarMensagem.mock.calls[0] as [unknown, { texto: string }];
+    expect(msg.texto).toBe(
+      'Olá! Sou o Balu, assistente do sistema Balu Contábil. Diga-me como posso ajudá-lo hoje.'
+      + '\n\nO MEI é o Microempreendedor Individual.');
+  });
+
+  it('a SEGUNDA mensagem NAO repete a saudacao', async () => {
+    // O erro que ninguem lembra de testar: cumprimentar de novo a cada
+    // mensagem faz o assistente parecer que esqueceu a conversa.
+    h.estado.interacaoAnterior = { id: 'atend_anterior' };
+    h.estado.textoGerado = JSON.stringify({ resposta: 'O limite é de R$ 81.000 por ano.', resolvido: true });
+
+    await POST(requisicaoFalsa({ messageId: 'saud-2', from: '5532987006789', text: 'e o limite?' }, SEGREDO));
+
+    const [, msg] = h.enviarMensagem.mock.calls[0] as [unknown, { texto: string }];
+    expect(msg.texto).toBe('O limite é de R$ 81.000 por ano.');
+    expect(msg.texto).not.toMatch(/Olá! Sou o Balu/);
   });
 });

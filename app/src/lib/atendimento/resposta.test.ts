@@ -48,8 +48,26 @@ describe('lerRespostaAtendimento — o que NÃO se adivinha', () => {
     expect(lerRespostaAtendimento('{"resposta":"x","resolvido":1}')?.resolvido).toBe(false);
   });
 
-  it('prosa em vez de JSON devolve null', () => {
-    expect(lerRespostaAtendimento('Claro! Seu DAS vence dia 20.')).toBeNull();
+  it('prosa em vez de JSON É ENTREGUE ao cliente (mudou em 19/08/2026)', () => {
+    // Antes devolvia null, e o cliente recebia "não consegui responder agora"
+    // com a explicação CERTA no lixo — só porque o modelo esqueceu as chaves.
+    // O que não se adivinha é o CONTEÚDO; a embalagem, sim.
+    const r = lerRespostaAtendimento('Claro! Seu DAS vence dia 20.');
+    expect(r?.resposta).toBe('Claro! Seu DAS vence dia 20.');
+    // `resolvido:false` de propósito: sem o sinal explícito do modelo, o
+    // atendimento continua acionando o contador quando existe um.
+    expect(r?.resolvido).toBe(false);
+  });
+
+  it('string JSON pura tambem e entregue', () => {
+    expect(lerRespostaAtendimento('"O ICMS é um imposto estadual."')?.resposta)
+      .toBe('O ICMS é um imposto estadual.');
+  });
+
+  it('JSON truncado ainda entrega a resposta que der para resgatar', () => {
+    // Resposta cortada no meio (teto de tokens) não pode virar silêncio.
+    const r = lerRespostaAtendimento('{"resposta":"O MEI paga o DAS todo mês","reso');
+    expect(r?.resposta).toBe('O MEI paga o DAS todo mês');
   });
 
   it('array ou nulo devolve null', () => {

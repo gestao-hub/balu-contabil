@@ -49,7 +49,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { segredoDaQuery } from '../segredo';
 import { limitar } from '@/lib/security/rate-limit';
 import { buscarSituacaoAtualMei } from '@/lib/explicacoes/situacao-atual-mei';
-import { montarPromptAtendimento } from '@/lib/atendimento/prompt';
+import { montarPromptAtendimento, comSaudacao } from '@/lib/atendimento/prompt';
 import { gerarTexto } from '@/lib/ai/cliente';
 import { lerChaveIa } from '@/lib/ai/config-ia';
 import { enviarMensagem, configDeEnv } from '@/lib/uazapi/cliente';
@@ -58,13 +58,114 @@ import { variantesDoNumero } from '@/lib/whatsapp/numero';
 import { normalizarEntrada, formaDoPayload } from '@/lib/uazapi/payload';
 import { buscarContextoPorPergunta } from '@/lib/base-juridica/buscar';
 import { lerRespostaAtendimento } from '@/lib/atendimento/resposta';
-import { classificarPergunta } from '@/lib/atendimento/classificar';
+import {
+  classificarPergunta, pareceUmaPergunta, temMarcaPessoal, TERMO_FISCAL, type TipoPergunta,
+} from '@/lib/atendimento/classificar';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Sem esta linha vale o padrão da plataforma (10s) — e `gerarTexto` esperava
+// até 60s. Um modelo lento era MORTO no meio pela Vercel: a função nunca
+// chegava a `enviarMensagem`, o cliente ficava sem nada e não sobrava nem log
+// do motivo. Agora o teto da função é maior que o da chamada de IA, que é de
+// 15s por tentativa (ver `responderComIa`).
+export const maxDuration = 60;
 
 // ⚠️ FORMATO REAL NÃO CONFIRMADO — ver aviso de topo do arquivo.
 type PayloadUazapi = { messageId: string; from: string; text: string };
+
+type TrocaAnterior = { pergunta: string; resposta: string | null };
+
+/**
+ * Últimas trocas do MESMO telefone, do mais antigo para o mais recente — é
+ * assim que se lê uma conversa.
+ *
+ * A própria linha desta mensagem (o claim) é excluída: sem isso toda mensagem
+ * se veria como "não é a primeira", porque ela mesma conta.
+ */
+async function lerHistorico(
+  admin: SupabaseClient, telefone: string, atendimentoId: string,
+): Promise<TrocaAnterior[]> {
+  const { data } = await admin
+    .from('whatsapp_atendimentos')
+    .select('mensagem_recebida, resposta_enviada, created_at')
+    .eq('telefone', telefone)
+    .neq('id', atendimentoId)
+    .order('created_at', { ascending: false })
+    .limit(4);
+
+  return [...(data ?? [])].reverse().map((a) => ({
+    pergunta: (a.mensagem_recebida as string) ?? '',
+    resposta: (a.resposta_enviada as string | null) ?? null,
+  }));
+}
+
+/**
+ * A chamada ao provedor de IA, usada pelos DOIS ramos (número cadastrado e
+ * dúvida geral de número desconhecido).
+ *
+ * Está numa função só porque a alternativa — copiar o bloco — deixaria os dois
+ * caminhos divergirem em silêncio: a leitura tolerante da resposta, o texto de
+ * fallback e o tratamento de chave ausente têm de ser os mesmos nos dois.
+ *
+ * Nunca lança: qualquer falha vira o fallback com `resolvido:false`, que é o
+ * lado seguro (o cliente recebe uma resposta e, quando há escritório, um
+ * humano é acionado).
+ */
+async function responderComIa(
+  admin: SupabaseClient,
+  e: {
+    pergunta: string;
+    situacaoFiscalTexto: string | null;
+    primeiraInteracao: boolean;
+    historico: TrocaAnterior[];
+    contextoJuridico: Parameters<typeof montarPromptAtendimento>[0]['contextoJuridico'];
+    tipoPergunta: TipoPergunta;
+    /** O que dizer se a IA falhar. Difere por ramo: prometer que "o contador
+     *  vai retornar" a um número que não é cliente de escritório nenhum é
+     *  mentir para quem escreveu — ninguém vai retornar. */
+    textoDeFalha: string;
+  },
+): Promise<{ resposta: string; resolvido: boolean }> {
+  const fallback = { resposta: e.textoDeFalha, resolvido: false };
+
+  const { data: cfgRow } = await admin.from('config_ia').select('*').eq('id', 1).maybeSingle();
+  if (!cfgRow) return fallback;
+
+  try {
+    const chave = lerChaveIa(cfgRow.chave_cifrada as string | null);
+    if (!chave) return fallback;
+
+    const bruto = await gerarTexto(
+      { provedor: cfgRow.provedor, modelo: cfgRow.modelo, base_url: cfgRow.base_url, chave },
+      montarPromptAtendimento({
+        pergunta: e.pergunta,
+        situacaoFiscalTexto: e.situacaoFiscalTexto,
+        primeiraInteracao: e.primeiraInteracao,
+        historico: e.historico,
+        contextoJuridico: e.contextoJuridico,
+        tipoPergunta: e.tipoPergunta,
+      }),
+      // Tem gente esperando no WhatsApp: 3 tentativas de 15s, e não uma só de
+      // 60s. Um 429 transitório do provedor deixou de virar não-atendimento.
+      { tentativas: 3, timeoutMs: 15_000 },
+    );
+
+    // Leitura TOLERANTE (lib/atendimento/resposta): o modelo já devolveu a
+    // resposta certa com a chave escrita `"resovido"`, e a validação estrita
+    // jogou fora um atendimento bom. Falta de conteúdo continua sendo recusada;
+    // o que se tolera é grafia de chave.
+    const j = lerRespostaAtendimento(bruto);
+    if (!j) {
+      console.error('[webhook uazapi] resposta da IA em formato inesperado, usando fallback');
+      return fallback;
+    }
+    return { resposta: j.resposta, resolvido: j.resolvido };
+  } catch (err) {
+    console.error('[webhook uazapi] falha ao gerar resposta:', err instanceof Error ? err.message : String(err));
+    return fallback;
+  }
+}
 
 
 
@@ -250,29 +351,92 @@ export async function POST(req: Request) {
     if (!profile?.current_company) {
       // NÃO responder a qualquer desconhecido. Achado em 12/08/2026: a
       // instância estava num aparelho com conversas pessoais, e o assistente
-      // respondeu "não conseguimos identificar sua conta" para gente que só
-      // estava conversando com o dono do número — mensagem automática não
-      // solicitada, para quem nunca pediu nada ao Balu.
-      //
-      // O aviso só sai quando a mensagem PARECE dúvida fiscal (mesmo
-      // classificador que decide o resto do fluxo). "Ta bom", "👍" e "to no
-      // ponto" passam em silêncio; "qual o limite do MEI?" recebe a
-      // orientação de cadastrar o número.
-      const pareceDuvidaFiscal = classificarPergunta(entrada.text) === 'geral'
-        || /(das|mei|imposto|nota fiscal|cnpj|guia|declara|tributo|simples)/i.test(entrada.text);
+      // respondeu para gente que só estava conversando com o dono do número —
+      // mensagem automática não solicitada, para quem nunca pediu nada ao Balu.
+      // "Ta bom", "👍" e "to no ponto" passam em silêncio.
+      // A régua é PERGUNTA, não vocabulário — corrigido em 19/08/2026, depois
+      // que "quais os impostos que o governo cobra quando abro uma empresa"
+      // ficou sem resposta nenhuma: `imposto` estava só no singular na lista, e
+      // a frase passava dos 40 caracteres do reconhecimento de termo solto.
+      // Lista de palavras sempre vai perder para um jeito novo de perguntar; o
+      // ponto de interrogação, não.
+      const mereceResposta = pareceUmaPergunta(entrada.text) || TERMO_FISCAL.test(entrada.text);
 
-      if (pareceDuvidaFiscal) {
+      if (!mereceResposta) {
+        // Sem insert aqui: o claim acima já é a linha de auditoria completa
+        // para este ramo (message_id_externo, telefone, mensagem_recebida,
+        // resolvido:false) — inserir de novo duplicaria a linha e colidiria
+        // na mesma UNIQUE constraint que acabou de nos deixar passar.
+        return NextResponse.json({ ok: true, reason: 'telefone_desconhecido' }, { status: 200 });
+      }
+
+      // ═══ DEFEITO CORRIGIDO EM 19/08/2026 ═══
+      //
+      // Até aqui, TODA mensagem com cara de dúvida fiscal vinda de número não
+      // cadastrado recebia a mesma frase: "não conseguimos identificar sua
+      // conta". Inclusive "o que é MEI?", "IPI", "regime tributário" — dúvidas
+      // de conhecimento geral que a base jurídica (415 documentos da legislação
+      // vigente) responde sozinha, sem depender de cadastro nenhum.
+      //
+      // A separação é por MARCA PESSOAL, e não pelo default de
+      // `classificarPergunta`. Lá o padrão é "na dúvida, específica", que
+      // protege quem TEM conta de receber resposta genérica sobre a própria
+      // empresa. Aqui esse default é o lado errado: sem conta não existe
+      // resposta específica possível, então cair no default significaria negar
+      // conhecimento geral — que é justamente o defeito relatado.
+      //
+      //   • fala da própria empresa ("quanto é o MEU DAS?") → sem conta não há
+      //     o que responder, e a orientação de cadastrar o número é a resposta
+      //     certa.
+      //   • qualquer outra pergunta → a base jurídica (415 documentos da
+      //     legislação vigente) responde sozinha, sem depender de cadastro.
+      if (temMarcaPessoal(entrada.text)) {
         const envio = await enviarMensagem(configDeEnv(), {
           telefone: entrada.from,
           texto: 'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.',
         });
         if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+        return NextResponse.json({ ok: true, reason: 'telefone_desconhecido' }, { status: 200 });
       }
-      // Sem insert aqui: o claim acima já é a linha de auditoria completa
-      // para este ramo (message_id_externo, telefone, mensagem_recebida,
-      // resolvido:false) — inserir de novo duplicaria a linha e colidiria
-      // na mesma UNIQUE constraint que acabou de nos deixar passar.
-      return NextResponse.json({ ok: true, reason: 'telefone_desconhecido' }, { status: 200 });
+
+      const historicoSemConta = await lerHistorico(admin, entrada.from, atendimentoId);
+      const respostaGeral = await responderComIa(admin, {
+        pergunta: entrada.text,
+        // Sem empresa não há situação fiscal — e o prompt já trata essa ausência
+        // como irrelevante numa dúvida geral, em vez de empurrar o modelo a
+        // escalar por falta de dado que a pergunta não pedia.
+        situacaoFiscalTexto: null,
+        primeiraInteracao: historicoSemConta.length === 0,
+        historico: historicoSemConta,
+        contextoJuridico: await buscarContextoPorPergunta(admin, entrada.text),
+        tipoPergunta: 'geral',
+        // Quem escreve aqui não é cliente de escritório nenhum: não há contador
+        // para "retornar em breve". O convite a repetir é o que resta de
+        // honesto — e mantém a porta aberta.
+        textoDeFalha: 'Tive um problema técnico agora e não consegui responder. '
+          + 'Pode mandar sua pergunta de novo em instantes?',
+      });
+
+      // A saudação entra aqui, no ponto de saída — o mesmo texto para todo
+      // mundo, e só na primeira mensagem da conversa.
+      const textoGeral = comSaudacao(respostaGeral.resposta, historicoSemConta.length === 0);
+
+      const envioGeral = await enviarMensagem(configDeEnv(), {
+        telefone: entrada.from, texto: textoGeral,
+      });
+      if (!envioGeral.ok) {
+        console.error('[webhook uazapi] falha ao enviar resposta:', envioGeral.erro ?? 'desconhecido');
+      }
+
+      // O claim é a auditoria deste ramo; sem este UPDATE a linha ficaria com
+      // `resposta_enviada` nula para sempre, como se ninguém tivesse sido
+      // atendido. NÃO há escalação: não existe contador a quem escalar a dúvida
+      // de um número que não é cliente de ninguém.
+      await admin.from('whatsapp_atendimentos')
+        .update({ resposta_enviada: textoGeral, resolvido: envioGeral.ok })
+        .eq('id', atendimentoId);
+
+      return NextResponse.json({ ok: true, reason: 'duvida_geral_sem_conta' }, { status: 200 });
     }
 
     const companyId = profile.current_company as string;
@@ -288,19 +452,8 @@ export async function POST(req: Request) {
     // cada pergunta era tratada como se fosse a primeira, e o cliente tinha de
     // repetir o contexto a cada frase. Agora as últimas trocas do MESMO
     // telefone entram no prompt.
-    const { data: anteriores } = await admin
-      .from('whatsapp_atendimentos')
-      .select('mensagem_recebida, resposta_enviada, created_at')
-      .eq('telefone', entrada.from)
-      .neq('id', atendimentoId)
-      .order('created_at', { ascending: false })
-      .limit(4);
-    const primeiraInteracao = (anteriores?.length ?? 0) === 0;
-    // Do mais antigo para o mais recente: é assim que se lê uma conversa.
-    const historico = [...(anteriores ?? [])].reverse().map((a) => ({
-      pergunta: (a.mensagem_recebida as string) ?? '',
-      resposta: (a.resposta_enviada as string | null) ?? null,
-    }));
+    const historico = await lerHistorico(admin, entrada.from, atendimentoId);
+    const primeiraInteracao = historico.length === 0;
 
     // BASE JURÍDICA como apoio (415 documentos da legislação vigente, mantidos
     // pelo cron do RAG). Era consumida só pelo catálogo do 6A; o atendimento
@@ -320,41 +473,22 @@ export async function POST(req: Request) {
     // determina quando um humano é acionado.
     const tipoPergunta = classificarPergunta(entrada.text);
 
-    const { data: cfgRow } = await admin.from('config_ia').select('*').eq('id', 1).maybeSingle();
-    let resposta = 'Não consegui responder agora — o contador vai retornar em breve.';
-    let resolvido = false;
-
-    if (cfgRow) {
-      try {
-        const chave = lerChaveIa(cfgRow.chave_cifrada as string | null);
-        if (chave) {
-          const prompt = montarPromptAtendimento({
-            pergunta: entrada.text,
-            situacaoFiscalTexto: situacao?.texto ?? null,
-            primeiraInteracao,
-            historico,
-            contextoJuridico,
-            tipoPergunta,
-          });
-          const bruto = await gerarTexto(
-            { provedor: cfgRow.provedor, modelo: cfgRow.modelo, base_url: cfgRow.base_url, chave },
-            prompt);
-          // Leitura TOLERANTE (lib/atendimento/resposta): o modelo já devolveu
-          // a resposta certa com a chave escrita `"resovido"`, e a validação
-          // estrita jogou fora um atendimento bom. Falta de conteúdo continua
-          // sendo recusada; o que se tolera é grafia de chave.
-          const j = lerRespostaAtendimento(bruto);
-          if (j) {
-            resposta = j.resposta;
-            resolvido = j.resolvido;
-          } else {
-            console.error('[webhook uazapi] resposta da IA em formato inesperado, usando fallback');
-          }
-        }
-      } catch (e) {
-        console.error('[webhook uazapi] falha ao gerar resposta:', e instanceof Error ? e.message : String(e));
-      }
-    }
+    const gerada = await responderComIa(admin, {
+      pergunta: entrada.text,
+      situacaoFiscalTexto: situacao?.texto ?? null,
+      primeiraInteracao,
+      historico,
+      contextoJuridico,
+      tipoPergunta,
+      // Aqui a promessa é verdadeira: `resolvido:false` aciona a escalação
+      // logo abaixo, e o escritório vê a conversa em /contador/atendimentos.
+      textoDeFalha: 'Não consegui responder agora — o contador vai retornar em breve.',
+    });
+    // Saudação no ponto de saída, igual ao ramo sem cadastro: `resposta` já é o
+    // que vai ao cliente E o que é gravado em `resposta_enviada`, então os dois
+    // não podem divergir.
+    const resposta = comSaudacao(gerada.resposta, primeiraInteracao);
+    let resolvido = gerada.resolvido;
 
     const envio = await enviarMensagem(configDeEnv(), { telefone: entrada.from, texto: resposta });
     if (!envio.ok) {

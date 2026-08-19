@@ -123,7 +123,7 @@ describe.skipIf(semSmoke)('atendimento × provedor real', () => {
     }));
     const lido = respostaValida(bruto);
     expect(lido).not.toBeNull();
-    expect(lido!.resposta).not.toMatch(/(lei|artigo|art\.|LC\s*123|resolu[çc][ãa]o)/i);
+    expect(lido!.resposta).not.toMatch(/\b(lei|artigo|art\.|LC\s*123|resolu[çc][ãa]o)\b/i);
   }, 90_000);
 
   it('duvida GERAL sem dado fiscal nenhum: responde em vez de escalar', async () => {
