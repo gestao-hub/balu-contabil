@@ -107,6 +107,10 @@ const NAV: NavItem[] = [
   { href: '/contador/configuracoes/subconta', label: 'Conta de recebimento', Icon: Landmark, roles: ['contador'], secao: 'Cobranças' },
   { href: '/contador/configuracoes/avulsos',  label: 'Serviços avulsos',     Icon: Tags, roles: ['contador'], secao: 'Cobranças' },
   { href: '/contador/equipe',       label: 'Equipe',         Icon: Users, roles: ['contador'] },
+  // 0091 — canal de WhatsApp do escritório. Fica junto das configurações do
+  // escritório porque é isso que é: um canal do escritório, não uma tela de
+  // trabalho diário.
+  { href: '/contador/configuracoes/whatsapp', label: 'WhatsApp', Icon: MessageCircle, roles: ['contador'] },
   { href: '/contador/configuracoes', label: 'Config. escritório', Icon: Settings, roles: ['contador'] },
   { href: '/honorarios',            label: 'Honorários',     Icon: HandCoins, precisaEmpresa: true },
   // Bloco 4B: as cobranças que o ESCRITÓRIO emitiu pela subconta dele (boleto/
