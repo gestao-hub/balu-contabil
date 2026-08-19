@@ -81,6 +81,11 @@ type PayloadUazapi = { messageId: string; from: string; text: string };
 
 type TrocaAnterior = { pergunta: string; resposta: string | null };
 
+/** A recusa neutra. Mesma frase para "não tem cadastro" e para "é cliente de
+ *  outro escritório": distinguir as duas já revelaria o vínculo. */
+const TEXTO_NAO_IDENTIFICADO =
+  'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.';
+
 type PerfilCasado = { user_id: string; current_company: string | null; whatsapp_numero: string | null };
 
 /**
@@ -639,9 +644,19 @@ export async function POST(req: Request) {
       if (temMarcaPessoal(entrada.text)) {
         const envio = await enviarMensagem(canalDeSaida, {
           telefone: entrada.from,
-          texto: 'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.',
+          texto: TEXTO_NAO_IDENTIFICADO,
         });
         if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+
+        // Grava o que foi respondido. Lacuna encontrada no smoke de 19/08/2026:
+        // este ramo ENVIA mensagem e deixava `resposta_enviada` nula, então a
+        // conversa aparecia como não atendida na fila do escritório — e o SLA
+        // corria contra alguém por uma mensagem que já tinha sido respondida.
+        const { error: eGrav } = await admin.from('whatsapp_atendimentos')
+          .update({ resposta_enviada: TEXTO_NAO_IDENTIFICADO, resolvido: envio.ok })
+          .eq('id', atendimentoId);
+        if (eGrav) console.error('[webhook uazapi] falha ao gravar recusa:', eGrav.message);
+
         return NextResponse.json({ ok: true, reason: 'telefone_desconhecido' }, { status: 200 });
       }
 

@@ -122,3 +122,28 @@ describe('saudacao inicial — texto fixo, definido pelo usuario', () => {
     expect(p).not.toMatch(/comece com uma saudação/i);
   });
 });
+
+describe('modo escritorio — fecho proprio', () => {
+  it('com carteira, NAO manda encaminhar para o contador', () => {
+    // O smoke de 19/08/2026 pegou isto em producao: com a carteira inteira no
+    // prompt, o modelo respondia "nao localizamos informacoes, vou encaminhar
+    // para o contador" — para o proprio contador. O fecho de 'especifica'
+    // vencia o dado que estava logo acima.
+    const p = montarPromptAtendimento({
+      pergunta: 'quantos clientes estao irregulares?',
+      situacaoFiscalTexto: null,
+      tipoPergunta: 'especifica',
+      carteiraTexto: '2 cliente(s) na carteira: 1 em dia, 0 em atencao, 1 irregular(es).',
+    });
+
+    expect(p).toContain('2 cliente(s) na carteira');
+    expect(p).toMatch(/NÃO diga que vai encaminhar/);
+  });
+
+  it('sem carteira, o fecho de sempre continua valendo', () => {
+    const p = montarPromptAtendimento({
+      pergunta: 'quanto é o meu DAS?', situacaoFiscalTexto: null, tipoPergunta: 'especifica',
+    });
+    expect(p).toMatch(/encaminhar para o contador/i);
+  });
+});

@@ -207,7 +207,23 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
     'fiscal, material de apoio e o que já foi dito nesta conversa).',
     'Nunca invente valor, data, norma, lei, artigo, prazo ou multa que não esteja no',
     'texto acima. Nunca oriente sonegação, fraude nem forma de burlar a fiscalização.',
-    ...(e.tipoPergunta === 'geral'
+    // ⚠️ MODO ESCRITÓRIO TEM FECHO PRÓPRIO — descoberto no smoke de 19/08/2026.
+    //
+    // Sem este ramo, a conversa com o contador caía no fecho de 'especifica':
+    // "se a situação fiscal acima não trouxer o que responder, diga que vai
+    // encaminhar para o contador". Com a carteira INTEIRA no prompt logo acima,
+    // o modelo respondia "não localizamos informações sobre a regularidade dos
+    // clientes, vou encaminhar" — para o próprio contador. A instrução vencia
+    // o dado, e o dado estava lá.
+    ...(e.carteiraTexto
+      ? [
+          'Responda usando os números da carteira acima — eles são a informação',
+          'que você tem, e são suficientes. NÃO diga que vai encaminhar para o',
+          'contador: quem está perguntando É o contador. Se ele pedir algo que',
+          'não está acima, diga o que falta e sugira o painel do escritório.',
+          'Use "resolvido": true quando conseguir responder com esses dados.',
+        ]
+      : e.tipoPergunta === 'geral'
       ? [
           'ESTA É UMA DÚVIDA GERAL sobre como funcionam impostos e obrigações — não',
           'depende dos números da empresa de quem perguntou. Responda com o material de',
