@@ -9,6 +9,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
 import { assertAssinaturaEmpresa } from '@/lib/billing/gate';
 import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
+import { resolverCredencialEmissao, MENSAGEM_RECUSA } from '@/lib/fiscal/resolver-credencial';
 import { assertTipoDoc, validarJustificativa, cancelamentoSoPortal, type TipoDoc } from '@/lib/fiscal/notas-tipo';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import { buildNfsePayload } from '@/lib/fiscal/nfse-payload';
@@ -136,7 +137,8 @@ export async function exportNotasCsvAction(filtros: NotasFiltros): Promise<Expor
  *      imediato com mensagem traduzida.
  *   7. Redireciona pro detalhe.
  *
- * `env` decidido por `empresas_fiscais.emitir_nota_homol_antes_producao` (true → hom).
+ * `env` (hom|prod) e o token decididos por `resolverCredencialEmissao`, a
+ * guarda de emissão do Bloco 5 (ver `@/lib/fiscal/resolver-credencial`).
  */
 export type EmitirNotaInput = {
   clienteId: string;
@@ -170,17 +172,21 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
 
   const { data: company } = await supabase
     .from('companies')
-    .select('cnpj, codigo_municipio, razao_social, focus_token')
+    .select('cnpj, codigo_municipio, razao_social')
     .eq('id', companyId)
     .single();
   if (!company) return { ok: false, error: 'Empresa não encontrada.' };
-  if (!company.focus_token) {
-    return { ok: false, error: 'Empresa ainda não está cadastrada na Focus. Vá no Diagnóstico e clique "Sincronizar com Focus".' };
-  }
+  // Bloco 5: NÃO gatear em `company.focus_token` aqui — a Task 2 já migrou o
+  // token para `empresa_credenciais_focus` e esvaziou esta coluna para TODA
+  // empresa (medido em 20/08/2026: 0 de 5 empresas têm `focus_token`, inclusive
+  // as 2 com credencial de verdade na tabela nova). Deixar este `if` de pé
+  // bloquearia a emissão de toda empresa antes mesmo de chegar em
+  // `resolverCredencialEmissao`, que já cobre esta mesma checagem (motivo
+  // `sem_token_homologacao`) lendo do lugar certo.
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('Code_regime_tributario, emitir_nota_homol_antes_producao')
+    .select('Code_regime_tributario')
     .eq('empresa_id', companyId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -271,25 +277,35 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
   }
   const notaId = nota.id as string;
 
-  // MVP: SEMPRE emitir em homologação. Lógica original tinha 2 bugs:
-  //   1) Default `emitir_nota_homol_antes_producao = false` levava novas
-  //      empresas direto pra produção (contra intenção do user).
-  //   2) Token salvo é `token_homologacao` (vem do POST /v2/empresas inicial).
-  //      Mandar token-hom pra URL prod (api.focusnfe.com.br) dá 401.
-  // Quando suportarmos produção real, adicionamos um campo dedicado
-  // `ambiente_atual` ('hom'|'prod') em empresas_fiscais e migramos o token
-  // pra `token_producao` antes de chavear. Tarefa em backlog (PR 4.x).
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _flagIgnoradaPorEnquanto = fiscal.emitir_nota_homol_antes_producao;
-  const env: FocusEnv = 'hom';
+  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — o
+  // único lugar do produto que faz essa escolha. Antes daqui havia um
+  // `const env: FocusEnv = 'hom'` fixo, com dois bugs documentados no lugar: o
+  // default de `emitir_nota_homol_antes_producao` mandava empresa nova para
+  // produção, e o token salvo era o de homologação. Os dois deixam de existir:
+  // o ambiente é coluna da empresa e os tokens são dois campos separados.
+  //
+  // NÃO passar `supabase` aqui: a credencial mora em `empresa_credenciais_focus`,
+  // fechada para `authenticated` (0097). O default da função é service role.
+  const credencial = await resolverCredencialEmissao(companyId);
+  if (!credencial.ok) {
+    // A nota JÁ foi inserida acima. Marcar como erro em vez de deixar
+    // 'pendente' para sempre — pendente é o estado de "esperando a Focus", e
+    // aqui a Focus nem chegou a ser chamada.
+    await supabase.from('notas_fiscais')
+      .update({ status: 'erro', payload_focusnfe: { erro: credencial.motivo } })
+      .eq('id', notaId).eq('company_id', companyId);
+    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
+  }
+  const env: FocusEnv = credencial.ambiente;
 
   try {
-    const resp = await focus.emitirNfse(ref, payload, company.focus_token as string, env);
+    const resp = await focus.emitirNfse(ref, payload, credencial.token, env);
     // 202 (processando_autorizacao): mantém status='pendente'; webhook completa.
     // Quando Focus retorna sucesso síncrono (raro pra NFSe), já tem dados.
     await supabase
       .from('notas_fiscais')
       .update({
+        ambiente: env,
         // grava resposta sincrona pra debug
         payload_focusnfe: { request: payload, response: resp },
       })
