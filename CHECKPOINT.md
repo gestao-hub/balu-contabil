@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-19 (sessão 29 — **canal de WhatsApp por escritório implementado e provado contra produção**: migrations 0091/0092, trava de isolamento entre carteiras, modo escritório com a carteira do contador, tela de provisionamento, roteamento de saída por instância e aviso de queda de canal. Fases 1 e 2 do plano, com dois defeitos achados só no smoke real.)
+> **Última atualização:** 2026-08-19 (sessão 29 — **canal de WhatsApp por escritório implementado e provado**, mais uma rodada de `/code-review` + `/systematic-debugging` que achou 12 defeitos: os três graves eram meus, da mesma noite, e o bug da apuração que falhava diariamente em produção foi corrigido na origem.)
 
 > ## 🆕 SESSÃO 29 (2026-08-19, noite) — canal de WhatsApp por escritório, implementado e provado
 >
@@ -126,6 +126,87 @@
 > limpo · migrations 0091 e 0092 aplicadas e conferidas · cron rodado em produção
 > com a varredura nova (`canais_whatsapp: verificadas 0`, correto — nenhum
 > escritório conectado depois da reversão).
+>
+> ### 🔍 Rodada de `/code-review` + `/systematic-debugging` (fim da sessão 29)
+>
+> Pedida pelo usuário depois da entrega. Achou **12 defeitos**, 11 corrigidos —
+> e os três mais graves eram meus, do commit da mesma noite.
+>
+> #### O bug que falhava todo dia em produção (systematic-debugging)
+>
+> Sintoma: `apuracao { elegiveis: 4, apuradas: 3, erros: 1 }`, diariamente, sem
+> detalhe. A causa raiz saiu **dos dados antes do log**: das quatro elegíveis,
+> exatamente uma termina sem anexo — a `ideapp`, cujo CNAE **7319002 está no
+> catálogo `cnae_anexo` com `anexo_base` NULL**. O catálogo conhece o CNAE e não
+> diz qual anexo é. O log de produção confirmou a previsão:
+>
+> ```
+> [apuracao-cron] empresa c2410872… falhou  Anexo do Simples não informado para apuração.
+> ```
+>
+> **O estrago era o silêncio composto:** a tela mostrava uma apuração ANTIGA como
+> `calculada`, o resumo dizia "1 erro" sem dizer de quê, e um erro NOVO subiria
+> de 1 para 2 sem ninguém notar. Retentar no dia seguinte nunca resolveria —
+> retentativa não cria configuração que ninguém preencheu.
+>
+> Correção na origem: classe `ConfiguracaoIncompletaError`, contador
+> `semConfiguracao` separado de `erros`, e o **dono da empresa** avisado
+> (migration **0093**, tipo `apuracao_bloqueada`). O contador não é avisado de
+> propósito — o painel dele é somente leitura; quem edita o regime é o
+> empresário. Em produção depois da correção: **`erros: 0 · semConfiguracao: 1`**,
+> com o aviso gravado para o dono da `ideapp`.
+>
+> ⚠️ **NÃO preenchi o anexo nem o catálogo.** Definir o anexo de um CNAE é
+> decisão fiscal e afeta o imposto de todo cliente com aquele CNAE — a regra do
+> projeto é que IA não decide imposto. **Fica para o usuário/Michel.**
+>
+> #### Os três graves do code-review (todos introduzidos na mesma noite)
+>
+> 1. **O aviso de queda de instância nunca gravava.** O upsert mandava
+>    `contabilidade_id` para `notifications` — **coluna que não existe**
+>    (conferido no banco). O PostgREST recusava a linha inteira: a
+>    funcionalidade da 0092 era 100% silenciosa, o oposto do que ela existe para
+>    fazer. E avisava DEPOIS de marcar `desconectado`, então um aviso que
+>    falhasse se perdia para sempre — a varredura seguinte já não vê a linha.
+> 2. **Canal de escritório respondia pelo número da PLATAFORMA** sempre que o
+>    status gravado estivesse defasado (`conectando`, ou marcado
+>    `desconectado` por leitura ruim), com o prompt assinando como o escritório.
+>    Novo `configDeResposta`: se a mensagem chegou por aquele canal, a instância
+>    está viva — responde pelo número que recebeu, e sem token ninguém responde.
+> 3. **A fila de SLA enchia com o que o bot já tinha resolvido.** Carimbar
+>    `contabilidade_id` em toda linha (necessário para o escopo do histórico)
+>    quebrou uma invariante que existia: `materializar_sla_estourado` pega toda
+>    linha com `atendido_em IS NULL` e avisa a equipe inteira. Um "bom dia"
+>    ignorado de propósito, uma recusa, ou a pergunta do próprio contador
+>    virariam *"um cliente aguarda resposta há Nh"*. Agora só **escalação** fica
+>    em aberto — que é o único caso em que o relógio deve correr.
+>
+> #### Os outros oito
+>
+> `?t=1` dispensava o segredo (uma escrita em `audit_log` por requisição, para
+> anônimo, com balde de rate-limit renovado a cada valor) · histórico lido com
+> `contabilidade_id IS NULL` no canal da plataforma enquanto a escalação carimba
+> o escritório — saudação repetindo e memória perdida · `TERMO_FISCAL` casando
+> com "simples"/"nacional"/"contador" em conversa longa de estranho (o incidente
+> de 12/08 de volta) · `numero_ambiguo` enviando sem gravar · webhook não
+> reconfigurado (um 502 passageiro deixava o escritório **para sempre** capaz de
+> enviar e incapaz de receber, com a tela dizendo "Conectado") · falha de decifra
+> reprovisionando e orfanando a instância anterior no servidor compartilhado.
+>
+> #### Um achado REFUTADO, com evidência
+>
+> O revisor afirmou que o `GRANT` por coluna da 0091 seria inócuo, porque a 0030
+> teria concedido `SELECT` de tabela a `authenticated`. Conferido no banco:
+> `has_column_privilege('authenticated','uazapi_webhook_token','SELECT')` =
+> **false**. Migrations posteriores já haviam revogado o grant de tabela — a
+> garantia da 0091 vale. Registrado porque é o tipo de "achado" que, aceito sem
+> conferir, geraria uma migration desnecessária mexendo em privilégio.
+>
+> #### Verificação
+>
+> `tsc` **0** · vitest **1868** (+7 — cada correção grave com teste próprio) ·
+> `next build` limpo · migration **0093** aplicada · deploy `nomczjx6c` ·
+> cron rodado em produção confirmando `erros: 0 · semConfiguracao: 1`.
 >
 
 > ## SESSÃO 28 (2026-08-19) — o e-mail de autenticação saiu do gargalo, e o domínio caiu no mesmo dia
@@ -2513,7 +2594,12 @@ O servidor de dev foi subido, o banco foi conferido e o smoke **não chegou a se
 - **Correções ao plano descobertas na execução** (o plano tinha placeholders): `registrarAuditoria` é objeto único (sem admin); `aberturaDaCarteira` retorna só `{aberturaId,companyId}` (as actions buscam a linha à parte p/ `docs_revisao`/`user_id`/etapa); `requireEscritorio` retorna `{error}|{userId,contabilidadeId}`; não existe tipo 'SLU' (LTDA→ato SLU); severidade só `info|warning|danger`.
 - **Follow-ups não-bloqueantes:** re-recusar o **mesmo** doc não re-notifica no sino (idempotente por chave `doc_recusado_{docKey}`) — mitigado pelo checklist+realtime que refletem o novo motivo; a chamada de notificação nas actions é `await` best-effort (poderia lançar em erro de rede após o UPDATE já persistido, como o insert de `empresas_fiscais` da conclusão); cliente vê checklist sem link de download (só path bruto, sem signed URL — por design).
 
-### Rodada de smoke (EM ANDAMENTO — retomar aqui na próxima sessão)
+### Rodada de smoke do Bloco 2 — ✅ CONCLUÍDA (histórico; o rótulo "EM ANDAMENTO" abaixo ficou obsoleto)
+
+> ⚠️ Corrigido em 19/08/2026: esta seção dizia "EM ANDAMENTO — retomar aqui na
+> próxima sessão" há semanas. O Bloco 2 está **em `main`** desde julho (merge
+> `6f01f1e`, migration 0046 aplicada). Mantida como histórico do que foi feito;
+> não há nada a retomar aqui.
 Migration 0046 **aplicada** em produção (confirmado no banco: `docs_revisao` + `abertura_empresas` na publication `supabase_realtime`). Dev server pode estar de pé em localhost:3000 (se não, `npm run dev` em `balu/app`). **2 bugs achados no smoke e já corrigidos na branch:**
 - `ec80d73` — **Realtime não atualizava sem F5.** Causa: o `@supabase/ssr` carrega a sessão do cookie de forma assíncrona, e o `subscribe()` acontecia antes → socket **anon**, `auth.uid()` null, RLS descartava todos os eventos. Fix: `await getSession()` + `supabase.realtime.setAuth(access_token)` **antes** de `subscribe()`, no sino (`SinoNotificacoes.tsx`, Bloco 1) e na abertura (`AberturaInfoView.tsx`, Bloco 2). (DB estava certo — não era publication.)
 - `5c43c1f` — **clique no sino não abria a notificação.** O item linkava para `action_href` (ex.: `/configuracoes`), que parecia "só fechar o dropdown" quando o usuário já estava lá. Fix: item linka para `/notificacoes?sel=<id>#n-<id>` → a página marca a selecionada como lida, destaca (ring) e rola até ela; o botão "Abrir" (contexto) segue em cada item.
@@ -2712,64 +2798,52 @@ mentindo sobre os blocos 4, 6 e 7.
 
 ## Próximo passo imediato
 
-> ⚠️ Reescrita no **fim da sessão 28 (19/08)**. Se voltar a divergir do topo do
-> arquivo, o topo é que vale.
+> ⚠️ Reescrita no fim da **sessão 29 (19/08, noite)**. Se voltar a divergir do
+> topo do arquivo, o topo é que vale.
 
-**Lançamento: segunda-feira, 24/08.** O trabalho de 20/08 já está escrito:
+**Lançamento: segunda-feira, 24/08.**
 
-### ✅ Canal de WhatsApp por escritório — ENTREGUE em 19/08 (sessão 29)
+### Para o piloto rodar — dependem de você, não de código
 
-Spec e plano prontos, aprovados pelo usuário para execução:
-
-- `docs/superpowers/specs/2026-08-20-canal-whatsapp-por-escritorio-design.md`
-- `docs/superpowers/plans/2026-08-20-canal-whatsapp-por-escritorio.md`
-
-Fases 1 e 2 concluídas na mesma noite (sessão 29), com os quatro critérios de
-aceite provados **contra produção** — token de canal desconhecido, cliente de
-outro escritório, cliente do próprio escritório e modo escritório. Detalhes no
-bloco da sessão 29, no topo do arquivo.
-
-**Falta antes do lançamento:** um escritório de verdade conectar o próprio
-número pela tela nova (`/contador/configuracoes/whatsapp`), e o **número
-oficial do Balu** entrar na instância da plataforma.
-
-### O que sobrou do caminho crítico anterior
-
-1. ✅ **DNS** — resolvido em 19/08. Apex e `www` em `76.76.21.21`, HTTPS 307 →
-   /login, e os três registros do Resend intactos.
-2. ✅ **SMTP do Supabase** — Resend, `nao-responda@balucontabil.com.br`, teto de
-   2 → 30/hora, provado com reset real entregue.
-3. ✅ **Env vars da Vercel** — as cinco reescritas (`NEXT_PUBLIC_SITE_URL`,
-   `RESEND_API_KEY`, `EMAIL_FROM`, `UAZAPI_TOKEN`, `UAZAPI_WEBHOOK_SECRET`) e
-   deployadas. O cron de 19/08 provou as duas pontas: 12 e-mails `delivered` pela
-   conta nova e 7 avisos de WhatsApp entregues.
-4. ✅ **`UAZAPI_TOKEN`** — instância `Balu - avisos` criada e conectada.
-5. 🟡 **Smoke manual da Frente 3** (6 critérios, roteiro no histórico da sessão
-   26) — continua sem rodar.
-6. 🟡 **Asaas em produção** — nenhuma variável Asaas na Vercel; `ASAAS_ENV`
+1. 🔴 **Número oficial do Balu** na instância da plataforma. Hoje ela está
+   pareada no número PESSOAL do usuário, e o combinado é desconectá-lo assim que
+   os testes acabarem — junto com **desligar o webhook e limpar de
+   `whatsapp_atendimentos` as conversas de terceiros**.
+2. 🔴 **Um escritório conectar o próprio número** pela tela nova
+   (`/contador/configuracoes/whatsapp`). O caminho está pronto e testado com
+   mock; falta um pareamento real de escritório.
+3. 🟡 **Anexo do Simples da `ideapp`** (ou o `anexo_base` do CNAE 7319002 no
+   catálogo `cnae_anexo`). Enquanto faltar, o imposto dela não é recalculado —
+   e agora o dono é avisado disso todo mês. **É decisão fiscal: não preenchi.**
+4. 🟡 **Asaas em produção** — nenhuma variável Asaas na Vercel; `ASAAS_ENV`
    ausente significa **sandbox**. É o que falta para a cobrança valer dinheiro.
-7. 🟡 **Emissão fiscal em produção** — `notas_fiscais/actions.ts` segue com
-   `env: FocusEnv = 'hom'` fixo; depende de contrato Focus + certificado A1 dos
+5. 🟡 **Emissão fiscal em produção** — `notas_fiscais/actions.ts` segue com
+   `env: FocusEnv = 'hom'` fixo. Depende de contrato Focus + certificado A1 dos
    pilotos + procuração por CNPJ.
+6. 🟡 **Custo por instância na uazapi** não foi levantado. Com provisionamento
+   self-service, ele cresce por escritório **sem teto** — confirmar com o
+   fornecedor antes de abrir para todos.
 
-### Combinados pendentes com o usuário
+### Dívidas técnicas registradas
 
-- **Desligar o webhook da uazapi e limpar** de `whatsapp_atendimentos` as
-  conversas de terceiros, quando os testes no número pessoal acabarem.
-- **Chave `sending_access` restrita** no painel do Resend, para tirar a
-  full-access de dentro do `smtp_pass` do Supabase, do `.env.local` e da Vercel.
-- **Definir a grafia oficial do nome** — "Balu Contábil", "Balu Contabilidade" e
-  `balucontabil.com.br` convivem hoje, inclusive dentro do prompt da IA.
+- **LGPD:** a política de privacidade **não menciona WhatsApp**, e agora
+  conversas de clientes ficam armazenadas por escritório. Não editei: é
+  documento versionado, já aceito por usuários, e está na fila de revisão
+  jurídica. **Levar o ponto junto.**
+- **Chave `sending_access` restrita no Resend** — hoje o `smtp_pass` do Supabase
+  e o `.env.local` usam a full-access, por decisão explícita ("por enquanto").
+- **Grafia oficial do nome** — "Balu Contábil" (saudação da IA), "Balu
+  Contabilidade" (prompt) e `balucontabil.com.br` convivem.
 - **Conexão órfã de conciliação** da `ideapp` (`status:'ativa'`,
   `consentida_em: null`) — revogar, é uma linha.
-- **Rodar o smoke da IA** (`ia.smoke.test.ts`): a asserção que prova que a IA não
-  cita legislação estava quebrada por um byte 0x08 e **passava sempre**. Foi
-  corrigida, mas o arquivo é pulado sem chave de IA — ou seja, ela ainda não
-  rodou de verdade nenhuma vez.
+- **Smoke da IA (`ia.smoke.test.ts`)** nunca rodou de verdade: é pulado sem
+  chave de IA, e a asserção do guard-rail jurídico ficou meses passando por um
+  byte 0x08. Corrigida, mas ainda **não executada**.
+- **Smoke manual da Frente 3** (6 critérios, roteiro no histórico da sessão 26).
 
 **Antes de mexer em qualquer coisa:** `npx tsc --noEmit && npx vitest run &&
 npm run build` **a partir de `app/`, nunca da raiz**. Linha de base ao fim da
-sessão 28: **tsc 0 · 1839 testes · 36 pulados · build limpo**.
+sessão 29: **tsc 0 · 1868 testes · 36 pulados · build limpo**.
 
 ## Convenções da sessão
 
