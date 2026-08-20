@@ -687,6 +687,14 @@ git commit -m "feat(fiscal): resolverCredencialEmissao le o estado da empresa"
 
 ## Fase 2 — o ambiente manda nas leituras
 
+> ⚠️ **A assinatura mudou depois que este plano foi escrito.** `resolverCredencialEmissao`
+> e `tokenParaAmbiente` recebem `companyId` primeiro e o client do Supabase como
+> parâmetro **opcional por último**, com default de `service_role`. Motivo:
+> `empresa_credenciais_focus` é fechada para `authenticated` (0097), e todas as
+> actions de nota usam `createServerClient()` — passar o client da sessão faria
+> a leitura voltar vazia e toda emissão morrer com "sem token". NÃO passe
+> `supabase` nessas chamadas.
+
 ### Task 6: Emissão de NFS-e usa o helper e carimba o ambiente
 
 **Files:**
@@ -705,7 +713,7 @@ Remover as linhas do comentário MVP, o `_flagIgnoradaPorEnquanto` e o `const en
   // o default de `emitir_nota_homol_antes_producao` mandava empresa nova para
   // produção, e o token salvo era o de homologação. Os dois deixam de existir:
   // o ambiente é coluna da empresa e os tokens são dois campos separados.
-  const credencial = await resolverCredencialEmissao(supabase, companyId);
+  const credencial = await resolverCredencialEmissao(companyId);
   if (!credencial.ok) {
     // A nota JÁ foi inserida acima. Marcar como erro em vez de deixar
     // 'pendente' para sempre — pendente é o estado de "esperando a Focus", e
@@ -766,7 +774,7 @@ git commit -m "feat(fiscal): emissao de NFS-e decide ambiente por empresa e cari
 Em cada um, antes da chamada `focus.emitirNfe(...)` / `focus.emitirNfce(...)`:
 
 ```typescript
-  const credencial = await resolverCredencialEmissao(supabase, companyId);
+  const credencial = await resolverCredencialEmissao(companyId);
   if (!credencial.ok) {
     await supabase.from('notas_fiscais')
       .update({ status: 'erro', payload_focusnfe: { erro: credencial.motivo } })
@@ -829,7 +837,7 @@ Substituir o bloco que lê `companies.focus_token` por:
   // consultar o status de uma nota já emitida só porque o certificado venceu
   // depois — e o status é justamente o que diz se ela foi autorizada.
   const ambienteNota = ((nota.ambiente ?? 'hom') as FocusEnv);
-  const tokenDaNota = await tokenParaAmbiente(supabase, companyId, ambienteNota);
+  const tokenDaNota = await tokenParaAmbiente(companyId, ambienteNota);
   if (!tokenDaNota) {
     return { ok: false, error: `Esta nota foi emitida em ${ambienteNota === 'prod' ? 'produção' : 'homologação'} e não há token desse ambiente cadastrado.` };
   }
@@ -915,7 +923,7 @@ Apagar `const ENV: FocusEnv = 'hom';`.
   // O ambiente é o DA NOTA. Uma nota de homologação baixada da base de produção
   // devolve 404 no PDF e no XML.
   const ENV = ((nota.ambiente ?? 'hom') as FocusEnv);
-  const focusToken = await tokenParaAmbiente(supabase, companyId, ENV);
+  const focusToken = await tokenParaAmbiente(companyId, ENV);
   if (!focusToken) {
     return new Response('empresa sem token Focus para o ambiente desta nota', { status: 409 });
   }
@@ -956,7 +964,7 @@ Substituir o bloco `companyForCancel` + `const env: FocusEnv = 'hom';` por:
   // Cancelar uma nota de produção pela base de homologação devolve 404 — e o
   // usuário leria "nota não encontrada" para uma nota que existe.
   const ambienteNota = ((nota.ambiente ?? 'hom') as FocusEnv);
-  const focusToken = await tokenParaAmbiente(supabase, companyId, ambienteNota);
+  const focusToken = await tokenParaAmbiente(companyId, ambienteNota);
   if (!focusToken) {
     return { ok: false, error: 'Empresa sem token Focus para o ambiente desta nota.' };
   }
