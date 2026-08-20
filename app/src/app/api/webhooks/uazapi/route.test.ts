@@ -72,6 +72,7 @@ const h = vi.hoisted(() => {
       id: string; nome: string; slaHoras: number | null;
       whatsappSuporte: string | null; numero: string | null;
       config: { baseUrl: string; token: string } | null;
+      configDeResposta: { baseUrl: string; token: string } | null;
     },
     // Linhas que painel_contador_por_id devolveria para o modo ESCRITORIO.
     carteira: [] as Record<string, unknown>[],
@@ -675,6 +676,9 @@ describe('canal por escritorio', () => {
     id: 'contab_A', nome: 'Escritorio A', slaHoras: 24,
     whatsappSuporte: '5532999990000', numero: '5532988887777',
     config: { baseUrl: 'https://a.uazapi.com', token: 'tok-A' },
+    // Canal de escritorio responde pela PROPRIA instancia mesmo com o status
+    // defasado -- se a mensagem chegou por ela, ela esta viva.
+    configDeResposta: { baseUrl: 'https://a.uazapi.com', token: 'tok-A' },
   };
 
   function urlDoCanal(corpo: unknown, token: string) {
@@ -775,5 +779,94 @@ describe('canal por escritorio', () => {
     expect(prompt).toMatch(/NÃO existe nenhum/);            // a proibicao esta la
     // Pergunta do contador nao escala para ele mesmo.
     expect(h.inserts.filter((i) => i.tabela === 'notifications')).toHaveLength(0);
+  });
+});
+
+// ═══ Correcoes do code-review de 19/08/2026 ═══
+describe('achados do code-review', () => {
+  const ESCRITORIO = {
+    id: 'contab_A', nome: 'Escritorio A', slaHoras: 24, whatsappSuporte: null,
+    numero: '5532988887777',
+    config: null,   // status defasado: o banco diz que NAO esta conectado
+    configDeResposta: { baseUrl: 'https://a.uazapi.com', token: 'tok-A' },
+  };
+  const T = 'a'.repeat(64);
+  const urlCanal = (corpo: unknown, token = T) =>
+    new Request('http://localhost/api/webhooks/uazapi?t=' + token, {
+      method: 'POST', body: JSON.stringify(corpo),
+    });
+
+  it('ACHADO 3: canal de escritorio NUNCA responde pelo numero da plataforma', async () => {
+    // `config` nulo (status defasado no banco) fazia cair no `?? plataforma`:
+    // a resposta saia pelo numero do Balu com o prompt assinando como o
+    // escritorio. Se a mensagem chegou por este canal, a instancia esta viva.
+    h.estado.escritorio = ESCRITORIO;
+    h.estado.profile = { user_id: 'user_1', current_company: 'empresa_1' };
+    h.estado.company = { id: 'empresa_1', contabilidade_id: 'contab_A' };
+
+    await POST(urlCanal({ messageId: 'cr1', from: '5532987006789', text: 'quando vence meu DAS?' }));
+
+    const [cfg] = h.enviarMensagem.mock.calls[0] as unknown as [{ token: string }];
+    expect(cfg.token).toBe('tok-A');
+    expect(cfg.token).not.toBe('tok-plataforma');
+  });
+
+  it('ACHADO 4: silencio deliberado NAO entra na fila de SLA do escritorio', async () => {
+    // `materializar_sla_estourado` pega toda linha com atendido_em NULL unida
+    // por contabilidade_id e avisa a equipe inteira. Um "bom dia" ignorado de
+    // proposito viraria "um cliente aguarda ha Nh".
+    h.estado.escritorio = ESCRITORIO;
+    h.estado.profile = null;
+
+    const res = await POST(urlCanal({ messageId: 'cr2', from: '5511988887777', text: 'bom dia' }));
+    const body = await res.json();
+
+    expect(body.reason).toBe('telefone_desconhecido');
+    expect(h.enviarMensagem).not.toHaveBeenCalled();
+    const upd = h.updates.find((u) => u.tabela === 'whatsapp_atendimentos');
+    expect(upd?.valores.atendido_em).toBeTruthy();
+  });
+
+  it('ACHADO 5: ?t= com formato invalido nao substitui o segredo', async () => {
+    h.estado.escritorio = null;
+    const res = await POST(urlCanal({ messageId: 'cr3', from: '5532987006789', text: 'o que é mei?' }, 'nao-e-hex'));
+    const body = await res.json();
+
+    expect(body.reason).toBe('unauthorized');
+    // Sem claim: um anonimo nao consegue nem escrever linha de auditoria.
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it('ACHADO 8: termo fiscal em conversa longa de estranho NAO dispara atendimento', async () => {
+    // "simples", "nacional" e "contador" sao palavras do dia a dia. Sem o corte
+    // por tamanho, conversa de conhecido do dono do numero virava atendimento
+    // automatico -- o incidente de 12/08/2026 de volta.
+    h.estado.escritorio = ESCRITORIO;
+    h.estado.profile = null;
+
+    const res = await POST(urlCanal({
+      messageId: 'cr4', from: '5511988887777',
+      text: 'entao ficou combinado assim, é simples, depois a gente conversa melhor sobre aquilo',
+    }));
+    const body = await res.json();
+
+    expect(body.reason).toBe('telefone_desconhecido');
+    expect(h.gerarTexto).not.toHaveBeenCalled();
+    expect(h.enviarMensagem).not.toHaveBeenCalled();
+  });
+
+  it('ACHADO 9: recusa por cadastro duplicado grava o que respondeu', async () => {
+    h.estado.escritorio = ESCRITORIO;
+    h.estado.profile = [
+      { user_id: 'user_1', current_company: 'empresa_1' },
+      { user_id: 'user_2', current_company: 'empresa_1' },
+    ] as unknown as { user_id: string; current_company: string | null };
+    h.estado.company = { id: 'empresa_1', contabilidade_id: 'contab_A' };
+
+    await POST(urlCanal({ messageId: 'cr5', from: '5532987006789', text: 'meu DAS venceu?' }));
+
+    const upd = h.updates.find((u) => u.tabela === 'whatsapp_atendimentos');
+    expect(String(upd?.valores.resposta_enviada)).toMatch(/mais de um cadastro/);
+    expect(upd?.valores.atendido_em).toBeTruthy();
   });
 });

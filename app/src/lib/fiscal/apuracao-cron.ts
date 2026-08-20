@@ -2,7 +2,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AnexoSimples } from './regime';
 import { competenciaReferenciaBrt } from './guia';
-import { calcularApuracao, RegimeNaoSuportadoError } from './apuracao';
+import { calcularApuracao, RegimeNaoSuportadoError, ConfiguracaoIncompletaError } from './apuracao';
 import { lerReceitasParaApuracao } from './receitas-source';
 import { anexarAnexosDasReceitas } from './segregacao';
 import { resolverAnexoEmpresa } from './cnae-sync';
@@ -57,9 +57,57 @@ export type ResultadoApuracaoAutomatica = {
   apuradas: number;
   puladas: number;
   erros: number;
+  /** Empresas que NÃO dá para apurar por falta de configuração (ex.: Simples
+   *  sem anexo definido e com o CNAE sem anexo no catálogo). Separado de
+   *  `erros` de propósito: retentar amanhã não resolve, e misturar as duas
+   *  coisas fazia um erro real novo passar despercebido dentro de um número
+   *  que nunca zerava. */
+  semConfiguracao: number;
   /** true quando o orçamento acabou antes da fila — o resto entra amanhã. */
   interrompida: boolean;
 };
+
+/**
+ * Avisa quem pode preencher o que falta.
+ *
+ * Vai para o DONO da empresa, não para o contador: o painel do contador é
+ * somente leitura por construção (RLS sem política de escrita), então ele não
+ * teria como resolver — quem edita o regime tributário é o empresário, em
+ * Configurações.
+ *
+ * Idempotente por COMPETÊNCIA, não por dia: um aviso por mês enquanto a
+ * configuração faltar. Diário viraria ruído e o cliente pararia de ler; uma vez
+ * só e para sempre sumiria depois de lido.
+ */
+async function avisarConfiguracaoIncompleta(
+  admin: SupabaseClient,
+  e: EmpresaParaApurar,
+  err: ConfiguracaoIncompletaError,
+  competencia: string,
+): Promise<void> {
+  if (!e.ownerUserId) {
+    // Empresa cadastrada pelo contador e ainda sem dono (convite não aceito).
+    // Não há a quem avisar — e inventar destinatário é pior que não avisar.
+    console.warn('[apuracao-cron] sem dono para avisar sobre configuracao:', e.companyId);
+    return;
+  }
+
+  const { error } = await admin.from('notifications').upsert({
+    owner_user_id: e.ownerUserId,
+    company_id: e.companyId,
+    tipo: 'apuracao_bloqueada',
+    severidade: 'warning',
+    titulo: 'Não conseguimos calcular seu imposto',
+    corpo: 'Falta definir o Anexo do Simples Nacional da sua empresa. Enquanto isso, '
+      + 'o cálculo do mês não é atualizado. Ajuste em Configurações → Regime tributário.',
+    action_href: '/configuracoes',
+    chave: `apuracao_bloqueada:${e.companyId}:${competencia}:${err.campo}`,
+  }, { onConflict: 'owner_user_id,chave', ignoreDuplicates: true });
+
+  if (error) {
+    console.error('[apuracao-cron] aviso de configuracao falhou:', error.message);
+  }
+}
 
 export async function rodarApuracaoAutomatica(
   admin: SupabaseClient,
@@ -71,7 +119,7 @@ export async function rodarApuracaoAutomatica(
   const inicio = Date.now();
 
   const vazio: ResultadoApuracaoAutomatica = {
-    competencia, elegiveis: 0, apuradas: 0, puladas: 0, erros: 0, interrompida: false,
+    competencia, elegiveis: 0, apuradas: 0, puladas: 0, erros: 0, semConfiguracao: 0, interrompida: false,
   };
 
   // Regimes 1 e 2 (Simples) e 4 (MEI). O 3 (Regime Normal) não é apurado na
@@ -133,6 +181,7 @@ export async function rodarApuracaoAutomatica(
 
   let apuradas = 0;
   let erros = 0;
+  let semConfiguracao = 0;
   let interrompida = false;
 
   for (const e of fila) {
@@ -185,13 +234,30 @@ export async function rodarApuracaoAutomatica(
       // UMA empresa com ficha meia-boca não pode custar a apuração das outras.
       // O erro fica no log com o id, e a empresa volta ao topo da fila amanhã
       // (continua sem apuração, então ordena primeiro).
-      erros++;
-      if (!(err instanceof RegimeNaoSuportadoError)) {
-        console.error(`[apuracao-cron] empresa ${e.companyId} falhou`,
-          err instanceof Error ? err.message : String(err));
+      //
+      // ═══ FALTA CONFIGURAÇÃO ≠ ERRO (corrigido em 19/08/2026) ═══
+      //
+      // Bug real, achado no cron de produção: a `ideapp` falhava TODO DIA com
+      // "Anexo do Simples não informado" — Simples sem `anexo_simples` e com o
+      // CNAE no catálogo `cnae_anexo`, mas com `anexo_base` NULL. Retentar
+      // amanhã não cria uma configuração que ninguém preencheu.
+      //
+      // O estrago era o silêncio composto: a tela seguia mostrando uma apuração
+      // ANTIGA como `calculada`, o resumo do cron dizia "1 erro" sem dizer de
+      // quê, e um erro NOVO subiria de 1 para 2 sem ninguém notar. Agora conta
+      // separado E avisa quem pode resolver.
+      if (err instanceof ConfiguracaoIncompletaError) {
+        semConfiguracao++;
+        await avisarConfiguracaoIncompleta(admin, e, err, competencia);
+      } else {
+        erros++;
+        if (!(err instanceof RegimeNaoSuportadoError)) {
+          console.error(`[apuracao-cron] empresa ${e.companyId} falhou`,
+            err instanceof Error ? err.message : String(err));
+        }
       }
     }
   }
 
-  return { competencia, elegiveis: fila.length, apuradas, puladas, erros, interrompida };
+  return { competencia, elegiveis: fila.length, apuradas, puladas, erros, semConfiguracao, interrompida };
 }

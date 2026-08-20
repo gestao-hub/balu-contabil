@@ -54,8 +54,24 @@ async function garantirInstancia(contabilidadeId: string): Promise<
   const linha = data as LinhaCanal | null;
   if (!linha) return { ok: false, error: 'Escritório não encontrado.' };
 
-  const jaTem = decifrarCampo(linha.uazapi_token_cifrado);
-  if (linha.uazapi_instancia_id && jaTem) return { ok: true, token: jaTem, linha };
+  // ⚠️ O GUARD É SOBRE A INSTÂNCIA EXISTIR, não sobre conseguir decifrá-la
+  // (achado do code-review, 19/08/2026). Guardando pelos dois juntos, uma falha
+  // de decifra — chave rotacionada, texto corrompido — caía no `else` e
+  // PROVISIONAVA OUTRA instância, deixando a anterior rodando e sem dono no
+  // servidor compartilhado. Exatamente a órfã que esta função existe para
+  // evitar. Falha de decifra agora é erro explícito, não reprovisionamento.
+  if (linha.uazapi_instancia_id) {
+    const jaTem = decifrarCampo(linha.uazapi_token_cifrado);
+    if (!jaTem) {
+      console.error('[whatsapp escritorio] instancia existe e o token nao decifra:', linha.uazapi_instancia_id);
+      return {
+        ok: false,
+        error: 'Não conseguimos ler a credencial da sua instância. Chame o suporte com este código: '
+          + linha.uazapi_instancia_id,
+      };
+    }
+    return { ok: true, token: jaTem, linha };
+  }
 
   const criada = await criarInstancia(linha.nome ?? contabilidadeId.slice(0, 8));
   if (!criada.ok) return { ok: false, error: criada.erro };
@@ -104,6 +120,19 @@ export async function conectarWhatsappAction(numeroBruto: string): Promise<Actio
 
   const inst = await garantirInstancia(g.id);
   if (!inst.ok) return { ok: false, error: inst.error };
+
+  // ⚠️ WEBHOOK RECONFIGURADO A CADA CONEXÃO (achado do code-review, 19/08/2026).
+  //
+  // Configurá-lo só na criação deixava um estado sem saída: um 502 passageiro
+  // da uazapi durante o provisionamento, e o escritório ficava **para sempre**
+  // capaz de enviar e incapaz de receber — com a tela dizendo "Conectado". Nem
+  // "gerar outro código" nem desconectar e reconectar consertavam, porque o
+  // caminho de criação nunca mais rodava.
+  //
+  // A chamada é idempotente do lado deles (substitui a configuração), então
+  // repetir não custa nada além de uma requisição.
+  const cfg = await configurarWebhook(inst.token, getSiteUrl(), inst.linha.uazapi_webhook_token ?? '');
+  if (!cfg.ok) console.error('[whatsapp escritorio] webhook nao configurado:', cfg.erro);
 
   const par = await pedirPareamento(inst.token, numero);
   if (!par.ok) return { ok: false, error: par.erro };

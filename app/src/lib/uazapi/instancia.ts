@@ -26,7 +26,20 @@ export type EscritorioDoCanal = {
   /** Número conectado à instância, só dígitos. Para conferência opcional
    *  contra o `owner` do payload — nunca como fonte de verdade. */
   numero: string | null;
+  /** Config para ENVIO ATIVO (cron). Só existe quando a instância está
+   *  `conectado`: mandar por uma que está `conectando` é falar com o vazio e
+   *  receber `ok` de volta. */
   config: ConfigUazapi | null;
+  /** Config para RESPONDER a quem escreveu NESTE canal — vale mesmo com o
+   *  status defasado no banco.
+   *
+   *  Achado no code-review de 19/08/2026: usar só `config` fazia a resposta
+   *  cair no `?? configDaPlataforma()` e sair pelo NÚMERO DO BALU, com o prompt
+   *  assinando como o escritório. Se a mensagem chegou por este canal, a
+   *  instância está viva — quem está errado é o status gravado. Responder pelo
+   *  número que recebeu é sempre o certo; o que nunca pode acontecer é
+   *  responder por outro. */
+  configDeResposta: ConfigUazapi | null;
 };
 
 const COLUNAS =
@@ -46,10 +59,9 @@ function montar(linha: LinhaContabilidade): EscritorioDoCanal {
   // Token só vale quando a instância está CONECTADA. Uma instância em
   // 'conectando' tem token válido na uazapi e nenhum número atrás dele: enviar
   // por ela seria mandar mensagem para o vazio, com `ok:true` de volta.
-  const token = linha.uazapi_status === 'conectado'
-    ? decifrarCampo(linha.uazapi_token_cifrado)
-    : null;
+  const token = decifrarCampo(linha.uazapi_token_cifrado);
   const baseUrl = process.env.UAZAPI_BASE_URL ?? '';
+  const cfg = token && baseUrl ? { baseUrl, token } : null;
 
   return {
     id: linha.id,
@@ -57,7 +69,8 @@ function montar(linha: LinhaContabilidade): EscritorioDoCanal {
     slaHoras: linha.sla_resposta_horas,
     whatsappSuporte: linha.whatsapp_suporte,
     numero: linha.uazapi_numero,
-    config: token && baseUrl ? { baseUrl, token } : null,
+    config: linha.uazapi_status === 'conectado' ? cfg : null,
+    configDeResposta: cfg,
   };
 }
 

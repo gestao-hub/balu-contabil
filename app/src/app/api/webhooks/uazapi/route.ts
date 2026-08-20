@@ -86,6 +86,30 @@ type TrocaAnterior = { pergunta: string; resposta: string | null };
 const TEXTO_NAO_IDENTIFICADO =
   'Não conseguimos identificar sua conta. Confirme seu número em Conta > Notificações no app.';
 
+/**
+ * "Não precisa de humano" — o carimbo que tira a conversa da fila do escritório.
+ *
+ * ⚠️ ACHADO DO CODE-REVIEW (19/08/2026). Ao carimbar `contabilidade_id` em TODA
+ * linha (necessário para o escopo do histórico), eu quebrei uma invariante que
+ * existia antes: até então só a ESCALAÇÃO gravava o escritório, e escalação é
+ * justamente o caso que deve esperar um humano.
+ *
+ * `materializar_sla_estourado` (0070) pega toda linha com `atendido_em IS NULL`
+ * unida por `contabilidade_id` e avisa TODOS os membros. Sem este carimbo, um
+ * "bom dia" que o bot ignorou de propósito, uma recusa, ou a pergunta do próprio
+ * contador virariam "um cliente aguarda resposta há Nh" para a equipe inteira.
+ *
+ * Fica NULO só quando a IA não resolveu e o contador foi acionado — que é o
+ * único caso em que o relógio do SLA deve correr.
+ */
+const agoraIso = () => new Date().toISOString();
+
+/** Recusa por cadastro duplicado. Constante para o que foi ENVIADO e o que é
+ *  GRAVADO não poderem divergir. */
+const TEXTO_AMBIGUO =
+  'Encontramos mais de um cadastro com este número e, por segurança, não vamos '
+  + 'responder com dados de nenhum deles. Fale com seu contador para corrigir o cadastro.';
+
 type PerfilCasado = { user_id: string; current_company: string | null; whatsapp_numero: string | null };
 
 /**
@@ -173,11 +197,18 @@ async function lerHistorico(
     .eq('telefone', telefone)
     .neq('id', atendimentoId);
 
-  // `is(null)` quando não há escritório: conversa do canal da plataforma não se
-  // mistura com a de canal de escritório, nos dois sentidos.
-  q = escopo?.contabilidadeId
-    ? q.eq('contabilidade_id', escopo.contabilidadeId)
-    : q.is('contabilidade_id', null);
+  // Canal de ESCRITÓRIO filtra pelo escritório. Canal da PLATAFORMA não filtra
+  // — e isso é uma correção do code-review de 19/08/2026, não descuido.
+  //
+  // O `is('contabilidade_id', null)` que estava aqui discordava do resto do
+  // fluxo: a escalação carimba o escritório na linha, então a mensagem
+  // seguinte do MESMO cliente não encontrava a anterior, `primeiraInteracao`
+  // voltava a ser true, a saudação era reenviada e o histórico se perdia —
+  // pior a cada mensagem escalada.
+  //
+  // Não filtrar na plataforma não vaza nada: são conversas do mesmo telefone,
+  // e o canal da plataforma só atende quem não tem canal de escritório próprio.
+  if (escopo?.contabilidadeId) q = q.eq('contabilidade_id', escopo.contabilidadeId);
 
   const { data } = await q
     .order('created_at', { ascending: false })
@@ -318,8 +349,10 @@ async function atenderContador(
       resposta_enviada: texto,
       // Conversa com o próprio contador nasce resolvida: não há terceiro a
       // acionar, e deixar `false` encheria a fila de SLA dele com as próprias
-      // perguntas.
+      // perguntas. O `atendido_em` fecha isso no banco, que é onde a RPC do
+      // SLA olha — `resolvido` sozinho ela não consulta.
       resolvido: envio.ok,
+      atendido_em: agoraIso(),
     })
     .eq('id', ctx.atendimentoId);
   if (error) console.error('[webhook uazapi] falha ao gravar atendimento do contador:', error.message);
@@ -416,7 +449,15 @@ export async function POST(req: Request) {
   // O `t` é conferido contra o banco mais abaixo (precisa do admin client);
   // aqui só barramos quem não trouxe credencial NENHUMA, para o rate-limit
   // continuar protegido como o parágrafo acima descreve.
-  const tokenDoCanal = new URL(req.url).searchParams.get('t');
+  //
+  // ⚠️ O FORMATO É CONFERIDO AQUI, não só no banco (code-review, 19/08/2026).
+  // Antes bastava EXISTIR um `t` qualquer para passar deste portão: `?t=1`
+  // dispensava o segredo e dava a qualquer anônimo uma escrita em `audit_log`
+  // por requisição — e, como a chave do rate-limit inclui o token, variar o
+  // valor renovava o balde a cada chamada. Exigir os 64 hex fecha isso sem
+  // custo: adivinhar 256 bits não é atalho.
+  const tParam = new URL(req.url).searchParams.get('t');
+  const tokenDoCanal = tParam && /^[0-9a-f]{64}$/.test(tParam) ? tParam : null;
   if (!tokenDoCanal && !segredoDaQuery(req, 's', process.env.UAZAPI_WEBHOOK_SECRET ?? '')) {
     return NextResponse.json({ ok: false, reason: 'unauthorized' }, { status: 200 });
   }
@@ -502,7 +543,17 @@ export async function POST(req: Request) {
     // Por onde a RESPOSTA sai: sempre a mesma instância que recebeu. Responder
     // por outro número faria o cliente ver a pergunta num chat e a resposta em
     // outro — e, num canal de escritório, com a marca errada.
-    const canalDeSaida = escritorioDoCanal?.config ?? configDaPlataforma();
+    //
+    // ⚠️ CANAL DE ESCRITÓRIO NUNCA CAI PARA A PLATAFORMA (code-review, 19/08).
+    // O `?? configDaPlataforma()` valia para os dois casos e fazia a resposta de
+    // um cliente do escritório A sair pelo NÚMERO DO BALU sempre que o status
+    // gravado estivesse defasado (`conectando`, ou marcado `desconectado` por
+    // uma leitura ruim) — com o prompt assinando como o escritório A. Se a
+    // mensagem chegou pelo canal dele, é por ele que a resposta volta; sem
+    // token, ninguém responde.
+    const canalDeSaida = escritorioDoCanal
+      ? escritorioDoCanal.configDeResposta
+      : configDaPlataforma();
 
     // Idempotência via CLAIM atômico: o INSERT abaixo é a própria linha de
     // auditoria (usada pelo resto do fluxo e, no caminho de telefone
@@ -590,11 +641,16 @@ export async function POST(req: Request) {
       }
       const envio = await enviarMensagem(canalDeSaida, {
         telefone: entrada.from,
-        texto: 'Encontramos mais de um cadastro com este número e, por segurança, '
-          + 'não vamos responder com dados de nenhum deles. Fale com seu contador '
-          + 'para corrigir o cadastro.',
+        texto: TEXTO_AMBIGUO,
       });
       if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
+
+      // Grava o que foi respondido e fecha para o SLA: não há nada que um
+      // humano possa fazer aqui além de arrumar o cadastro duplicado.
+      await admin.from('whatsapp_atendimentos')
+        .update({ resposta_enviada: TEXTO_AMBIGUO, resolvido: envio.ok, atendido_em: agoraIso() })
+        .eq('id', atendimentoId);
+
       return NextResponse.json({ ok: true, reason: 'numero_ambiguo' }, { status: 200 });
     }
 
@@ -618,13 +674,30 @@ export async function POST(req: Request) {
       // a frase passava dos 40 caracteres do reconhecimento de termo solto.
       // Lista de palavras sempre vai perder para um jeito novo de perguntar; o
       // ponto de interrogação, não.
-      const mereceResposta = pareceUmaPergunta(entrada.text) || TERMO_FISCAL.test(entrada.text);
+      // Pergunta sempre merece resposta (decisão do usuário: "ela nunca deve
+      // ficar sem responder"). Fora disso, só TERMO FISCAL EM MENSAGEM CURTA —
+      // o padrão "IPI", "regime tributário", "simples nacional".
+      //
+      // Achado do code-review: `TERMO_FISCAL` sozinho casa com palavra do dia a
+      // dia ("simples", "nacional", "contador"), então "é simples assim" de um
+      // conhecido do dono do número virava atendimento automático — o incidente
+      // de 12/08 de volta. O corte por tamanho é o mesmo do `termoSolto` do
+      // classificador, e vale só para quem NÃO é cliente deste canal.
+      const textoCurto = entrada.text.trim().length <= 40;
+      const mereceResposta = pareceUmaPergunta(entrada.text)
+        || (textoCurto && TERMO_FISCAL.test(entrada.text));
 
       if (!mereceResposta) {
         // Sem insert aqui: o claim acima já é a linha de auditoria completa
         // para este ramo (message_id_externo, telefone, mensagem_recebida,
         // resolvido:false) — inserir de novo duplicaria a linha e colidiria
         // na mesma UNIQUE constraint que acabou de nos deixar passar.
+        //
+        // Mas PRECISA fechar para o SLA: silêncio deliberado não é atendimento
+        // pendente, e sem isto o "bom dia" de um estranho viraria alerta de
+        // prazo estourado para a equipe do escritório.
+        await admin.from('whatsapp_atendimentos')
+          .update({ atendido_em: agoraIso() }).eq('id', atendimentoId);
         return NextResponse.json({ ok: true, reason: 'telefone_desconhecido' }, { status: 200 });
       }
 
@@ -660,7 +733,7 @@ export async function POST(req: Request) {
         // conversa aparecia como não atendida na fila do escritório — e o SLA
         // corria contra alguém por uma mensagem que já tinha sido respondida.
         const { error: eGrav } = await admin.from('whatsapp_atendimentos')
-          .update({ resposta_enviada: TEXTO_NAO_IDENTIFICADO, resolvido: envio.ok })
+          .update({ resposta_enviada: TEXTO_NAO_IDENTIFICADO, resolvido: envio.ok, atendido_em: agoraIso() })
           .eq('id', atendimentoId);
         if (eGrav) console.error('[webhook uazapi] falha ao gravar recusa:', eGrav.message);
 
@@ -708,7 +781,7 @@ export async function POST(req: Request) {
       // atendido. NÃO há escalação: não existe contador a quem escalar a dúvida
       // de um número que não é cliente de ninguém.
       await admin.from('whatsapp_atendimentos')
-        .update({ resposta_enviada: textoGeral, resolvido: envioGeral.ok })
+        .update({ resposta_enviada: textoGeral, resolvido: envioGeral.ok, atendido_em: agoraIso() })
         .eq('id', atendimentoId);
 
       return NextResponse.json({ ok: true, reason: 'duvida_geral_sem_conta' }, { status: 200 });
@@ -805,6 +878,9 @@ export async function POST(req: Request) {
       .update({
         profile_user_id: profile.user_id, resposta_enviada: resposta, resolvido,
         ...(contabilidadeId ? { contabilidade_id: contabilidadeId } : {}),
+        // Fila do escritório = o que espera humano. Escalou (`!resolvido`) →
+        // fica aberta e o relógio do SLA corre; resolvida pela IA → fecha aqui.
+        ...(resolvido ? { atendido_em: agoraIso() } : {}),
       })
       .eq('id', atendimentoId);
     if (erroUpdate) {

@@ -11,6 +11,31 @@ export class RegimeNaoSuportadoError extends Error {
   }
 }
 
+/**
+ * Falta uma CONFIGURAÇÃO da empresa para apurar — não é falha de execução.
+ *
+ * Nasceu de um bug encontrado em produção em 19/08/2026: uma empresa do Simples
+ * sem `anexo_simples` e com o CNAE no catálogo `cnae_anexo` mas com
+ * `anexo_base` NULL lançava um `Error` genérico. O cron contava isso como
+ * "erro", tentava de novo no dia seguinte, e falhava de novo — **todo dia,
+ * para sempre**, porque nenhuma retentativa cria uma configuração que ninguém
+ * preencheu.
+ *
+ * O efeito era o pior tipo de silêncio: a empresa mantinha na tela uma apuração
+ * ANTIGA marcada como `calculada`, o resumo do cron mostrava um "1 erro"
+ * anônimo que ninguém sabia interpretar, e um erro NOVO e de verdade subiria de
+ * 1 para 2 sem chamar atenção de ninguém.
+ *
+ * Ter classe própria permite ao chamador separar "quebrou" de "falta
+ * preencher" — e avisar quem pode preencher.
+ */
+export class ConfiguracaoIncompletaError extends Error {
+  constructor(public readonly campo: string, mensagem: string) {
+    super(mensagem);
+    this.name = 'ConfiguracaoIncompletaError';
+  }
+}
+
 export function calcularApuracao(input: {
   regimeCode: string;
   anexo: AnexoSimples | null;
@@ -48,7 +73,12 @@ export function calcularApuracao(input: {
   }
 
   if (regimeCode === '1' || regimeCode === '2') {
-    if (!anexo) throw new Error('Anexo do Simples não informado para apuração.');
+    if (!anexo) {
+      throw new ConfiguracaoIncompletaError(
+        'anexo_simples',
+        'Anexo do Simples não informado para apuração.',
+      );
+    }
     const { rbt12, mesesConsiderados, anualizado } = calcularRbt12(
       receitas, competencia, input.dataInicioAtividade,
     );

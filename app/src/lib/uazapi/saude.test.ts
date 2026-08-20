@@ -70,8 +70,11 @@ describe('verificarSaudeDosCanais', () => {
     expect(h.upserts[0]).toMatchObject({
       owner_user_id: 'contador_1', tipo: 'whatsapp_desconectado',
       chave: 'whatsapp_desconectado:contab_A:2026-08-20',
-      contabilidade_id: 'contab_A',
     });
+    // `notifications` NAO tem coluna de contabilidade (conferido no banco):
+    // mandar uma fazia o PostgREST recusar a linha e o aviso NUNCA gravava --
+    // a funcionalidade inteira era silenciosa. O escritorio vive na `chave`.
+    expect(h.upserts[0]).not.toHaveProperty('contabilidade_id');
   });
 
   it('falha de REDE nao e queda: nao desliga o canal de quem esta funcionando', async () => {

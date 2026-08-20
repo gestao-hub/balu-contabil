@@ -67,10 +67,14 @@ export async function verificarSaudeDosCanais(
     if (st.dados.status === 'connected') continue;
 
     r.cairam++;
-    await admin.from('contabilidades')
-      .update({ uazapi_status: 'desconectado', uazapi_conectado_em: null })
-      .eq('id', c.id);
 
+    // ⚠️ AVISAR ANTES DE MARCAR (achado do code-review de 19/08/2026).
+    //
+    // A ordem inversa criava um aviso que se perdia para sempre: marcada como
+    // `desconectado`, a instância deixa de casar com o `.eq('uazapi_status',
+    // 'conectado')` da próxima rodada, e um aviso que tivesse falhado (rede,
+    // escritório sem membro) nunca mais teria uma segunda chance. Marcando
+    // depois, a rodada seguinte tenta de novo.
     const { data: membro } = await admin
       .from('contabilidade_membros').select('user_id')
       .eq('contabilidade_id', c.id)
@@ -78,13 +82,25 @@ export async function verificarSaudeDosCanais(
 
     const userId = (membro as { user_id: string } | null)?.user_id;
     if (!userId) {
+      // Escritório sem nenhum membro: não há a quem avisar, e inventar
+      // destinatário é pior que não avisar. O estado gravado ainda tem de
+      // virar verdade, senão a instância é reconferida todo dia para sempre.
       console.warn('[saude whatsapp] escritorio sem membro, aviso pulado:', c.id);
+      await admin.from('contabilidades')
+        .update({ uazapi_status: 'desconectado', uazapi_conectado_em: null })
+        .eq('id', c.id);
       continue;
     }
 
     const dia = hoje.toISOString().slice(0, 10);
     const { error: eAviso } = await admin.from('notifications').upsert({
       owner_user_id: userId,
+      // `notifications` NÃO tem coluna de contabilidade — só `company_id`
+      // (conferido no banco). Mandar `contabilidade_id` fazia o PostgREST
+      // recusar a linha inteira, e o aviso NUNCA era gravado: a funcionalidade
+      // inteira era silenciosa, exatamente o que o cabeçalho deste arquivo diz
+      // existir para impedir. O escritório já está identificado na `chave`.
+      company_id: null,
       tipo: 'whatsapp_desconectado',
       severidade: 'danger',
       titulo: 'O WhatsApp do escritório desconectou',
@@ -92,11 +108,20 @@ export async function verificarSaudeDosCanais(
         + 'nem resposta do assistente por WhatsApp. Reconecte em Configurações → WhatsApp.',
       action_href: '/contador/configuracoes/whatsapp',
       chave: `whatsapp_desconectado:${c.id}:${dia}`,
-      contabilidade_id: c.id,
     }, { onConflict: 'owner_user_id,chave', ignoreDuplicates: true });
 
-    if (eAviso) { r.erros++; console.error('[saude whatsapp] aviso falhou:', eAviso.message); }
-    else r.avisados++;
+    if (eAviso) {
+      // Aviso falhou: NÃO marca desconectado. A instância continua na varredura
+      // e a rodada seguinte tenta avisar de novo.
+      r.erros++;
+      console.error('[saude whatsapp] aviso falhou:', eAviso.message);
+      continue;
+    }
+    r.avisados++;
+
+    await admin.from('contabilidades')
+      .update({ uazapi_status: 'desconectado', uazapi_conectado_em: null })
+      .eq('id', c.id);
   }
 
   return r;

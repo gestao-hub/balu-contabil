@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcularApuracao, RegimeNaoSuportadoError } from './apuracao';
+import { calcularApuracao, RegimeNaoSuportadoError, ConfiguracaoIncompletaError } from './apuracao';
 import type { ReceitaApuracao } from './apuracao-types';
 
 const mk = (comp: string, valor: number): ReceitaApuracao => ({ competencia: comp, valor });
@@ -111,3 +111,29 @@ function competenciaBack(comp: string, n: number): string {
   const idx = y * 12 + (m - 1) - n;
   return `${Math.floor(idx / 12)}${String((idx % 12) + 1).padStart(2, '0')}`;
 }
+
+describe('calcularApuracao — falta configuracao (bug de producao, 19/08/2026)', () => {
+  // A `ideapp` falhava TODO DIA no cron: Simples sem `anexo_simples` e com o
+  // CNAE no catalogo `cnae_anexo` com `anexo_base` NULL. Lancava Error generico,
+  // o cron contava como "erro" e retentava no dia seguinte -- e retentar nao
+  // cria configuracao que ninguem preencheu.
+  it('Simples sem anexo lanca ConfiguracaoIncompletaError, nao Error generico', () => {
+    let capturado: unknown;
+    try {
+      calcularApuracao({ regimeCode: '1', anexo: null, competencia: '202607', receitas: [] });
+    } catch (e) { capturado = e; }
+
+    expect(capturado).toBeInstanceOf(ConfiguracaoIncompletaError);
+    // O campo que falta viaja no erro: e o que permite ao chamador dizer ao
+    // cliente O QUE preencher, em vez de "erro ao calcular".
+    expect((capturado as ConfiguracaoIncompletaError).campo).toBe('anexo_simples');
+  });
+
+  it('NAO se confunde com regime nao suportado', () => {
+    // Os dois sao "nao da para apurar", mas so um se resolve preenchendo algo.
+    expect(() => calcularApuracao({ regimeCode: '3', anexo: null, competencia: '202607', receitas: [] }))
+      .toThrow(RegimeNaoSuportadoError);
+    expect(() => calcularApuracao({ regimeCode: '3', anexo: null, competencia: '202607', receitas: [] }))
+      .not.toThrow(ConfiguracaoIncompletaError);
+  });
+});
