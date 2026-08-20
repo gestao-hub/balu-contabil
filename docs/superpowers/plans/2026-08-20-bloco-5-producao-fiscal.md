@@ -1742,7 +1742,14 @@ Repetido da spec §9, para não virar promessa no meio da execução:
 
 - **Emissão em produção com `origem = 'balu'`** — depende da Focus liberar a API de Empresas (401 `permissao_negada` desde 23/07/2026).
 - **Habilitar NFS-e produção pela plataforma** — mesmo `PUT` bloqueado.
-- **Provar uma emissão real em produção** — gera documento fiscal de verdade. Só com autorização explícita do titular, empresa e competência escolhidas a dedo.
+- **Provar uma emissão real em produção** — gera documento fiscal de verdade.
+  **NÃO é feita por este bloco nem no CNPJ da PIPER** (decisão de 20/08/2026: a
+  PIPER é administradora MASTER do sistema e não emite). Esse teste tem dono
+  próprio: o **administrador Eduardo**, no ambiente dele.
+
+  Motivo pelo qual isso não é detalhe: apagar a empresa do Balu depois **não
+  apaga a nota na prefeitura**. Cancelamento existe, mas dentro de prazo e
+  deixando registro. Documento fiscal emitido é irreversível do lado de fora.
 
 **Entrada externa — RESPONDIDA em 20/08/2026.** O par de tokens do `.env.local` é
 da **PIPER AUTOMACOES E INTEGRACOES LTDA**, CNPJ `61061690000183`
