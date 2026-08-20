@@ -1730,4 +1730,22 @@ Repetido da spec §9, para não virar promessa no meio da execução:
 - **Habilitar NFS-e produção pela plataforma** — mesmo `PUT` bloqueado.
 - **Provar uma emissão real em produção** — gera documento fiscal de verdade. Só com autorização explícita do titular, empresa e competência escolhidas a dedo.
 
-**Entrada externa que falta:** de qual CNPJ é o par de tokens do `.env.local`. Sem isso, as Tasks 13–14 não têm com que ser provadas contra a Focus real — e gravar token de empresa na linha errada faz um cliente emitir nota com CNPJ de terceiro.
+**Entrada externa — RESPONDIDA em 20/08/2026.** O par de tokens do `.env.local` é
+da **PIPER AUTOMACOES E INTEGRACOES LTDA**, CNPJ `61061690000183`
+(Apucarana/PR, Simples Nacional, ativa) — a empresa do próprio operador da
+plataforma, conta `gestao@excluvia.com.br`, que permanece depois do lançamento.
+É a mesma empresa do certificado A1 que já é o **contratante do SERPRO**.
+
+Consequências para este plano:
+
+- PIPER **não está em `companies`** hoje. Ela é operadora, não cliente.
+- Como seria `focus_origem = 'propria'`, cadastrá-la **não passa pelo
+  `/v2/empresas`** — o endpoint bloqueado desde 23/07. O caminho existe.
+- Ela é, portanto, o sujeito ideal para provar as Tasks 13–14 e, se o dono
+  quiser, a **emissão em produção de ponta a ponta**: os dois tokens autenticam
+  (404 em `/v2/nfsen` no ambiente de cada um), o certificado A1 já existe, e a
+  nota sairia no CNPJ do próprio operador — decisão dele, sem titular terceiro
+  envolvido.
+- Isso NÃO muda o §9: emitir de verdade gera documento fiscal e continua fora do
+  que este plano executa por conta própria. Mudou de "impossível" para
+  "disponível mediante decisão explícita".
