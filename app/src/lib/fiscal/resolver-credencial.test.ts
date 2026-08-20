@@ -105,6 +105,17 @@ describe('decidirCredencial', () => {
     expect(r.ok).toBe(false);
     expect(!r.ok && r.motivo).toBe('sem_token_homologacao');
   });
+
+  it('empresa sem NADA configurado continua em homologacao, como antes da 0096', () => {
+    // Os defaults da migration sao exatamente este caso: origem 'balu',
+    // ambiente 'hom'. Se este teste quebrar, o deploy muda o comportamento de
+    // toda empresa existente.
+    const r = decidirCredencial({
+      origem: 'balu', ambiente: 'hom', tokenHom: 'tok', tokenProd: null,
+      certNotAfter: null, habilitaProducaoFocus: false, producaoDeclarada: false,
+    });
+    expect(r).toEqual({ ok: true, ambiente: 'hom', token: 'tok' });
+  });
 });
 
 // ═══ resolverCredencialEmissao / tokenParaAmbiente — a leitura do banco ═══

@@ -266,6 +266,35 @@ test.describe('RLS: fronteira do contador (Bloco A)', () => {
     ).toHaveLength(0);
   });
 
+  // Bloco 5: a credencial fiscal do cliente NÃO pode ser gravada pela sessão do
+  // contador. A escrita legítima existe (`focus-actions.ts`), mas passa por
+  // service role com anti-IDOR e auditoria. Se a RLS deixar escrever direto,
+  // aquele caminho vira decoração.
+  test('contador NAO grava rastro de credencial no cliente vinculado', async () => {
+    const c1 = await signIn(c1Email);
+    const { data, error } = await c1
+      .from('companies')
+      .update({ focus_token_em: new Date().toISOString() })
+      .eq('id', xId)
+      .select('id');
+
+    // Dois desfechos aceitáveis, e os dois são recusa: erro de permissão, ou
+    // zero linhas afetadas (RLS filtra a linha antes do UPDATE). O que NÃO pode
+    // acontecer é voltar linha gravada.
+    expect(data ?? [], 'contador conseguiu gravar em companies via RLS').toHaveLength(0);
+    if (error) expect(error.message).toMatch(/permission|policy|denied/i);
+  });
+
+  // A tabela de credencial e fechada para authenticated (0097): nem SELECT.
+  test('contador NAO le a tabela de credencial da Focus', async () => {
+    const c1 = await signIn(c1Email);
+    const { data, error } = await c1
+      .from('empresa_credenciais_focus').select('empresa_id').eq('empresa_id', xId);
+
+    expect(data ?? [], 'contador enxergou a tabela de credencial').toHaveLength(0);
+    if (error) expect(error.message).toMatch(/permission|policy|denied|does not exist/i);
+  });
+
   test('membro de contabilidade pendente NÃO lê', async () => {
     const c3 = await signIn(c3Email);
     const { data, error } = await c3.from('companies').select('id');
