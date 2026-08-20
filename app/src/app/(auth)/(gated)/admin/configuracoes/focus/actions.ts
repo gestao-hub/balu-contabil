@@ -26,9 +26,16 @@ import { requireAdminBaluAction } from '@/lib/admin/guard';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { guardarTokenFocus, invalidarCacheFocus } from '@/lib/fiscal/config-focus';
 import { focus } from '@/lib/clients/focus-nfe';
+import {
+  classificarSondaRevendaFocus,
+  type ResultadoSondaRevendaFocus,
+} from '@/lib/fiscal/focus-revenda-sonda';
 import { ConfigFocusSchema } from '@/types/zod';
 
-type ActionResult = { ok: true } | { ok: false; error: string };
+// `aviso` existe só no caminho de sucesso: CONSERTO 1 grava mesmo quando a
+// sonda não deu para confirmar (rede/5xx/timeout), e a tela precisa de como
+// dizer "salvo, mas não confirmado" sem virar erro.
+type ActionResult = { ok: true; aviso?: string } | { ok: false; error: string };
 
 const ROTA = '/admin/configuracoes/focus';
 
@@ -37,6 +44,24 @@ const ROTA = '/admin/configuracoes/focus';
  *  200 em `/v2/codigos_cnae` e 401 em `/v2/empresas` — testar pelo catálogo
  *  teria aprovado um token que não serve para nada que esta tela promete. */
 const ID_SONDA = 1;
+
+/**
+ * Sonda `GET /v2/empresas/:id` contra a revenda e classifica o resultado com
+ * a MESMA regra para os dois chamadores deste arquivo:
+ *   - `testarConexaoFocusAction` — sem `token`, resolve o que já está gravado.
+ *   - `salvarConfigFocusAction` — com `token`, sonda o candidato do formulário
+ *     ANTES de gravar (conserto 1: ver o comentário lá).
+ * A classificação em si é pura e mora em `lib/fiscal/focus-revenda-sonda.ts`,
+ * testável sem rede.
+ */
+async function sondarRevendaFocus(token?: string): Promise<ResultadoSondaRevendaFocus> {
+  try {
+    await focus.consultarEmpresa(ID_SONDA, undefined, token);
+    return { status: 'aceito' };
+  } catch (e) {
+    return classificarSondaRevendaFocus(e);
+  }
+}
 
 export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionResult> {
   const ctx = await requireAdminBaluAction();
@@ -52,6 +77,35 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
     // Sem isto o "salvar" com o campo vazio gravaria só o carimbo de data e
     // diria "salvo" — o admin sairia achando que trocou o token.
     return { ok: false, error: 'Cole o token de revenda para salvar.' };
+  }
+
+  // CONSERTO 1 (Bloco 5 produção fiscal, 20/08/2026): antes disto a tela
+  // gravava o token e só testava DEPOIS, se o admin lembrasse de clicar em
+  // "Testar conexão". Foi assim que o token de EMISSÃO de uma empresa — que
+  // FUNCIONA nas consultas de catálogo — foi colado neste campo, gravado sem
+  // reclamar, e passou a derrubar cadastro de empresa, upload de certificado
+  // A1 e o botão Sincronizar com 401 em produção. E como campo vazio significa
+  // "não trocar", não havia caminho pela interface para desfazer. Agora a
+  // sonda roda ANTES do UPDATE/INSERT, com o token que está SENDO SALVO — não
+  // o que já está no banco.
+  let aviso: string | undefined;
+  const sonda = await sondarRevendaFocus(token);
+  if (sonda.status === 'recusado') {
+    return {
+      ok: false,
+      error:
+        'A Focus recusou este token na API de revenda (401/403) — nada foi salvo. Confira se ' +
+        'você não colou o token de EMISSÃO de uma empresa por engano: ele é diferente do token ' +
+        'da conta de revenda, e costuma funcionar em consultas de catálogo mesmo sem acesso à ' +
+        'revenda — foi exatamente essa confusão que derrubou a Focus em produção em 20/08/2026.',
+    };
+  }
+  if (sonda.status === 'indeterminado') {
+    // Rede fora do ar, 5xx ou timeout não pode travar quem está configurando
+    // uma credencial nova: a Focus pode estar instável e o token, correto.
+    aviso =
+      `Salvo, mas não foi possível confirmar o acesso à revenda agora ` +
+      `(${sonda.motivo.slice(0, 140)}). Teste a conexão quando puder.`;
   }
 
   const patch: Record<string, unknown> = {
@@ -101,55 +155,52 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
 
   // A AUDITORIA NÃO MENCIONA O TOKEN — nem mascarado. Máscara em log é segredo
   // pela metade, e o que interessa auditar é QUEM trocou e QUANDO.
+  //
+  // CONSERTO 3: `audit_log.alvo_id` é uuid, e a string `'1'` não é — o insert
+  // falhava com erro de sintaxe, calado, porque `registrarAuditoria` não
+  // conferia o `error` do insert. O identificador do singleton (id=1 em
+  // `config_focus`) vai para o `meta`.
   await registrarAuditoria({
     actorUserId: ctx.userId,
     acao: 'focus.config_salvar',
     alvoTipo: 'config_focus',
-    alvoId: '1',
-    meta: { trocou_token: true },
+    alvoId: null,
+    meta: { config_id: 1, trocou_token: true, sonda: sonda.status },
   });
 
   revalidatePath(ROTA);
-  return { ok: true };
+  return aviso ? { ok: true, aviso } : { ok: true };
 }
 
 /**
- * Testa o token contra a API de REVENDA da Focus, de verdade.
+ * Testa o token JÁ GRAVADO contra a API de REVENDA da Focus, de verdade — a
+ * pedido do admin, depois de salvar.
  *
  * Nenhum dado de contribuinte atravessa: o id da sonda é uma constante deste
- * arquivo, de uma empresa que não é nossa.
- *
- * A leitura do resultado é deliberadamente conservadora:
- *   - 401/403 → token sem acesso à revenda. É a evidência que importa.
- *   - 404     → token VÁLIDO na revenda; só não achou o id 1, que é o esperado.
- *   - resto   → não houve recusa; dizer "credencial inválida" aqui mandaria o
- *               admin trocar um token que estava certo.
+ * arquivo, de uma empresa que não é nossa. A classificação (401/403 recusa,
+ * 404 aprova, resto é indeterminado) é a mesma que `salvarConfigFocusAction`
+ * usa para testar o token NOVO antes de gravar — ver `sondarRevendaFocus` e
+ * `classificarSondaRevendaFocus`.
  */
 export async function testarConexaoFocusAction(): Promise<ActionResult> {
   const ctx = await requireAdminBaluAction();
   if ('error' in ctx) return { ok: false, error: ctx.error };
 
-  try {
-    await focus.consultarEmpresa(ID_SONDA);
-    // 200 num id que não é nosso seria estranho, mas prova acesso à revenda.
-    return { ok: true };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (/→ 404/.test(msg)) return { ok: true };
-    if (/→ 401|→ 403/.test(msg)) {
-      return {
-        ok: false,
-        error: 'A Focus recusou o token: ele não tem acesso à API de revenda (401/403).',
-      };
-    }
-    if (/não configurado/i.test(msg)) {
-      return { ok: false, error: 'Não há token de revenda guardado.' };
-    }
-    // Curto de propósito: a resposta da Focus pode trazer corpo longo, e o
-    // toast não é lugar de despejar HTML de gateway.
+  const sonda = await sondarRevendaFocus();
+  if (sonda.status === 'aceito') return { ok: true };
+  if (sonda.status === 'recusado') {
     return {
       ok: false,
-      error: `A Focus não recusou o token, mas a chamada falhou: ${msg.slice(0, 160)}`,
+      error: 'A Focus recusou o token: ele não tem acesso à API de revenda (401/403).',
     };
   }
+  if (/não configurado/i.test(sonda.motivo)) {
+    return { ok: false, error: 'Não há token de revenda guardado.' };
+  }
+  // Curto de propósito: a resposta da Focus pode trazer corpo longo, e o
+  // toast não é lugar de despejar HTML de gateway.
+  return {
+    ok: false,
+    error: `A Focus não recusou o token, mas a chamada falhou: ${sonda.motivo.slice(0, 160)}`,
+  };
 }

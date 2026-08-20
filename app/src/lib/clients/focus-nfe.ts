@@ -16,10 +16,14 @@ export type FocusEnv = 'prod' | 'hom';
  *   `obterTokenRevendaFocus` — `config_focus` no banco, com `FOCUS_NFE_TOKEN`
  *   como fallback (0095). Esse é o único token válido pros endpoints
  *   `/v2/empresas*` (cadastro, atualização, snapshot).
- * - Com `tokenOverride`: usa esse token. Pros endpoints de **emissão**
- *   (`/v2/nfsen`, `/v2/nfse`, `/v2/nfe`, etc) a Focus exige o
- *   `token_homologacao` ou `token_producao` específico da EMPRESA — salvo em
- *   `companies.focus_token` após o POST inicial em `/v2/empresas`.
+ * - Com `tokenOverride`: usa esse token em vez de resolver. Dois usos:
+ *     1. endpoints de **emissão** (`/v2/nfsen`, `/v2/nfse`, `/v2/nfe`, etc) —
+ *        a Focus exige o `token_homologacao` ou `token_producao` específico
+ *        da EMPRESA, salvo em `companies.focus_token` após o POST inicial em
+ *        `/v2/empresas`;
+ *     2. `consultarEmpresa` chamado pela tela de configuração ANTES de gravar
+ *        um token de revenda novo (Bloco 5, conserto 1) — precisa sondar com
+ *        o candidato que está no formulário, não com o que já está no banco.
  */
 async function auth(tokenOverride?: string): Promise<string> {
   // Com override o token é da EMPRESA e vem do banco de quem chamou — não há
@@ -203,9 +207,13 @@ export const focus = {
   /**
    * GET /v2/empresas/:id — consulta empresa por id numérico devolvido no POST.
    * Mesmo motivo de `criarEmpresa`: revenda só existe em `api.focusnfe.com.br`.
+   *
+   * `tokenOverride` aceito para a sonda de `admin/configuracoes/focus`: testar
+   * o token ANTES de gravar exige chamar com o candidato do formulário, e não
+   * com o que `obterTokenRevendaFocus` leria do banco (que ainda é o antigo).
    */
-  consultarEmpresa: (id: number, _env: FocusEnv = 'hom') =>
-    call<FocusEmpresaSnapshot>('prod', 'GET', `/v2/empresas/${id}`),
+  consultarEmpresa: (id: number, _env: FocusEnv = 'hom', tokenOverride?: string) =>
+    call<FocusEmpresaSnapshot>('prod', 'GET', `/v2/empresas/${id}`, undefined, tokenOverride),
 
   /**
    * PUT /v2/empresas/:id — atualiza cadastro da empresa na revenda Focus

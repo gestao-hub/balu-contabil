@@ -10,7 +10,7 @@
 //      eles foram emitidos para o certificado velho, e reusá-los faria a
 //      Receita recusar por um motivo que pareceria falha dela.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { lerSegredoSerpro } from '@/lib/fiscal/config-serpro';
+import { lerSegredoSerpro, guardarSegredoSerpro } from '@/lib/fiscal/config-serpro';
 
 const USER_ID = 'user_admin_1';
 const KEY_FALSA = 'TESTE-consumer-key-obviamente-falsa-0001';
@@ -22,7 +22,11 @@ type Chamada = { tabela: string; valores: Record<string, unknown>; eq: unknown[]
 const h = vi.hoisted(() => {
   const updates: Chamada[] = [];
   const inserts: Chamada[] = [];
-  const auditorias: Array<{ acao: string; meta?: Record<string, unknown> }> = [];
+  const auditorias: Array<{ acao: string; alvoId?: string | null; meta?: Record<string, unknown> }> = [];
+  // CONSERTO 1: a credencial (key/secret) com que cada sonda foi chamada —
+  // prova que a sonda usa a credencial que VAI valer após o salvamento, não a
+  // que já está no banco.
+  const credenciaisSondadas: Array<{ consumerKey: string; consumerSecret: string } | undefined> = [];
 
   const estado = {
     guard: { userId: 'user_admin_1' } as unknown,
@@ -78,22 +82,27 @@ const h = vi.hoisted(() => {
     insert: (valores: Record<string, unknown>) => construir(tabela, 'insert', valores),
   }));
 
-  const registrarAuditoria = vi.fn(async (e: { acao: string; meta?: Record<string, unknown> }) => {
-    auditorias.push(e);
-  });
+  const registrarAuditoria = vi.fn(
+    async (e: { acao: string; alvoId?: string | null; meta?: Record<string, unknown> }) => {
+      auditorias.push(e);
+    },
+  );
   const revalidatePath = vi.fn((_p: string) => {});
   const parsePkcs12 = vi.fn((_pfx: Buffer, _senha: string) => {
     if (!estado.material) throw new Error('PKCS#12 MAC could not be verified. Invalid password?');
     return estado.material;
   });
   const getContratante = vi.fn(async () => estado.contratante);
-  const autenticarContratante = vi.fn(async (_pfx: Buffer, _senha: string) => {
-    if (estado.erroAuth) throw estado.erroAuth;
-    return { jwt: 'j', accessToken: 'a', expiration: '2026-01-01T00:00:00Z' };
-  });
+  const autenticarContratante = vi.fn(
+    async (_pfx: Buffer, _senha: string, credOverride?: { consumerKey: string; consumerSecret: string }) => {
+      credenciaisSondadas.push(credOverride);
+      if (estado.erroAuth) throw estado.erroAuth;
+      return { jwt: 'j', accessToken: 'a', expiration: '2026-01-01T00:00:00Z' };
+    },
+  );
 
   return {
-    updates, inserts, auditorias, estado, from,
+    updates, inserts, auditorias, credenciaisSondadas, estado, from,
     registrarAuditoria, revalidatePath, parsePkcs12, getContratante, autenticarContratante,
   };
 });
@@ -122,6 +131,7 @@ beforeEach(() => {
   h.updates.length = 0;
   h.inserts.length = 0;
   h.auditorias.length = 0;
+  h.credenciaisSondadas.length = 0;
   h.estado.guard = { userId: USER_ID };
   h.estado.linhas = {
     config_serpro: { id: 1, consumer_key_cifrado: null, consumer_secret_cifrado: null },
@@ -134,10 +144,15 @@ beforeEach(() => {
     subjectCN: 'PIPER AUTOMACOES LTDA:12345678000199',
     cnpj: '12345678000199',
   };
-  h.estado.contratante = null;
+  // CONSERTO 1: default COM contratante — a maioria dos testes de
+  // `salvarConfigSerproAction` já existia de quando não havia sonda, e espera
+  // `{ ok: true }` limpo. Os testes que querem "sem certificado" sobrescrevem
+  // para `null` explicitamente (ver describe 'CONSERTO 1').
+  h.estado.contratante = { id: 'contratante-1', pfx: Buffer.from('cert-fake'), senha: 'senha-fake' };
   h.estado.erroAuth = null;
   h.registrarAuditoria.mockClear();
   h.revalidatePath.mockClear();
+  h.autenticarContratante.mockClear();
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -173,14 +188,24 @@ describe('salvarConfigSerproAction', () => {
   });
 
   it('trocar só o secret, com a key já gravada, NÃO toca a key', async () => {
+    // CIFRA DE VERDADE, e não um literal 'enc:v1:qualquer': CONSERTO 1 agora
+    // DECIFRA a key já gravada para sondar a credencial que vai valer após
+    // este salvamento — um placeholder que só parece cifra faria essa
+    // decifra falhar e o teste pegar o caminho de aviso por engano.
+    const keyJaGravadaCifrada = guardarSegredoSerpro('key-ja-gravada-anteriormente');
     h.estado.linhas.config_serpro = {
-      id: 1, consumer_key_cifrado: 'enc:v1:qualquer', consumer_secret_cifrado: 'enc:v1:outro',
+      id: 1, consumer_key_cifrado: keyJaGravadaCifrada, consumer_secret_cifrado: 'enc:v1:outro',
     };
     const r = await salvarConfigSerproAction({ consumer_secret: SECRET_FALSO });
     expect(r).toEqual({ ok: true });
-    expect(h.updates).toHaveLength(1);
-    expect(Object.keys(h.updates[0].valores)).toContain('consumer_secret_cifrado');
-    expect(Object.keys(h.updates[0].valores)).not.toContain('consumer_key_cifrado');
+    const upConfig = h.updates.find((u) => u.tabela === 'config_serpro')!;
+    expect(Object.keys(upConfig.valores)).toContain('consumer_secret_cifrado');
+    expect(Object.keys(upConfig.valores)).not.toContain('consumer_key_cifrado');
+    // A sonda usou a key JÁ GRAVADA (decifrada) + o secret NOVO — não uma
+    // meia-credencial nem a antiga por inteiro.
+    expect(h.credenciaisSondadas).toEqual([
+      { consumerKey: 'key-ja-gravada-anteriormente', consumerSecret: SECRET_FALSO },
+    ]);
   });
 
   it('a credencial vai CIFRADA e decifra de volta', async () => {
@@ -200,7 +225,65 @@ describe('salvarConfigSerproAction', () => {
     const serializada = JSON.stringify(h.auditorias[0]);
     expect(serializada).not.toContain(KEY_FALSA);
     expect(serializada).not.toContain(SECRET_FALSO);
-    expect(h.auditorias[0].meta).toEqual({ trocou_key: true, trocou_secret: true });
+    expect(h.auditorias[0].meta).toEqual({ config_id: 1, trocou_key: true, trocou_secret: true });
+  });
+
+  // CONSERTO 3 (Bloco 5 produção fiscal): `audit_log.alvo_id` é uuid — a
+  // string `'1'` fazia o insert falhar em silêncio.
+  it('alvoId nunca é a string não-uuid "1" — vai null, e o id do singleton mora no meta', async () => {
+    await salvarConfigSerproAction({ consumer_key: KEY_FALSA, consumer_secret: SECRET_FALSO });
+    expect(h.auditorias[0].alvoId).toBeNull();
+    expect(h.auditorias[0].meta?.config_id).toBe(1);
+  });
+
+  // ------------------------------------------------ CONSERTO 1: testar antes
+  // de gravar. Equivalente do incidente da Focus: aqui a credencial errada
+  // seria o consumer key/secret, e o teste real é `autenticarContratante`.
+  describe('CONSERTO 1 — sonda antes de gravar', () => {
+    it('sonda com a credencial que VAI valer após o salvamento (a nova)', async () => {
+      await salvarConfigSerproAction({ consumer_key: KEY_FALSA, consumer_secret: SECRET_FALSO });
+      expect(h.credenciaisSondadas).toEqual([
+        { consumerKey: KEY_FALSA, consumerSecret: SECRET_FALSO },
+      ]);
+    });
+
+    it('401/403 na sonda BLOQUEIA a gravação', async () => {
+      h.estado.erroAuth = new Error('SERPRO /authenticate → 401: denied');
+      const r = await salvarConfigSerproAction({ consumer_key: KEY_FALSA, consumer_secret: SECRET_FALSO });
+      expect(r.ok).toBe(false);
+      expect('error' in r && r.error).toMatch(/recusou/i);
+      // NADA foi persistido nem auditado.
+      expect(h.updates).toHaveLength(0);
+      expect(h.inserts).toHaveLength(0);
+      expect(h.auditorias).toHaveLength(0);
+    });
+
+    it('403 na sonda também bloqueia', async () => {
+      h.estado.erroAuth = new Error('SERPRO /authenticate → 403: forbidden');
+      const r = await salvarConfigSerproAction({ consumer_key: KEY_FALSA, consumer_secret: SECRET_FALSO });
+      expect(r.ok).toBe(false);
+      expect(h.updates).toHaveLength(0);
+    });
+
+    it('sem certificado de contratante guardado, NÃO bloqueia — grava com aviso', async () => {
+      // Não é motivo para travar quem está configurando a credencial pela
+      // primeira vez, antes de qualquer certificado existir.
+      h.estado.contratante = null;
+      const r = await salvarConfigSerproAction({ consumer_key: KEY_FALSA, consumer_secret: SECRET_FALSO });
+      expect(r.ok).toBe(true);
+      expect('aviso' in r && r.aviso).toMatch(/certificado/i);
+      expect(h.updates).toHaveLength(1);
+      expect(h.autenticarContratante).not.toHaveBeenCalled();
+    });
+
+    it('sonda indeterminada (rede/5xx/timeout) NÃO bloqueia — grava mesmo assim, com aviso', async () => {
+      h.estado.erroAuth = new Error('SERPRO /authenticate → 502: bad gateway');
+      const r = await salvarConfigSerproAction({ consumer_key: KEY_FALSA, consumer_secret: SECRET_FALSO });
+      expect(r.ok).toBe(true);
+      expect('aviso' in r && r.aviso).toMatch(/não foi possível confirmar/i);
+      expect(h.updates.some((u) => u.tabela === 'config_serpro')).toBe(true);
+      expect(h.auditorias).toHaveLength(1);
+    });
   });
 });
 

@@ -20,12 +20,16 @@ import { requireAdminBaluAction } from '@/lib/admin/guard';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { encryptBlob } from '@/lib/crypto/envelope';
 import { parsePkcs12, type CertMaterial } from '@/lib/fiscal/pkcs12';
-import { guardarSegredoSerpro, invalidarCacheSerpro } from '@/lib/fiscal/config-serpro';
+import { guardarSegredoSerpro, lerSegredoSerpro, invalidarCacheSerpro } from '@/lib/fiscal/config-serpro';
 import { getContratante } from '@/lib/fiscal/serpro-contratante';
 import { autenticarContratante } from '@/lib/clients/serpro-auth';
+import { classificarSondaContratanteSerpro } from '@/lib/fiscal/serpro-contratante-sonda';
 import { ConfigSerproSchema } from '@/types/zod';
 
-type ActionResult = { ok: true } | { ok: false; error: string };
+// `aviso` existe só no caminho de sucesso: CONSERTO 1 grava mesmo quando a
+// sonda não deu para confirmar (sem certificado, cifra corrompida, rede/5xx),
+// e a tela precisa de como dizer "salvo, mas não confirmado" sem virar erro.
+type ActionResult = { ok: true; aviso?: string } | { ok: false; error: string };
 
 const ROTA = '/admin/configuracoes/serpro';
 
@@ -72,6 +76,65 @@ export async function salvarConfigSerproAction(entrada: unknown): Promise<Action
     };
   }
 
+  // CONSERTO 1 (Bloco 5 produção fiscal, 20/08/2026): testa a credencial
+  // ANTES de gravar, contra o SERPRO de verdade — mesma ideia da tela da
+  // Focus (ver o comentário lá; foi o incidente de lá que motivou este
+  // bloco). O teste equivalente ao `GET /v2/empresas` da Focus é
+  // `autenticarContratante`: exige o certificado do CONTRATANTE, que já está
+  // no banco e NÃO muda nesta action — só a credencial do contrato muda. A
+  // sonda usa a credencial que VAI valer depois deste salvamento: a nova, ou
+  // — quando o campo ficou vazio — a que já está gravada, decifrada agora.
+  //
+  // Sem certificado guardado, ou com a credencial antiga corrompida, não há
+  // como validar — e isso não pode travar quem está configurando pela
+  // primeira vez. Vira aviso, não bloqueio.
+  let contratante: Awaited<ReturnType<typeof getContratante>> = null;
+  try {
+    contratante = await getContratante();
+  } catch {
+    contratante = null;
+  }
+
+  let aviso: string | undefined;
+  if (!contratante) {
+    aviso = 'ainda não há certificado de contratante guardado';
+  } else {
+    let keyEfetiva: string | null = null;
+    let secretEfetiva: string | null = null;
+    try {
+      keyEfetiva = key || lerSegredoSerpro((atual?.consumer_key_cifrado as string | null) ?? null);
+      secretEfetiva = secret || lerSegredoSerpro((atual?.consumer_secret_cifrado as string | null) ?? null);
+    } catch {
+      // Cifra corrompida numa coluna que esta gravação nem está tocando não
+      // pode travar a gravação de uma credencial nova e válida.
+    }
+    if (!keyEfetiva || !secretEfetiva) {
+      aviso = 'não foi possível reconstituir a credencial completa para validar';
+    } else {
+      const sonda = await (async () => {
+        try {
+          await autenticarContratante(contratante!.pfx, contratante!.senha, {
+            consumerKey: keyEfetiva!, consumerSecret: secretEfetiva!,
+          });
+          return classificarSondaContratanteSerpro(null);
+        } catch (e) {
+          return classificarSondaContratanteSerpro(e);
+        }
+      })();
+      if (sonda.status === 'recusado') {
+        return {
+          ok: false,
+          error:
+            'O SERPRO recusou esta credencial junto com o certificado do contratante (401/403) — ' +
+            'nada foi salvo. Confira o consumer key e o consumer secret antes de tentar de novo.',
+        };
+      }
+      if (sonda.status === 'indeterminado') {
+        aviso = `não foi possível confirmar a credencial agora (${sonda.motivo.slice(0, 120)})`;
+      }
+    }
+  }
+
   const patch: Record<string, unknown> = {
     atualizado_por: ctx.userId,
     atualizado_em: new Date().toISOString(),
@@ -106,16 +169,20 @@ export async function salvarConfigSerproAction(entrada: unknown): Promise<Action
 
   invalidarCacheSerpro();
 
+  // CONSERTO 3: `audit_log.alvo_id` é uuid, e a string `'1'` não é — o insert
+  // falhava com erro de sintaxe, calado, porque `registrarAuditoria` não
+  // conferia o `error` do insert. O identificador do singleton vai para o
+  // `meta`.
   await registrarAuditoria({
     actorUserId: ctx.userId,
     acao: 'serpro.config_salvar',
     alvoTipo: 'config_serpro',
-    alvoId: '1',
-    meta: { trocou_key: Boolean(key), trocou_secret: Boolean(secret) },
+    alvoId: null,
+    meta: { config_id: 1, trocou_key: Boolean(key), trocou_secret: Boolean(secret) },
   });
 
   revalidatePath(ROTA);
-  return { ok: true };
+  return aviso ? { ok: true, aviso: `Salvo, mas ${aviso}. Teste a conexão quando puder.` } : { ok: true };
 }
 
 /**
@@ -246,20 +313,26 @@ export async function testarConexaoSerproAction(): Promise<ActionResult> {
     return { ok: false, error: 'Nenhum certificado de contratante guardado — envie o .pfx primeiro.' };
   }
 
+  // A classificação (401/403 recusa; resto é indeterminado) é a mesma que
+  // `salvarConfigSerproAction` usa para testar a credencial NOVA antes de
+  // gravar — ver `classificarSondaContratanteSerpro`.
+  let sonda: ReturnType<typeof classificarSondaContratanteSerpro>;
   try {
     await autenticarContratante(contratante.pfx, contratante.senha);
-    return { ok: true };
+    sonda = classificarSondaContratanteSerpro(null);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (/→ 401|→ 403/.test(msg)) {
-      return { ok: false, error: 'O SERPRO recusou a credencial ou o certificado (401/403).' };
-    }
-    if (/não configuradas/i.test(msg)) {
-      return { ok: false, error: 'Consumer key/secret não estão guardados.' };
-    }
-    return {
-      ok: false,
-      error: `O SERPRO não recusou a credencial, mas a chamada falhou: ${msg.slice(0, 160)}`,
-    };
+    sonda = classificarSondaContratanteSerpro(e);
   }
+
+  if (sonda.status === 'aceito') return { ok: true };
+  if (sonda.status === 'recusado') {
+    return { ok: false, error: 'O SERPRO recusou a credencial ou o certificado (401/403).' };
+  }
+  if (/não configuradas/i.test(sonda.motivo)) {
+    return { ok: false, error: 'Consumer key/secret não estão guardados.' };
+  }
+  return {
+    ok: false,
+    error: `O SERPRO não recusou a credencial, mas a chamada falhou: ${sonda.motivo.slice(0, 160)}`,
+  };
 }
