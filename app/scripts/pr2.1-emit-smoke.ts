@@ -4,13 +4,21 @@
  * AL Piscinas (Londrina = aderente NFSe Nacional). Cria um cliente PJ
  * "fantasia" pra usar como tomador caso não exista.
  *
- * Pré-condição: empresa cadastrada no Balu + Focus 1/2.2 já rodaram (cert OK).
+ * Pré-condição: empresa cadastrada no Balu + Focus 1/2.2 já rodaram (cert OK)
+ * e tem credencial de homologação em `empresa_credenciais_focus`.
+ *
+ * Bloqueio 5 da revisão final: este script gateava em `companies.focus_token`
+ * (texto puro) e usava esse valor no POST à Focus — coluna sempre vazia desde
+ * que a credencial passou a morar cifrada em `empresa_credenciais_focus`
+ * (0096/0097). Conserto: lê e decifra de lá com `lerTokenEmpresa`, igual
+ * `resolverCredencialEmissao` faz em produção.
  *
  * Uso: npx tsx --env-file=.env.local scripts/pr2.1-emit-smoke.ts
  */
 import { createClient } from '@supabase/supabase-js';
 import { focus, generateRef } from '../src/lib/clients/focus-nfe';
 import { buildNfsePayload } from '../src/lib/fiscal/nfse-payload';
+import { lerTokenEmpresa } from '../src/lib/fiscal/credencial-empresa';
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -23,10 +31,15 @@ async function main() {
   const u = list.users.find((x) => x.email?.toLowerCase() === EMAIL.toLowerCase());
   if (!u) throw new Error('user não encontrado');
   const { data: company } = await sb.from('companies')
-    .select('id, cnpj, razao_social, codigo_municipio, focus_token')
+    .select('id, cnpj, razao_social, codigo_municipio')
     .eq('user_id', u.id).eq('cnpj', '10358425000120').maybeSingle();
   if (!company) throw new Error('AL Piscinas não cadastrada — rode focus2.2-cert-smoke antes');
-  if (!company.focus_token) throw new Error('Empresa sem focus_token — rode focus2.2-cert-smoke antes');
+
+  const { data: cred } = await sb.from('empresa_credenciais_focus')
+    .select('token_hom_cifrado')
+    .eq('empresa_id', company.id).maybeSingle();
+  const tokenHom = lerTokenEmpresa((cred?.token_hom_cifrado as string | null) ?? null);
+  if (!tokenHom) throw new Error('Empresa sem credencial de homologação em empresa_credenciais_focus — rode focus1-smoke antes');
   console.log(`     ✓ ${company.razao_social} · IBGE ${company.codigo_municipio}`);
 
   const { data: fiscal } = await sb.from('empresas_fiscais')
@@ -77,7 +90,7 @@ async function main() {
   const ref = generateRef(company.id);
   let resp: unknown;
   try {
-    resp = await focus.emitirNfse(ref, payload, company.focus_token as string, 'hom');
+    resp = await focus.emitirNfse(ref, payload, tokenHom, 'hom');
     console.log('     ✅', JSON.stringify(resp, null, 2));
   } catch (e) {
     console.error('     ❌', e instanceof Error ? e.message : String(e));
