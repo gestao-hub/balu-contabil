@@ -4,7 +4,7 @@
 // comprovante antes da compensação. É a página onde os próximos ajustes de
 // plataforma vão morar.
 import Link from 'next/link';
-import { CreditCard, Sparkles, SlidersHorizontal } from 'lucide-react';
+import { CreditCard, Sparkles, SlidersHorizontal, FileText, Landmark } from 'lucide-react';
 import { requireAdminBaluPage } from '@/lib/admin/guard';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { statusEfetivo, type StatusAssinatura } from '@/lib/billing/status';
@@ -119,6 +119,40 @@ export default async function Page() {
           className="mt-3 inline-block rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
         >
           Configurar provedor
+        </Link>
+      </section>
+
+      <section className="rounded-md border border-border bg-surface p-4">
+        <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <FileText className="size-4 shrink-0 text-primary" />
+          Focus NFe
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          O token de revenda com que a plataforma cadastra empresa, atualiza cadastro e envia
+          certificado. A emissão de nota usa o token de cada empresa, não este.
+        </p>
+        <Link
+          href="/admin/configuracoes/focus"
+          className="mt-3 inline-block rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+        >
+          Configurar Focus
+        </Link>
+      </section>
+
+      <section className="rounded-md border border-border bg-surface p-4">
+        <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Landmark className="size-4 shrink-0 text-primary" />
+          SERPRO Integra Contador
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Consumer key/secret do contrato e o certificado A1 do contratante — o e-CNPJ que
+          assina o mTLS com a Receita em nome de todos os clientes.
+        </p>
+        <Link
+          href="/admin/configuracoes/serpro"
+          className="mt-3 inline-block rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+        >
+          Configurar SERPRO
         </Link>
       </section>
 

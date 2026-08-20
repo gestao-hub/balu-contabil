@@ -1,6 +1,7 @@
 // @custom — Onda 4 hardening — Cliente Focus NFe (NF-e / NFC-e / NFS-e + consultas)
 // Secrets NUNCA vão pro frontend. Este módulo só é importável no server.
 import 'server-only';
+import { obterTokenRevendaFocus } from '@/lib/fiscal/config-focus';
 
 const PROD = 'https://api.focusnfe.com.br';
 const HOM  = 'https://homologacao.focusnfe.com.br';
@@ -11,17 +12,27 @@ export type FocusEnv = 'prod' | 'hom';
 /**
  * Monta o header Basic Auth.
  *
- * - Sem `tokenOverride`: usa `FOCUS_NFE_TOKEN` da env. Esse é o **token de
- *   revenda** — único válido pros endpoints `/v2/empresas*` (cadastro,
- *   atualização, snapshot).
+ * - Sem `tokenOverride`: resolve o **token de revenda** via
+ *   `obterTokenRevendaFocus` — `config_focus` no banco, com `FOCUS_NFE_TOKEN`
+ *   como fallback (0095). Esse é o único token válido pros endpoints
+ *   `/v2/empresas*` (cadastro, atualização, snapshot).
  * - Com `tokenOverride`: usa esse token. Pros endpoints de **emissão**
  *   (`/v2/nfsen`, `/v2/nfse`, `/v2/nfe`, etc) a Focus exige o
  *   `token_homologacao` ou `token_producao` específico da EMPRESA — salvo em
  *   `companies.focus_token` após o POST inicial em `/v2/empresas`.
  */
-function auth(tokenOverride?: string) {
-  const token = tokenOverride ?? process.env.FOCUS_NFE_TOKEN;
-  if (!token) throw new Error('FOCUS_NFE_TOKEN não configurado');
+async function auth(tokenOverride?: string): Promise<string> {
+  // Com override o token é da EMPRESA e vem do banco de quem chamou — não há
+  // o que resolver aqui, e nem se deve ir ao `config_focus` por engano.
+  const token = tokenOverride ?? (await obterTokenRevendaFocus());
+  if (!token) {
+    // A mensagem DIZ ONDE AGIR. A anterior era "FOCUS_NFE_TOKEN não
+    // configurado": tecnicamente certa, e mesmo assim muda — quem a lesse não
+    // teria como saber onde a variável deveria estar.
+    throw new Error(
+      'Token de revenda da Focus não configurado — preencha em /admin/configuracoes/focus.',
+    );
+  }
   // Focus usa Basic Auth com token como username e senha vazia.
   return 'Basic ' + Buffer.from(token + ':').toString('base64');
 }
@@ -59,13 +70,18 @@ async function call<T>(
   body?: unknown,
   tokenOverride?: string,
 ): Promise<T> {
+  // Resolvido UMA vez, fora do laço: a credencial não muda entre tentativas, e
+  // dentro do `try` a falta de token seria capturada como se fosse erro de rede
+  // e ainda tentaria mais duas vezes antes de contar a verdade.
+  const authorization = await auth(tokenOverride);
+
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const res = await fetch(`${base(env)}${path}`, {
         method,
         headers: {
-          Authorization: auth(tokenOverride),
+          Authorization: authorization,
           'Content-Type': 'application/json',
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,

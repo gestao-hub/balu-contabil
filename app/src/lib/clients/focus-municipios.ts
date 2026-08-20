@@ -1,4 +1,5 @@
 import 'server-only';
+import { obterTokenRevendaFocus } from '@/lib/fiscal/config-focus';
 
 const BASE = 'https://api.focusnfe.com.br';
 const PAGE_SIZE = 100;
@@ -22,16 +23,23 @@ export type FocusMunicipio = {
   ultima_emissao_nfse?: string | null;
 };
 
-function authHeader(): string {
-  const token = process.env.FOCUS_NFE_TOKEN;
-  if (!token) throw new Error('FOCUS_NFE_TOKEN não configurado');
+/** `BASE` é sempre `api.focusnfe.com.br` — o catálogo de municípios é consulta
+ *  de referência e vive junto da API de revenda, então usa o token de revenda
+ *  (ver 0095). */
+async function authHeader(): Promise<string> {
+  const token = await obterTokenRevendaFocus();
+  if (!token) {
+    throw new Error(
+      'Token de revenda da Focus não configurado — preencha em /admin/configuracoes/focus.',
+    );
+  }
   return 'Basic ' + Buffer.from(`${token}:`).toString('base64');
 }
 
 async function fetchPage(offset: number): Promise<{ items: FocusMunicipio[]; total: number }> {
   const url = `${BASE}/v2/municipios?offset=${offset}`;
   const res = await fetch(url, {
-    headers: { Authorization: authHeader() },
+    headers: { Authorization: await authHeader() },
     cache: 'no-store',
   });
   if (!res.ok) {

@@ -2,6 +2,7 @@
 // Substitui o webhook n8n /post-autenticacao. server-only (faz I/O de rede com material de chave).
 import 'server-only';
 import https from 'node:https';
+import { obterCredenciaisSerpro } from '@/lib/fiscal/config-serpro';
 
 const AUTH_HOST = 'autenticacao.sapi.serpro.gov.br';
 const AUTH_PATH = '/authenticate';
@@ -23,15 +24,21 @@ export function parseAuthResponse(raw: unknown): ProcuradorTokens {
 }
 
 /**
- * mTLS com o PFX do CONTRATANTE (cert fixo da Balu). Consumer key/secret globais via env.
+ * mTLS com o PFX do CONTRATANTE (cert fixo da Balu). Consumer key/secret globais
+ * vêm de `config_serpro` no banco desde a 0094, com fallback no ambiente.
  * role-type TERCEIROS (modelo software-house / Termo de Autorização).
  */
 export async function autenticarContratante(pfx: Buffer, passphrase: string): Promise<ProcuradorTokens> {
-  const ck = process.env.SERPRO_CONSUMER_KEY;
-  const cs = process.env.SERPRO_CONSUMER_SECRET;
-  if (!ck || !cs) throw new Error('SERPRO_CONSUMER_KEY / SERPRO_CONSUMER_SECRET não configurados');
+  // 0094: banco primeiro (`config_serpro`), ambiente como fallback.
+  const cred = await obterCredenciaisSerpro();
+  if (!cred) {
+    throw new Error(
+      'Credenciais do SERPRO não configuradas — preencha em /admin/configuracoes/serpro.',
+    );
+  }
 
-  const basic = 'Basic ' + Buffer.from(`${ck}:${cs}`).toString('base64');
+  const basic =
+    'Basic ' + Buffer.from(`${cred.consumerKey}:${cred.consumerSecret}`).toString('base64');
   const body = 'grant_type=client_credentials';
 
   const raw = await new Promise<string>((resolve, reject) => {

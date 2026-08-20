@@ -451,3 +451,31 @@ export const ExplicacaoTextoSchema = z.object({
    */
   versao: z.string().nullable().optional(),
 });
+
+/**
+ * 0094/0095 — o token de REVENDA da Focus na fronteira da action do AdminBalu.
+ *
+ * UM token, não um par por ambiente: a 0095 registra a sondagem que provou que
+ * os dois tokens do `.env.local` não têm acesso a `/v2/empresas*`. O par
+ * hom/prod pertence ao token da EMPRESA, que não passa por esta tela.
+ *
+ * Opcional de propósito: vazio quer dizer "não trocar". A action é que recusa
+ * gravar quando não há nada a gravar — aqui não dá para saber o que já existe.
+ */
+export const ConfigFocusSchema = z.object({
+  token_revenda: z.string().max(500).optional(),
+});
+export type ConfigFocusInput = z.infer<typeof ConfigFocusSchema>;
+
+/**
+ * 0094 — credenciais do SERPRO Integra Contador na fronteira da action.
+ *
+ * Mesma regra de campo vazio = não trocar. A validação de "par completo" NÃO
+ * mora aqui: só o servidor sabe o que já está gravado, e é lá que se decide se
+ * a gravação deixaria meia credencial no banco.
+ */
+export const ConfigSerproSchema = z.object({
+  consumer_key: z.string().max(500).optional(),
+  consumer_secret: z.string().max(500).optional(),
+});
+export type ConfigSerproInput = z.infer<typeof ConfigSerproSchema>;

@@ -1,6 +1,7 @@
 // @custom — Onda 4 hardening — Cliente Serpro Integra Contador (PGDAS-D, DAS, declarações)
 import 'server-only';
 import https from 'node:https';
+import { obterCredenciaisSerpro } from '@/lib/fiscal/config-serpro';
 
 const PROD = 'https://gateway.apiserpro.serpro.gov.br/integra-contador';
 const TRIAL = 'https://gateway.apiserpro.serpro.gov.br/integra-contador-trial';
@@ -41,14 +42,19 @@ async function bearer(): Promise<string> {
     return cached.token;
   }
 
-  const ck = process.env.SERPRO_CONSUMER_KEY;
-  const cs = process.env.SERPRO_CONSUMER_SECRET;
-  if (!ck || !cs) throw new Error('SERPRO_CONSUMER_KEY / SERPRO_CONSUMER_SECRET não configurados');
+  // 0094: banco primeiro (`config_serpro`), ambiente como fallback.
+  const cred = await obterCredenciaisSerpro();
+  if (!cred) {
+    throw new Error(
+      'Credenciais do SERPRO não configuradas — preencha em /admin/configuracoes/serpro.',
+    );
+  }
 
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: {
-      Authorization: 'Basic ' + Buffer.from(`${ck}:${cs}`).toString('base64'),
+      Authorization:
+        'Basic ' + Buffer.from(`${cred.consumerKey}:${cred.consumerSecret}`).toString('base64'),
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: 'grant_type=client_credentials',

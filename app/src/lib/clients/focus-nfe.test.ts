@@ -115,13 +115,27 @@ describe('focus.criarEmpresa', () => {
     expect(fetchSpy.mock.calls[0]![0]).toBe('https://api.focusnfe.com.br/v2/empresas');
   });
 
-  it('FOCUS_NFE_TOKEN ausente → lança antes do fetch', async () => {
+  // 0094: a mensagem deixou de citar a variável de ambiente e passou a apontar
+  // a tela. O motivo está no cabeçalho da migration — em 20/08/2026 o
+  // `.env.local` tinha o token com OUTRO nome, o erro antigo dizia
+  // "FOCUS_NFE_TOKEN não configurado", estava tecnicamente certo, e ninguém
+  // relacionou uma coisa à outra. O que se testa aqui continua sendo o que
+  // importa: falta de credencial NÃO vira requisição.
+  it('sem token em lugar nenhum → lança antes do fetch, apontando a tela', async () => {
+    // Os quatro nomes que `obterTokenFocus` consulta. Apagar só o genérico
+    // deixaria o teste passar por sorte na máquina de quem não tem os outros.
     delete process.env.FOCUS_NFE_TOKEN;
+    delete process.env.FOCUS_NFE_TOKEN_PRODUCAO;
+    delete process.env['FOCUS_NFE_TOKEN_PRODUÇÃO'];
+    delete process.env.FOCUS_NFE_HOMOLOGACAO;
+    delete process.env['FOCUS_NFE_HOMOLOGAÇÃO'];
     vi.resetModules();
     const { focus: focusSemToken } = await import('./focus-nfe');
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
-    await expect(focusSemToken.criarEmpresa(PAYLOAD, 'hom')).rejects.toThrow(/FOCUS_NFE_TOKEN/);
+    await expect(focusSemToken.criarEmpresa(PAYLOAD, 'hom')).rejects.toThrow(
+      /\/admin\/configuracoes\/focus/,
+    );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
