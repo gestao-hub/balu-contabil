@@ -33,6 +33,10 @@ const h = vi.hoisted(() => {
     user: { id: 'user-1' } as { id: string } | null,
     companyId: 'empresa-1' as string | null,
     company: {
+      // `id`/`user_id` alimentam a guarda `empresaDoDono` — a empresa do
+      // `current_company` tem de ser do usuario logado.
+      id: 'empresa-1',
+      user_id: 'user-1',
       cnpj: '11222333000181',
       codigo_municipio: '3550308',
       razao_social: 'Empresa Teste LTDA',
@@ -201,6 +205,7 @@ vi.mock('@/lib/fiscal/municipio-nfse.server', () => ({ resolveMunicipioNfse: h.r
 
 import { emitirNotaAction, emitirNfeAction, atualizarStatusNotaAction, cancelarNotaAction } from './actions';
 import { MENSAGEM_RECUSA } from '@/lib/fiscal/resolver-credencial';
+import { MENSAGEM_NAO_E_DONO } from '@/lib/auth/empresa-dono';
 
 beforeEach(() => {
   h.inserts.length = 0;
@@ -208,6 +213,8 @@ beforeEach(() => {
   h.estado.user = { id: 'user-1' };
   h.estado.companyId = 'empresa-1';
   h.estado.company = {
+    id: 'empresa-1',
+    user_id: 'user-1',
     cnpj: '11222333000181',
     codigo_municipio: '3550308',
     razao_social: 'Empresa Teste LTDA',
@@ -394,5 +401,119 @@ describe('cancelarNotaAction — cancelamento le o ambiente CARIMBADO na nota', 
     expect(r).toEqual({ ok: true });
     expect(h.tokenParaAmbiente).toHaveBeenCalledWith('empresa-1', 'hom');
     expect(h.focus.cancelarNfse.mock.calls[0]![3]).toBe('hom');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// IDOR por `profiles.current_company` (revisao de seguranca, 20/08/2026).
+//
+// VETOR CONCRETO: `profiles_update` (0010) e so `user_id = auth.uid()` — nao
+// valida vinculo nenhum com a empresa. Qualquer usuario faz
+// `PATCH /rest/v1/profiles?user_id=eq.<eu>` com
+// `{"current_company":"<id de OUTRA empresa>"}` pelo PostgREST. Dai em diante
+// `companyId` aponta para empresa alheia, e `tokenParaAmbiente` /
+// `resolverCredencialEmissao` rodam com SERVICE ROLE (a 0097 fecha
+// `empresa_credenciais_focus` para `authenticated`) — ignoram RLS e devolvem o
+// token DECIFRADO daquela empresa. `focus.cancelarNfse(...)` entao cancela
+// documento fiscal REAL de outro CNPJ na prefeitura; o update seguinte bate na
+// RLS e falha, deixando banco e SEFAZ divergentes.
+//
+// Quem alcanca de verdade: membro de escritorio aprovado — ele ENXERGA as notas
+// dos clientes por `notas_fiscais_select_contador` (0033), entao a leitura da
+// nota pelo client de sessao passa para ele. Enxergar nao e poder cancelar: o
+// painel do contador e somente visualizacao (aceite do convite + 0033).
+//
+// Nos mocks: `estado.company.user_id` e o dono da empresa apontada por
+// `current_company`. Com ele diferente de `estado.user.id`, a action TEM de
+// recusar antes de qualquer chamada a Focus.
+describe('IDOR: current_company apontando para empresa de outro dono', () => {
+  const JUSTIFICATIVA = 'Emissao feita por engano, cliente cancelou o pedido.';
+  const empresaAlheia = () => {
+    h.estado.company = {
+      id: 'empresa-1',
+      user_id: 'outro-dono',
+      cnpj: '11222333000181',
+      codigo_municipio: '3550308',
+      razao_social: 'Empresa Do Cliente LTDA',
+      municipio: 'Sao Paulo',
+      uf: 'SP',
+    };
+  };
+
+  it('cancelarNotaAction recusa e NAO chama a Focus', async () => {
+    empresaAlheia();
+    h.estado.notaExistente = {
+      id: 'nota-alheia',
+      tipo_documento: 'NFSe',
+      referencia: 'ref-alheia',
+      status: 'ativa',
+      origem: 'balu',
+      ambiente: 'prod',
+    };
+    const r = await cancelarNotaAction('nota-alheia', JUSTIFICATIVA);
+    expect(r).toEqual({ ok: false, error: MENSAGEM_NAO_E_DONO });
+    expect(h.focus.cancelarNfse).not.toHaveBeenCalled();
+    expect(h.focus.cancelarNfe).not.toHaveBeenCalled();
+    expect(h.focus.cancelarNfce).not.toHaveBeenCalled();
+    // O token decifrado nao pode nem ser buscado: quem chama e responsavel por
+    // provar o dono ANTES, porque a funcao roda com service role.
+    expect(h.tokenParaAmbiente).not.toHaveBeenCalled();
+    // E nada pode ter sido gravado na nota alheia.
+    expect(h.updates).toHaveLength(0);
+  });
+
+  // Nota 'manual' cancela so no banco, sem Focus — mas continua sendo escrita em
+  // nota de outra empresa. A guarda tem de vir antes desse ramo tambem.
+  it('cancelarNotaAction recusa tambem a nota manual (que so escreve no banco)', async () => {
+    empresaAlheia();
+    h.estado.notaExistente = {
+      id: 'nota-alheia-manual',
+      tipo_documento: 'NFSe',
+      referencia: 'ref-alheia-manual',
+      status: 'ativa',
+      origem: 'manual',
+      ambiente: 'prod',
+    };
+    const r = await cancelarNotaAction('nota-alheia-manual', JUSTIFICATIVA);
+    expect(r).toEqual({ ok: false, error: MENSAGEM_NAO_E_DONO });
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it('atualizarStatusNotaAction recusa e NAO chama a Focus', async () => {
+    empresaAlheia();
+    h.estado.notaExistente = {
+      id: 'nota-alheia',
+      tipo_documento: 'NFSe',
+      referencia: 'ref-alheia',
+      payload_focusnfe: { request: {} },
+      ambiente: 'prod',
+    };
+    const r = await atualizarStatusNotaAction('nota-alheia');
+    expect(r).toEqual({ ok: false, error: MENSAGEM_NAO_E_DONO });
+    expect(h.focus.consultarStatusNfse).not.toHaveBeenCalled();
+    expect(h.tokenParaAmbiente).not.toHaveBeenCalled();
+    expect(h.updates).toHaveLength(0);
+  });
+
+  // Emissao: mesmo vetor, mesma funcao de service role
+  // (`resolverCredencialEmissao`). Hoje o insert seguinte bateria na RLS, mas o
+  // token da empresa alheia ja teria sido DECIFRADO em memoria — e a ordem das
+  // linhas nao pode ser a unica coisa segurando isso.
+  it('emitirNotaAction recusa antes de resolver a credencial', async () => {
+    empresaAlheia();
+    const r = await emitirNotaAction(inputNfse());
+    expect(r).toEqual({ ok: false, error: MENSAGEM_NAO_E_DONO });
+    expect(h.resolverCredencialEmissao).not.toHaveBeenCalled();
+    expect(h.focus.emitirNfse).not.toHaveBeenCalled();
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it('emitirNfeAction recusa antes de resolver a credencial', async () => {
+    empresaAlheia();
+    const r = await emitirNfeAction(inputNfe());
+    expect(r).toEqual({ ok: false, error: MENSAGEM_NAO_E_DONO });
+    expect(h.resolverCredencialEmissao).not.toHaveBeenCalled();
+    expect(h.focus.emitirNfe).not.toHaveBeenCalled();
+    expect(h.inserts).toHaveLength(0);
   });
 });

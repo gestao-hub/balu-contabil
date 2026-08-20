@@ -11,6 +11,7 @@ import { assertAssinaturaEmpresa } from '@/lib/billing/gate';
 import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { resolverCredencialEmissao, tokenParaAmbiente, MENSAGEM_RECUSA } from '@/lib/fiscal/resolver-credencial';
 import { registrarAuditoria } from '@/lib/security/audit';
+import { empresaDoDono, MENSAGEM_NAO_E_DONO } from '@/lib/auth/empresa-dono';
 import { assertTipoDoc, validarJustificativa, cancelamentoSoPortal, type TipoDoc } from '@/lib/fiscal/notas-tipo';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import { buildNfsePayload } from '@/lib/fiscal/nfse-payload';
@@ -166,8 +167,16 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
     .select('current_company')
     .eq('user_id', user.id)
     .single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR: `resolverCredencialEmissao` mais abaixo roda com SERVICE ROLE e
+  // decifra o token da empresa apontada aqui. Hoje o insert seguinte bateria na
+  // RLS de `notas_fiscais`, mas a ordem das linhas não pode ser a única coisa
+  // impedindo que a credencial de outro CNPJ seja lida. Ver `empresaDoDono`.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
+
   const assinatura = await assertAssinaturaEmpresa(companyId);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
@@ -371,8 +380,15 @@ export async function atualizarStatusNotaAction(
 
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR: `current_company` é escolha do usuário (`profiles_update` só
+  // checa `user_id = auth.uid()`), e `tokenParaAmbiente` abaixo roda com SERVICE
+  // ROLE — devolveria o token decifrado de qualquer empresa apontada aqui. Ver
+  // `empresaDoDono`. Daqui em diante só o id PROVADO.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
@@ -455,8 +471,21 @@ export async function cancelarNotaAction(
     .select('current_company')
     .eq('user_id', user.id)
     .single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR, E A REGRA DE QUEM CANCELA. `current_company` é escolha livre do
+  // usuário (`profiles_update` só checa `user_id = auth.uid()`), e a leitura da
+  // nota logo abaixo PASSA para o membro do escritório contábil — ele enxerga
+  // as notas dos clientes por `notas_fiscais_select_contador` (0033). Enxergar
+  // não é poder cancelar: `tokenParaAmbiente` roda com SERVICE ROLE e o
+  // `focus.cancelarNfse` seguinte cancela documento fiscal REAL de outro CNPJ na
+  // prefeitura — o `update` bate na RLS e falha, deixando banco e SEFAZ
+  // divergentes. Cancelar é do TITULAR; o painel do contador é somente
+  // visualização (ver `empresaDoDono`). Daqui em diante só o id PROVADO.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
+
   const assinatura = await assertAssinaturaEmpresa(companyId);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
@@ -670,8 +699,14 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
 
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR: mesma razão de `emitirNotaAction` — `resolverCredencialEmissao`
+  // abaixo é service role. Ver `empresaDoDono`.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
+
   const assinatura = await assertAssinaturaEmpresa(companyId);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
@@ -816,8 +851,14 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
 
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR: mesma razão de `emitirNotaAction` — `resolverCredencialEmissao`
+  // abaixo é service role. Ver `empresaDoDono`.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
+
   const assinatura = await assertAssinaturaEmpresa(companyId);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 

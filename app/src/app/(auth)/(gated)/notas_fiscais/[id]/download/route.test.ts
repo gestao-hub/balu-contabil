@@ -23,6 +23,8 @@ const h = vi.hoisted(() => {
     nota: null as Record<string, unknown> | null,
     aceites: { ok: true } as { ok: true } | { ok: false; error: string },
     tokenPorAmbiente: { hom: 'tok-hom', prod: 'tok-prod' } as Record<string, string | null>,
+    // Dono da empresa apontada por `current_company` — alimenta `empresaDoDono`.
+    companyOwnerId: 'user-1' as string | null,
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,6 +35,14 @@ const h = vi.hoisted(() => {
         eq: () => chain,
         maybeSingle: async () => {
           if (tabela === 'notas_fiscais') return { data: estado.nota, error: null };
+          if (tabela === 'companies') {
+            return {
+              data: estado.companyId
+                ? { id: estado.companyId, user_id: estado.companyOwnerId }
+                : null,
+              error: null,
+            };
+          }
           return { data: null, error: null };
         },
         single: async () => {
@@ -83,6 +93,7 @@ beforeEach(() => {
   h.estado.nota = null;
   h.estado.aceites = { ok: true };
   h.estado.tokenPorAmbiente = { hom: 'tok-hom', prod: 'tok-prod' };
+  h.estado.companyOwnerId = 'user-1';
   h.createServerClient.mockClear();
   h.assertAceitesEmDia.mockClear();
   h.tokenParaAmbiente.mockClear();
@@ -293,5 +304,27 @@ describe('GET /notas_fiscais/[id]/download — allowlist vale para a URL FINAL',
     );
     const init = fetchMock.mock.calls[0]![1] as { headers?: Record<string, string> };
     expect(init.headers?.Authorization).toBeUndefined();
+  });
+});
+
+// IDOR por `current_company` — mesmo vetor de `actions.test.ts`. Aqui a nota do
+// cliente E VISIVEL para o membro do escritorio (`notas_fiscais_select_contador`,
+// 0033), entao a leitura pelo client de sessao passa; sem a guarda, o route
+// seguia para `tokenParaAmbiente` (SERVICE ROLE) e usava a credencial fiscal da
+// empresa alheia.
+describe('GET /notas_fiscais/[id]/download — so o titular da empresa', () => {
+  it('current_company de empresa de outro dono recusa antes de tocar na credencial', async () => {
+    h.estado.companyOwnerId = 'outro-dono';
+    h.estado.nota = {
+      tipo_documento: 'NFSe',
+      referencia: 'ref-alheia',
+      pdf_url: '/v2/nfsen/ref-alheia.pdf',
+      xml_url: null,
+      ambiente: 'prod',
+    };
+    const res = await GET(req('pdf'), { params: params() });
+    expect(res.status).toBe(403);
+    expect(h.tokenParaAmbiente).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

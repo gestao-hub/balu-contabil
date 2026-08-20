@@ -16,6 +16,7 @@ import { assertTipoDoc } from '@/lib/fiscal/notas-tipo';
 import { urlDownloadPermitida } from '@/lib/security/url-allowlist';
 import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
 import { tokenParaAmbiente } from '@/lib/fiscal/resolver-credencial';
+import { empresaDoDono, MENSAGEM_NAO_E_DONO } from '@/lib/auth/empresa-dono';
 
 export const runtime = 'nodejs';
 
@@ -82,8 +83,19 @@ export async function GET(
   if (!gate.ok) return new Response(gate.error, { status: 403 });
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return new Response('sem empresa', { status: 400 });
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return new Response('sem empresa', { status: 400 });
+
+  // ANTI-IDOR: `current_company` é escolha livre do usuário (`profiles_update`
+  // só checa `user_id = auth.uid()`) e `tokenParaAmbiente` abaixo roda com
+  // SERVICE ROLE — devolveria o token decifrado de qualquer empresa apontada
+  // aqui. A leitura da nota logo abaixo não segura sozinha: o membro do
+  // escritório contábil ENXERGA as notas dos clientes
+  // (`notas_fiscais_select_contador`, 0033), então ela passaria para ele e o
+  // route usaria a credencial fiscal do cliente. Esta rota é a do titular — o
+  // painel do contador é somente visualização. Ver `empresaDoDono`.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return new Response(MENSAGEM_NAO_E_DONO, { status: 403 });
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
