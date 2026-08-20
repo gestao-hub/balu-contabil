@@ -240,6 +240,34 @@ describe('resolverCredencialEmissao', () => {
     expect(r).toEqual({ ok: false, motivo: 'estado_fiscal_ilegivel' });
   });
 
+  // M8 — MORTA ESPECÍFICA: trocar `focus_origem ?? 'balu'` por `?? 'propria'`
+  // muda o default seguro. 'balu' exige o SNAPSHOT da Focus
+  // (`habilitaProducaoFocus`) pra liberar produção; 'propria' aceita a mera
+  // DECLARAÇÃO de quem cadastrou (`producaoDeclarada`), sem verificação
+  // nenhuma do lado da Focus. `focus_origem` OMITIDO da linha (legado, ou
+  // coluna nula) simula exatamente o caso em que o `??` decide: aqui
+  // `habilitaProducaoFocus=true` mas `producaoDeclarada=false` — só o default
+  // 'balu' libera produção; se o default virasse 'propria', a MESMA linha
+  // recusaria com `producao_nao_declarada`.
+  it('focus_origem ausente cai no default balu (verificavel), nao propria (so declaracao)', async () => {
+    const tokenProdCifrado = guardarTokenEmpresa('tok-prod-default-origem');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabaseFake({
+      empresas_fiscais: {
+        // focus_origem OMITIDO de propósito.
+        focus_ambiente: 'prod',
+        focus_habilita_nfsen_producao: true, // 'balu' aceitaria por aqui
+        focus_producao_declarada: false, // 'propria' RECUSARIA por aqui
+      },
+      empresa_credenciais_focus: { token_hom_cifrado: null, token_prod_cifrado: tokenProdCifrado },
+      arquivos_auxiliares: { cert_not_after: AMANHA },
+    }) as any;
+
+    const r = await resolverCredencialEmissao('empresa-sem-origem', undefined, sb);
+
+    expect(r).toEqual({ ok: true, ambiente: 'prod', token: 'tok-prod-default-origem' });
+  });
+
   it('caminho completo de producao: origem balu, tokenProd decifrado, cert futuro, habilitado', async () => {
     const tokenProdCifrado = guardarTokenEmpresa('tok-prod-999');
     const amanha = new Date(Date.now() + 86_400_000).toISOString();
