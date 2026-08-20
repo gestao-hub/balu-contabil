@@ -26,8 +26,43 @@ function focusBase(env: FocusEnv): string {
   return env === 'prod' ? FOCUS_BASE_PROD : FOCUS_BASE_HOM;
 }
 
-function isAbsoluteUrl(s: string | null): s is string {
+// Boolean puro, NAO type predicate (`s is string`): com o predicate o TS
+// estreita o ramo falso para `never` e `!isAbsoluteUrl(x) && x.startsWith('/')`
+// deixa de compilar — e é justamente essa checagem de forma que fecha o SSRF
+// abaixo.
+function isAbsoluteUrl(s: string | null): boolean {
   return !!s && /^https?:\/\//i.test(s);
+}
+
+/**
+ * Monta a URL final a partir do que está salvo na nota e SÓ devolve se ela
+ * passar pela allowlist. `null` = recusar o download.
+ *
+ * POR QUE A ALLOWLIST TEM DE VALER PARA OS DOIS RAMOS (revisão de segurança,
+ * 20/08/2026): a versão anterior chamava `urlDownloadPermitida` só quando
+ * `isAbsoluteUrl(savedUrl)` era verdadeiro — o ramo relativo concatenava cru e
+ * ia direto para o `fetch`. Como `notas_fiscais_update` (0010) não restringe
+ * COLUNA, o dono da empresa grava `xml_url = '.evil.tld/x'` por
+ * `PATCH /rest/v1/notas_fiscais?id=eq.<id>` no PostgREST e abre o download:
+ * `https://api.focusnfe.com.br` + `.evil.tld/x` vira
+ * `https://api.focusnfe.com.br.evil.tld/x` — host DO ATACANTE — e o servidor
+ * manda o `Authorization: Basic <token decifrado da empresa>` para lá. O
+ * `redirect: 'manual'` não protege nada nesse caso: o primeiro host já é dele.
+ * Variante do mesmo buraco: `'@evil.tld/x'` faz o host da Focus virar userinfo.
+ *
+ * Duas checagens, não uma:
+ *  1) forma do path relativo — a Focus sempre devolve caminho começando em '/'
+ *     (`caminho_xml_nota_fiscal`, `caminho_danfe`); qualquer outra coisa está
+ *     mexendo no HOST, não no path;
+ *  2) `urlDownloadPermitida` sobre a URL FINAL — é a única que fecha o caso do
+ *     ramo absoluto e a rede de segurança do relativo. Ela compara host por
+ *     igualdade ou sufixo com ponto (nunca `startsWith`/`includes`), então
+ *     `api.focusnfe.com.br.evil.tld` é recusado.
+ */
+function urlFinalPermitida(savedUrl: string, env: FocusEnv): string | null {
+  if (!isAbsoluteUrl(savedUrl) && !savedUrl.startsWith('/')) return null;
+  const url = isAbsoluteUrl(savedUrl) ? savedUrl : `${focusBase(env)}${savedUrl}`;
+  return urlDownloadPermitida(url) ? url : null;
 }
 
 export async function GET(
@@ -72,10 +107,13 @@ export async function GET(
     if (formato === 'xml') {
       // 1) URL salva (NFSe Nacional vem com path relativo; legacy pode vir absoluto)
       if (savedUrl) {
-        if (isAbsoluteUrl(savedUrl) && !urlDownloadPermitida(savedUrl)) {
+        // A allowlist vale para a URL FINAL, absoluta ou montada — ver
+        // `urlFinalPermitida`. Aqui vai o Basic Auth da empresa, então este é
+        // exatamente o fetch que não pode sair da Focus.
+        const url = urlFinalPermitida(savedUrl, ENV);
+        if (!url) {
           return new Response('origem do arquivo não permitida', { status: 400 });
         }
-        const url = isAbsoluteUrl(savedUrl) ? savedUrl : `${focusBase(ENV)}${savedUrl}`;
         // redirect:'manual' impede que um 3xx de um host allowlisted (ex.: S3/Focus)
         // saia para um alvo interno, contornando urlDownloadPermitida (anti-SSRF).
         const r = await fetch(url, { headers: { Authorization: basicAuth(focusToken) }, redirect: 'manual' });
@@ -98,20 +136,21 @@ export async function GET(
 
     // PDF
     if (savedUrl) {
-      // NFSe Nacional: url_danfse é S3 pré-assinada (sem auth). Outros podem
-      // exigir auth. Tentamos sem auth primeiro pra URLs absolutas; com auth
-      // pra paths relativos.
-      if (isAbsoluteUrl(savedUrl)) {
-        if (!urlDownloadPermitida(savedUrl)) {
-          return new Response('origem do arquivo não permitida', { status: 400 });
-        }
-        const r = await fetch(savedUrl, { redirect: 'manual' });
-        if (r.ok) return pdfResponse(await r.arrayBuffer(), ref);
-      } else {
-        const url = `${focusBase(ENV)}${savedUrl}`;
-        const r = await fetch(url, { headers: { Authorization: basicAuth(focusToken) }, redirect: 'manual' });
-        if (r.ok) return pdfResponse(await r.arrayBuffer(), ref);
+      // Mesma allowlist sobre a URL FINAL do ramo XML — o buraco era idêntico
+      // aqui: `pdf_url = '.evil.tld/x'` também é "não absoluto" e também saía
+      // com o Basic Auth da empresa. Ver `urlFinalPermitida`.
+      const url = urlFinalPermitida(savedUrl, ENV);
+      if (!url) {
+        return new Response('origem do arquivo não permitida', { status: 400 });
       }
+      // NFSe Nacional: url_danfse é S3 pré-assinada e já carrega a assinatura na
+      // query — mandar o Basic Auth da Focus para o S3 seria entregar a
+      // credencial a um host que não precisa dela. Só o path relativo (que por
+      // construção resolve na própria Focus) leva o header.
+      const r = isAbsoluteUrl(savedUrl)
+        ? await fetch(url, { redirect: 'manual' })
+        : await fetch(url, { headers: { Authorization: basicAuth(focusToken) }, redirect: 'manual' });
+      if (r.ok) return pdfResponse(await r.arrayBuffer(), ref);
     }
     // Fallback legacy
     if (tipo === 'NFe') {

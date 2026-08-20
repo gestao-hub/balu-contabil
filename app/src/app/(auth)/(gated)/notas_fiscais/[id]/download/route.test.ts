@@ -161,3 +161,137 @@ describe('GET /notas_fiscais/[id]/download — le o ambiente da NOTA (M7)', () =
     expect(urlChamada.startsWith('https://api.focusnfe.com.br')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// SSRF que exfiltra o token da Focus (revisao de seguranca, 20/08/2026).
+//
+// VETOR CONCRETO: a policy `notas_fiscais_update` (0010) nao restringe COLUNA —
+// o dono da empresa faz `PATCH /rest/v1/notas_fiscais?id=eq.<id>` com
+// `{"xml_url": ".evil.tld/x"}` direto no PostgREST e depois abre
+// `/notas_fiscais/<id>/download?formato=xml`. Como `.evil.tld/x` NAO e URL
+// absoluta, a versao antiga do route pulava `urlDownloadPermitida` e concatenava
+// cru: `https://api.focusnfe.com.br` + `.evil.tld/x` =
+// `https://api.focusnfe.com.br.evil.tld/x` — host DO ATACANTE, e o `fetch` ia
+// com `Authorization: Basic <token decifrado da empresa>` no header.
+// `redirect: 'manual'` nao salva nada aqui: o PRIMEIRO host ja e o do atacante.
+//
+// A mordida destes testes: se alguem voltar a validar so o ramo absoluto
+// (`isAbsoluteUrl(x) && !urlDownloadPermitida(x)`), o fetch acontece e o
+// `expect(fetchMock).not.toHaveBeenCalled()` cai.
+describe('GET /notas_fiscais/[id]/download — allowlist vale para a URL FINAL', () => {
+  // Todo host que o route pode legitimamente procurar. Usado para provar que
+  // nenhum fetch escapou para fora da allowlist mesmo quando o teste falha.
+  const hostPermitido = (u: string) => {
+    const h2 = new URL(u).hostname;
+    return h2 === 'focusnfe.com.br' || h2.endsWith('.focusnfe.com.br') || h2.endsWith('.amazonaws.com');
+  };
+
+  it('XML: sufixo colado no host da Focus (".evil.tld/x") e recusado sem nenhum fetch', async () => {
+    h.estado.nota = {
+      tipo_documento: 'NFSe',
+      referencia: 'ref-ssrf-1',
+      pdf_url: null,
+      xml_url: '.evil.tld/x',
+      ambiente: 'prod',
+    };
+    const res = await GET(req('xml'), { params: params() });
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    for (const c of fetchMock.mock.calls) expect(hostPermitido(c[0] as string)).toBe(true);
+  });
+
+  it('PDF: sufixo colado no host da Focus (".evil.tld/x") e recusado sem nenhum fetch', async () => {
+    h.estado.nota = {
+      tipo_documento: 'NFSe',
+      referencia: 'ref-ssrf-2',
+      pdf_url: '.evil.tld/x',
+      xml_url: null,
+      ambiente: 'prod',
+    };
+    const res = await GET(req('pdf'), { params: params() });
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    for (const c of fetchMock.mock.calls) expect(hostPermitido(c[0] as string)).toBe(true);
+  });
+
+  // Variante do mesmo buraco: `@` transforma o host da Focus em USERINFO e o
+  // host real vira `evil.tld`. Passa pelo mesmo caminho relativo.
+  it('XML: userinfo ("@evil.tld/x") nao vira host da Focus — recusa sem fetch', async () => {
+    h.estado.nota = {
+      tipo_documento: 'NFSe',
+      referencia: 'ref-ssrf-3',
+      pdf_url: null,
+      xml_url: '@evil.tld/x',
+      ambiente: 'prod',
+    };
+    const res = await GET(req('xml'), { params: params() });
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('PDF: URL absoluta fora da allowlist continua recusada', async () => {
+    h.estado.nota = {
+      tipo_documento: 'NFSe',
+      referencia: 'ref-ssrf-4',
+      pdf_url: 'https://evil.tld/x.pdf',
+      xml_url: null,
+      ambiente: 'prod',
+    };
+    const res = await GET(req('pdf'), { params: params() });
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // O contrapeso: a correcao nao pode quebrar o caminho legitimo. Path relativo
+  // de verdade da Focus (NFS-e Nacional) continua montando na base do ambiente
+  // e continua levando o Basic Auth.
+  it('XML: path relativo real da Focus continua funcionando, com Authorization', async () => {
+    h.estado.nota = {
+      tipo_documento: 'NFSe',
+      referencia: 'ref-ok-1',
+      pdf_url: null,
+      xml_url: '/v2/nfsen/abc.xml',
+      ambiente: 'prod',
+    };
+    const res = await GET(req('xml'), { params: params() });
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]![0]).toBe('https://api.focusnfe.com.br/v2/nfsen/abc.xml');
+    const init = fetchMock.mock.calls[0]![1] as { headers?: Record<string, string> };
+    expect(init.headers?.Authorization?.startsWith('Basic ')).toBe(true);
+  });
+
+  it('PDF: path relativo real da Focus continua funcionando, com Authorization', async () => {
+    h.estado.nota = {
+      tipo_documento: 'NFSe',
+      referencia: 'ref-ok-2',
+      pdf_url: '/v2/nfsen/abc.pdf',
+      xml_url: null,
+      ambiente: 'prod',
+    };
+    const res = await GET(req('pdf'), { params: params() });
+    expect(res.status).toBe(200);
+    expect(fetchMock.mock.calls[0]![0]).toBe('https://api.focusnfe.com.br/v2/nfsen/abc.pdf');
+    const init = fetchMock.mock.calls[0]![1] as { headers?: Record<string, string> };
+    expect(init.headers?.Authorization?.startsWith('Basic ')).toBe(true);
+  });
+
+  // PDF absoluto da NFS-e Nacional e S3 PRE-ASSINADO: mandar o Basic Auth da
+  // Focus para o S3 seria vazar a credencial para outro host allowlisted.
+  it('PDF: S3 pre-assinado (absoluto) e baixado SEM Authorization', async () => {
+    h.estado.nota = {
+      tipo_documento: 'NFSe',
+      referencia: 'ref-ok-3',
+      pdf_url: 'https://balu-nfse.s3.sa-east-1.amazonaws.com/abc.pdf?X-Amz-Signature=deadbeef',
+      xml_url: null,
+      ambiente: 'prod',
+    };
+    const res = await GET(req('pdf'), { params: params() });
+    expect(res.status).toBe(200);
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      'https://balu-nfse.s3.sa-east-1.amazonaws.com/abc.pdf?X-Amz-Signature=deadbeef',
+    );
+    const init = fetchMock.mock.calls[0]![1] as { headers?: Record<string, string> };
+    expect(init.headers?.Authorization).toBeUndefined();
+  });
+});
