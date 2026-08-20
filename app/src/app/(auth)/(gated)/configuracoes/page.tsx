@@ -273,6 +273,13 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           certEnviadoEm={certEnviadoEm}
           certValidoAte={certValidoAte}
           certPeloEscritorio={certPeloEscritorio}
+          // Task 15: rastro (não segredo) de quem cadastrou a credencial da
+          // Focus desta empresa. `focus_token_por`/`focus_token_em` ficaram em
+          // `companies` de propósito (0097) — o titular precisa ver que o
+          // escritório cadastrou por ele, mesmo princípio de cert_enviado_por
+          // (0085). O TOKEN em si nunca vem pra cá: mora cifrado em
+          // empresa_credenciais_focus, fechada para authenticated.
+          credencialFocusCadastradaEm={(company.focus_token_em as string | null) ?? null}
           // Idem: nunca repassa nfse_senha_login/nfse_token_api (cifrados em
           // repouso) pro client — só indicadores de "já configurado".
           nfseInitial={
