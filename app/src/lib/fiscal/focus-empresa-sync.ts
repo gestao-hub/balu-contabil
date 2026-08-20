@@ -47,6 +47,19 @@ export async function syncEmpresaNaFocus(
 ): Promise<SyncFocusResult> {
   const now = new Date().toISOString();
 
+  // Bloco 5: empresa que usa a própria conta na Focus não é cadastrada por nós.
+  // Sem esta guarda, o sync sobrescreveria com o token da conta da plataforma o
+  // token que o contador cadastrou — e o cliente passaria a emitir com a
+  // credencial errada, em silêncio.
+  const { data: fiscalOrigem } = await supabase
+    .from('empresas_fiscais').select('focus_origem').eq('empresa_id', companyId).maybeSingle();
+  if ((fiscalOrigem?.focus_origem ?? 'balu') === 'propria') {
+    return {
+      ok: false,
+      error: 'Esta empresa usa a própria conta na Focus. O cadastro é feito no painel dela, não por aqui.',
+    };
+  }
+
   // 1) Lê empresa
   const { data: company, error: cErr } = await supabase
     .from('companies')
@@ -181,6 +194,22 @@ export async function atualizarEmpresaNaFocus(
   extras: AtualizarFocusExtras = {},
 ): Promise<SyncFocusResult> {
   const now = new Date().toISOString();
+
+  // Bloco 5: mesma guarda de `syncEmpresaNaFocus` (cadastro), agora para
+  // ATUALIZAÇÃO. O contexto do Bloco 5 é explícito: origem 'propria' → Balu
+  // "não cadastra, não atualiza e não sobe certificado" na Focus. Sem isto,
+  // uma empresa que já tinha `focus_empresa_id` (cadastrada como 'balu' antes
+  // de trocar para 'propria') continuaria recebendo PUTs com o token de
+  // REVENDA da Balu — criando um registro fantasma que não corresponde à conta
+  // Focus que a empresa de fato usa para emitir.
+  const { data: fiscalOrigemUpd } = await supabase
+    .from('empresas_fiscais').select('focus_origem').eq('empresa_id', companyId).maybeSingle();
+  if ((fiscalOrigemUpd?.focus_origem ?? 'balu') === 'propria') {
+    return {
+      ok: false,
+      error: 'Esta empresa usa a própria conta na Focus. A atualização é feita no painel dela, não por aqui.',
+    };
+  }
 
   const { data: company, error: cErr } = await supabase
     .from('companies')
