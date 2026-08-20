@@ -89,6 +89,7 @@ export function decidirCredencial(e: EstadoFiscal, agora: Date = new Date()): Cr
 // `decidirCredencial` continue puro e testável sem banco.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lerTokenEmpresa } from './credencial-empresa';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 /**
  * Monta o `EstadoFiscal` da empresa a partir do banco e aplica a guarda
@@ -96,12 +97,29 @@ import { lerTokenEmpresa } from './credencial-empresa';
  *
  * O certificado é lido de `arquivos_auxiliares` pela chave `company_id` (não
  * `unique_id_empresa` — armadilha já registrada no projeto).
+ *
+ * ⚠️ SERVICE ROLE POR DEFAULT — LEIA ANTES DE CHAMAR. `empresa_credenciais_focus`
+ * é fechada para `authenticated` (migration 0097): com o client de SESSÃO
+ * (`createServerClient()`) a leitura dessa tabela volta sempre vazia e a
+ * emissão morre com "sem token" mesmo para empresa com token cadastrado. Por
+ * isso o parâmetro `supabase` é opcional e o default é `createAdminClient()`
+ * — comentário não impede ninguém de passar o client errado, assinatura
+ * impede. Só passe um client explícito para teste.
+ *
+ * ⚠️ COM SERVICE ROLE, `empresas_fiscais` E `arquivos_auxiliares` TAMBÉM
+ * IGNORAM RLS — não há mais rede de segurança embaixo desta função. QUEM
+ * CHAMA É RESPONSÁVEL POR TER PROVADO QUE `companyId` PERTENCE A QUEM ESTÁ
+ * PEDINDO (ex.: `profiles.current_company` do usuário autenticado, ou o
+ * anti-IDOR do contador — ver `companyDaCarteira` em
+ * `contador/clientes/[companyId]/cert-actions.ts`). Passar um `companyId`
+ * vindo de input do usuário sem checar o dono aqui é IDOR.
  */
 export async function resolverCredencialEmissao(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any, 'public', any>,
   companyId: string,
   agora: Date = new Date(),
+  // Injetável só para teste — ver o aviso de service role acima.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, 'public', any> = createAdminClient(),
 ): Promise<Credencial> {
   const [fiscal, cred, cert] = await Promise.all([
     supabase.from('empresas_fiscais')
@@ -168,12 +186,18 @@ export async function resolverCredencialEmissao(
  * ali o ambiente não se decide, ele já foi decidido na emissão e está carimbado
  * na linha. Aplicar a guarda de produção aqui impediria de baixar o PDF de uma
  * nota antiga só porque o certificado venceu depois.
+ *
+ * ⚠️ SERVICE ROLE POR DEFAULT — mesmo motivo e mesmo aviso de
+ * `resolverCredencialEmissao` acima: `empresa_credenciais_focus` é fechada
+ * para `authenticated`, e QUEM CHAMA É RESPONSÁVEL POR TER PROVADO QUE
+ * `companyId` PERTENCE A QUEM ESTÁ PEDINDO antes de chegar aqui.
  */
 export async function tokenParaAmbiente(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any, 'public', any>,
   companyId: string,
   ambiente: AmbienteFiscal,
+  // Injetável só para teste — ver o aviso de service role acima.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, 'public', any> = createAdminClient(),
 ): Promise<string | null> {
   const { data } = await supabase.from('empresa_credenciais_focus')
     .select('token_hom_cifrado, token_prod_cifrado')

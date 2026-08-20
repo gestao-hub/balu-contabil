@@ -1,5 +1,15 @@
 // Bloco 5 — a guarda de producao. O teste central do bloco.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// `resolverCredencialEmissao`/`tokenParaAmbiente` tem `supabase` opcional com
+// default `createAdminClient()` (correcao pos-entrega: os chamadores reais
+// usam `createServerClient()`, que nao enxerga `empresa_credenciais_focus` —
+// fechada para `authenticated` na 0097). Mockado aqui so para o teste que
+// prova que o default existe; os demais testes passam um fake explicito e
+// nunca tocam nele.
+const hAdmin = vi.hoisted(() => ({ createAdminClient: vi.fn() }));
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: hAdmin.createAdminClient }));
+
 import {
   decidirCredencial,
   resolverCredencialEmissao,
@@ -106,7 +116,10 @@ describe('decidirCredencial', () => {
 const CHAVE_ENC_B64 = Buffer.alloc(32, 7).toString('base64');
 const ENV_ANTES_LEITURA = { ...process.env };
 
-beforeEach(() => { process.env.CERT_ENC_KEY = CHAVE_ENC_B64; });
+beforeEach(() => {
+  process.env.CERT_ENC_KEY = CHAVE_ENC_B64;
+  hAdmin.createAdminClient.mockReset();
+});
 afterEach(() => { process.env = { ...ENV_ANTES_LEITURA }; });
 
 /**
@@ -145,7 +158,7 @@ describe('resolverCredencialEmissao', () => {
       arquivos_auxiliares: { cert_not_after: null },
     }) as any;
 
-    const r = await resolverCredencialEmissao(sb, 'empresa-hom');
+    const r = await resolverCredencialEmissao('empresa-hom', undefined, sb);
 
     expect(r).toEqual({ ok: true, ambiente: 'hom', token: 'tok-hom-123' });
   });
@@ -164,7 +177,7 @@ describe('resolverCredencialEmissao', () => {
       arquivos_auxiliares: null,
     }) as any;
 
-    const r = await resolverCredencialEmissao(sb, 'empresa-sem-config');
+    const r = await resolverCredencialEmissao('empresa-sem-config', undefined, sb);
 
     expect(r.ok).toBe(true);
     expect(r.ok && r.ambiente).toBe('hom');
@@ -185,7 +198,7 @@ describe('resolverCredencialEmissao', () => {
       arquivos_auxiliares: null,
     }) as any;
 
-    const r = await resolverCredencialEmissao(sb, 'empresa-corrompida');
+    const r = await resolverCredencialEmissao('empresa-corrompida', undefined, sb);
 
     expect(r).toEqual({ ok: false, motivo: 'credencial_corrompida' });
   });
@@ -203,9 +216,28 @@ describe('resolverCredencialEmissao', () => {
       arquivos_auxiliares: { cert_not_after: amanha },
     }) as any;
 
-    const r = await resolverCredencialEmissao(sb, 'empresa-prod');
+    const r = await resolverCredencialEmissao('empresa-prod', undefined, sb);
 
     expect(r).toEqual({ ok: true, ambiente: 'prod', token: 'tok-prod-999' });
+  });
+
+  // O parametro `supabase` e opcional com default `createAdminClient()` — o
+  // ponto exato que o defeito do plano mordeu: os chamadores reais (actions,
+  // route de download) usam `createServerClient()` e nunca passariam client
+  // nenhum aqui, entao se o default nao existisse (ou fosse mal escrito) a
+  // chamada quebraria com TypeError de `supabase` indefinido, nao com um erro
+  // de negocio legivel. Aqui mocka-se `createAdminClient` (via `@/lib/supabase/admin`)
+  // para provar que ELE e chamado — sem precisar de `SUPABASE_SERVICE_ROLE_KEY`
+  // real no ambiente de teste.
+  it('sem client explicito, usa o default (nao lanca TypeError de client indefinido)', async () => {
+    hAdmin.createAdminClient.mockReturnValue(supabaseFake({}));
+
+    const r = await resolverCredencialEmissao('empresa-sem-client-explicito');
+
+    expect(hAdmin.createAdminClient).toHaveBeenCalled();
+    // Todas as tabelas vazias → hom (ausencia) sem token → recusa nomeada,
+    // nunca uma excecao.
+    expect(r).toEqual({ ok: false, motivo: 'sem_token_homologacao' });
   });
 });
 
@@ -217,7 +249,7 @@ describe('tokenParaAmbiente', () => {
       empresa_credenciais_focus: { token_hom_cifrado: null, token_prod_cifrado: tokenProdCifrado },
     }) as any;
 
-    const r = await tokenParaAmbiente(sb, 'empresa-x', 'prod');
+    const r = await tokenParaAmbiente('empresa-x', 'prod', sb);
 
     expect(r).toBe('tok-prod-abc');
   });
@@ -226,8 +258,17 @@ describe('tokenParaAmbiente', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabaseFake({ empresa_credenciais_focus: null }) as any;
 
-    const r = await tokenParaAmbiente(sb, 'empresa-y', 'hom');
+    const r = await tokenParaAmbiente('empresa-y', 'hom', sb);
 
+    expect(r).toBeNull();
+  });
+
+  it('sem client explicito, tambem usa o default createAdminClient()', async () => {
+    hAdmin.createAdminClient.mockReturnValue(supabaseFake({}));
+
+    const r = await tokenParaAmbiente('empresa-sem-client-explicito', 'hom');
+
+    expect(hAdmin.createAdminClient).toHaveBeenCalled();
     expect(r).toBeNull();
   });
 });
