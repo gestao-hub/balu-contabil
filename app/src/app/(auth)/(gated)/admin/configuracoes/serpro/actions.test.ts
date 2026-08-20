@@ -198,6 +198,8 @@ describe('salvarConfigSerproAction', () => {
     };
     const r = await salvarConfigSerproAction({ consumer_secret: SECRET_FALSO });
     expect(r).toEqual({ ok: true });
+    // Um dos updates é o CONSERTO 4 zerando os tokens de sessão do
+    // contratante — a asserção sobre `config_serpro` filtra por tabela.
     const upConfig = h.updates.find((u) => u.tabela === 'config_serpro')!;
     expect(Object.keys(upConfig.valores)).toContain('consumer_secret_cifrado');
     expect(Object.keys(upConfig.valores)).not.toContain('consumer_key_cifrado');
@@ -283,6 +285,37 @@ describe('salvarConfigSerproAction', () => {
       expect('aviso' in r && r.aviso).toMatch(/não foi possível confirmar/i);
       expect(h.updates.some((u) => u.tabela === 'config_serpro')).toBe(true);
       expect(h.auditorias).toHaveLength(1);
+    });
+  });
+
+  // -------------------------------------------------- CONSERTO 4: trocar a
+  // credencial tem de zerar os tokens de sessão do CONTRATANTE — o token do
+  // /authenticate é emitido para o PAR certificado+credencial, e a action
+  // irmã (`enviarCertContratanteAction`) já faz isso ao trocar o certificado.
+  describe('CONSERTO 4 — zera os tokens de sessão do contratante ao trocar a credencial', () => {
+    it('zera auth_access_token/auth_jwt_token/auth_token_expiration do contratante', async () => {
+      h.estado.linhas.serpro_contratante = {
+        id: 'contratante-1',
+        auth_access_token: 'token-velho',
+        auth_jwt_token: 'jwt-velho',
+        auth_token_expiration: '2020-01-01T00:00:00Z',
+      };
+      const r = await salvarConfigSerproAction({ consumer_key: KEY_FALSA, consumer_secret: SECRET_FALSO });
+      expect(r.ok).toBe(true);
+
+      const zerou = h.updates.find(
+        (u) => u.tabela === 'serpro_contratante' && u.eq.some(([c, v]) => c === 'id' && v === 'contratante-1'),
+      );
+      expect(zerou).toBeTruthy();
+      expect(zerou!.valores.auth_access_token).toBeNull();
+      expect(zerou!.valores.auth_jwt_token).toBeNull();
+      expect(zerou!.valores.auth_token_expiration).toBeNull();
+    });
+
+    it('sem contratante guardado, não tenta zerar nada (não há o quê)', async () => {
+      h.estado.contratante = null;
+      await salvarConfigSerproAction({ consumer_key: KEY_FALSA, consumer_secret: SECRET_FALSO });
+      expect(h.updates.some((u) => u.tabela === 'serpro_contratante')).toBe(false);
     });
   });
 });
