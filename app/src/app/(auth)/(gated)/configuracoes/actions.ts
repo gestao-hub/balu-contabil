@@ -249,8 +249,8 @@ export async function uploadCertificadoAction(
  * Botão "Sincronizar com Focus" no Diagnóstico.
  *
  * Comportamento adaptativo:
- *  - Empresa SEM `focus_token`  → POST /v2/empresas (cadastro inicial — Focus 1)
- *  - Empresa COM `focus_token`  → PUT /v2/empresas/:cnpj (atualização — Focus 2.1)
+ *  - Empresa SEM `empresas_fiscais.focus_empresa_id` → POST /v2/empresas (cadastro inicial — Focus 1)
+ *  - Empresa COM `empresas_fiscais.focus_empresa_id` → PUT /v2/empresas/:cnpj (atualização — Focus 2.1)
  *
  * Idempotente: clicar várias vezes só re-sincroniza estado.
  */
@@ -267,13 +267,16 @@ export async function syncFocusEmpresaAction(): Promise<{ ok: true } | { ok: fal
   const companyId = profile?.current_company as string | null;
   if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
-  const { data: company } = await supabase
-    .from('companies')
-    .select('focus_token')
-    .eq('id', companyId)
-    .single();
+  // Bloco 5: o sinal de "ja cadastrada na Focus" e o focus_empresa_id, nao o
+  // token. O token saiu de `companies` na Task 2/0097, e gatear nele fazia o
+  // botao sempre tentar CADASTRAR DE NOVO uma empresa que ja existe.
+  const { data: fiscalSync } = await supabase
+    .from('empresas_fiscais')
+    .select('focus_empresa_id')
+    .eq('empresa_id', companyId)
+    .maybeSingle();
 
-  const result = company?.focus_token
+  const result = fiscalSync?.focus_empresa_id != null
     ? await atualizarEmpresaNaFocus(supabase, companyId, 'hom')
     : await syncEmpresaNaFocus(supabase, companyId);
 
