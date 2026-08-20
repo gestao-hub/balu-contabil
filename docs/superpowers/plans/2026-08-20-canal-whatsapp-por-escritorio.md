@@ -1,5 +1,11 @@
 # Plano — canal de WhatsApp por escritório (multi-tenant do atendimento)
 
+> **STATUS: EXECUTADO em 19/08/2026 (sessão 29).** Fases 1 e 2 concluídas, com
+> os quatro critérios de aceite provados contra produção. A task 14 (retirar o
+> caminho legado) foi CANCELADA pela decisão D8 — a instância da plataforma
+> permanece, com o número oficial do Balu. Ver o bloco da sessão 29 no
+> CHECKPOINT.
+>
 > **Spec:** `docs/superpowers/specs/2026-08-20-canal-whatsapp-por-escritorio-design.md`
 > **Escrito em:** 2026-08-19 · **Execução prevista:** 2026-08-20
 > **Lançamento:** 24/08 (segunda). Ver §"Ordem de corte" no fim — o que sai se

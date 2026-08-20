@@ -1,9 +1,134 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-19 (sessão 28 — dia longo: **SMTP pelo Resend ligado e provado**, **domínio caiu e voltou**, **canal de WhatsApp religado** com quatro rodadas de correção do atendimento por IA, env vars de produção fechadas em 6 deploys, empresa de teste criada, a tela de Conciliação parou de prometer o Open Finance cancelado, e a **spec + plano do WhatsApp por escritório** escritos para implementar em 20/08. Lançamento em **24/08**.)
+> **Última atualização:** 2026-08-19 (sessão 29 — **canal de WhatsApp por escritório implementado e provado contra produção**: migrations 0091/0092, trava de isolamento entre carteiras, modo escritório com a carteira do contador, tela de provisionamento, roteamento de saída por instância e aviso de queda de canal. Fases 1 e 2 do plano, com dois defeitos achados só no smoke real.)
 
-> ## 🆕 SESSÃO 28 (2026-08-19) — o e-mail de autenticação saiu do gargalo, e o domínio caiu no mesmo dia
+> ## 🆕 SESSÃO 29 (2026-08-19, noite) — canal de WhatsApp por escritório, implementado e provado
+>
+> Executada **sem o usuário na sessão**, com as decisões fechadas antes (§0 da
+> spec). Fases 1 e 2 do plano
+> `docs/superpowers/plans/2026-08-20-canal-whatsapp-por-escritorio.md`.
+>
+> ### O que existe agora
+>
+> **Migrations 0091 e 0092**, aplicadas e verificadas em produção:
+> - `contabilidades` ganhou `uazapi_instancia_id`, `uazapi_token_cifrado`,
+>   `uazapi_numero`, `uazapi_status`, `uazapi_webhook_token` (UNIQUE) e
+>   `uazapi_conectado_em`. **`authenticated` lê só número, status e data** — os
+>   dois tokens não têm GRANT nenhum, provado no banco.
+> - `painel_contador_por_id(uuid)`: a MESMA consulta do painel com o escritório
+>   por parâmetro, porque `painel_contador()` depende de `auth.uid()` e o webhook
+>   não tem sessão. Só `service_role`; `authenticated` **não** executa (provado).
+> - `notifications.tipo` aceita `whatsapp_desconectado` (18 tipos).
+>
+> **A identidade do canal vem da URL** (`?t=<token do escritório>`), nunca do
+> payload — o envelope da uazapi não tem contrato conhecido e o projeto já pagou
+> por apostar nisso em 12/08.
+>
+> **A trava:** só é atendido como CLIENTE quem pertence ao escritório DAQUELE
+> canal. Perfil de outro escritório cai no mesmo desfecho de "número não
+> cadastrado" — a recusa não pode revelar que a pessoa é cliente de outra
+> contabilidade. Número ambíguo depois do filtro **recusa e audita**, no lugar do
+> `perfis[0]` com `console.warn`.
+>
+> **Modo escritório:** membro do escritório recebe agregados e nomes da carteira,
+> e não escala para si mesmo. O isolamento não depende do prompt — o filtro está
+> dentro do SQL.
+>
+> **Tela de provisionamento** (`/contador/configuracoes/whatsapp`): o contador
+> conecta o próprio número, com código de pareamento e polling. Nenhuma action
+> devolve token. Criar instância é idempotente (duplo clique não gera órfã), e o
+> nome sempre leva prefixo `balu-` — o servidor é compartilhado com 37 instâncias
+> de terceiros.
+>
+> **Saída:** cada aviso sai pela instância do escritório do cliente.
+>
+> ### 🔬 Provado CONTRA PRODUÇÃO, não só em teste
+>
+> Quatro cenários pela rota real, com banco e IA reais (a entrega da uazapi foi
+> simulada com `POST` direto na URL, para não repontar o webhook que está
+> funcionando):
+>
+> | cenário | resultado |
+> |---|---|
+> | token de canal desconhecido | `canal_desconhecido`, sem claim e sem IA |
+> | cliente de outro escritório | `telefone_desconhecido`, sem dado fiscal, perfil não identificado na auditoria |
+> | cliente DO escritório | atendido, linha carimbada com o escritório |
+> | modo escritório | *"Verifiquei a carteira e, no momento, há 1 cliente irregular: ideapp."* |
+>
+> Estado do banco **restaurado ao original** ao fim: escritório desprovisionado,
+> número do membro limpo, linhas de smoke apagadas, `current_company` do usuário
+> de volta à `ideapp`.
+>
+> ### 🔴 Dois defeitos que só o smoke real pegou
+>
+> **1. O modo escritório respondia "vou encaminhar para o contador" — para o
+> próprio contador.** Com a carteira INTEIRA no prompt logo acima. Causa:
+> `tipoPergunta: 'especifica'` com situação fiscal nula ativa o fecho "se não
+> houver dado, encaminhe", e a instrução vencia o dado. O modo escritório ganhou
+> fecho próprio.
+>
+> **2. A recusa neutra deixava `resposta_enviada` nula.** Ela ENVIA mensagem, mas
+> a conversa aparecia como não atendida na fila do escritório — e o SLA corria
+> contra alguém por uma mensagem já respondida.
+>
+> ⚠️ **Registro de honestidade:** no primeiro smoke eu li um FALSO POSITIVO como
+> bug do produto. `5532987006789` e `553287006789` são o MESMO telefone em
+> variantes do 9º dígito, e o perfil de MEMBRO tem precedência — o cenário do
+> cliente virava `modo_escritorio`. Era o meu teste, não o código. O script roda
+> em duas fases agora, e explica por quê.
+>
+> ### ⚖️ Uma decisão do usuário que eu ADAPTEI — e o motivo
+>
+> **D2 dizia "escritório sem canal conectado → o aviso NÃO sai por WhatsApp".**
+> Aplicada ao pé da letra hoje, ela silenciaria o WhatsApp da base inteira na
+> semana do lançamento, porque **nenhum escritório tem instância ainda** — o
+> oposto do que a decisão quer proteger (ninguém receber aviso fiscal de número
+> desconhecido).
+>
+> Regra adotada, a mesma na entrada e na saída: o cliente é atendido pelo canal
+> do escritório dele quando existe; enquanto não existir, pelo número **oficial**
+> da plataforma, que é reconhecível. **Nunca** pelo número de outro escritório.
+> Quando o escritório conecta, seus clientes migram sozinhos — sem script e sem
+> data marcada. O `whatsapp_sem_canal` do resumo do cron conta só quem ficou sem
+> canal NENHUM.
+>
+> ### Fase 2 (também entregue)
+>
+> - **Rate-limit por (canal, telefone)**, não só por telefone: o mesmo número
+>   pode falar com dois escritórios, e a cota de um calava o outro.
+> - **Aviso de queda de instância** (`whatsapp_desconectado`), varrido no fim do
+>   cron — a etapa sem prazo, primeira a ser sacrificada se o wall-clock apertar.
+>   Motivo com número: das 37 instâncias do servidor, **24 estavam
+>   desconectadas** em 19/08. Cair é o estado normal. Falha de REDE não conta
+>   como queda (um blip desligaria o canal de quem está funcionando).
+> - **Task 14 do plano (retirar o `?s=` legado) foi CANCELADA pela decisão D8**:
+>   a instância da plataforma permanece, com o número oficial do Balu, atendendo
+>   as empresas sem escritório. Não é código legado.
+>
+> ### ⚠️ Pendências que esta sessão criou ou revelou
+>
+> 1. **LGPD:** a política de privacidade **não menciona WhatsApp** — e agora
+>    conversas de clientes ficam armazenadas, segmentadas por escritório. NÃO
+>    editei o documento: ele é versionado, já foi aceito por usuários e está na
+>    fila de revisão jurídica. **Levar este ponto junto.**
+> 2. **Custo por instância na uazapi não foi levantado.** Com provisionamento
+>    self-service (D6), o custo cresce por escritório **sem teto**. Confirmar com
+>    o fornecedor antes de abrir para todos.
+> 3. **`apuracao: 1 erro`** continua aparecendo no cron (hoje 4 elegíveis, 3
+>    apuradas, 1 erro). É erro real em produção que ninguém investigou ainda.
+> 4. O combinado do número pessoal segue de pé: **desligar o webhook e limpar as
+>    conversas de terceiros** quando os testes acabarem.
+>
+> ### Verificação
+>
+> `tsc` **0** · vitest **1861** (era 1839 no início da noite; +22) · `next build`
+> limpo · migrations 0091 e 0092 aplicadas e conferidas · cron rodado em produção
+> com a varredura nova (`canais_whatsapp: verificadas 0`, correto — nenhum
+> escritório conectado depois da reversão).
+>
+
+> ## SESSÃO 28 (2026-08-19) — o e-mail de autenticação saiu do gargalo, e o domínio caiu no mesmo dia
 >
 > ### ✅ SMTP customizado no Supabase — fechado e provado
 >
@@ -2592,21 +2717,21 @@ mentindo sobre os blocos 4, 6 e 7.
 
 **Lançamento: segunda-feira, 24/08.** O trabalho de 20/08 já está escrito:
 
-### 🔨 Amanhã (20/08) — canal de WhatsApp por escritório
+### ✅ Canal de WhatsApp por escritório — ENTREGUE em 19/08 (sessão 29)
 
 Spec e plano prontos, aprovados pelo usuário para execução:
 
 - `docs/superpowers/specs/2026-08-20-canal-whatsapp-por-escritorio-design.md`
 - `docs/superpowers/plans/2026-08-20-canal-whatsapp-por-escritorio.md`
 
-**Começar pelas tasks 1, 2 e 6** — são as inegociáveis: fecham dois furos de
-isolamento que existem **hoje** (número duplicado escolhendo o primeiro perfil;
-histórico escopado só por telefone) e a trava que impede responder dado de uma
-empresa por um canal que não é o do escritório dela. Valem mesmo se o resto da
-frente não fechar.
+Fases 1 e 2 concluídas na mesma noite (sessão 29), com os quatro critérios de
+aceite provados **contra produção** — token de canal desconhecido, cliente de
+outro escritório, cliente do próprio escritório e modo escritório. Detalhes no
+bloco da sessão 29, no topo do arquivo.
 
-O plano tem **ordem de corte decidida antecipadamente** e um plano B (lançar com
-o número único, que já está de pé). Não improvisar corte no meio da execução.
+**Falta antes do lançamento:** um escritório de verdade conectar o próprio
+número pela tela nova (`/contador/configuracoes/whatsapp`), e o **número
+oficial do Balu** entrar na instância da plataforma.
 
 ### O que sobrou do caminho crítico anterior
 

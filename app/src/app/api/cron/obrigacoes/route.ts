@@ -15,6 +15,7 @@ import { rodarPagamentosSerpro } from '@/lib/fiscal/pagamentos-serpro-cron';
 import { dentroDoOrcamento } from '@/lib/fiscal/apuracao-cron-plano';
 import { enviarMensagem, type ConfigUazapi } from '@/lib/uazapi/cliente';
 import { configDaPlataforma, escritorioPorId } from '@/lib/uazapi/instancia';
+import { verificarSaudeDosCanais } from '@/lib/uazapi/saude';
 
 // TEMPO DE EXECUCAO — 60s, o teto do plano Hobby da Vercel.
 //
@@ -374,8 +375,21 @@ export async function GET(req: Request) {
     apuracao = { erro: String(err) };
   }
 
+  // Saúde dos canais de WhatsApp (0092). POR ÚLTIMO de propósito: é a única
+  // etapa do cron sem prazo nenhum — se o wall-clock estourar, ela é a que
+  // deve morrer. Um dia sem detectar queda de instância custa um dia de
+  // atraso no aviso; um dia sem apurar imposto custa outra coisa.
+  let saudeCanais: unknown = null;
+  try {
+    saudeCanais = await verificarSaudeDosCanais(admin);
+  } catch (err) {
+    console.error('[cron obrigacoes] verificacao de saude dos canais falhou', err);
+    saudeCanais = { erro: String(err) };
+  }
+
   return NextResponse.json({
     ok: true, criadas, enviados, pulados,
+    canais_whatsapp: saudeCanais,
     ...(ePend ? { email_erro: ePend.message } : {}),
     // Fila que não coube no orçamento. Zero é o normal; número > 0 é o sinal
     // de que o volume passou do que cabe numa rodada — e o único jeito de

@@ -449,7 +449,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, reason: 'mensagem_propria' }, { status: 200 });
   }
 
-  if (!(await limitar(`uazapi-webhook:${entrada.from}`, 30, 60))) {
+  // Orçamento por (CANAL, telefone), não só por telefone (0091).
+  //
+  // Com um canal só, a chave antiga bastava. Com um canal por escritório, o
+  // mesmo número pode ser cliente de um escritório e fornecedor de outro — e a
+  // cota gasta conversando com um calaria o outro. O token do canal está na
+  // query string, então isto não custa leitura de banco.
+  const chaveCanal = tokenDoCanal ? tokenDoCanal.slice(0, 12) : 'plataforma';
+  if (!(await limitar(`uazapi-webhook:${chaveCanal}:${entrada.from}`, 30, 60))) {
     return NextResponse.json({ ok: false, reason: 'rate_limited' }, { status: 200 });
   }
 
