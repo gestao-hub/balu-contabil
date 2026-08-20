@@ -645,6 +645,20 @@ export async function resolverCredencialEmissao(
     console.error('[bloco5] credencial corrompida em', companyId, e instanceof Error ? e.message : e);
   }
 
+  // ⚠️ REVISADO NA REVISAO DAS TASKS 3-4: os dois `??` abaixo disparam apenas
+  // quando a linha de `empresas_fiscais` NAO EXISTE. Nesse caso cair em
+  // 'balu'/'hom' e o desfecho conservador certo (empresa sem configuracao
+  // fiscal nao emite em producao), mas o `?? 'hom'` e literalmente a expressao
+  // que a §4 proibe — entao ele precisa vir com este comentario, e o
+  // implementador deve acrescentar um teste que fixe o comportamento:
+  // linha ausente => decide 'hom', nunca 'prod'.
+  //
+  // Segundo ponto herdado da mesma revisao: o `catch` da decifra logo acima
+  // zera OS DOIS tokens, e o resultado vira `sem_token_producao` — recusa
+  // correta (nao cai para hom), mas com a mensagem errada: diz "nao tem o token
+  // cadastrado" quando na verdade TEM, corrompido. Avaliar um motivo proprio
+  // (`credencial_corrompida`) em vez de deixar o usuario procurar um token que
+  // ja esta la.
   return decidirCredencial({
     origem: ((fiscal.data?.focus_origem ?? 'balu') as OrigemFocus),
     ambiente: ((fiscal.data?.focus_ambiente ?? 'hom') as AmbienteFiscal),
