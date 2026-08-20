@@ -181,18 +181,31 @@ export async function syncEmpresaNaFocus(
 
 /**
  * Lê GET /v2/empresas/:id da Focus e persiste o estado relevante em
- * `empresas_fiscais.focus_*`. Best-effort: nunca lança, apenas loga em erro.
+ * `empresas_fiscais.focus_*`. Best-effort no GET; a ESCRITA, não.
+ *
+ * ⚠️ ESCREVE COM SERVICE ROLE, e o `supabase` do parâmetro é usado só para o
+ * `persistError`. Motivo: esta função grava `focus_empresa_id` e
+ * `focus_habilita_nfsen_producao` — colunas que a 0098/0099 protegem com
+ * trigger contra escrita de `authenticated`. E TRÊS chamadores reais passam o
+ * client de SESSÃO (`configuracoes/actions.ts`, o botão Sincronizar, e o
+ * upload de certificado). Com o client de sessão o trigger derruba o UPDATE
+ * INTEIRO, e como o resultado nunca era lido, o snapshot virava no-op
+ * silencioso: `focus_empresa_id` nunca persistia, o Diagnóstico ficava
+ * eternamente em "não cadastrada" e o sync tentava CADASTRAR DE NOVO para
+ * sempre. Achado pela revisão de 20/08/2026.
  */
 async function snapshotFocusEmpresa(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any, 'public', any>,
+  _supabase: SupabaseClient<any, 'public', any>,
   companyId: string,
   focusEmpresaId: number,
   now: string,
 ): Promise<void> {
   try {
     const snap = await focus.consultarEmpresa(focusEmpresaId, 'hom');
-    await supabase
+    // ERRO LIDO, e não descartado: era exatamente o descarte que escondia a
+    // rejeição do trigger.
+    const { error } = await createAdminClient()
       .from('empresas_fiscais')
       .update({
         focus_empresa_id: focusEmpresaId,
@@ -206,7 +219,11 @@ async function snapshotFocusEmpresa(
         focus_habilita_nfce: snap.habilita_nfce ?? false,
         focus_sync_em: now,
       })
-      .eq('empresa_id', companyId);
+      .eq('empresa_id', companyId)
+      .is('deleted_at', null);
+    if (error) {
+      console.error('[syncEmpresaNaFocus] snapshot NAO gravado:', companyId, error.message);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[syncEmpresaNaFocus] snapshot GET falhou:', msg);
