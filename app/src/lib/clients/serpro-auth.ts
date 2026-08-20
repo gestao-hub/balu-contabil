@@ -2,7 +2,7 @@
 // Substitui o webhook n8n /post-autenticacao. server-only (faz I/O de rede com material de chave).
 import 'server-only';
 import https from 'node:https';
-import { obterCredenciaisSerpro } from '@/lib/fiscal/config-serpro';
+import { obterCredenciaisSerpro, type CredenciaisSerpro } from '@/lib/fiscal/config-serpro';
 
 const AUTH_HOST = 'autenticacao.sapi.serpro.gov.br';
 const AUTH_PATH = '/authenticate';
@@ -27,10 +27,20 @@ export function parseAuthResponse(raw: unknown): ProcuradorTokens {
  * mTLS com o PFX do CONTRATANTE (cert fixo da Balu). Consumer key/secret globais
  * vêm de `config_serpro` no banco desde a 0094, com fallback no ambiente.
  * role-type TERCEIROS (modelo software-house / Termo de Autorização).
+ *
+ * `credOverride` aceito para a sonda de `admin/configuracoes/serpro` (Bloco 5,
+ * conserto 1): testar a credencial ANTES de gravar exige chamar com o
+ * candidato do formulário — a nova consumer key/secret, ou a que já está no
+ * banco decifrada —, e não com o que `obterCredenciaisSerpro` leria do cache
+ * (que ainda reflete a credencial antiga).
  */
-export async function autenticarContratante(pfx: Buffer, passphrase: string): Promise<ProcuradorTokens> {
+export async function autenticarContratante(
+  pfx: Buffer,
+  passphrase: string,
+  credOverride?: CredenciaisSerpro,
+): Promise<ProcuradorTokens> {
   // 0094: banco primeiro (`config_serpro`), ambiente como fallback.
-  const cred = await obterCredenciaisSerpro();
+  const cred = credOverride ?? (await obterCredenciaisSerpro());
   if (!cred) {
     throw new Error(
       'Credenciais do SERPRO não configuradas — preencha em /admin/configuracoes/serpro.',

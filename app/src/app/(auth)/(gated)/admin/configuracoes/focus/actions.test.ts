@@ -29,8 +29,11 @@ type Chamada = { tabela: string; valores: Record<string, unknown>; eq: unknown[]
 const h = vi.hoisted(() => {
   const updates: Chamada[] = [];
   const inserts: Chamada[] = [];
-  const auditorias: Array<{ acao: string; meta?: Record<string, unknown> }> = [];
+  const auditorias: Array<{ acao: string; alvoId?: string | null; meta?: Record<string, unknown> }> = [];
   const sondas: number[] = [];
+  // CONSERTO 1: o candidato de token com que cada sonda foi chamada — prova
+  // que a sonda usa o token que ESTÁ SENDO SALVO, não o que já está no banco.
+  const tokensSondados: Array<string | undefined> = [];
 
   const estado = {
     // Literal, e não `USER_ID`: este factory é IÇADO acima das consts do
@@ -91,17 +94,23 @@ const h = vi.hoisted(() => {
     insert: (valores: Record<string, unknown>) => construir(tabela, 'insert', valores),
   }));
 
-  const registrarAuditoria = vi.fn(async (e: { acao: string; meta?: Record<string, unknown> }) => {
-    auditorias.push(e);
-  });
+  const registrarAuditoria = vi.fn(
+    async (e: { acao: string; alvoId?: string | null; meta?: Record<string, unknown> }) => {
+      auditorias.push(e);
+    },
+  );
   const revalidatePath = vi.fn((_p: string) => {});
-  const consultarEmpresa = vi.fn(async (id: number) => {
+  const consultarEmpresa = vi.fn(async (id: number, _env?: string, tokenOverride?: string) => {
     sondas.push(id);
+    tokensSondados.push(tokenOverride);
     if (estado.erroFocus) throw estado.erroFocus;
     return {};
   });
 
-  return { updates, inserts, auditorias, sondas, estado, from, registrarAuditoria, revalidatePath, consultarEmpresa };
+  return {
+    updates, inserts, auditorias, sondas, tokensSondados, estado,
+    from, registrarAuditoria, revalidatePath, consultarEmpresa,
+  };
 });
 
 vi.mock('next/cache', () => ({ revalidatePath: h.revalidatePath }));
@@ -121,6 +130,7 @@ beforeEach(() => {
   h.inserts.length = 0;
   h.auditorias.length = 0;
   h.sondas.length = 0;
+  h.tokensSondados.length = 0;
   h.estado.guard = { userId: USER_ID };
   h.estado.linha = { id: 1, token_revenda_cifrado: null };
   h.estado.erroLeitura = null;
@@ -170,7 +180,71 @@ describe('salvarConfigFocusAction', () => {
     expect(serializada).not.toContain(TOKEN);
     // Máscara em log é segredo pela metade: nem os primeiros caracteres.
     expect(serializada).not.toContain(TOKEN.slice(0, 8));
-    expect(h.auditorias[0].meta).toEqual({ trocou_token: true });
+    expect(h.auditorias[0].meta).toEqual({ config_id: 1, trocou_token: true, sonda: 'aceito' });
+  });
+
+  // CONSERTO 3 (Bloco 5 produção fiscal): `audit_log.alvo_id` é uuid — a
+  // string `'1'` fazia o insert falhar em silêncio.
+  it('alvoId nunca é a string não-uuid "1" — vai null, e o id do singleton mora no meta', async () => {
+    await salvarConfigFocusAction({ token_revenda: TOKEN });
+    expect(h.auditorias[0].alvoId).toBeNull();
+    expect(h.auditorias[0].meta?.config_id).toBe(1);
+  });
+
+  // ------------------------------------------------ CONSERTO 1: testar antes
+  // de gravar. Reproduz o incidente de 20/08/2026: o admin colou o token de
+  // EMISSÃO da empresa no campo de revenda, a tela gravou sem testar, e não
+  // havia como desfazer pela interface.
+  describe('CONSERTO 1 — sonda antes de gravar', () => {
+    it('sonda o token que ESTÁ SENDO SALVO, não o que já está no banco', async () => {
+      await salvarConfigFocusAction({ token_revenda: TOKEN });
+      expect(h.sondas).toEqual([1]);
+      expect(h.tokensSondados).toEqual([TOKEN]);
+    });
+
+    it('401/403 na sonda BLOQUEIA a gravação e explica a confusão emissão × revenda', async () => {
+      h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 401: denied');
+      const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+      expect(r.ok).toBe(false);
+      expect('error' in r && r.error).toMatch(/revenda/i);
+      expect('error' in r && r.error).toMatch(/emiss/i);
+      // NADA foi persistido nem auditado.
+      expect(h.updates).toHaveLength(0);
+      expect(h.inserts).toHaveLength(0);
+      expect(h.auditorias).toHaveLength(0);
+    });
+
+    it('403 na sonda também bloqueia', async () => {
+      h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 403: forbidden');
+      const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+      expect(r.ok).toBe(false);
+      expect(h.updates).toHaveLength(0);
+    });
+
+    it('404 na sonda é token válido — grava normalmente, sem aviso', async () => {
+      h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 404: not found');
+      const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+      expect(r).toEqual({ ok: true });
+      expect(h.updates).toHaveLength(1);
+    });
+
+    it('sonda indeterminada (rede/5xx/timeout) NÃO bloqueia — grava mesmo assim, com aviso', async () => {
+      // Não dá para impedir alguém de configurar uma credencial nova só
+      // porque a Focus está instável no momento do salvamento.
+      h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 500: boom');
+      const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+      expect(r.ok).toBe(true);
+      expect('aviso' in r && r.aviso).toMatch(/não foi possível confirmar/i);
+      expect(h.updates).toHaveLength(1);
+      expect(h.auditorias).toHaveLength(1);
+    });
+
+    it('timeout/erro de rede sem status também é indeterminado, não bloqueia', async () => {
+      h.estado.erroFocus = new Error('ETIMEDOUT');
+      const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+      expect(r.ok).toBe(true);
+      expect('aviso' in r && r.aviso).toBeTruthy();
+    });
   });
 
   it('sem linha no banco, INSERE com id=1', async () => {
