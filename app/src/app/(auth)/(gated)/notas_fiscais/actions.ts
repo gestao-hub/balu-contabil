@@ -243,6 +243,31 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
     return { ok: false, error: e instanceof Error ? e.message : 'Erro ao montar a nota.' };
   }
 
+  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — o
+  // único lugar do produto que faz essa escolha. Antes daqui havia um
+  // `const env: FocusEnv = 'hom'` fixo, com dois bugs documentados no lugar: o
+  // default de `emitir_nota_homol_antes_producao` mandava empresa nova para
+  // produção, e o token salvo era o de homologação. Os dois deixam de existir:
+  // o ambiente é coluna da empresa e os tokens são dois campos separados.
+  //
+  // Resolvida ANTES do insert (bloqueio 3 da revisão final): o `ambiente` é
+  // gravado no PRÓPRIO insert, não num update de sucesso. Antes, a nota nascia
+  // sem `ambiente` (ficava no DEFAULT 'hom' da coluna) e só ganhava o carimbo
+  // certo se `focus.emitirNfse` respondesse sem lançar. Se a Focus aceitasse a
+  // nota em PRODUÇÃO e a chamada estourasse por timeout logo depois, a nota
+  // ficava carimbada 'hom' para sempre — status, download e cancelamento
+  // passavam a ler a base errada para uma nota que existe em produção. Como a
+  // recusa agora acontece antes de existir linha nenhuma, não há mais nota
+  // 'erro' de credencial para limpar depois (ver ausência do update abaixo).
+  //
+  // NÃO passar `supabase` aqui: a credencial mora em `empresa_credenciais_focus`,
+  // fechada para `authenticated` (0097). O default da função é service role.
+  const credencial = await resolverCredencialEmissao(companyId);
+  if (!credencial.ok) {
+    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
+  }
+  const env: FocusEnv = credencial.ambiente;
+
   // Inserir nota local `pendente` ANTES do POST: garante que mesmo se a Focus
   // demorar/timeout, o estado fica registrado e o ref é único.
   const ref = generateRef(companyId);
@@ -270,6 +295,7 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
       payload_focusnfe: payload as unknown as Record<string, unknown>,
       cliente_id: cliente.id,
       cnae: cnaeNota,
+      ambiente: env,
     })
     .select('id')
     .single();
@@ -278,35 +304,17 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
   }
   const notaId = nota.id as string;
 
-  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — o
-  // único lugar do produto que faz essa escolha. Antes daqui havia um
-  // `const env: FocusEnv = 'hom'` fixo, com dois bugs documentados no lugar: o
-  // default de `emitir_nota_homol_antes_producao` mandava empresa nova para
-  // produção, e o token salvo era o de homologação. Os dois deixam de existir:
-  // o ambiente é coluna da empresa e os tokens são dois campos separados.
-  //
-  // NÃO passar `supabase` aqui: a credencial mora em `empresa_credenciais_focus`,
-  // fechada para `authenticated` (0097). O default da função é service role.
-  const credencial = await resolverCredencialEmissao(companyId);
-  if (!credencial.ok) {
-    // A nota JÁ foi inserida acima. Marcar como erro em vez de deixar
-    // 'pendente' para sempre — pendente é o estado de "esperando a Focus", e
-    // aqui a Focus nem chegou a ser chamada.
-    await supabase.from('notas_fiscais')
-      .update({ status: 'erro', payload_focusnfe: { erro: credencial.motivo } })
-      .eq('id', notaId).eq('company_id', companyId);
-    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
-  }
-  const env: FocusEnv = credencial.ambiente;
-
   try {
     const resp = await focus.emitirNfse(ref, payload, credencial.token, env);
     // 202 (processando_autorizacao): mantém status='pendente'; webhook completa.
     // Quando Focus retorna sucesso síncrono (raro pra NFSe), já tem dados.
+    // NÃO manda `ambiente` aqui: já foi gravado no insert acima. O trigger da
+    // 0098 usa `IS DISTINCT FROM` — reenviar o MESMO valor passaria — mas
+    // duplicar a fonte de verdade é convite a divergência (ver bloqueio 3 da
+    // revisão final), não proteção nenhuma.
     await supabase
       .from('notas_fiscais')
       .update({
-        ambiente: env,
         // grava resposta sincrona pra debug
         payload_focusnfe: { request: payload, response: resp },
       })
@@ -700,6 +708,15 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
     return { ok: false, error: e instanceof Error ? e.message : 'Erro ao montar a nota.' };
   }
 
+  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — ver
+  // o comentário completo em `emitirNotaAction` (NFS-e) acima. Resolvida ANTES
+  // do insert (bloqueio 3 da revisão final): `ambiente` é gravado no PRÓPRIO
+  // insert, não num update de sucesso — ver o mesmo comentário.
+  const credencial = await resolverCredencialEmissao(companyId);
+  if (!credencial.ok) {
+    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
+  }
+
   const ref = generateRef(companyId);
   const total = payload.items.reduce((s, it) => s + it.valor_bruto, 0);
   const { data: nota, error: insertErr } = await supabase
@@ -713,25 +730,17 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
       valor_total: Math.round(total * 100) / 100,
       payload_focusnfe: payload as unknown as Record<string, unknown>,
       cliente_id: cliente.id,
+      ambiente: credencial.ambiente,
     })
     .select('id').single();
   if (insertErr || !nota) return { ok: false, error: insertErr?.message ?? 'Falha ao registrar a nota.' };
   const notaId = nota.id as string;
 
-  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — ver
-  // o mesmo comentário em `emitirNotaAction` (NFS-e) acima.
-  const credencial = await resolverCredencialEmissao(companyId);
-  if (!credencial.ok) {
-    await supabase.from('notas_fiscais')
-      .update({ status: 'erro', payload_focusnfe: { erro: credencial.motivo } })
-      .eq('id', notaId).eq('company_id', companyId);
-    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
-  }
-
   try {
     const resp = await focus.emitirNfe(ref, payload, credencial.token, credencial.ambiente);
+    // NÃO manda `ambiente`: já foi gravado no insert acima (ver comentário lá).
     await supabase.from('notas_fiscais')
-      .update({ ambiente: credencial.ambiente, payload_focusnfe: { request: payload, response: resp } })
+      .update({ payload_focusnfe: { request: payload, response: resp } })
       .eq('id', notaId).eq('company_id', companyId);
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
@@ -837,6 +846,15 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
     return { ok: false, error: e instanceof Error ? e.message : 'Erro ao montar a nota.' };
   }
 
+  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — ver
+  // o comentário completo em `emitirNotaAction` (NFS-e) acima. Resolvida ANTES
+  // do insert (bloqueio 3 da revisão final): `ambiente` é gravado no PRÓPRIO
+  // insert, não num update de sucesso — ver o mesmo comentário.
+  const credencial = await resolverCredencialEmissao(companyId);
+  if (!credencial.ok) {
+    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
+  }
+
   const ref = generateRef(companyId);
   const total = payload.items.reduce((s, it) => s + it.valor_bruto, 0);
   const { data: nota, error: insertErr } = await supabase
@@ -849,25 +867,17 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
       status: 'pendente',
       valor_total: Math.round(total * 100) / 100,
       payload_focusnfe: payload as unknown as Record<string, unknown>,
+      ambiente: credencial.ambiente,
     })
     .select('id').single();
   if (insertErr || !nota) return { ok: false, error: insertErr?.message ?? 'Falha ao registrar a nota.' };
   const notaId = nota.id as string;
 
-  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — ver
-  // o mesmo comentário em `emitirNotaAction` (NFS-e) acima.
-  const credencial = await resolverCredencialEmissao(companyId);
-  if (!credencial.ok) {
-    await supabase.from('notas_fiscais')
-      .update({ status: 'erro', payload_focusnfe: { erro: credencial.motivo } })
-      .eq('id', notaId).eq('company_id', companyId);
-    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
-  }
-
   try {
     const resp = await focus.emitirNfce(ref, payload, credencial.token, credencial.ambiente);
+    // NÃO manda `ambiente`: já foi gravado no insert acima (ver comentário lá).
     await supabase.from('notas_fiscais')
-      .update({ ambiente: credencial.ambiente, payload_focusnfe: { request: payload, response: resp } })
+      .update({ payload_focusnfe: { request: payload, response: resp } })
       .eq('id', notaId).eq('company_id', companyId);
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
