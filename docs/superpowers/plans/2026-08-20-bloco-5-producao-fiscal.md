@@ -162,7 +162,9 @@ git commit -m "feat(db): 0096 -- credencial da Focus por empresa, com origem e a
 
 **Hoje:** 2 tokens gravados, **0 cifrados** (medido em 20/08). `authenticated` tem `SELECT/UPDATE` na coluna `focus_token`.
 
-**O que o script faz:** para cada `companies.focus_token` não nulo, grava o valor cifrado em `focus_token_hom_cifrado` (é o de homologação — `focus-empresa-sync.ts:97` grava `token_homologacao ?? token_producao`) e **esvazia** `focus_token`.
+**O que o script faz:** para cada `companies.focus_token` não nulo, grava o valor cifrado em `empresa_credenciais_focus.token_hom_cifrado` (é o de homologação — `focus-empresa-sync.ts:97` grava `token_homologacao ?? token_producao`) e **esvazia** `companies.focus_token`.
+
+⚠️ **A tabela alvo é `empresa_credenciais_focus`, criada pela 0097** — não as colunas em `companies`, que a 0097 derrubou. Motivo no cabeçalho daquela migration: ACL de coluna não restringe o grant de tabela do Supabase, e texto cifrado vale como credencial ao portador.
 
 - [ ] **Step 1: Escrever o script**
 
@@ -202,26 +204,41 @@ const client = new pg.Client({
 await client.connect();
 
 const { rows } = await client.query(
-  `select id, nome, focus_token from public.companies
-    where focus_token is not null and focus_token <> ''
-      and focus_token_hom_cifrado is null`,
+  `select c.id, c.nome, c.focus_token
+     from public.companies c
+     left join public.empresa_credenciais_focus e on e.empresa_id = c.id
+    where c.focus_token is not null and c.focus_token <> ''
+      and e.token_hom_cifrado is null`,
 );
 console.log(`empresas a migrar: ${rows.length}`);
 
 for (const r of rows) {
-  await client.query(
-    `update public.companies
-        set focus_token_hom_cifrado = $1, focus_token = null
-      where id = $2`,
-    [cifrarCampo(r.focus_token), r.id],
-  );
-  console.log(`  ${r.nome}: migrado`);
+  // Numa transacao: gravar a credencial e esvaziar a coluna velha tem de ser
+  // atomico. Se o segundo falhasse sozinho, o token ficaria em DOIS lugares —
+  // um deles legivel por authenticated, que e exatamente o que a 0097 fecha.
+  await client.query('begin');
+  try {
+    await client.query(
+      `insert into public.empresa_credenciais_focus (empresa_id, token_hom_cifrado, atualizado_em)
+       values ($1, $2, now())
+       on conflict (empresa_id) do update
+         set token_hom_cifrado = excluded.token_hom_cifrado, atualizado_em = now()`,
+      [r.id, cifrarCampo(r.focus_token)],
+    );
+    await client.query('update public.companies set focus_token = null where id = $1', [r.id]);
+    await client.query('commit');
+    console.log(`  ${r.nome}: migrado`);
+  } catch (e) {
+    await client.query('rollback');
+    throw e;
+  }
 }
 
 const conf = await client.query(
-  `select count(*) filter (where focus_token is not null and focus_token <> '')::int as em_claro,
-          count(*) filter (where focus_token_hom_cifrado like 'enc:v1:%')::int as cifrados
-     from public.companies`,
+  `select (select count(*) from public.companies
+            where focus_token is not null and focus_token <> '')::int as em_claro,
+          (select count(*) from public.empresa_credenciais_focus
+            where token_hom_cifrado like 'enc:v1:%')::int as cifrados`,
 );
 console.log('\napos migrar → em claro:', conf.rows[0].em_claro, '| cifrados:', conf.rows[0].cifrados);
 await client.end();
@@ -605,9 +622,12 @@ export async function resolverCredencialEmissao(
     supabase.from('empresas_fiscais')
       .select('focus_origem, focus_ambiente, focus_habilita_nfsen_producao, focus_producao_declarada')
       .eq('empresa_id', companyId).maybeSingle(),
-    supabase.from('companies')
-      .select('focus_token_hom_cifrado, focus_token_prod_cifrado')
-      .eq('id', companyId).maybeSingle(),
+    // `empresa_credenciais_focus` e fechada para anon/authenticated (0097).
+    // Quem chama esta funcao tem de estar com client de service role, ou a
+    // leitura volta vazia e a emissao morre com "sem token" sem dizer por que.
+    supabase.from('empresa_credenciais_focus')
+      .select('token_hom_cifrado, token_prod_cifrado')
+      .eq('empresa_id', companyId).maybeSingle(),
     supabase.from('arquivos_auxiliares')
       .select('cert_not_after')
       .eq('company_id', companyId).is('deleted_at', null)
@@ -619,8 +639,8 @@ export async function resolverCredencialEmissao(
   let tokenHom: string | null = null;
   let tokenProd: string | null = null;
   try {
-    tokenHom = lerTokenEmpresa((company.data?.focus_token_hom_cifrado ?? null) as string | null);
-    tokenProd = lerTokenEmpresa((company.data?.focus_token_prod_cifrado ?? null) as string | null);
+    tokenHom = lerTokenEmpresa((company.data?.token_hom_cifrado ?? null) as string | null);
+    tokenProd = lerTokenEmpresa((company.data?.token_prod_cifrado ?? null) as string | null);
   } catch (e) {
     console.error('[bloco5] credencial corrompida em', companyId, e instanceof Error ? e.message : e);
   }
@@ -818,11 +838,11 @@ export async function tokenParaAmbiente(
   companyId: string,
   ambiente: AmbienteFiscal,
 ): Promise<string | null> {
-  const { data } = await supabase.from('companies')
-    .select('focus_token_hom_cifrado, focus_token_prod_cifrado')
-    .eq('id', companyId).maybeSingle();
+  const { data } = await supabase.from('empresa_credenciais_focus')
+    .select('token_hom_cifrado, token_prod_cifrado')
+    .eq('empresa_id', companyId).maybeSingle();
   if (!data) return null;
-  const col = ambiente === 'prod' ? data.focus_token_prod_cifrado : data.focus_token_hom_cifrado;
+  const col = ambiente === 'prod' ? data.token_prod_cifrado : data.token_hom_cifrado;
   try {
     return lerTokenEmpresa((col ?? null) as string | null);
   } catch (e) {
@@ -1105,8 +1125,16 @@ const h = vi.hoisted(() => {
   const from = vi.fn((tabela: string) => ({
     update: (valores: Record<string, unknown>) => {
       updates.push({ tabela, valores });
-      const b = { eq: () => b, select: () => Promise.resolve({ data: [{ id: 'empresa-1' }], error: null }) };
+      const b = {
+        eq: () => b,
+        select: () => Promise.resolve({ data: [{ id: 'empresa-1' }], error: null }),
+        then: (ok: (v: unknown) => unknown) => Promise.resolve({ data: null, error: null }).then(ok),
+      };
       return b;
+    },
+    upsert: (valores: Record<string, unknown>) => {
+      updates.push({ tabela, valores });
+      return { select: () => Promise.resolve({ data: [{ empresa_id: 'empresa-1' }], error: null }) };
     },
   }));
   const registrarAuditoria = vi.fn(async (e: { acao: string; meta?: Record<string, unknown> }) => {
@@ -1146,19 +1174,29 @@ describe('salvarCredencialFocusClienteAction', () => {
     expect(h.updates).toHaveLength(0);
   });
 
-  it('grava CIFRADO e decifra de volta', async () => {
+  it('grava CIFRADO na tabela fechada, e decifra de volta', async () => {
     const r = await salvarCredencialFocusClienteAction(base);
     expect(r).toEqual({ ok: true });
-    const up = h.updates.find((u) => u.tabela === 'companies')!;
-    expect(String(up.valores.focus_token_hom_cifrado)).toMatch(/^enc:v1:/);
-    expect(lerTokenEmpresa(up.valores.focus_token_hom_cifrado as string)).toBe('tok-hom');
+    const up = h.updates.find((u) => u.tabela === 'empresa_credenciais_focus')!;
+    expect(String(up.valores.token_hom_cifrado)).toMatch(/^enc:v1:/);
+    expect(lerTokenEmpresa(up.valores.token_hom_cifrado as string)).toBe('tok-hom');
+  });
+
+  it('o segredo NAO vai para companies — so o rastro', async () => {
+    // Se voltar a escrever token em `companies`, o transplante entre empresas
+    // que a 0097 fechou volta a ser possivel. Ver o cabecalho daquela migration.
+    await salvarCredencialFocusClienteAction(base);
+    const emCompanies = h.updates.filter((u) => u.tabela === 'companies');
+    for (const u of emCompanies) {
+      expect(Object.keys(u.valores).join(',')).not.toMatch(/token_hom_cifrado|token_prod_cifrado/);
+    }
   });
 
   it('campo vazio = nao trocar', async () => {
     const r = await salvarCredencialFocusClienteAction(base);
     expect(r.ok).toBe(true);
-    const up = h.updates.find((u) => u.tabela === 'companies')!;
-    expect(Object.keys(up.valores)).not.toContain('focus_token_prod_cifrado');
+    const up = h.updates.find((u) => u.tabela === 'empresa_credenciais_focus')!;
+    expect(Object.keys(up.valores)).not.toContain('token_prod_cifrado');
   });
 
   it('a auditoria nao carrega o token', async () => {
@@ -1230,21 +1268,30 @@ export async function salvarCredencialFocusClienteAction(
   const alvo = await companyDaCarteira(admin, ctx.id, companyId);
   if (!alvo) return { ok: false, error: 'Empresa fora da sua carteira.' };
 
-  const patch: Record<string, unknown> = {
-    focus_token_por: ctx.userId,
-    focus_token_em: new Date().toISOString(),
+  // O SEGREDO vai para `empresa_credenciais_focus`, fechada para as roles do
+  // cliente (0097). O RASTRO fica em `companies`, onde o titular consegue ler —
+  // é o que faz a declaracao de custodia valer alguma coisa.
+  const credencial: Record<string, unknown> = {
+    empresa_id: companyId,
+    atualizado_por: ctx.userId,
+    atualizado_em: new Date().toISOString(),
   };
   try {
     // CAMPO VAZIO = NÃO TROCAR — é o caminho comum (trocar só um dos dois).
-    if (hom) patch.focus_token_hom_cifrado = guardarTokenEmpresa(hom);
-    if (prod) patch.focus_token_prod_cifrado = guardarTokenEmpresa(prod);
+    if (hom) credencial.token_hom_cifrado = guardarTokenEmpresa(hom);
+    if (prod) credencial.token_prod_cifrado = guardarTokenEmpresa(prod);
   } catch {
     return { ok: false, error: 'Não foi possível proteger a credencial. Nada foi salvo.' };
   }
 
-  // `.select('id')` para distinguir "gravou" de "não pegou linha nenhuma".
+  // UPSERT com `onConflict` explicito, e NAO `.update()`: a linha pode nao
+  // existir (primeira credencial da empresa). Diferente do caso de `config_ia`,
+  // aqui o upsert e seguro porque o payload NUNCA carrega a coluna que nao se
+  // quer trocar — ela simplesmente nao entra no objeto acima.
   const { data, error } = await admin
-    .from('companies').update(patch).eq('id', companyId).select('id');
+    .from('empresa_credenciais_focus')
+    .upsert(credencial, { onConflict: 'empresa_id' })
+    .select('empresa_id');
   if (error) {
     console.error('[bloco5] credencial do cliente nao gravada:', error.message);
     return { ok: false, error: 'Não foi possível salvar. Tente de novo.' };
@@ -1252,6 +1299,10 @@ export async function salvarCredencialFocusClienteAction(
   if ((data?.length ?? 0) === 0) {
     return { ok: false, error: 'Empresa não encontrada. Recarregue a página.' };
   }
+
+  await admin.from('companies')
+    .update({ focus_token_por: ctx.userId, focus_token_em: new Date().toISOString() })
+    .eq('id', companyId);
 
   if (typeof input.producao_declarada === 'boolean') {
     await admin.from('empresas_fiscais')
@@ -1418,10 +1469,13 @@ export default function CredencialFocusCard(p: Props) {
 Em `page.tsx`, acrescentar à consulta existente e renderizar:
 
 ```tsx
-  const { data: cred } = await sb
-    .from('companies')
-    .select('focus_token_hom_cifrado, focus_token_prod_cifrado')
-    .eq('id', companyId).maybeSingle();
+  // `empresa_credenciais_focus` e fechada para authenticated (0097): esta
+  // leitura EXIGE client de service role. Com o client de sessao ela volta
+  // vazia e a tela mentiria dizendo "nenhum token guardado".
+  const { data: cred } = await createAdminClient()
+    .from('empresa_credenciais_focus')
+    .select('token_hom_cifrado, token_prod_cifrado')
+    .eq('empresa_id', companyId).maybeSingle();
   const { data: fis } = await sb
     .from('empresas_fiscais')
     .select('focus_origem, focus_producao_declarada')
@@ -1432,8 +1486,8 @@ Em `page.tsx`, acrescentar à consulta existente e renderizar:
   <CredencialFocusCard
     companyId={companyId}
     origem={(fis?.focus_origem ?? 'balu') as 'propria' | 'balu'}
-    temHom={Boolean(cred?.focus_token_hom_cifrado)}
-    temProd={Boolean(cred?.focus_token_prod_cifrado)}
+    temHom={Boolean(cred?.token_hom_cifrado)}
+    temProd={Boolean(cred?.token_prod_cifrado)}
     producaoDeclarada={Boolean(fis?.focus_producao_declarada)}
   />
 ```
@@ -1562,10 +1616,28 @@ Expected: nenhuma linha.
 - [ ] **Step 4: Conferir que nenhum select traz a coluna velha (spec §8)**
 
 ```bash
-grep -rn "select('focus_token'\|select(\"focus_token\"\|focus_token," app/src/ | grep -v ".test." | grep -v "focus_token_"
+grep -rn "focus_token" app/src/ | grep -v ".test." | grep -v "focus_token_por" | grep -v "focus_token_em"
 ```
-Expected: nenhuma linha. Se sobrar alguma, é um caminho que continuaria lendo a
-coluna esvaziada na Task 2 e falharia em silêncio com token nulo.
+Expected: nenhuma linha. Qualquer sobra é um caminho que continuaria lendo
+`companies.focus_token`, esvaziada na Task 2 — e falharia em silêncio com token
+nulo. As duas exceções (`focus_token_por` / `focus_token_em`) são o rastro, que
+fica em `companies` de propósito.
+
+- [ ] **Step 5: Conferir que a tabela de credencial segue fechada**
+
+```bash
+node -e "
+const fs=require('fs');const{Client}=require('pg');
+const env={};for(const l of fs.readFileSync('.env.local','utf8').split('
+')){const t=l.trim();if(!t||t.startsWith('#'))continue;const i=t.indexOf('=');if(i<0)continue;env[t.slice(0,i).trim()]=t.slice(i+1).trim();}
+const ref=new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split('.')[0];
+(async()=>{const c=new Client({host:'db.'+ref+'.supabase.co',port:5432,user:'postgres',password:env.SUPABASE_PASSWORD,database:'postgres',ssl:{rejectUnauthorized:false}});await c.connect();
+const r=await c.query(\"select has_table_privilege('authenticated','public.empresa_credenciais_focus','SELECT') as le\");
+console.log('authenticated le a credencial?', r.rows[0].le); await c.end();})();
+"
+```
+Expected: `authenticated le a credencial? false`. Se virar `true`, alguém
+reconcedeu o grant e o buraco da 0096 voltou.
 
 - [ ] **Step 4: Commit e atualização do CHECKPOINT**
 
