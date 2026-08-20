@@ -28,7 +28,7 @@ type Chamada = { tabela: string; valores: Record<string, unknown>; eq: unknown[]
 const h = vi.hoisted(() => {
   const updates: Chamada[] = [];
   const inserts: Chamada[] = [];
-  const auditorias: Array<{ acao: string; meta?: Record<string, unknown> }> = [];
+  const auditorias: Array<{ acao: string; alvoId?: string | null; meta?: Record<string, unknown> }> = [];
   const prompts: string[] = [];
   const configsUsadas: Array<Record<string, unknown>> = [];
 
@@ -98,9 +98,11 @@ const h = vi.hoisted(() => {
     insert: (valores: Record<string, unknown>) => construir(tabela, 'insert', valores),
   }));
 
-  const registrarAuditoria = vi.fn(async (e: { acao: string; meta?: Record<string, unknown> }) => {
-    auditorias.push(e);
-  });
+  const registrarAuditoria = vi.fn(
+    async (e: { acao: string; alvoId?: string | null; meta?: Record<string, unknown> }) => {
+      auditorias.push(e);
+    },
+  );
   const revalidatePath = vi.fn((_p: string) => {});
   const gerarTexto = vi.fn(async (cfg: Record<string, unknown>, prompt: string) => {
     configsUsadas.push(cfg);
@@ -197,6 +199,17 @@ describe('salvarConfigIaAction', () => {
     expect(ev?.meta?.trocou_chave).toBe(true);
   });
 
+  // CONSERTO 3 (Bloco 5 produção fiscal): `audit_log.alvo_id` é uuid — passar
+  // a string `'1'` fazia o insert falhar em silêncio (erro de sintaxe), e
+  // NENHUMA troca de config_ia jamais foi registrada. O identificador do
+  // singleton vai para o `meta`, não para `alvoId`.
+  it('alvoId nunca é a string não-uuid "1" — vai null, e o id do singleton mora no meta', async () => {
+    await salvarConfigIaAction(entrada({ chave: CHAVE_FALSA }));
+    const ev = h.auditorias.find((a) => a.acao === 'ia.config_salvar');
+    expect(ev?.alvoId).toBeNull();
+    expect(ev?.meta?.config_id).toBe(1);
+  });
+
   it('personalizado sem base_url é recusado ANTES de gravar', async () => {
     const r = await salvarConfigIaAction(entrada({ provedor: 'personalizado', base_url: '' }));
     expect(r.ok).toBe(false);
@@ -290,6 +303,10 @@ describe('testarConexaoIaAction', () => {
     // O prompt do teste é uma CONSTANTE do módulo: nenhum dado de contribuinte
     // tem como entrar nele.
     expect(h.prompts[0]).toBe('Responda apenas: ok');
+    // CONSERTO 3: mesmo defeito do alvoId '1' existia aqui também.
+    const ev = h.auditorias.find((a) => a.acao === 'ia.testar_conexao');
+    expect(ev?.alvoId).toBeNull();
+    expect(ev?.meta?.config_id).toBe(1);
   });
 
   it('erro do provedor não carrega a chave na mensagem', async () => {
