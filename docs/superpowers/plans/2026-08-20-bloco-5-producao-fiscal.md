@@ -1755,8 +1755,17 @@ Consequências para este plano:
 - PIPER **não está em `companies`** hoje. Ela é operadora, não cliente.
 - Como seria `focus_origem = 'propria'`, cadastrá-la **não passa pelo
   `/v2/empresas`** — o endpoint bloqueado desde 23/07. O caminho existe.
-- Ela é, portanto, o sujeito ideal para provar as Tasks 13–14 e, se o dono
-  quiser, a **emissão em produção de ponta a ponta**: os dois tokens autenticam
+- ⛔ **DECIDIDO EM 20/08/2026 — a PIPER NÃO entra como empresa neste bloco.**
+  Ela é **administradora do ecossistema Balu**, e permanece só nesse papel. O
+  cadastro dela como empresa fica para depois de a revenda estar destravada.
+  Consequência direta: **a emissão em produção não é provada de ponta a ponta
+  neste bloco**, e o §9 da spec vale exatamente como escrito. As Tasks 13-14
+  entregam a tela e as invariantes provadas por teste; o primeiro sujeito real
+  de `origem = 'propria'` será um cliente que traga a propria conta na Focus.
+
+- (Registro do que seria possível, caso a decisão mude no futuro.) Ela **seria**
+  o sujeito ideal para provar as Tasks 13–14 e a **emissão em produção de ponta
+  a ponta**: os dois tokens autenticam
   (404 em `/v2/nfsen` no ambiente de cada um), o certificado A1 já existe, e a
   nota sairia no CNPJ do próprio operador — decisão dele, sem titular terceiro
   envolvido.
