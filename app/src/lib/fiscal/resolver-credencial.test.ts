@@ -139,17 +139,22 @@ afterEach(() => { process.env = { ...ENV_ANTES_LEITURA }; });
  * terminal — cobre as duas cadeias reais deste módulo: a de `empresas_fiscais`
  * / `empresa_credenciais_focus` (só `.eq().maybeSingle()`) e a de
  * `arquivos_auxiliares` (`.eq().is().order().limit().maybeSingle()`).
+ *
+ * `erros` é opcional: por tabela, força `.maybeSingle()` a devolver
+ * `{ data: null, error: <valor> }` em vez da linha — usado pelo bloqueio 2
+ * (leitura de `empresas_fiscais` falhando, não "linha ausente").
  */
-function supabaseFake(tabelas: Record<string, unknown>) {
+function supabaseFake(tabelas: Record<string, unknown>, erros: Record<string, unknown> = {}) {
   return {
     from: (tabela: string) => {
       const linha = tabelas[tabela] ?? null;
+      const erro = erros[tabela] ?? null;
       const chain = {
         eq: () => chain,
         is: () => chain,
         order: () => chain,
         limit: () => chain,
-        maybeSingle: async () => ({ data: linha, error: null }),
+        maybeSingle: async () => ({ data: erro ? null : linha, error: erro }),
       };
       return { select: () => chain };
     },
@@ -212,6 +217,27 @@ describe('resolverCredencialEmissao', () => {
     const r = await resolverCredencialEmissao('empresa-corrompida', undefined, sb);
 
     expect(r).toEqual({ ok: false, motivo: 'credencial_corrompida' });
+  });
+
+  // Bloqueio 2 da revisão final: leitura de `empresas_fiscais` que FALHA (erro,
+  // não linha ausente) não pode cair no mesmo `?? 'hom'` do caso "empresa sem
+  // configuração" — isso devolveria `ok: true, ambiente: 'hom'` pra uma
+  // empresa que pode estar configurada para produção. Tem de ser erro nomeado,
+  // sem passar pela guarda.
+  it('leitura de empresas_fiscais falhando → ERRO nomeado, nao ok:true com hom', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabaseFake(
+      {
+        empresas_fiscais: null,
+        empresa_credenciais_focus: { token_hom_cifrado: null, token_prod_cifrado: null },
+        arquivos_auxiliares: null,
+      },
+      { empresas_fiscais: { message: 'PGRST116: mais de uma linha' } },
+    ) as any;
+
+    const r = await resolverCredencialEmissao('empresa-leitura-falha', undefined, sb);
+
+    expect(r).toEqual({ ok: false, motivo: 'estado_fiscal_ilegivel' });
   });
 
   it('caminho completo de producao: origem balu, tokenProd decifrado, cert futuro, habilitado', async () => {

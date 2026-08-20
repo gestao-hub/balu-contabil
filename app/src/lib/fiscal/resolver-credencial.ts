@@ -28,7 +28,8 @@ export type MotivoRecusa =
   | 'certificado_invalido'
   | 'producao_nao_habilitada'
   | 'producao_nao_declarada'
-  | 'credencial_corrompida';
+  | 'credencial_corrompida'
+  | 'estado_fiscal_ilegivel';
 
 export type Credencial =
   | { ok: true; ambiente: AmbienteFiscal; token: string }
@@ -47,6 +48,8 @@ export const MENSAGEM_RECUSA: Record<MotivoRecusa, string> = {
     'Falta confirmar que a Focus habilitou NFS-e em produção para esta empresa. Como a conta na Focus é do cliente, não temos como conferir isso — a confirmação é declarada por quem cadastrou a credencial.',
   credencial_corrompida:
     'A credencial da Focus desta empresa está gravada de forma corrompida e não pôde ser lida. Cadastre-a novamente.',
+  estado_fiscal_ilegivel:
+    'Não foi possível ler a configuração fiscal desta empresa. Tente de novo; se persistir, o motivo está no log do servidor.',
 };
 
 export function decidirCredencial(e: EstadoFiscal, agora: Date = new Date()): Credencial {
@@ -124,7 +127,7 @@ export async function resolverCredencialEmissao(
   const [fiscal, cred, cert] = await Promise.all([
     supabase.from('empresas_fiscais')
       .select('focus_origem, focus_ambiente, focus_habilita_nfsen_producao, focus_producao_declarada')
-      .eq('empresa_id', companyId).maybeSingle(),
+      .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle(),
     // `empresa_credenciais_focus` e fechada para anon/authenticated (0097).
     // Quem chama esta funcao tem de estar com client de service role, ou a
     // leitura volta vazia e a emissao morre com "sem token" sem dizer por que.
@@ -136,6 +139,20 @@ export async function resolverCredencialEmissao(
       .eq('company_id', companyId).is('deleted_at', null)
       .order('cert_not_after', { ascending: false }).limit(1).maybeSingle(),
   ]);
+
+  // Bloqueio 2 da revisão final: se a LEITURA de `empresas_fiscais` falhar
+  // (erro de rede, RLS, PGRST116 por duas linhas vivas — a 0098 fecha esse
+  // caso específico com índice único, mas não os outros), `fiscal.data` vem
+  // `null` igual ao caso "empresa sem configuração". Sem este `if`, os dois
+  // caminhos se confundiam: uma FALHA DE LEITURA caía no mesmo `?? 'hom'` da
+  // AUSÊNCIA DE DADO logo abaixo, devolvendo `ok: true, ambiente: 'hom'` para
+  // uma empresa que pode estar configurada para produção — a queda silenciosa
+  // que a decisão D5 proíbe por escrito. Motivo nomeado, sem passar pela
+  // guarda, e log com o companyId pra investigar depois.
+  if (fiscal.error) {
+    console.error('[bloco5] leitura de empresas_fiscais falhou para', companyId, fiscal.error.message);
+    return { ok: false, motivo: 'estado_fiscal_ilegivel' };
+  }
 
   // Decifra dentro do try: se a gravação estiver corrompida (valor sem o
   // prefixo `enc:v1:`), `lerTokenEmpresa` lança. REQUISITO B da revisão das
@@ -154,11 +171,13 @@ export async function resolverCredencialEmissao(
     return { ok: false, motivo: 'credencial_corrompida' };
   }
 
-  // REQUISITO A da revisão das tasks 3-4: os dois `??` abaixo só disparam
-  // quando a linha de `empresas_fiscais` NÃO EXISTE (empresa sem configuração
-  // fiscal nenhuma). `?? 'hom'` é literalmente a expressão que a spec (§4)
-  // proíbe para a GUARDA — mas aqui ela decide o que fazer na AUSÊNCIA de
-  // dado, e cair em homologação é o desfecho seguro: uma empresa sem linha em
+  // REQUISITO A da revisão das tasks 3-4 (reconfirmado no bloqueio 2 da
+  // revisão final): os dois `??` abaixo só disparam quando a linha de
+  // `empresas_fiscais` NÃO EXISTE (empresa sem configuração fiscal nenhuma) —
+  // ERRO de leitura já retornou mais acima, com motivo próprio, e nunca chega
+  // aqui. `?? 'hom'` é literalmente a expressão que a spec (§4) proíbe para a
+  // GUARDA — mas aqui ela decide o que fazer na AUSÊNCIA de dado, e cair em
+  // homologação é o desfecho seguro: uma empresa sem linha em
   // `empresas_fiscais` não tem como ter sido habilitada para produção (o
   // default da própria coluna, na 0096, também é 'hom'). Um `?? 'prod'`
   // arriscaria emitir nota real para uma empresa nunca configurada. Preso
