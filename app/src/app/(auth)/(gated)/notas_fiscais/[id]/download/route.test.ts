@@ -287,6 +287,27 @@ describe('GET /notas_fiscais/[id]/download — allowlist vale para a URL FINAL',
     expect(init.headers?.Authorization?.startsWith('Basic ')).toBe(true);
   });
 
+  // A allowlist aceita QUALQUER bucket S3 (nao da para saber o nome do bucket da
+  // Focus por regra). Entao "passou na allowlist" nao autoriza mandar a
+  // credencial: o dono da empresa grava
+  // `xml_url = 'https://bucket-do-atacante.s3.amazonaws.com/x'` pelo PostgREST e
+  // recebe o `Authorization: Basic <token da empresa>` num bucket que e dele.
+  // O Basic Auth so pode ir para host da Focus.
+  it('XML: bucket S3 do atacante e baixado SEM Authorization', async () => {
+    h.estado.nota = {
+      tipo_documento: 'NFSe',
+      referencia: 'ref-ssrf-5',
+      pdf_url: null,
+      xml_url: 'https://bucket-do-atacante.s3.amazonaws.com/x.xml',
+      ambiente: 'prod',
+    };
+    const res = await GET(req('xml'), { params: params() });
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = fetchMock.mock.calls[0]![1] as { headers?: Record<string, string> };
+    expect(init.headers?.Authorization).toBeUndefined();
+  });
+
   // PDF absoluto da NFS-e Nacional e S3 PRE-ASSINADO: mandar o Basic Auth da
   // Focus para o S3 seria vazar a credencial para outro host allowlisted.
   it('PDF: S3 pre-assinado (absoluto) e baixado SEM Authorization', async () => {

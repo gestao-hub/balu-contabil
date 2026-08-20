@@ -66,6 +66,21 @@ function urlFinalPermitida(savedUrl: string, env: FocusEnv): string | null {
   return urlDownloadPermitida(url) ? url : null;
 }
 
+/**
+ * Onde o Basic Auth da empresa pode ir. "Passou na allowlist" NÃO basta:
+ * `urlDownloadPermitida` aceita QUALQUER bucket S3 (não há como distinguir por
+ * regra o bucket da Focus), então o dono da empresa grava
+ * `xml_url = 'https://bucket-dele.s3.amazonaws.com/x'` por
+ * `PATCH /rest/v1/notas_fiscais?id=eq.<id>` e recebe o
+ * `Authorization: Basic <token decifrado da empresa>` num bucket que é dele.
+ * A credencial só sai para host da Focus; S3 pré-assinado já carrega a
+ * assinatura na query e não precisa dela.
+ */
+function ehHostFocus(url: string): boolean {
+  const h = new URL(url).hostname.toLowerCase();
+  return h === 'focusnfe.com.br' || h.endsWith('.focusnfe.com.br');
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -128,7 +143,10 @@ export async function GET(
         }
         // redirect:'manual' impede que um 3xx de um host allowlisted (ex.: S3/Focus)
         // saia para um alvo interno, contornando urlDownloadPermitida (anti-SSRF).
-        const r = await fetch(url, { headers: { Authorization: basicAuth(focusToken) }, redirect: 'manual' });
+        // O Basic Auth só sai para host da Focus — ver `ehHostFocus`.
+        const r = ehHostFocus(url)
+          ? await fetch(url, { headers: { Authorization: basicAuth(focusToken) }, redirect: 'manual' })
+          : await fetch(url, { redirect: 'manual' });
         if (r.ok) {
           const xml = await r.text();
           return xmlResponse(xml, ref);
@@ -157,11 +175,11 @@ export async function GET(
       }
       // NFSe Nacional: url_danfse é S3 pré-assinada e já carrega a assinatura na
       // query — mandar o Basic Auth da Focus para o S3 seria entregar a
-      // credencial a um host que não precisa dela. Só o path relativo (que por
-      // construção resolve na própria Focus) leva o header.
-      const r = isAbsoluteUrl(savedUrl)
-        ? await fetch(url, { redirect: 'manual' })
-        : await fetch(url, { headers: { Authorization: basicAuth(focusToken) }, redirect: 'manual' });
+      // credencial a um host que não precisa dela (e que o dono da empresa pode
+      // escolher). Mesma regra do ramo XML — ver `ehHostFocus`.
+      const r = ehHostFocus(url)
+        ? await fetch(url, { headers: { Authorization: basicAuth(focusToken) }, redirect: 'manual' })
+        : await fetch(url, { redirect: 'manual' });
       if (r.ok) return pdfResponse(await r.arrayBuffer(), ref);
     }
     // Fallback legacy
