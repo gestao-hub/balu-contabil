@@ -117,6 +117,7 @@ vi.mock('@/lib/clients/serpro-auth', () => ({ autenticarContratante: h.autentica
 
 import {
   salvarConfigSerproAction,
+  limparConfigSerproAction,
   enviarCertContratanteAction,
   testarConexaoSerproAction,
 } from './actions';
@@ -317,6 +318,51 @@ describe('salvarConfigSerproAction', () => {
       await salvarConfigSerproAction({ consumer_key: KEY_FALSA, consumer_secret: SECRET_FALSO });
       expect(h.updates.some((u) => u.tabela === 'serpro_contratante')).toBe(false);
     });
+  });
+});
+
+describe('limparConfigSerproAction', () => {
+  it('exige AdminBalu', async () => {
+    h.estado.guard = { error: 'Acesso restrito.' };
+    const r = await limparConfigSerproAction();
+    expect(r).toEqual({ ok: false, error: 'Acesso restrito.' });
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it('zera OS DOIS campos — key e secret juntos, nunca um só', async () => {
+    h.estado.linhas.config_serpro = {
+      id: 1, consumer_key_cifrado: 'enc:v1:algumacoisa', consumer_secret_cifrado: 'enc:v1:outracoisa',
+    };
+    const r = await limparConfigSerproAction();
+    expect(r).toEqual({ ok: true });
+    const zerou = h.updates.find((u) => u.tabela === 'config_serpro');
+    expect(zerou!.valores.consumer_key_cifrado).toBeNull();
+    expect(zerou!.valores.consumer_secret_cifrado).toBeNull();
+  });
+
+  it('NÃO mexe no certificado do contratante — aquele não tem fallback de ambiente', async () => {
+    h.estado.linhas.config_serpro = {
+      id: 1, consumer_key_cifrado: 'enc:v1:algumacoisa', consumer_secret_cifrado: 'enc:v1:outracoisa',
+    };
+    await limparConfigSerproAction();
+    expect(h.updates.some((u) => u.tabela === 'serpro_contratante')).toBe(false);
+  });
+
+  it('audita a limpeza com alvoId null e o id do singleton no meta', async () => {
+    h.estado.linhas.config_serpro = {
+      id: 1, consumer_key_cifrado: 'enc:v1:algumacoisa', consumer_secret_cifrado: 'enc:v1:outracoisa',
+    };
+    await limparConfigSerproAction();
+    expect(h.auditorias[0].acao).toBe('serpro.config_limpar');
+    expect(h.auditorias[0].alvoId).toBeNull();
+    expect(h.auditorias[0].meta).toEqual({ config_id: 1 });
+  });
+
+  it('linha não encontrada devolve erro, não sucesso silencioso', async () => {
+    h.estado.linhas.config_serpro = null;
+    const r = await limparConfigSerproAction();
+    expect(r.ok).toBe(false);
+    expect(h.auditorias).toHaveLength(0);
   });
 });
 

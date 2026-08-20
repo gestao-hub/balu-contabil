@@ -8,10 +8,12 @@
 // OS CAMPOS DE SEGREDO NASCEM VAZIOS, SEMPRE. Vazio quer dizer "não trocar".
 import { useState, useTransition, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { KeyRound, Loader2, PlugZap, FileBadge, Upload } from 'lucide-react';
+import { KeyRound, Loader2, PlugZap, FileBadge, Upload, Eraser } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
+import PopupConfirm from '@/components/PopupConfirm';
 import {
   salvarConfigSerproAction,
+  limparConfigSerproAction,
   enviarCertContratanteAction,
   testarConexaoSerproAction,
 } from './actions';
@@ -51,6 +53,8 @@ export default function ConfigSerproForm({ inicial }: Props) {
   const [pendente, iniciar] = useTransition();
   const [enviandoCert, setEnviandoCert] = useState(false);
   const [testando, setTestando] = useState(false);
+  const [confirmandoLimpeza, setConfirmandoLimpeza] = useState(false);
+  const [limpando, setLimpando] = useState(false);
   const toast = useToast();
   const router = useRouter();
 
@@ -67,9 +71,26 @@ export default function ConfigSerproForm({ inicial }: Props) {
       if (!r.ok) { toast('error', r.error); return; }
       setConsumerKey('');
       setConsumerSecret('');
-      toast('success', 'Credenciais salvas.');
+      // CONSERTO 1: a gravação pode ter acontecido sem confirmação do SERPRO
+      // (sem certificado ainda, cifra corrompida, rede/5xx) — o admin precisa
+      // saber que "salvo" aqui não é a mesma coisa que "confirmado".
+      if (r.aviso) toast('warning', r.aviso);
+      else toast('success', 'Credenciais salvas.');
       router.refresh();
     });
+  }
+
+  async function handleLimpar() {
+    setLimpando(true);
+    try {
+      const r = await limparConfigSerproAction();
+      setConfirmandoLimpeza(false);
+      if (!r.ok) { toast('error', r.error); return; }
+      toast('success', 'Credenciais removidas — voltando a usar as variáveis de ambiente.');
+      router.refresh();
+    } finally {
+      setLimpando(false);
+    }
   }
 
   async function handleEnviarCert(e: React.FormEvent) {
@@ -152,6 +173,22 @@ export default function ConfigSerproForm({ inicial }: Props) {
             {pendente && <Loader2 className="size-4 animate-spin" />}
             Salvar credenciais
           </button>
+
+          {/* CONSERTO 2: sem isto não havia caminho pela interface para
+              desfazer uma gravação ruim — campo vazio sempre significou "não
+              trocar", nunca "apagar". Só aparece quando HÁ credencial gravada. */}
+          {(inicial.temKey || inicial.temSecret) && (
+            <button
+              type="button"
+              onClick={() => setConfirmandoLimpeza(true)}
+              disabled={pendente}
+              className="inline-flex items-center gap-2 rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60"
+            >
+              <Eraser className="size-4" />
+              Limpar credenciais
+            </button>
+          )}
+
           {!credencialCompleta && (
             <span className="text-xs text-muted-foreground">
               Os dois campos precisam existir juntos — meia credencial faria a chamada sair
@@ -160,6 +197,17 @@ export default function ConfigSerproForm({ inicial }: Props) {
           )}
         </div>
       </form>
+
+      <PopupConfirm
+        open={confirmandoLimpeza}
+        variant="destructive"
+        title="Limpar credenciais do contrato"
+        description="Consumer key e secret gravados são apagados e a plataforma volta a usar as variáveis de ambiente (SERPRO_CONSUMER_KEY/SERPRO_CONSUMER_SECRET), se houver. O certificado do contratante NÃO é afetado. Não é possível desfazer — para trocar de novo, será preciso colar a credencial aqui."
+        confirmLabel="Limpar credenciais"
+        onConfirm={handleLimpar}
+        onCancel={() => setConfirmandoLimpeza(false)}
+        busy={limpando}
+      />
 
       {/* ------------------------------------------ certificado contratante */}
       <form onSubmit={handleEnviarCert} className="space-y-4 rounded-md border border-border bg-surface p-4">

@@ -9,9 +9,10 @@
 // volta para a tela, nem mascarado, e por isso não há o que preencher.
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { KeyRound, Loader2, PlugZap } from 'lucide-react';
+import { KeyRound, Loader2, PlugZap, Eraser } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
-import { salvarConfigFocusAction, testarConexaoFocusAction } from './actions';
+import PopupConfirm from '@/components/PopupConfirm';
+import { salvarConfigFocusAction, testarConexaoFocusAction, limparConfigFocusAction } from './actions';
 
 const rotuloCampo = 'text-xs font-medium text-muted-foreground-2';
 const campo = 'rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm';
@@ -27,6 +28,8 @@ export default function ConfigFocusForm({ inicial }: Props) {
   const [token, setToken] = useState('');
   const [pendente, iniciar] = useTransition();
   const [testando, setTestando] = useState(false);
+  const [confirmandoLimpeza, setConfirmandoLimpeza] = useState(false);
+  const [limpando, setLimpando] = useState(false);
   const toast = useToast();
   const router = useRouter();
 
@@ -38,7 +41,11 @@ export default function ConfigFocusForm({ inicial }: Props) {
       // Some da tela assim que sai daqui: o campo não guarda segredo entre
       // salvamentos, e o próximo "salvar" não deve regravar o mesmo token.
       setToken('');
-      toast('success', 'Token salvo.');
+      // CONSERTO 1: a gravação pode ter acontecido sem confirmação da Focus
+      // (rede/5xx/timeout na sonda) — o admin precisa saber que "salvo" aqui
+      // não é a mesma coisa que "confirmado".
+      if (r.aviso) toast('warning', r.aviso);
+      else toast('success', 'Token salvo.');
       router.refresh();
     });
   }
@@ -54,7 +61,21 @@ export default function ConfigFocusForm({ inicial }: Props) {
     }
   }
 
+  async function handleLimpar() {
+    setLimpando(true);
+    try {
+      const r = await limparConfigFocusAction();
+      setConfirmandoLimpeza(false);
+      if (!r.ok) { toast('error', r.error); return; }
+      toast('success', 'Token removido — voltando a usar a variável de ambiente.');
+      router.refresh();
+    } finally {
+      setLimpando(false);
+    }
+  }
+
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-4 rounded-md border border-border bg-surface p-4">
       <label className="flex flex-col gap-1">
         <span className={rotuloCampo}>
@@ -100,6 +121,21 @@ export default function ConfigFocusForm({ inicial }: Props) {
           Testar conexão
         </button>
 
+        {/* CONSERTO 2: sem isto não havia caminho pela interface para desfazer
+            uma gravação ruim — campo vazio sempre significou "não trocar",
+            nunca "apagar". Só aparece quando HÁ o que limpar. */}
+        {inicial.temToken && (
+          <button
+            type="button"
+            onClick={() => setConfirmandoLimpeza(true)}
+            disabled={pendente || testando}
+            className="inline-flex items-center gap-2 rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60"
+          >
+            <Eraser className="size-4" />
+            Limpar token
+          </button>
+        )}
+
         {!inicial.temToken && (
           <span className="text-xs text-muted-foreground">
             Enquanto o campo estiver vazio, a plataforma ainda usa o valor da variável de
@@ -115,5 +151,17 @@ export default function ConfigFocusForm({ inicial }: Props) {
         catálogo e foi recusado no que interessa.
       </p>
     </form>
+
+      <PopupConfirm
+        open={confirmandoLimpeza}
+        variant="destructive"
+        title="Limpar token de revenda"
+        description="O token gravado é apagado e a plataforma volta a usar a variável de ambiente (FOCUS_NFE_TOKEN), se houver. Não é possível desfazer — para trocar de novo, será preciso colar o token aqui."
+        confirmLabel="Limpar token"
+        onConfirm={handleLimpar}
+        onCancel={() => setConfirmandoLimpeza(false)}
+        busy={limpando}
+      />
+    </>
   );
 }

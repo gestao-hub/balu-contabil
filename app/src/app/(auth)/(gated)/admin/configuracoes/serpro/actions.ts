@@ -210,6 +210,56 @@ export async function salvarConfigSerproAction(entrada: unknown): Promise<Action
 }
 
 /**
+ * Limpa a credencial do contrato (consumer key + secret) — volta a
+ * plataforma a usar `SERPRO_CONSUMER_KEY`/`SERPRO_CONSUMER_SECRET` do
+ * ambiente. Os dois juntos, nunca um só: meia credencial gravada é pior que
+ * nenhuma (mesma invariante do salvar).
+ *
+ * CONSERTO 2 (Bloco 5 produção fiscal): não existia caminho pela interface
+ * para desfazer uma gravação ruim — campo vazio no formulário sempre
+ * significou "não trocar", nunca "apagar".
+ *
+ * NÃO mexe no certificado do contratante (`serpro_contratante`): aquele não
+ * tem fallback de ambiente — limpar lá não "volta" a nada, só quebra.
+ */
+export async function limparConfigSerproAction(): Promise<ActionResult> {
+  const ctx = await requireAdminBaluAction();
+  if ('error' in ctx) return { ok: false, error: ctx.error };
+
+  const sb = createAdminClient();
+  const { data, error } = await sb
+    .from('config_serpro')
+    .update({
+      consumer_key_cifrado: null,
+      consumer_secret_cifrado: null,
+      atualizado_por: ctx.userId,
+      atualizado_em: new Date().toISOString(),
+    })
+    .eq('id', 1)
+    .select('id');
+  if (error) {
+    console.error('[0094] config_serpro limpar falhou:', error.message);
+    return { ok: false, error: 'Não foi possível limpar. Tente de novo.' };
+  }
+  if ((data?.length ?? 0) === 0) {
+    return { ok: false, error: 'A configuração não foi encontrada. Recarregue a página.' };
+  }
+
+  invalidarCacheSerpro();
+
+  await registrarAuditoria({
+    actorUserId: ctx.userId,
+    acao: 'serpro.config_limpar',
+    alvoTipo: 'config_serpro',
+    alvoId: null,
+    meta: { config_id: 1 },
+  });
+
+  revalidatePath(ROTA);
+  return { ok: true };
+}
+
+/**
  * Sobe o certificado A1 do CONTRATANTE (mTLS com a Receita).
  *
  * O PFX e a senha são guardados como estão, cifrados — diferente do

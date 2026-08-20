@@ -173,6 +173,54 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
 }
 
 /**
+ * Limpa o token de revenda gravado — volta a plataforma a usar
+ * `FOCUS_NFE_TOKEN` do ambiente.
+ *
+ * CONSERTO 2 (Bloco 5 produção fiscal): antes disto não existia caminho pela
+ * interface para desfazer uma gravação ruim. Campo vazio no formulário
+ * sempre significou "não trocar" — nunca "apagar" —, e foi exatamente essa
+ * lacuna que deixou o token de emissão colado por engano em 20/08/2026 preso
+ * no banco até alguém corrigir na mão, direto no Supabase.
+ */
+export async function limparConfigFocusAction(): Promise<ActionResult> {
+  const ctx = await requireAdminBaluAction();
+  if ('error' in ctx) return { ok: false, error: ctx.error };
+
+  const sb = createAdminClient();
+  // `.select('id')` pela mesma razão do salvar: distinguir "limpou" de "não
+  // achou linha nenhuma" — sem ele o PostgREST devolve sucesso do mesmo jeito.
+  const { data, error } = await sb
+    .from('config_focus')
+    .update({
+      token_revenda_cifrado: null,
+      atualizado_por: ctx.userId,
+      atualizado_em: new Date().toISOString(),
+    })
+    .eq('id', 1)
+    .select('id');
+  if (error) {
+    console.error('[0095] config_focus limpar falhou:', error.message);
+    return { ok: false, error: 'Não foi possível limpar. Tente de novo.' };
+  }
+  if ((data?.length ?? 0) === 0) {
+    return { ok: false, error: 'A configuração não foi encontrada. Recarregue a página.' };
+  }
+
+  invalidarCacheFocus();
+
+  await registrarAuditoria({
+    actorUserId: ctx.userId,
+    acao: 'focus.config_limpar',
+    alvoTipo: 'config_focus',
+    alvoId: null,
+    meta: { config_id: 1 },
+  });
+
+  revalidatePath(ROTA);
+  return { ok: true };
+}
+
+/**
  * Testa o token JÁ GRAVADO contra a API de REVENDA da Focus, de verdade — a
  * pedido do admin, depois de salvar.
  *

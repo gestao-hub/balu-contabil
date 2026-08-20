@@ -119,7 +119,7 @@ vi.mock('@/lib/admin/guard', () => ({ requireAdminBaluAction: async () => h.esta
 vi.mock('@/lib/security/audit', () => ({ registrarAuditoria: h.registrarAuditoria }));
 vi.mock('@/lib/clients/focus-nfe', () => ({ focus: { consultarEmpresa: h.consultarEmpresa } }));
 
-import { salvarConfigFocusAction, testarConexaoFocusAction } from './actions';
+import { salvarConfigFocusAction, testarConexaoFocusAction, limparConfigFocusAction } from './actions';
 
 beforeAll(() => {
   process.env.CERT_ENC_KEY ??= Buffer.alloc(32, 7).toString('base64');
@@ -308,5 +308,50 @@ describe('testarConexaoFocusAction', () => {
     const r = await testarConexaoFocusAction();
     expect(r.ok).toBe(false);
     expect('error' in r && r.error).toMatch(/não recusou o token/);
+  });
+});
+
+// CONSERTO 2 (Bloco 5 produção fiscal): antes disto não existia caminho pela
+// interface para desfazer uma gravação ruim — campo vazio sempre significou
+// "não trocar", nunca "apagar".
+describe('limparConfigFocusAction', () => {
+  it('exige AdminBalu', async () => {
+    h.estado.guard = { error: 'Acesso restrito.' };
+    const r = await limparConfigFocusAction();
+    expect(r).toEqual({ ok: false, error: 'Acesso restrito.' });
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it('grava NULL na coluna cifrada — volta o app ao fallback de ambiente', async () => {
+    h.estado.linha = { id: 1, token_revenda_cifrado: 'enc:v1:algumacoisa' };
+    const r = await limparConfigFocusAction();
+    expect(r).toEqual({ ok: true });
+    expect(h.updates).toHaveLength(1);
+    expect(h.updates[0].valores.token_revenda_cifrado).toBeNull();
+    expect(h.updates[0].eq).toContainEqual(['id', 1]);
+  });
+
+  it('audita a limpeza com alvoId null e o id do singleton no meta', async () => {
+    h.estado.linha = { id: 1, token_revenda_cifrado: 'enc:v1:algumacoisa' };
+    await limparConfigFocusAction();
+    expect(h.auditorias).toHaveLength(1);
+    expect(h.auditorias[0].acao).toBe('focus.config_limpar');
+    expect(h.auditorias[0].alvoId).toBeNull();
+    expect(h.auditorias[0].meta).toEqual({ config_id: 1 });
+  });
+
+  it('linha não encontrada devolve erro, não sucesso silencioso', async () => {
+    h.estado.linha = null;
+    const r = await limparConfigFocusAction();
+    expect(r.ok).toBe(false);
+    expect(h.auditorias).toHaveLength(0);
+  });
+
+  it('erro de escrita não vira sucesso', async () => {
+    h.estado.linha = { id: 1, token_revenda_cifrado: 'enc:v1:algumacoisa' };
+    h.estado.erroEscrita = { message: 'boom' };
+    const r = await limparConfigFocusAction();
+    expect(r.ok).toBe(false);
+    expect(h.auditorias).toHaveLength(0);
   });
 });
