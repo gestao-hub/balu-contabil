@@ -59,12 +59,29 @@ describe('decidirCredencial', () => {
     expect(r).toEqual({ ok: true, ambiente: 'prod', token: 'tok-prod' });
   });
 
-  it('origem propria sem declaracao → erro', () => {
+  it('origem propria sem declaracao → erro, motivo proprio (nao confunde com o da balu)', () => {
     const r = decidirCredencial({
       ...PRONTA, origem: 'propria', habilitaProducaoFocus: false, producaoDeclarada: false,
     });
     expect(r.ok).toBe(false);
-    expect(!r.ok && r.motivo).toBe('producao_nao_habilitada');
+    expect(!r.ok && r.motivo).toBe('producao_nao_declarada');
+  });
+
+  // ESTES DOIS CASOS EXISTEM PARA MATAR UMA MUTACAO ESPECIFICA: trocar o
+  // ternario da origem por `declarada || snapshot` passava nos 9 testes
+  // anteriores. Sem eles, a regra central do bloco fica sem prova.
+  it('balu IGNORA a declaracao — snapshot da Focus e o unico que vale', () => {
+    const r = decidirCredencial({
+      ...PRONTA, origem: 'balu', habilitaProducaoFocus: false, producaoDeclarada: true,
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('propria IGNORA o snapshot — a declaracao e a unica que vale', () => {
+    const r = decidirCredencial({
+      ...PRONTA, origem: 'propria', habilitaProducaoFocus: true, producaoDeclarada: false,
+    });
+    expect(r.ok).toBe(false);
   });
 
   it('homologacao sem token de homologacao → erro, nao token de producao', () => {

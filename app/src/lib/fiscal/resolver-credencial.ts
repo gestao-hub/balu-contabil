@@ -26,7 +26,8 @@ export type MotivoRecusa =
   | 'sem_token_homologacao'
   | 'sem_token_producao'
   | 'certificado_invalido'
-  | 'producao_nao_habilitada';
+  | 'producao_nao_habilitada'
+  | 'producao_nao_declarada';
 
 export type Credencial =
   | { ok: true; ambiente: AmbienteFiscal; token: string }
@@ -41,10 +42,16 @@ export const MENSAGEM_RECUSA: Record<MotivoRecusa, string> = {
     'Emissão em produção exige certificado A1 válido. O certificado está vencido ou não foi enviado.',
   producao_nao_habilitada:
     'A Focus ainda não confirmou a habilitação de NFS-e em produção para esta empresa.',
+  producao_nao_declarada:
+    'Falta confirmar que a Focus habilitou NFS-e em produção para esta empresa. Como a conta na Focus é do cliente, não temos como conferir isso — a confirmação é declarada por quem cadastrou a credencial.',
 };
 
 export function decidirCredencial(e: EstadoFiscal, agora: Date = new Date()): Credencial {
-  if (e.ambiente === 'hom') {
+  // Desvio pela negativa (!== 'prod'), não pela positiva (=== 'hom'): um valor
+  // de ambiente corrompido ou inesperado cai em homologação, a direção segura.
+  // Hoje é inalcançável (CHECK da 0096 + o tipo já barram), mas o custo de
+  // escrever assim é zero e a direção errada aqui é a que emite nota real.
+  if (e.ambiente !== 'prod') {
     // Homologação não exige certificado nem habilitação: é o ambiente de teste,
     // e exigir os dois aqui travaria o fluxo que funciona hoje.
     if (!e.tokenHom) return { ok: false, motivo: 'sem_token_homologacao' };
@@ -58,12 +65,18 @@ export function decidirCredencial(e: EstadoFiscal, agora: Date = new Date()): Cr
     return { ok: false, motivo: 'certificado_invalido' };
   }
 
-  // Para 'balu' o fato vem do snapshot da Focus. Para 'propria' o snapshot não
-  // existe (GET /v2/empresas está bloqueado desde 23/07/2026), e o que vale é a
-  // declaração de quem cadastrou — registrada em coluna própria justamente para
-  // não se disfarçar de fato conferido.
-  const habilitada = e.origem === 'propria' ? e.producaoDeclarada : e.habilitaProducaoFocus;
-  if (!habilitada) return { ok: false, motivo: 'producao_nao_habilitada' };
+  // 'balu' e 'propria' não podem cair no mesmo teste booleano — cada um tem seu
+  // próprio motivo de recusa, e por isso seu próprio `if`. Um `||` genérico
+  // deixaria a declaração valer como habilitação também para 'balu', que é
+  // exatamente o cenário perigoso: cliente se autodeclara em produção sem a
+  // Focus ter confirmado nada.
+  if (e.origem === 'propria') {
+    // GET /v2/empresas está bloqueado desde 23/07/2026: não existe snapshot da
+    // Focus para conferir. O que vale é a declaração de quem cadastrou.
+    if (!e.producaoDeclarada) return { ok: false, motivo: 'producao_nao_declarada' };
+  } else {
+    if (!e.habilitaProducaoFocus) return { ok: false, motivo: 'producao_nao_habilitada' };
+  }
 
   return { ok: true, ambiente: 'prod', token: e.tokenProd };
 }
