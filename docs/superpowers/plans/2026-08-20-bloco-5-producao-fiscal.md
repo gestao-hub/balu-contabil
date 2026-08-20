@@ -11,6 +11,14 @@
 **Spec:** `docs/superpowers/specs/2026-08-20-bloco-5-producao-fiscal-design.md`
 **Escrito em:** 2026-08-20 · **Lançamento:** 24/08 (segunda) — ver §"Ordem de corte" no fim.
 
+> 🔴 **JANELA QUEBRADA — LEIA ANTES DE MERGEAR.** A Task 2 esvazia
+> `companies.focus_token`, e **cinco caminhos do produto ainda gateiam nessa
+> coluna**. Entre a Task 2 e a Task 10 a branch tem emissão, polling, download e
+> cancelamento QUEBRADOS. Isso é aceitável numa branch e **inaceitável em
+> `main`**: não mergear antes da Task 10 concluída e do gate da Task 17 verde.
+> Falha de sequenciamento do plano, descoberta na execução da Task 6 — a Task 2
+> deveria ter vindo depois da fiação, ou junto dela.
+
 **Regra do projeto:** cada task termina com verificação **executada**. Rodar `tsc`, `vitest` e `next build` **a partir de `app/`**, nunca da raiz. Migrations por `node app/scratchpad/apply-migration.mjs <arquivo>`, a partir de `balu/`.
 
 ---
@@ -1730,6 +1738,78 @@ git commit -m "test(seguranca): RLS do contador nao grava credencial fiscal do c
 
 ---
 
+### Task 19: os dois caminhos em `/configuracoes` que o plano tinha esquecido
+
+**Files:**
+- Modify: `app/src/app/(auth)/(gated)/configuracoes/actions.ts:270-278`
+- Modify: `app/src/app/(auth)/(gated)/configuracoes/page.tsx:169`
+
+**Descoberta na Task 6.** O plano cobria cinco caminhos que gateiam em
+`companies.focus_token`; existem **sete**. Estes dois faltavam.
+
+#### 19.1 — O botão "Sincronizar com Focus" decide errado
+
+Hoje `actions.ts:272-276` escolhe entre cadastrar e atualizar assim:
+
+```typescript
+    .select('focus_token')
+  const result = company?.focus_token
+    ? await atualizarEmpresaNaFocus(...)   // PUT
+    : await sincronizarEmpresaNaFocus(...) // POST
+```
+
+Com a coluna esvaziada pela Task 2, **sempre** cai no POST — tentaria cadastrar
+de novo uma empresa que já existe na Focus. (Hoje o POST devolve 401 de qualquer
+forma, então o sintoma está escondido atrás de outro defeito; quando a revenda
+voltar, ele apareceria como empresa duplicada.)
+
+- [ ] **Step 1: Trocar o sinal de decisão**
+
+O que de fato responde "esta empresa já está cadastrada na Focus?" não é o
+token — é `empresas_fiscais.focus_empresa_id`, que é o id que o POST devolveu.
+
+```typescript
+  // Bloco 5: o sinal de "ja cadastrada na Focus" e o focus_empresa_id, nao o
+  // token. O token saiu de `companies` na Task 2/0097, e gatear nele fazia o
+  // botao sempre tentar CADASTRAR DE NOVO uma empresa que ja existe. O
+  // focus_empresa_id e o id devolvido pelo proprio POST — e o sinal honesto.
+  const { data: fiscalSync } = await supabase
+    .from('empresas_fiscais').select('focus_empresa_id').eq('empresa_id', companyId).maybeSingle();
+
+  const result = fiscalSync?.focus_empresa_id != null
+    ? await atualizarEmpresaNaFocus(supabase, companyId, 'hom')
+    : await sincronizarEmpresaNaFocus(supabase, companyId);
+```
+
+⚠️ Ler o código real antes: os nomes das funções e a assinatura têm de bater com
+o que o arquivo já usa. E a guarda de `focus_origem` da Task 12 vale aqui
+também — empresa `propria` não sincroniza.
+
+#### 19.2 — O token saía nas props de um componente de cliente
+
+`page.tsx:169` faz `focusToken: (company.focus_token as string | null) ?? null`
+dentro do objeto de props. Isso serializa o token no HTML entregue ao navegador.
+
+Hoje é inócuo (a coluna está vazia) e **nada consome o campo** — grep confirma
+que só a definição existe. Mas o padrão é o mesmo que a 0097 fechou no banco, e
+deixar o passageiro morto convida alguém a repreenchê-lo.
+
+- [ ] **Step 2: Remover o campo**
+
+Apagar a linha 169 e o `focus_token` do `select` de `companies` desta página, se
+não houver outro uso. Confirmar com grep que nenhum componente lê `focusToken`.
+
+- [ ] **Step 3: Verificar e commitar**
+
+```bash
+grep -rn "focusToken" app/src/ | grep -v ".test."   # nao pode sobrar nada em configuracoes/
+npx tsc --noEmit && npx vitest run
+git add "app/src/app/(auth)/(gated)/configuracoes/actions.ts" "app/src/app/(auth)/(gated)/configuracoes/page.tsx"
+git commit -m "fix(fiscal): sincronizacao decide por focus_empresa_id, e o token sai das props"
+```
+
+---
+
 ## Ordem de corte
 
 Decidida agora, não no meio da execução. Se o tempo apertar antes de 24/08, sai de baixo para cima:
@@ -1738,11 +1818,11 @@ Decidida agora, não no meio da execução. Se o tempo apertar antes de 24/08, s
 |---|---|---|
 | 1º a sair | 15 (rastro para o empresário) | transparência para o titular; a custódia segue no `audit_log` |
 | 2º | 16 (auditoria de produção) | trilha da emissão real — suportável enquanto não há emissão real |
-| 3º | 18 (Playwright) | a prova da fronteira contra o banco real; o anti-IDOR da Task 13 continua coberto por teste unitário. **Se a 13–14 cair, esta cai junto** — não sobra escrita a proteger |
+| 3º | 18 (Playwright) | a prova da fronteira contra o banco real; o anti-IDOR da Task 13 continua coberto por teste unitário. **Se a 13–14 cair, esta cai junto** |
 | 4º | 13–14 (tela do contador) | cadastro de credencial passa a ser por script até a tela existir |
-| **nunca sai** | **1, 2, 8, 9, 10** | schema, cifra e o ambiente da nota. São os que ficam **caros depois do lançamento** — hoje o banco tem 2 notas |
+| **NUNCA SAI** | **1, 2, 6, 7, 8, 9, 10, 19** | schema, cifra, e **toda a fiação**. Corrigido em 20/08 depois do achado da Task 6: a Task 2 esvazia `companies.focus_token`, e cada uma das tasks 6–10 e 19 conserta UM caminho que gateia nessa coluna. Cortar qualquer uma deixa um caminho morto em produção — emissão, polling, download, cancelamento ou o botão Sincronizar |
 
-Tasks 3–7, 11 e 12 são o miolo funcional: sem elas o bloco não entrega nada.
+Tasks 3–5, 11 e 12 são o miolo funcional: sem elas o bloco não entrega nada.
 
 ## O que este plano NÃO entrega
 
