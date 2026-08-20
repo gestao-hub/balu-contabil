@@ -1,7 +1,106 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-19 (sessão 29 — **canal de WhatsApp por escritório implementado e provado**, mais uma rodada de `/code-review` + `/systematic-debugging` que achou 12 defeitos: os três graves eram meus, da mesma noite, e o bug da apuração que falhava diariamente em produção foi corrigido na origem.)
+> **Última atualização:** 2026-08-20 (sessão 30 — **credenciais de integração saíram do `.env` e ganharam tela no admin**: Focus e SERPRO. Uma sondagem contra a Focus real desmontou uma suposição minha e obrigou a migration 0095 a corrigir a 0094 antes de qualquer deploy.)
+
+> ## 🆕 SESSÃO 30 (2026-08-20) — chaves de integração na plataforma, não no `.env`
+>
+> Pedido do usuário: ter, nas configurações do admin, cards para a chave da IA,
+> as chaves da Focus e do SERPRO, e o certificado A1 — tirando do `.env.local` o
+> que é credencial **do sistema**.
+>
+> ### O card da IA já existia
+>
+> `/admin/configuracoes/ia`, desde o Bloco 6A: guarda `requireAdminBaluAction`,
+> chave em `config_ia.chave_cifrada`, botão de testar conexão real, auditoria que
+> registra quem trocou sem registrar a chave. Virou o molde dos outros dois.
+>
+> ### O que passou a existir
+>
+> - **`/admin/configuracoes/focus`** — token de revenda, cifrado.
+> - **`/admin/configuracoes/serpro`** — consumer key/secret cifrados **e** upload
+>   do certificado A1 do contratante. Até aqui esse certificado só entrava por
+>   `scripts/upload-serpro-system-cert.mjs`, que tem caminho fixo
+>   `/home/allan/Projetos/...` — de outra máquina, ou seja, não rodava para
+>   ninguém.
+> - **Migrations 0094 e 0095**, aplicadas e verificadas: `config_focus` e
+>   `config_serpro`, RLS ligada, **zero privilégio para `anon` e `authenticated`**
+>   (conferido no banco, não suposto), só `service_role`.
+> - Os clientes passaram a **ler do banco**, com o `.env` como fallback. Card que
+>   não alimenta o cliente é card decorativo — e seria a mesma classe de defeito
+>   que esta sessão foi achar.
+>
+> ### 🔴 O achado que motivou tudo
+>
+> O código lê `process.env.FOCUS_NFE_TOKEN`. O `.env.local` tem
+> `FOCUS_NFE_TOKEN_PRODUÇÃO` e `FOCUS_NFE_HOMOLOGAÇÃO` — **com acento, e nomes que
+> nenhuma linha do código procura**. Em desenvolvimento local, toda chamada à
+> Focus morria em "não configurado", em silêncio. Na Vercel a variável existe com
+> o nome certo (`vercel env ls`), então **produção nunca quebrou** — só o
+> ambiente local, e ninguém tinha como saber.
+>
+> ### 🔴 Um erro MEU, achado pela sondagem e corrigido antes do deploy
+>
+> A 0094 criou `token_hom_cifrado` + `token_prod_cifrado` supondo que o token de
+> revenda tivesse uma versão por ambiente, e migrou os dois valores do
+> `.env.local` para lá. **Estava errado.** Sondando a Focus de verdade:
+>
+> | chamada | resultado |
+> |---|---|
+> | `GET /v2/codigos_cnae/6201501` com os dois tokens | **200** — parecia certo |
+> | `GET /v2/empresas/216964` com os dois tokens | **401** |
+> | `GET /v2/empresas/1` com os dois tokens | **401** |
+>
+> 401 até para um id qualquer significa que esses tokens **não têm acesso à API
+> de revenda**. Nenhum dos dois é o token de revenda; o de revenda é o
+> `FOCUS_NFE_TOKEN` que só existe na Vercel. Como o valor do banco vence o da
+> variável, ir para produção assim **quebraria o cadastro de empresa**.
+>
+> A **0095** corrige: uma coluna `token_revenda_cifrado`, as duas da 0094
+> derrubadas junto com os valores migrados por engano. O par hom/prod pertence ao
+> token **da empresa** (`companies.focus_token`), que não passa por esta tela.
+>
+> Lição embutida no código: **a sonda do botão "Testar" bate em `/v2/empresas`, não
+> no catálogo de CNAEs** — testar pelo catálogo aprovaria um token que não serve
+> para nada que a tela promete. E `404` ali é **sucesso**: prova que o token entrou
+> na revenda e só não achou o id.
+>
+> ### 🔬 Provado contra os serviços reais, não só em teste
+>
+> - **SERPRO:** `/authenticate` com mTLS do contratante + a credencial migrada →
+>   **HTTP 200, credencial ACEITA**. `config_serpro` está preenchida e provada.
+> - **Chave de cifra:** `CERT_ENC_KEY` da Vercel é "Sensitive" e o `env pull`
+>   devolve `[SENSITIVE]`, então comparar valores é impossível. Provado por
+>   consequência: o cron `/api/cron/obrigacoes` (11:00 UTC) renovou o token do
+>   contratante às 08:00:17 BRT de 20/08, o que exige decifrar
+>   `cert_pfx_enc`/`cert_password_enc` — e a chave local abre os mesmos blobs.
+>   **São a mesma chave**, então o que se cifra aqui abre em produção.
+>
+> ### Estado deixado no banco
+>
+> - `config_serpro`: preenchida e provada.
+> - `config_focus`: **vazia de propósito**. O token de revenda só existe na Vercel
+>   como "Sensitive" e não há como lê-lo daqui; enquanto a coluna estiver vazia o
+>   app usa a variável de ambiente e nada muda. **Ação para o usuário: colar o
+>   token de revenda em `/admin/configuracoes/focus` e clicar em "Testar".**
+>
+> ### Pendências desta sessão
+>
+> - 🔴 **Colar o token de revenda da Focus na tela nova** (acima).
+> - 🟡 **Descobrir o que são** `FOCUS_NFE_TOKEN_PRODUÇÃO` e `FOCUS_NFE_HOMOLOGAÇÃO`
+>   do `.env.local`. Autenticam no catálogo, não na revenda. Podem ser tokens de
+>   empresa ou de outra conta — **não os usei em lugar nenhum**.
+> - 🟡 **Duas linhas `AL PISCINAS`** em `companies`, ambas com `focus_token` e
+>   `focus_status: ok`, apontando para o mesmo `focus_empresa_id=216964`. Empresa
+>   duplicada, encontrada de passagem.
+> - 🟡 A chave da IA continua no `.env.local` como `TOKEN_OPENROUTER` e **não está
+>   na Vercel** — quem manda em produção é a `config_ia`. Vale limpar a variável
+>   morta.
+>
+> **Linha de base ao fim da sessão 30:** tsc 0 · **1914 testes** · 36 pulados ·
+> build limpo. (Eram 1868 na sessão 29; os 46 novos são as invariantes das duas
+> telas e da cifra.)
+>
 
 > ## 🆕 SESSÃO 29 (2026-08-19, noite) — canal de WhatsApp por escritório, implementado e provado
 >
@@ -2820,7 +2919,12 @@ mentindo sobre os blocos 4, 6 e 7.
 5. 🟡 **Emissão fiscal em produção** — `notas_fiscais/actions.ts` segue com
    `env: FocusEnv = 'hom'` fixo. Depende de contrato Focus + certificado A1 dos
    pilotos + procuração por CNPJ.
-6. 🟡 **Custo por instância na uazapi** não foi levantado. Com provisionamento
+6. 🟡 **Token de revenda da Focus na tela nova** (`/admin/configuracoes/focus`).
+   Hoje ele vive só como variável na Vercel, com valor "Sensitive" que ninguém
+   consegue ler de fora — inclusive para conferir. Colar na tela e clicar em
+   "Testar" tira a plataforma dessa dependência e prova a credencial num clique.
+   Enquanto a coluna estiver vazia, nada muda: o app usa a variável. (Sessão 30.)
+7. 🟡 **Custo por instância na uazapi** não foi levantado. Com provisionamento
    self-service, ele cresce por escritório **sem teto** — confirmar com o
    fornecedor antes de abrir para todos.
 
