@@ -15,10 +15,10 @@ import { focus, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { assertTipoDoc } from '@/lib/fiscal/notas-tipo';
 import { urlDownloadPermitida } from '@/lib/security/url-allowlist';
 import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
+import { tokenParaAmbiente } from '@/lib/fiscal/resolver-credencial';
 
 export const runtime = 'nodejs';
 
-const ENV: FocusEnv = 'hom';
 const FOCUS_BASE_HOM = 'https://homologacao.focusnfe.com.br';
 const FOCUS_BASE_PROD = 'https://api.focusnfe.com.br';
 
@@ -52,14 +52,17 @@ export async function GET(
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
-    .select('tipo_documento, referencia, pdf_url, xml_url')
+    .select('tipo_documento, referencia, pdf_url, xml_url, ambiente')
     .eq('id', id).eq('company_id', companyId).maybeSingle();
   if (!nota) return new Response('nota não encontrada', { status: 404 });
 
-  const { data: company } = await supabase
-    .from('companies').select('focus_token').eq('id', companyId).single();
-  const focusToken = (company?.focus_token as string | null) ?? null;
-  if (!focusToken) return new Response('empresa sem token Focus — sincronize antes', { status: 409 });
+  // O ambiente é o DA NOTA. Uma nota de homologação baixada da base de produção
+  // devolve 404 no PDF e no XML.
+  const ENV = ((nota.ambiente ?? 'hom') as FocusEnv);
+  const focusToken = await tokenParaAmbiente(companyId, ENV);
+  if (!focusToken) {
+    return new Response('empresa sem token Focus para o ambiente desta nota', { status: 409 });
+  }
 
   const tipo = assertTipoDoc(nota.tipo_documento as string);
   const ref = nota.referencia as string;
