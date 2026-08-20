@@ -63,12 +63,19 @@ export async function salvarSalarioMinimoAction(entrada: {
     return { ok: false, error: 'Não foi possível salvar. Tente de novo.' };
   }
 
+  // CONSERTO 3 (Bloco 5 producao fiscal): `alvo_id` e uuid, e a chave
+  // composta `salario_minimo:${vigenciaInicio}` nao e um — o insert falhava
+  // com erro de sintaxe, calado ate `registrarAuditoria` passar a conferir o
+  // `error` do insert. A chave e a vigencia vao para o `meta`.
   await registrarAuditoria({
     actorUserId: ctx.userId,
     acao: existente ? 'parametro_fiscal.corrigir' : 'parametro_fiscal.cadastrar',
     alvoTipo: 'parametros_fiscais',
-    alvoId: `salario_minimo:${vigenciaInicio}`,
-    meta: { valor, valor_anterior: existente?.valor ?? null, norma },
+    alvoId: null,
+    meta: {
+      chave: 'salario_minimo', vigencia_inicio: vigenciaInicio,
+      valor, valor_anterior: existente?.valor ?? null, norma,
+    },
   });
 
   // A tela de impostos lê o parâmetro no render; sem isto o admin salvaria e

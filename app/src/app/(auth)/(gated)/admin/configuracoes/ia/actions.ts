@@ -97,10 +97,15 @@ export async function salvarConfigIaAction(entrada: unknown): Promise<ActionResu
 
   // A AUDITORIA NÃO MENCIONA A CHAVE — nem mascarada. Máscara em log é chave
   // pela metade, e o que interessa auditar é QUEM trocou e QUANDO, não o quê.
+  // CONSERTO 3 (Bloco 5 producao fiscal): `alvo_id` e uuid e `'1'` nao e um —
+  // o insert falhava com erro de sintaxe, e ate 20/08/2026 isso passava em
+  // silencio porque `registrarAuditoria` nao conferia o `error` do insert.
+  // O identificador do singleton (id=1 em `config_ia`) vai para o `meta`.
   await registrarAuditoria({
     actorUserId: ctx.userId, acao: 'ia.config_salvar',
-    alvoTipo: 'config_ia', alvoId: '1',
+    alvoTipo: 'config_ia', alvoId: null,
     meta: {
+      config_id: 1,
       provedor: dados.provedor, modelo: patch.modelo,
       base_url: patch.base_url, trocou_chave: Boolean(chaveNova),
     },
@@ -162,10 +167,11 @@ export async function testarConexaoIaAction(): Promise<ActionResult> {
     return { ok: false, error: limpo };
   }
 
+  // Mesmo defeito de `salvarConfigIaAction` — `alvo_id` e uuid, `'1'` nao e.
   await registrarAuditoria({
     actorUserId: ctx.userId, acao: 'ia.testar_conexao',
-    alvoTipo: 'config_ia', alvoId: '1',
-    meta: { provedor: data.provedor, modelo: data.modelo },
+    alvoTipo: 'config_ia', alvoId: null,
+    meta: { config_id: 1, provedor: data.provedor, modelo: data.modelo },
   });
 
   return { ok: true };
