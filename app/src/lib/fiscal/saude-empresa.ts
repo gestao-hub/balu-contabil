@@ -63,9 +63,15 @@ export type SaudeState = {
   serproTokenExpiration: string | null; // ISO; null se nunca autenticado (= serpro_token_procurador_expiration)
   /** Contratante SERPRO provisionado no sistema (tabela singleton). Gate global. */
   contratanteConfigurado: boolean;
-  // Focus (companies)
+  // Focus (companies + empresas_fiscais)
   focusStatus: 'ok' | 'erro' | null;
-  focusToken: string | null;
+  // O sinal de "cadastrada na Focus" é o focus_empresa_id (empresas_fiscais —
+  // id que o próprio POST devolveu), não o token: `companies.focus_token`
+  // saiu de uso na Task 20 (0097 já tinha fechado a coluna equivalente
+  // cifrada para `authenticated`; o Diagnóstico gateando no token ficava
+  // preso em "empresa ainda não cadastrada" pra sempre, mesmo com a empresa
+  // de fato cadastrada e com credencial válida em empresa_credenciais_focus).
+  focusEmpresaId: number | null;
   focusLastCheck: string | null;
   focusLastError: string | null;
   // Snapshot Focus → empresas_fiscais (Focus 2.0). Quando preenchido, é a
@@ -450,7 +456,7 @@ function serproCheck(state: SaudeState, now: Date): CheckResult {
 /**
  * Sub-check 5a — "A empresa existe na Focus?"
  * Granularidade: só o cadastro inicial. NÃO julga se está habilitada nem se tem
- * cert. Aceitação: focus_token presente E focus_status='ok'.
+ * cert. Aceitação: focus_empresa_id presente E focus_status='ok'.
  */
 function focusEmpresaCadastradaCheck(state: SaudeState): CheckResult {
   const label = 'Empresa cadastrada';
@@ -465,7 +471,7 @@ function focusEmpresaCadastradaCheck(state: SaudeState): CheckResult {
       lastCheck: state.focusLastCheck,
     };
   }
-  if (state.focusToken && state.focusStatus === 'ok') {
+  if (state.focusEmpresaId != null && state.focusStatus === 'ok') {
     return {
       key: 'focus_cadastro', label,
       status: 'ok',
@@ -494,7 +500,7 @@ function focusEmpresaCadastradaCheck(state: SaudeState): CheckResult {
 function focusAutenticacaoCheck(state: SaudeState): CheckResult {
   const label = 'Autenticação funcionando';
 
-  if (!state.focusToken || state.focusStatus !== 'ok') {
+  if (state.focusEmpresaId == null || state.focusStatus !== 'ok') {
     return {
       key: 'focus_cadastro', label,
       status: 'pendente',
@@ -551,7 +557,7 @@ function focusCadastroCheck(state: SaudeState): CheckResult {
   }
 
   // (b) Nunca cadastrada.
-  if (!state.focusToken || state.focusStatus !== 'ok') {
+  if (state.focusEmpresaId == null || state.focusStatus !== 'ok') {
     return {
       key: 'focus_cadastro', label,
       status: 'pendente',

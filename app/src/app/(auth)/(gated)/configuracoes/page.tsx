@@ -166,7 +166,11 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       serproTokenExpiration: (empresaFiscal?.serpro_token_procurador_expiration as string | null) ?? null,
       contratanteConfigurado,
       focusStatus: (company.focus_status as 'ok' | 'erro' | null) ?? null,
-      focusToken: (company.focus_token as string | null) ?? null,
+      // O sinal de "cadastrada" é o focus_empresa_id, não o token — o token
+      // saiu de `companies` na 0097, e gatear nele deixava o Diagnóstico
+      // permanentemente dizendo "não cadastrada" (medido: 0 de 5 empresas com
+      // focus_token, inclusive as com focus_empresa_id preenchido).
+      focusEmpresaId: (empresaFiscal?.focus_empresa_id as number | null) ?? null,
       focusLastCheck: (company.focus_last_check as string | null) ?? null,
       focusLastError: (company.focus_last_error as string | null) ?? null,
       // Focus 2.0: snapshot só vira "presente" depois do GET após POST/PUT.

@@ -19,7 +19,7 @@ const BASE: SaudeState = {
   serproTokenExpiration: '2026-05-28T13:00:00Z',
   contratanteConfigurado: true,
   focusStatus: 'ok',
-  focusToken: 'XYZ',
+  focusEmpresaId: 42,
   focusLastCheck: '2026-05-28T11:00:00Z',
   focusLastError: null,
   focusSnapshot: {
@@ -296,7 +296,7 @@ describe('buildSaudeGroups — 4 grupos com roll-up', () => {
 
   it('focus.meta: sem cadastro (syncEm null) → sem meta', () => {
     const groups = buildSaudeGroups(
-      { ...BASE, focusToken: null, focusStatus: null, focusSnapshot: null },
+      { ...BASE, focusEmpresaId: null, focusStatus: null, focusSnapshot: null },
       NOW,
     );
     const focus = groups.find((g) => g.key === 'focus')!;
@@ -311,8 +311,8 @@ describe('focus_cadastro — agregado (token + habilita_* + cert)', () => {
     expect(checks[4]!.action).toBe('sync_focus');
     expect(checks[4]!.hint).toMatch(/CNPJ inválido/);
   });
-  it('pendente "nunca cadastrada" quando focus_token ausente', () => {
-    const checks = buildSaudeChecks({ ...BASE, focusStatus: null, focusToken: null }, NOW);
+  it('pendente "nunca cadastrada" quando focus_empresa_id ausente', () => {
+    const checks = buildSaudeChecks({ ...BASE, focusStatus: null, focusEmpresaId: null }, NOW);
     expect(checks[4]!.status).toBe('pendente');
     expect(checks[4]!.hint).toMatch(/ainda não foi cadastrada/);
   });
