@@ -151,11 +151,23 @@ export async function processarUploadCertificado(
   // silêncio — resolve-se depois em "Sincronizar com Focus" no Diagnóstico.
   const { data: fiscalForFocus } = await supabase
     .from('empresas_fiscais')
-    .select('focus_empresa_id')
+    .select('focus_empresa_id, focus_origem')
     .eq('empresa_id', companyId)
     .is('deleted_at', null)
     .maybeSingle();
-  if (fiscalForFocus?.focus_empresa_id != null) {
+
+  // Bloco 5: o espelho na Focus é do caminho `balu`. Com origem 'propria' o
+  // PUT /v2/empresas/:id não está ao nosso alcance — é a credencial da
+  // PLATAFORMA que o abre, e o token da empresa leva 401 (provado 20/08/2026).
+  // Sem esta ramificação, toda empresa que traz a própria conta receberia um
+  // aviso de falha em todo upload de certificado.
+  if ((fiscalForFocus?.focus_origem ?? 'balu') === 'propria') {
+    warnings.push(
+      'Certificado guardado no Balu. Como esta empresa usa a própria conta na Focus, '
+      + 'envie o mesmo certificado no painel da Focus dela — não conseguimos fazer isso por você.',
+    );
+  } else if (fiscalForFocus?.focus_empresa_id != null) {
+    // Chamada EXISTENTE, inalterada — só movida para dentro do `else if`.
     const focusResult = await atualizarEmpresaNaFocus(supabase, companyId, 'hom', {
       certificado: { base64: entrada.bytes.toString('base64'), senha: entrada.senha },
     });
