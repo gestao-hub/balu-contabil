@@ -1,6 +1,12 @@
 // Bloco 5 — a guarda de producao. O teste central do bloco.
-import { describe, it, expect } from 'vitest';
-import { decidirCredencial, type EstadoFiscal } from './resolver-credencial';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  decidirCredencial,
+  resolverCredencialEmissao,
+  tokenParaAmbiente,
+  type EstadoFiscal,
+} from './resolver-credencial';
+import { guardarTokenEmpresa } from './credencial-empresa';
 
 const AMANHA = new Date(Date.now() + 86_400_000).toISOString();
 const ONTEM = new Date(Date.now() - 86_400_000).toISOString();
@@ -88,5 +94,140 @@ describe('decidirCredencial', () => {
     const r = decidirCredencial({ ...PRONTA, ambiente: 'hom', tokenHom: null });
     expect(r.ok).toBe(false);
     expect(!r.ok && r.motivo).toBe('sem_token_homologacao');
+  });
+});
+
+// ═══ resolverCredencialEmissao / tokenParaAmbiente — a leitura do banco ═══
+//
+// `guardarTokenEmpresa`/`lerTokenEmpresa` só leem `CERT_ENC_KEY` no MOMENTO da
+// chamada (ver `envelope.ts:key()`), não na hora do import — por isso não
+// precisa do `vi.resetModules()` que `credencial-empresa.test.ts` usa: basta
+// a chave estar setada antes de cada teste chamar cifrar/decifrar.
+const CHAVE_ENC_B64 = Buffer.alloc(32, 7).toString('base64');
+const ENV_ANTES_LEITURA = { ...process.env };
+
+beforeEach(() => { process.env.CERT_ENC_KEY = CHAVE_ENC_B64; });
+afterEach(() => { process.env = { ...ENV_ANTES_LEITURA }; });
+
+/**
+ * Fake do Supabase que devolve uma linha (ou `null`) por tabela, aceitando
+ * `.eq/.is/.order/.limit` em qualquer ordem/quantidade antes do `.maybeSingle`
+ * terminal — cobre as duas cadeias reais deste módulo: a de `empresas_fiscais`
+ * / `empresa_credenciais_focus` (só `.eq().maybeSingle()`) e a de
+ * `arquivos_auxiliares` (`.eq().is().order().limit().maybeSingle()`).
+ */
+function supabaseFake(tabelas: Record<string, unknown>) {
+  return {
+    from: (tabela: string) => {
+      const linha = tabelas[tabela] ?? null;
+      const chain = {
+        eq: () => chain,
+        is: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        maybeSingle: async () => ({ data: linha, error: null }),
+      };
+      return { select: () => chain };
+    },
+  };
+}
+
+describe('resolverCredencialEmissao', () => {
+  it('caminho feliz de homologacao: monta o estado do banco e devolve o token decifrado', async () => {
+    const tokenHomCifrado = guardarTokenEmpresa('tok-hom-123');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabaseFake({
+      empresas_fiscais: {
+        focus_origem: 'balu', focus_ambiente: 'hom',
+        focus_habilita_nfsen_producao: false, focus_producao_declarada: false,
+      },
+      empresa_credenciais_focus: { token_hom_cifrado: tokenHomCifrado, token_prod_cifrado: null },
+      arquivos_auxiliares: { cert_not_after: null },
+    }) as any;
+
+    const r = await resolverCredencialEmissao(sb, 'empresa-hom');
+
+    expect(r).toEqual({ ok: true, ambiente: 'hom', token: 'tok-hom-123' });
+  });
+
+  // Requisito A (revisao das tasks 3-4): sem linha em `empresas_fiscais`, o
+  // `?? 'hom'` tem de decidir homologacao — NUNCA producao. Um mutante que
+  // trocasse o fallback por `?? 'prod'` exigiria tokenProd + certificado +
+  // habilitacao, nenhum dos quais existe aqui: o resultado deixaria de ser
+  // `{ ok: true, ambiente: 'hom' }` e este teste morderia a troca.
+  it('empresas_fiscais ausente → decide hom, nunca prod', async () => {
+    const tokenHomCifrado = guardarTokenEmpresa('tok-hom-fallback');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabaseFake({
+      empresas_fiscais: null,
+      empresa_credenciais_focus: { token_hom_cifrado: tokenHomCifrado, token_prod_cifrado: null },
+      arquivos_auxiliares: null,
+    }) as any;
+
+    const r = await resolverCredencialEmissao(sb, 'empresa-sem-config');
+
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.ambiente).toBe('hom');
+  });
+
+  // Requisito B (revisao das tasks 3-4): token gravado SEM o prefixo `enc:v1:`
+  // e gravacao corrompida (`guardarTokenEmpresa` nunca grava em claro) — nao
+  // "token ausente". `sem_token_producao` mentiria dizendo que falta cadastrar
+  // algo que ja esta la, so que ilegivel.
+  it('token gravado corrompido (sem prefixo enc:v1:) → motivo credencial_corrompida', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabaseFake({
+      empresas_fiscais: {
+        focus_origem: 'balu', focus_ambiente: 'hom',
+        focus_habilita_nfsen_producao: false, focus_producao_declarada: false,
+      },
+      empresa_credenciais_focus: { token_hom_cifrado: 'valor-em-claro-sem-prefixo', token_prod_cifrado: null },
+      arquivos_auxiliares: null,
+    }) as any;
+
+    const r = await resolverCredencialEmissao(sb, 'empresa-corrompida');
+
+    expect(r).toEqual({ ok: false, motivo: 'credencial_corrompida' });
+  });
+
+  it('caminho completo de producao: origem balu, tokenProd decifrado, cert futuro, habilitado', async () => {
+    const tokenProdCifrado = guardarTokenEmpresa('tok-prod-999');
+    const amanha = new Date(Date.now() + 86_400_000).toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabaseFake({
+      empresas_fiscais: {
+        focus_origem: 'balu', focus_ambiente: 'prod',
+        focus_habilita_nfsen_producao: true, focus_producao_declarada: false,
+      },
+      empresa_credenciais_focus: { token_hom_cifrado: null, token_prod_cifrado: tokenProdCifrado },
+      arquivos_auxiliares: { cert_not_after: amanha },
+    }) as any;
+
+    const r = await resolverCredencialEmissao(sb, 'empresa-prod');
+
+    expect(r).toEqual({ ok: true, ambiente: 'prod', token: 'tok-prod-999' });
+  });
+});
+
+describe('tokenParaAmbiente', () => {
+  it('devolve o token cifrado do ambiente pedido, ja decifrado', async () => {
+    const tokenProdCifrado = guardarTokenEmpresa('tok-prod-abc');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabaseFake({
+      empresa_credenciais_focus: { token_hom_cifrado: null, token_prod_cifrado: tokenProdCifrado },
+    }) as any;
+
+    const r = await tokenParaAmbiente(sb, 'empresa-x', 'prod');
+
+    expect(r).toBe('tok-prod-abc');
+  });
+
+  it('sem linha em empresa_credenciais_focus → null', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabaseFake({ empresa_credenciais_focus: null }) as any;
+
+    const r = await tokenParaAmbiente(sb, 'empresa-y', 'hom');
+
+    expect(r).toBeNull();
   });
 });

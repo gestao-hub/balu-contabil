@@ -27,7 +27,8 @@ export type MotivoRecusa =
   | 'sem_token_producao'
   | 'certificado_invalido'
   | 'producao_nao_habilitada'
-  | 'producao_nao_declarada';
+  | 'producao_nao_declarada'
+  | 'credencial_corrompida';
 
 export type Credencial =
   | { ok: true; ambiente: AmbienteFiscal; token: string }
@@ -44,6 +45,8 @@ export const MENSAGEM_RECUSA: Record<MotivoRecusa, string> = {
     'A Focus ainda não confirmou a habilitação de NFS-e em produção para esta empresa.',
   producao_nao_declarada:
     'Falta confirmar que a Focus habilitou NFS-e em produção para esta empresa. Como a conta na Focus é do cliente, não temos como conferir isso — a confirmação é declarada por quem cadastrou a credencial.',
+  credencial_corrompida:
+    'A credencial da Focus desta empresa está gravada de forma corrompida e não pôde ser lida. Cadastre-a novamente.',
 };
 
 export function decidirCredencial(e: EstadoFiscal, agora: Date = new Date()): Credencial {
@@ -79,4 +82,108 @@ export function decidirCredencial(e: EstadoFiscal, agora: Date = new Date()): Cr
   }
 
   return { ok: true, ambiente: 'prod', token: e.tokenProd };
+}
+
+// A leitura mora aqui, junto da regra, porque separar produziria um módulo com
+// uma função só e um import a mais em cada chamador. O que importa é que
+// `decidirCredencial` continue puro e testável sem banco.
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { lerTokenEmpresa } from './credencial-empresa';
+
+/**
+ * Monta o `EstadoFiscal` da empresa a partir do banco e aplica a guarda
+ * (`decidirCredencial`).
+ *
+ * O certificado é lido de `arquivos_auxiliares` pela chave `company_id` (não
+ * `unique_id_empresa` — armadilha já registrada no projeto).
+ */
+export async function resolverCredencialEmissao(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, 'public', any>,
+  companyId: string,
+  agora: Date = new Date(),
+): Promise<Credencial> {
+  const [fiscal, cred, cert] = await Promise.all([
+    supabase.from('empresas_fiscais')
+      .select('focus_origem, focus_ambiente, focus_habilita_nfsen_producao, focus_producao_declarada')
+      .eq('empresa_id', companyId).maybeSingle(),
+    // `empresa_credenciais_focus` e fechada para anon/authenticated (0097).
+    // Quem chama esta funcao tem de estar com client de service role, ou a
+    // leitura volta vazia e a emissao morre com "sem token" sem dizer por que.
+    supabase.from('empresa_credenciais_focus')
+      .select('token_hom_cifrado, token_prod_cifrado')
+      .eq('empresa_id', companyId).maybeSingle(),
+    supabase.from('arquivos_auxiliares')
+      .select('cert_not_after')
+      .eq('company_id', companyId).is('deleted_at', null)
+      .order('cert_not_after', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+
+  // Decifra dentro do try: se a gravação estiver corrompida (valor sem o
+  // prefixo `enc:v1:`), `lerTokenEmpresa` lança. REQUISITO B da revisão das
+  // tasks 3-4: não deixar cair para `decidirCredencial` com os dois tokens
+  // nulos — isso viraria `sem_token_producao`, uma mensagem que MENTE (diz
+  // "não tem o token cadastrado" quando na verdade tem, corrompido, e manda o
+  // usuário procurar um cadastro que já existe). Motivo próprio, devolvido
+  // direto, sem passar pela guarda.
+  let tokenHom: string | null;
+  let tokenProd: string | null;
+  try {
+    tokenHom = lerTokenEmpresa((cred.data?.token_hom_cifrado ?? null) as string | null);
+    tokenProd = lerTokenEmpresa((cred.data?.token_prod_cifrado ?? null) as string | null);
+  } catch (e) {
+    console.error('[bloco5] credencial corrompida em', companyId, e instanceof Error ? e.message : e);
+    return { ok: false, motivo: 'credencial_corrompida' };
+  }
+
+  // REQUISITO A da revisão das tasks 3-4: os dois `??` abaixo só disparam
+  // quando a linha de `empresas_fiscais` NÃO EXISTE (empresa sem configuração
+  // fiscal nenhuma). `?? 'hom'` é literalmente a expressão que a spec (§4)
+  // proíbe para a GUARDA — mas aqui ela decide o que fazer na AUSÊNCIA de
+  // dado, e cair em homologação é o desfecho seguro: uma empresa sem linha em
+  // `empresas_fiscais` não tem como ter sido habilitada para produção (o
+  // default da própria coluna, na 0096, também é 'hom'). Um `?? 'prod'`
+  // arriscaria emitir nota real para uma empresa nunca configurada. Preso
+  // pelo teste "empresas_fiscais ausente → decide hom, nunca prod".
+  const origem = (fiscal.data?.focus_origem ?? 'balu') as OrigemFocus;
+  const ambiente = (fiscal.data?.focus_ambiente ?? 'hom') as AmbienteFiscal;
+
+  const estado: EstadoFiscal = {
+    origem,
+    ambiente,
+    tokenHom,
+    tokenProd,
+    certNotAfter: (cert.data?.cert_not_after ?? null) as string | null,
+    habilitaProducaoFocus: Boolean(fiscal.data?.focus_habilita_nfsen_producao),
+    producaoDeclarada: Boolean(fiscal.data?.focus_producao_declarada),
+  };
+
+  return decidirCredencial(estado, agora);
+}
+
+/**
+ * O token de UM ambiente específico, sem passar pela guarda.
+ *
+ * Existe para as leituras de nota já emitida (status, download, cancelamento):
+ * ali o ambiente não se decide, ele já foi decidido na emissão e está carimbado
+ * na linha. Aplicar a guarda de produção aqui impediria de baixar o PDF de uma
+ * nota antiga só porque o certificado venceu depois.
+ */
+export async function tokenParaAmbiente(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, 'public', any>,
+  companyId: string,
+  ambiente: AmbienteFiscal,
+): Promise<string | null> {
+  const { data } = await supabase.from('empresa_credenciais_focus')
+    .select('token_hom_cifrado, token_prod_cifrado')
+    .eq('empresa_id', companyId).maybeSingle();
+  if (!data) return null;
+  const col = ambiente === 'prod' ? data.token_prod_cifrado : data.token_hom_cifrado;
+  try {
+    return lerTokenEmpresa((col ?? null) as string | null);
+  } catch (e) {
+    console.error('[bloco5] token corrompido em', companyId, e instanceof Error ? e.message : e);
+    return null;
+  }
 }
