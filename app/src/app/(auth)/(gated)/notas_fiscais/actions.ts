@@ -9,7 +9,8 @@ import { createServerClient } from '@/lib/supabase/server';
 import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
 import { assertAssinaturaEmpresa } from '@/lib/billing/gate';
 import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
-import { resolverCredencialEmissao, MENSAGEM_RECUSA } from '@/lib/fiscal/resolver-credencial';
+import { resolverCredencialEmissao, tokenParaAmbiente, MENSAGEM_RECUSA } from '@/lib/fiscal/resolver-credencial';
+import { registrarAuditoria } from '@/lib/security/audit';
 import { assertTipoDoc, validarJustificativa, cancelamentoSoPortal, type TipoDoc } from '@/lib/fiscal/notas-tipo';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import { buildNfsePayload } from '@/lib/fiscal/nfse-payload';
@@ -325,6 +326,17 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
     return { ok: false, error: friendly };
   }
 
+  if (credencial.ambiente === 'prod') {
+    // Só produção. Homologação é teste e encheria a trilha de ruído — e
+    // trilha com ruído é trilha que ninguém lê.
+    await registrarAuditoria({
+      actorUserId: user.id,
+      acao: 'nota.emitida_producao',
+      alvoTipo: 'notas_fiscais', alvoId: notaId,
+      meta: { ref, tipo_documento: 'NFSe', company_id: companyId },
+    });
+  }
+
   revalidatePath('/notas_fiscais');
   revalidatePath(`/notas_fiscais/${notaId}`);
   return { ok: true, notaId };
@@ -356,14 +368,18 @@ export async function atualizarStatusNotaAction(
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
-    .select('id, tipo_documento, referencia, payload_focusnfe')
+    .select('id, tipo_documento, referencia, payload_focusnfe, ambiente')
     .eq('id', id).eq('company_id', companyId).maybeSingle();
   if (!nota) return { ok: false, error: 'Nota não encontrada.' };
 
-  const { data: company } = await supabase
-    .from('companies').select('focus_token').eq('id', companyId).single();
-  if (!company?.focus_token) {
-    return { ok: false, error: 'Empresa sem token Focus — sincronize no Diagnóstico.' };
+  // NÃO passa por `resolverCredencialEmissao` de propósito: a guarda de
+  // produção decide onde uma nota NOVA nasce. Aplicá-la aqui impediria de
+  // consultar o status de uma nota já emitida só porque o certificado venceu
+  // depois — e o status é justamente o que diz se ela foi autorizada.
+  const ambienteNota = ((nota.ambiente ?? 'hom') as FocusEnv);
+  const tokenDaNota = await tokenParaAmbiente(companyId, ambienteNota);
+  if (!tokenDaNota) {
+    return { ok: false, error: `Esta nota foi emitida em ${ambienteNota === 'prod' ? 'produção' : 'homologação'} e não há token desse ambiente cadastrado.` };
   }
 
   const ref = nota.referencia as string;
@@ -371,11 +387,11 @@ export async function atualizarStatusNotaAction(
   let resp: Record<string, unknown>;
   try {
     if (tipoDoc === 'NFe') {
-      resp = await focus.consultarStatusNfe(ref, company.focus_token as string, 'hom');
+      resp = await focus.consultarStatusNfe(ref, tokenDaNota, ambienteNota);
     } else if (tipoDoc === 'NFCe') {
-      resp = await focus.consultarStatusNfce(ref, company.focus_token as string, 'hom');
+      resp = await focus.consultarStatusNfce(ref, tokenDaNota, ambienteNota);
     } else {
-      resp = await focus.consultarStatusNfse(ref, company.focus_token as string, 'hom');
+      resp = await focus.consultarStatusNfse(ref, tokenDaNota, ambienteNota);
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -438,7 +454,7 @@ export async function cancelarNotaAction(
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
-    .select('id, tipo_documento, referencia, status, origem')
+    .select('id, tipo_documento, referencia, status, origem, ambiente')
     .eq('id', id)
     .eq('company_id', companyId)
     .maybeSingle();
@@ -462,15 +478,24 @@ export async function cancelarNotaAction(
   // Cancelamento exige o token da EMPRESA (igual emissão).
   const { data: companyForCancel } = await supabase
     .from('companies')
-    .select('focus_token, municipio, uf')
+    .select('municipio, uf')
     .eq('id', companyId)
     .single();
-  if (!companyForCancel?.focus_token) {
-    return { ok: false, error: 'Empresa sem token Focus — sincronize no Diagnóstico antes.' };
+  if (!companyForCancel) {
+    return { ok: false, error: 'Empresa não encontrada.' };
   }
-  const focusToken = companyForCancel.focus_token as string;
 
-  const env: FocusEnv = 'hom'; // produção depende do token Focus (Blocked) + flags da empresa
+  // NÃO passa por `resolverCredencialEmissao`: o ambiente não se decide aqui,
+  // já foi decidido na emissão e está carimbado em `nota.ambiente`. Cancelar
+  // uma nota de produção pela base de homologação devolve 404 — e o usuário
+  // leria "nota não encontrada" para uma nota que existe.
+  const ambienteNota = ((nota.ambiente ?? 'hom') as FocusEnv);
+  const focusToken = await tokenParaAmbiente(companyId, ambienteNota);
+  if (!focusToken) {
+    return { ok: false, error: `Esta nota foi emitida em ${ambienteNota === 'prod' ? 'produção' : 'homologação'} e não há token desse ambiente cadastrado.` };
+  }
+
+  const env: FocusEnv = ambienteNota;
   const justif = justificativa.trim();
 
   let tipo: TipoDoc;
@@ -643,9 +668,11 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const { data: company } = await supabase
-    .from('companies').select('cnpj, focus_token').eq('id', companyId).single();
+    .from('companies').select('cnpj').eq('id', companyId).single();
   if (!company) return { ok: false, error: 'Empresa não encontrada.' };
-  if (!company.focus_token) return { ok: false, error: 'Empresa não está cadastrada na Focus. Sincronize no Diagnóstico.' };
+  // Bloco 5: NÃO gatear em `company.focus_token` aqui — a coluna foi esvaziada
+  // pela Task 2 (token mora em `empresa_credenciais_focus` agora). Quem cobre
+  // esta checagem é `resolverCredencialEmissao`, chamado abaixo.
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
@@ -691,10 +718,20 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
   if (insertErr || !nota) return { ok: false, error: insertErr?.message ?? 'Falha ao registrar a nota.' };
   const notaId = nota.id as string;
 
-  try {
-    const resp = await focus.emitirNfe(ref, payload, company.focus_token as string, 'hom');
+  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — ver
+  // o mesmo comentário em `emitirNotaAction` (NFS-e) acima.
+  const credencial = await resolverCredencialEmissao(companyId);
+  if (!credencial.ok) {
     await supabase.from('notas_fiscais')
-      .update({ payload_focusnfe: { request: payload, response: resp } })
+      .update({ status: 'erro', payload_focusnfe: { erro: credencial.motivo } })
+      .eq('id', notaId).eq('company_id', companyId);
+    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
+  }
+
+  try {
+    const resp = await focus.emitirNfe(ref, payload, credencial.token, credencial.ambiente);
+    await supabase.from('notas_fiscais')
+      .update({ ambiente: credencial.ambiente, payload_focusnfe: { request: payload, response: resp } })
       .eq('id', notaId).eq('company_id', companyId);
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
@@ -704,6 +741,18 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
       .eq('id', notaId).eq('company_id', companyId);
     return { ok: false, error: friendly };
   }
+
+  if (credencial.ambiente === 'prod') {
+    // Só produção. Homologação é teste e encheria a trilha de ruído — e
+    // trilha com ruído é trilha que ninguém lê.
+    await registrarAuditoria({
+      actorUserId: user.id,
+      acao: 'nota.emitida_producao',
+      alvoTipo: 'notas_fiscais', alvoId: notaId,
+      meta: { ref, tipo_documento: 'NFe', company_id: companyId },
+    });
+  }
+
   revalidatePath('/notas_fiscais');
   return { ok: true, notaId };
 }
@@ -764,9 +813,10 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const { data: company } = await supabase
-    .from('companies').select('cnpj, focus_token').eq('id', companyId).single();
+    .from('companies').select('cnpj').eq('id', companyId).single();
   if (!company) return { ok: false, error: 'Empresa não encontrada.' };
-  if (!company.focus_token) return { ok: false, error: 'Empresa não está cadastrada na Focus. Sincronize no Diagnóstico.' };
+  // Bloco 5: NÃO gatear em `company.focus_token` aqui — ver o mesmo
+  // comentário em `emitirNfeAction` acima.
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
@@ -804,10 +854,20 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
   if (insertErr || !nota) return { ok: false, error: insertErr?.message ?? 'Falha ao registrar a nota.' };
   const notaId = nota.id as string;
 
-  try {
-    const resp = await focus.emitirNfce(ref, payload, company.focus_token as string, 'hom');
+  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — ver
+  // o mesmo comentário em `emitirNotaAction` (NFS-e) acima.
+  const credencial = await resolverCredencialEmissao(companyId);
+  if (!credencial.ok) {
     await supabase.from('notas_fiscais')
-      .update({ payload_focusnfe: { request: payload, response: resp } })
+      .update({ status: 'erro', payload_focusnfe: { erro: credencial.motivo } })
+      .eq('id', notaId).eq('company_id', companyId);
+    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
+  }
+
+  try {
+    const resp = await focus.emitirNfce(ref, payload, credencial.token, credencial.ambiente);
+    await supabase.from('notas_fiscais')
+      .update({ ambiente: credencial.ambiente, payload_focusnfe: { request: payload, response: resp } })
       .eq('id', notaId).eq('company_id', companyId);
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
@@ -817,6 +877,18 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
       .eq('id', notaId).eq('company_id', companyId);
     return { ok: false, error: friendly };
   }
+
+  if (credencial.ambiente === 'prod') {
+    // Só produção. Homologação é teste e encheria a trilha de ruído — e
+    // trilha com ruído é trilha que ninguém lê.
+    await registrarAuditoria({
+      actorUserId: user.id,
+      acao: 'nota.emitida_producao',
+      alvoTipo: 'notas_fiscais', alvoId: notaId,
+      meta: { ref, tipo_documento: 'NFCe', company_id: companyId },
+    });
+  }
+
   revalidatePath('/notas_fiscais');
   return { ok: true, notaId };
 }
