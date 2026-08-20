@@ -169,6 +169,30 @@ export async function salvarConfigSerproAction(entrada: unknown): Promise<Action
 
   invalidarCacheSerpro();
 
+  // CONSERTO 4 (Bloco 5 produção fiscal): o token do `/authenticate` é
+  // emitido para o PAR certificado + consumer key/secret.
+  // `enviarCertContratanteAction`, logo abaixo neste arquivo, já zera os
+  // tokens de sessão do contratante ao trocar o CERTIFICADO — ver o
+  // comentário lá. Esta action trocava a OUTRA metade do par sem fazer o
+  // mesmo: até ~1h de chamadas continuariam usando um token emitido para a
+  // credencial ANTIGA, e se a troca foi por revogação, o 401 que chegasse ao
+  // contador apontaria para a Receita, não para a credencial recém-trocada.
+  if (contratante) {
+    const { error: eZerarSessao } = await sb
+      .from('serpro_contratante')
+      .update({
+        auth_access_token: null,
+        auth_jwt_token: null,
+        auth_token_expiration: null,
+      })
+      .eq('id', contratante.id);
+    if (eZerarSessao) {
+      // Não bloqueia — a credencial nova já está gravada. Mas o cache do
+      // token pode ficar com o valor antigo até expirar, e vale saber por quê.
+      console.error('[0094] zerar tokens de sessão do contratante falhou:', eZerarSessao.message);
+    }
+  }
+
   // CONSERTO 3: `audit_log.alvo_id` é uuid, e a string `'1'` não é — o insert
   // falhava com erro de sintaxe, calado, porque `registrarAuditoria` não
   // conferia o `error` do insert. O identificador do singleton vai para o
