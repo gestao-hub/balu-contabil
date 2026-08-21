@@ -1,7 +1,7 @@
 // @custom — Onda 4 hardening — Cliente Focus NFe (NF-e / NFC-e / NFS-e + consultas)
 // Secrets NUNCA vão pro frontend. Este módulo só é importável no server.
 import 'server-only';
-import { obterTokenRevendaFocus } from '@/lib/fiscal/config-focus';
+import { obterTokenFocus, type AmbienteFocus } from '@/lib/fiscal/config-focus';
 
 const PROD = 'https://api.focusnfe.com.br';
 const HOM  = 'https://homologacao.focusnfe.com.br';
@@ -12,29 +12,33 @@ export type FocusEnv = 'prod' | 'hom';
 /**
  * Monta o header Basic Auth.
  *
- * - Sem `tokenOverride`: resolve o **token de revenda** via
- *   `obterTokenRevendaFocus` — `config_focus` no banco, com `FOCUS_NFE_TOKEN`
- *   como fallback (0095). Esse é o único token válido pros endpoints
- *   `/v2/empresas*` (cadastro, atualização, snapshot).
+ * - Sem `tokenOverride`: resolve o token da conta da plataforma **no
+ *   ambiente pedido** via `obterTokenFocus(ambiente)` — `config_focus` no
+ *   banco, com a variável de ambiente correspondente como fallback (0099).
+ *   Token de homologação numa chamada a `api.focusnfe.com.br` (ou o inverso)
+ *   dá 401 — por isso o ambiente de `auth` tem de ser o mesmo que `call()`
+ *   está de fato usando na URL.
  * - Com `tokenOverride`: usa esse token em vez de resolver. Dois usos:
  *     1. endpoints de **emissão** (`/v2/nfsen`, `/v2/nfse`, `/v2/nfe`, etc) —
  *        a Focus exige o `token_homologacao` ou `token_producao` específico
  *        da EMPRESA, salvo em `companies.focus_token` após o POST inicial em
  *        `/v2/empresas`;
  *     2. `consultarEmpresa` chamado pela tela de configuração ANTES de gravar
- *        um token de revenda novo (Bloco 5, conserto 1) — precisa sondar com
- *        o candidato que está no formulário, não com o que já está no banco.
+ *        um token novo (Bloco 5, conserto 1) — precisa sondar com o
+ *        candidato que está no formulário, não com o que já está no banco.
  */
-async function auth(tokenOverride?: string): Promise<string> {
+async function auth(ambiente: AmbienteFocus, tokenOverride?: string): Promise<string> {
   // Com override o token é da EMPRESA e vem do banco de quem chamou — não há
   // o que resolver aqui, e nem se deve ir ao `config_focus` por engano.
-  const token = tokenOverride ?? (await obterTokenRevendaFocus());
+  const token = tokenOverride ?? (await obterTokenFocus(ambiente));
   if (!token) {
-    // A mensagem DIZ ONDE AGIR. A anterior era "FOCUS_NFE_TOKEN não
-    // configurado": tecnicamente certa, e mesmo assim muda — quem a lesse não
-    // teria como saber onde a variável deveria estar.
+    // A mensagem DIZ QUAL AMBIENTE falta e ONDE AGIR. A anterior era
+    // "FOCUS_NFE_TOKEN não configurado": tecnicamente certa, e mesmo assim
+    // muda — quem a lesse não teria como saber onde a variável deveria estar
+    // nem qual dos dois tokens era o que faltava.
     throw new Error(
-      'Token de revenda da Focus não configurado — preencha em /admin/configuracoes/focus.',
+      `Token de ${ambiente === 'hom' ? 'homologação' : 'produção'} da Focus não configurado — ` +
+      'preencha em /admin/configuracoes/focus.',
     );
   }
   // Focus usa Basic Auth com token como username e senha vazia.
@@ -76,8 +80,10 @@ async function call<T>(
 ): Promise<T> {
   // Resolvido UMA vez, fora do laço: a credencial não muda entre tentativas, e
   // dentro do `try` a falta de token seria capturada como se fosse erro de rede
-  // e ainda tentaria mais duas vezes antes de contar a verdade.
-  const authorization = await auth(tokenOverride);
+  // e ainda tentaria mais duas vezes antes de contar a verdade. `env` já é o
+  // ambiente que a URL abaixo vai de fato usar (`base(env)`) — é o mesmo que
+  // `auth` precisa para resolver o token certo.
+  const authorization = await auth(env, tokenOverride);
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -173,9 +179,16 @@ export const focus = {
   consultarCnpj: (cnpj: string, env: FocusEnv = 'prod') =>
     call<Record<string, unknown>>(env, 'GET', `/v2/cnpjs/${cnpj}`),
 
-  /** GET /v2/codigos_cnae/:codigo — consulta um CNAE no catálogo (código, descrição, hierarquia). */
-  consultarCnae: (codigo: string, env: FocusEnv = 'prod') =>
-    call<Record<string, unknown>>(env, 'GET', `/v2/codigos_cnae/${codigo}`),
+  /**
+   * GET /v2/codigos_cnae/:codigo — consulta um CNAE no catálogo (código, descrição, hierarquia).
+   *
+   * `tokenOverride` aceito pela mesma razão de `consultarEmpresa`: é o
+   * endpoint que `lib/fiscal/focus-token-sonda.ts` usa para testar um token
+   * CANDIDATO (do formulário de `admin/configuracoes/focus`) antes de gravar,
+   * sem esperar o que já está no banco.
+   */
+  consultarCnae: (codigo: string, env: FocusEnv = 'prod', tokenOverride?: string) =>
+    call<Record<string, unknown>>(env, 'GET', `/v2/codigos_cnae/${codigo}`, undefined, tokenOverride),
 
   /**
    * GET /v2/codigos_cnae?... — busca/lista CNAEs no catálogo (paginado, até 50/req).
@@ -210,7 +223,7 @@ export const focus = {
    *
    * `tokenOverride` aceito para a sonda de `admin/configuracoes/focus`: testar
    * o token ANTES de gravar exige chamar com o candidato do formulário, e não
-   * com o que `obterTokenRevendaFocus` leria do banco (que ainda é o antigo).
+   * com o que `obterTokenFocus` leria do banco (que ainda é o antigo).
    */
   consultarEmpresa: (id: number, _env: FocusEnv = 'hom', tokenOverride?: string) =>
     call<FocusEmpresaSnapshot>('prod', 'GET', `/v2/empresas/${id}`, undefined, tokenOverride),

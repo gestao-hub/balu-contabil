@@ -1,7 +1,7 @@
 // Bloco 5 (produção fiscal) — conserto 1: classificador puro da sonda de
 // credencial do SERPRO (`autenticarContratante`, o `/authenticate` real).
 //
-// Irmão de `focus-revenda-sonda.ts` — mesma ideia, contrato diferente.
+// Irmão de `focus-token-sonda.ts` — mesma ideia, contrato diferente.
 // Deliberadamente um módulo PRÓPRIO, e não reuso do da Focus: o cabeçalho de
 // `lib/fiscal/config-serpro.ts` já registra que os dois domínios não
 // compartilham código de propósito, para uma regra nova de um não alcançar o

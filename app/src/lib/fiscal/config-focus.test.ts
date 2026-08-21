@@ -1,4 +1,5 @@
-// 0094/0095 — o token de REVENDA da Focus cifrado em repouso, e o fallback.
+// 0094/0095/0099 — os tokens da Focus (hom/prod) para a conta da plataforma,
+// cifrados em repouso, e o fallback de ambiente.
 //
 // O TESTE DO "FORMATO DE FIO" NÃO É ZELO: segredos deste projeto já foram
 // gravados por scripts `.mjs` que REIMPLEMENTAM a cifra (o módulo é TypeScript
@@ -21,13 +22,9 @@ beforeEach(async () => {
   // ambiente — que é o que estes testes exercitam.
   delete process.env.NEXT_PUBLIC_SUPABASE_URL;
   delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-  for (const k of [
-    'FOCUS_NFE_TOKEN',
-    'FOCUS_NFE_TOKEN_PRODUCAO',
-    'FOCUS_NFE_TOKEN_PRODUÇÃO',
-    'FOCUS_NFE_HOMOLOGACAO',
-    'FOCUS_NFE_HOMOLOGAÇÃO',
-  ]) delete process.env[k];
+  for (const k of ['FOCUS_NFE_TOKEN', 'FOCUS_NFE_TOKEN_PRODUCAO', 'FOCUS_NFE_HOMOLOGACAO']) {
+    delete process.env[k];
+  }
   vi.resetModules();
   mod = await import('./config-focus');
 });
@@ -74,33 +71,56 @@ describe('cifra do token', () => {
   });
 });
 
-describe('fallback de ambiente', () => {
-  it('sem token em lugar nenhum devolve null', async () => {
-    expect(await mod.obterTokenRevendaFocus()).toBeNull();
+describe('fallback por ambiente (0099)', () => {
+  it('sem token em lugar nenhum devolve null para os dois ambientes', async () => {
+    expect(await mod.obterTokenFocus('hom')).toBeNull();
+    expect(await mod.obterTokenFocus('prod')).toBeNull();
   });
 
-  it('usa FOCUS_NFE_TOKEN quando o banco está vazio', async () => {
-    // É o caso da produção hoje. Sem este caminho, o deploy derrubaria o
-    // cadastro de empresa, que funciona.
-    process.env.FOCUS_NFE_TOKEN = 'token-de-revenda';
+  it('usa FOCUS_NFE_HOMOLOGACAO para hom quando o banco está vazio', async () => {
+    process.env.FOCUS_NFE_HOMOLOGACAO = 'token-de-homologacao';
     mod.invalidarCacheFocus();
 
-    expect(await mod.obterTokenRevendaFocus()).toBe('token-de-revenda');
+    expect(await mod.obterTokenFocus('hom')).toBe('token-de-homologacao');
   });
 
-  // ESTE TESTE FIXA UM DEFEITO REAL, achado sondando a Focus em 20/08/2026.
-  // `FOCUS_NFE_TOKEN_PRODUÇÃO` e `FOCUS_NFE_HOMOLOGAÇÃO` existem no `.env.local`
-  // e passam em `/v2/codigos_cnae`, mas levam 401 em `/v2/empresas/:id` —
-  // inclusive para um id qualquer. Não são tokens de revenda. Aceitá-los aqui
-  // trocaria um erro claro ("não configurado") por um 401 no meio do cadastro
-  // de empresa.
-  it('NÃO aceita os tokens do .env.local que não têm acesso à revenda', async () => {
-    process.env['FOCUS_NFE_TOKEN_PRODUÇÃO'] = 'nao-serve-para-revenda';
-    process.env['FOCUS_NFE_HOMOLOGAÇÃO'] = 'nao-serve-para-revenda';
-    process.env.FOCUS_NFE_TOKEN_PRODUCAO = 'nao-serve-para-revenda';
-    process.env.FOCUS_NFE_HOMOLOGACAO = 'nao-serve-para-revenda';
+  it('usa FOCUS_NFE_TOKEN_PRODUCAO para prod quando o banco está vazio', async () => {
+    process.env.FOCUS_NFE_TOKEN_PRODUCAO = 'token-de-producao';
     mod.invalidarCacheFocus();
 
-    expect(await mod.obterTokenRevendaFocus()).toBeNull();
+    expect(await mod.obterTokenFocus('prod')).toBe('token-de-producao');
+  });
+
+  it('usa FOCUS_NFE_TOKEN (genérico) para os dois ambientes quando falta o específico', async () => {
+    // É o nome que existe nas variáveis de produção da Vercel — sem isto o
+    // deploy desta mudança derrubaria a leitura que hoje funciona por ali.
+    process.env.FOCUS_NFE_TOKEN = 'token-generico-vercel';
+    mod.invalidarCacheFocus();
+
+    expect(await mod.obterTokenFocus('hom')).toBe('token-generico-vercel');
+    expect(await mod.obterTokenFocus('prod')).toBe('token-generico-vercel');
+  });
+
+  // A INVARIANTE QUE IMPORTA: o nome específico vence o genérico. Um token de
+  // homologação usado contra a base de produção (ou o contrário) dá 401 — se
+  // o genérico vencesse, o fallback recriaria esse defeito por conta própria.
+  it('o nome específico do ambiente vence o FOCUS_NFE_TOKEN genérico', async () => {
+    process.env.FOCUS_NFE_TOKEN = 'nao-deveria-ser-usado';
+    process.env.FOCUS_NFE_HOMOLOGACAO = 'token-de-homologacao';
+    process.env.FOCUS_NFE_TOKEN_PRODUCAO = 'token-de-producao';
+    mod.invalidarCacheFocus();
+
+    expect(await mod.obterTokenFocus('hom')).toBe('token-de-homologacao');
+    expect(await mod.obterTokenFocus('prod')).toBe('token-de-producao');
+  });
+
+  it('cada ambiente só enxerga a variável do SEU nome — hom não usa FOCUS_NFE_TOKEN_PRODUCAO nem vice-versa', async () => {
+    process.env.FOCUS_NFE_TOKEN_PRODUCAO = 'token-de-producao';
+    mod.invalidarCacheFocus();
+
+    // Sem FOCUS_NFE_HOMOLOGACAO nem FOCUS_NFE_TOKEN, 'hom' fica null — não
+    // deveria "vazar" o token de produção.
+    expect(await mod.obterTokenFocus('hom')).toBeNull();
+    expect(await mod.obterTokenFocus('prod')).toBe('token-de-producao');
   });
 });

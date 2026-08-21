@@ -1,17 +1,16 @@
-// 0094/0095 — a rede das invariantes do token de revenda da Focus.
+// 0094/0095/0099 — a rede das invariantes dos tokens (hom/prod) da Focus.
 //
 // Cada teste aqui morde uma mudança que hoje passa por `tsc --noEmit` e pelo
 // resto da suíte:
-//   1. gravar o token em claro, ou deixar `guardarTokenFocus` falhar calado;
+//   1. gravar algum token em claro, ou deixar `guardarTokenFocus` falhar calado;
 //   2. devolver o token (ou a coluna cifrada) para a tela;
 //   3. mandar o token — inteiro ou mascarado — para a auditoria;
 //   4. tratar UPDATE que não pegou linha nenhuma como sucesso;
-//   5. sondar o CATÁLOGO em vez da REVENDA — o defeito que a sondagem de
-//      20/08/2026 achou: os tokens do `.env.local` dão 200 em
-//      `/v2/codigos_cnae` e 401 em `/v2/empresas`, então testar pelo catálogo
-//      aprovaria um token que não serve para nada que a tela promete;
-//   6. ler 404 como falha — na revenda, 404 num id que não é nosso é a
-//      resposta de um token VÁLIDO.
+//   5. sondar `/v2/empresas` em vez do catálogo — o defeito que a 0099 desfaz:
+//      essa conta leva 401 em `/v2/empresas` NOS DOIS AMBIENTES, para os dois
+//      tokens corretos, por falta de permissão da CONTA — sondar por ali
+//      recusaria tokens certos;
+//   6. gravar metade de uma troca quando o outro token é recusado.
 //
 // TUDO MOCKADO NA FRONTEIRA: Supabase, guard, auditoria, `next/cache` e o
 // cliente da Focus. Não há rede nem banco. A cifra é a DE VERDADE, com uma
@@ -21,8 +20,9 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { lerTokenFocus } from '@/lib/fiscal/config-focus';
 
 const USER_ID = 'user_admin_1';
-// Valor obviamente falso: nenhum token real deve existir num fixture.
-const TOKEN = 'TESTE-revenda-obviamente-falso-0001';
+// Valores obviamente falsos: nenhum token real deve existir num fixture.
+const TOKEN_HOM = 'TESTE-hom-obviamente-falso-0001';
+const TOKEN_PROD = 'TESTE-prod-obviamente-falso-0001';
 
 type Chamada = { tabela: string; valores: Record<string, unknown>; eq: unknown[][]; select: string[] };
 
@@ -30,10 +30,8 @@ const h = vi.hoisted(() => {
   const updates: Chamada[] = [];
   const inserts: Chamada[] = [];
   const auditorias: Array<{ acao: string; alvoId?: string | null; meta?: Record<string, unknown> }> = [];
-  const sondas: number[] = [];
-  // CONSERTO 1: o candidato de token com que cada sonda foi chamada — prova
-  // que a sonda usa o token que ESTÁ SENDO SALVO, não o que já está no banco.
-  const tokensSondados: Array<string | undefined> = [];
+  // Cada chamada de sonda: código do CNAE, ambiente e o tokenOverride usado.
+  const sondas: Array<{ codigo: string; env?: string; tokenOverride?: string }> = [];
 
   const estado = {
     // Literal, e não `USER_ID`: este factory é IÇADO acima das consts do
@@ -42,7 +40,9 @@ const h = vi.hoisted(() => {
     linha: null as Record<string, unknown> | null,
     erroLeitura: null as { message: string } | null,
     erroEscrita: null as { message: string } | null,
-    erroFocus: null as unknown,
+    // Erro que a sonda deve lançar por ambiente. `undefined` = sucesso.
+    erroFocusHom: null as unknown,
+    erroFocusProd: null as unknown,
   };
 
   function construir(tabela: string, kind: 'update' | 'insert', valores: Record<string, unknown>) {
@@ -100,16 +100,16 @@ const h = vi.hoisted(() => {
     },
   );
   const revalidatePath = vi.fn((_p: string) => {});
-  const consultarEmpresa = vi.fn(async (id: number, _env?: string, tokenOverride?: string) => {
-    sondas.push(id);
-    tokensSondados.push(tokenOverride);
-    if (estado.erroFocus) throw estado.erroFocus;
+  const consultarCnae = vi.fn(async (codigo: string, env?: string, tokenOverride?: string) => {
+    sondas.push({ codigo, env, tokenOverride });
+    const erro = env === 'hom' ? estado.erroFocusHom : estado.erroFocusProd;
+    if (erro) throw erro;
     return {};
   });
 
   return {
-    updates, inserts, auditorias, sondas, tokensSondados, estado,
-    from, registrarAuditoria, revalidatePath, consultarEmpresa,
+    updates, inserts, auditorias, sondas, estado,
+    from, registrarAuditoria, revalidatePath, consultarCnae,
   };
 });
 
@@ -117,7 +117,7 @@ vi.mock('next/cache', () => ({ revalidatePath: h.revalidatePath }));
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: h.from }) }));
 vi.mock('@/lib/admin/guard', () => ({ requireAdminBaluAction: async () => h.estado.guard }));
 vi.mock('@/lib/security/audit', () => ({ registrarAuditoria: h.registrarAuditoria }));
-vi.mock('@/lib/clients/focus-nfe', () => ({ focus: { consultarEmpresa: h.consultarEmpresa } }));
+vi.mock('@/lib/clients/focus-nfe', () => ({ focus: { consultarCnae: h.consultarCnae } }));
 
 import { salvarConfigFocusAction, testarConexaoFocusAction, limparConfigFocusAction } from './actions';
 
@@ -130,126 +130,182 @@ beforeEach(() => {
   h.inserts.length = 0;
   h.auditorias.length = 0;
   h.sondas.length = 0;
-  h.tokensSondados.length = 0;
   h.estado.guard = { userId: USER_ID };
-  h.estado.linha = { id: 1, token_revenda_cifrado: null };
+  h.estado.linha = { id: 1, token_hom_cifrado: null, token_prod_cifrado: null };
   h.estado.erroLeitura = null;
   h.estado.erroEscrita = null;
-  h.estado.erroFocus = null;
+  h.estado.erroFocusHom = null;
+  h.estado.erroFocusProd = null;
   h.registrarAuditoria.mockClear();
   h.revalidatePath.mockClear();
-  h.consultarEmpresa.mockClear();
+  h.consultarCnae.mockClear();
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 describe('salvarConfigFocusAction', () => {
   it('exige AdminBalu', async () => {
     h.estado.guard = { error: 'Acesso restrito.' };
-    const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+    const r = await salvarConfigFocusAction({ token_hom: TOKEN_HOM });
     expect(r).toEqual({ ok: false, error: 'Acesso restrito.' });
     expect(h.updates).toHaveLength(0);
     expect(h.inserts).toHaveLength(0);
   });
 
-  it('campo vazio NÃO grava nada', async () => {
+  it('os dois campos vazios NÃO grava nada', async () => {
     // Sem isto o "salvar" em branco atualizaria só o carimbo de data e diria
-    // "salvo" — o admin sairia achando que trocou o token.
-    const r = await salvarConfigFocusAction({ token_revenda: '   ' });
-    expect(r).toEqual({ ok: false, error: 'Cole o token de revenda para salvar.' });
+    // "salvo" — o admin sairia achando que trocou algum dos tokens.
+    const r = await salvarConfigFocusAction({ token_hom: '   ', token_prod: '' });
+    expect(r).toEqual({ ok: false, error: 'Cole ao menos um token (homologação ou produção) para salvar.' });
     expect(h.updates).toHaveLength(0);
     expect(h.inserts).toHaveLength(0);
   });
 
-  it('o token vai para a coluna CIFRADA, e decifra de volta', async () => {
-    const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+  it('só o token de homologação: sonda só hom, grava só a coluna hom', async () => {
+    const r = await salvarConfigFocusAction({ token_hom: TOKEN_HOM });
     expect(r).toEqual({ ok: true });
 
+    expect(h.sondas).toEqual([{ codigo: '6201501', env: 'hom', tokenOverride: TOKEN_HOM }]);
+
     const v = h.updates[0].valores;
-    expect(v.token_revenda_cifrado).toMatch(/^enc:v1:/);
-    expect(String(v.token_revenda_cifrado)).not.toContain(TOKEN);
-    expect(lerTokenFocus(v.token_revenda_cifrado as string)).toBe(TOKEN);
-    // e é UPDATE, não INSERT: a linha já existia.
+    expect(v.token_hom_cifrado).toMatch(/^enc:v1:/);
+    expect(v).not.toHaveProperty('token_prod_cifrado');
+    expect(lerTokenFocus(v.token_hom_cifrado as string)).toBe(TOKEN_HOM);
     expect(h.inserts).toHaveLength(0);
     expect(h.updates[0].eq).toContainEqual(['id', 1]);
   });
 
-  it('a auditoria não carrega o token, nem mascarado', async () => {
-    await salvarConfigFocusAction({ token_revenda: TOKEN });
+  it('só o token de produção: sonda só prod, grava só a coluna prod', async () => {
+    const r = await salvarConfigFocusAction({ token_prod: TOKEN_PROD });
+    expect(r).toEqual({ ok: true });
+
+    expect(h.sondas).toEqual([{ codigo: '6201501', env: 'prod', tokenOverride: TOKEN_PROD }]);
+
+    const v = h.updates[0].valores;
+    expect(v.token_prod_cifrado).toMatch(/^enc:v1:/);
+    expect(v).not.toHaveProperty('token_hom_cifrado');
+    expect(lerTokenFocus(v.token_prod_cifrado as string)).toBe(TOKEN_PROD);
+  });
+
+  it('os dois campos preenchidos: sonda os dois, grava os dois cifrados', async () => {
+    const r = await salvarConfigFocusAction({ token_hom: TOKEN_HOM, token_prod: TOKEN_PROD });
+    expect(r).toEqual({ ok: true });
+
+    expect(h.sondas).toHaveLength(2);
+    expect(h.sondas).toEqual(
+      expect.arrayContaining([
+        { codigo: '6201501', env: 'hom', tokenOverride: TOKEN_HOM },
+        { codigo: '6201501', env: 'prod', tokenOverride: TOKEN_PROD },
+      ]),
+    );
+
+    const v = h.updates[0].valores;
+    expect(lerTokenFocus(v.token_hom_cifrado as string)).toBe(TOKEN_HOM);
+    expect(lerTokenFocus(v.token_prod_cifrado as string)).toBe(TOKEN_PROD);
+    expect(String(v.token_hom_cifrado)).not.toContain(TOKEN_HOM);
+    expect(String(v.token_prod_cifrado)).not.toContain(TOKEN_PROD);
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it('a auditoria não carrega nenhum dos tokens, nem mascarado', async () => {
+    await salvarConfigFocusAction({ token_hom: TOKEN_HOM, token_prod: TOKEN_PROD });
     expect(h.auditorias).toHaveLength(1);
     const serializada = JSON.stringify(h.auditorias[0]);
-    expect(serializada).not.toContain(TOKEN);
+    expect(serializada).not.toContain(TOKEN_HOM);
+    expect(serializada).not.toContain(TOKEN_PROD);
     // Máscara em log é segredo pela metade: nem os primeiros caracteres.
-    expect(serializada).not.toContain(TOKEN.slice(0, 8));
-    expect(h.auditorias[0].meta).toEqual({ config_id: 1, trocou_token: true, sonda: 'aceito' });
+    expect(serializada).not.toContain(TOKEN_HOM.slice(0, 8));
+    expect(h.auditorias[0].meta).toEqual({
+      config_id: 1,
+      trocou_hom: true,
+      trocou_prod: true,
+      sonda_hom: 'aceito',
+      sonda_prod: 'aceito',
+    });
+  });
+
+  it('meta registra qual dos dois trocou quando só um veio preenchido', async () => {
+    await salvarConfigFocusAction({ token_hom: TOKEN_HOM });
+    expect(h.auditorias[0].meta).toEqual({
+      config_id: 1,
+      trocou_hom: true,
+      trocou_prod: false,
+      sonda_hom: 'aceito',
+      sonda_prod: null,
+    });
   });
 
   // CONSERTO 3 (Bloco 5 produção fiscal): `audit_log.alvo_id` é uuid — a
   // string `'1'` fazia o insert falhar em silêncio.
   it('alvoId nunca é a string não-uuid "1" — vai null, e o id do singleton mora no meta', async () => {
-    await salvarConfigFocusAction({ token_revenda: TOKEN });
+    await salvarConfigFocusAction({ token_hom: TOKEN_HOM });
     expect(h.auditorias[0].alvoId).toBeNull();
     expect(h.auditorias[0].meta?.config_id).toBe(1);
   });
 
   // ------------------------------------------------ CONSERTO 1: testar antes
-  // de gravar. Reproduz o incidente de 20/08/2026: o admin colou o token de
-  // EMISSÃO da empresa no campo de revenda, a tela gravou sem testar, e não
-  // havia como desfazer pela interface.
-  describe('CONSERTO 1 — sonda antes de gravar', () => {
-    it('sonda o token que ESTÁ SENDO SALVO, não o que já está no banco', async () => {
-      await salvarConfigFocusAction({ token_revenda: TOKEN });
-      expect(h.sondas).toEqual([1]);
-      expect(h.tokensSondados).toEqual([TOKEN]);
+  // de gravar, agora por ambiente. A 0099 desfaz a 0095: a sonda tem de bater
+  // no catálogo (que discrimina por token) e NÃO em `/v2/empresas` (401 para
+  // os dois tokens corretos, por permissão da conta).
+  describe('CONSERTO 1 — sonda por ambiente antes de gravar', () => {
+    it('sonda o token que ESTÁ SENDO SALVO na base do SEU ambiente, não o que já está no banco', async () => {
+      await salvarConfigFocusAction({ token_hom: TOKEN_HOM });
+      expect(h.sondas).toEqual([{ codigo: '6201501', env: 'hom', tokenOverride: TOKEN_HOM }]);
     });
 
-    it('401/403 na sonda BLOQUEIA a gravação e explica a confusão emissão × revenda', async () => {
-      h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 401: denied');
-      const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+    it('401 no token de hom BLOQUEIA a gravação — nem o de prod é gravado', async () => {
+      h.estado.erroFocusHom = new Error('Focus GET /v2/codigos_cnae/6201501 → 401: denied');
+      const r = await salvarConfigFocusAction({ token_hom: TOKEN_HOM, token_prod: TOKEN_PROD });
       expect(r.ok).toBe(false);
-      expect('error' in r && r.error).toMatch(/revenda/i);
-      expect('error' in r && r.error).toMatch(/emiss/i);
-      // NADA foi persistido nem auditado.
+      expect('error' in r && r.error).toMatch(/homologa/i);
+      // NADA foi persistido nem auditado — nem o token de prod, que teria
+      // passado na sonda dele.
       expect(h.updates).toHaveLength(0);
       expect(h.inserts).toHaveLength(0);
       expect(h.auditorias).toHaveLength(0);
     });
 
-    it('403 na sonda também bloqueia', async () => {
-      h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 403: forbidden');
-      const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+    it('403 no token de prod também bloqueia — nem o de hom é gravado', async () => {
+      h.estado.erroFocusProd = new Error('Focus GET /v2/codigos_cnae/6201501 → 403: forbidden');
+      const r = await salvarConfigFocusAction({ token_hom: TOKEN_HOM, token_prod: TOKEN_PROD });
       expect(r.ok).toBe(false);
+      expect('error' in r && r.error).toMatch(/produ/i);
       expect(h.updates).toHaveLength(0);
-    });
-
-    it('404 na sonda é token válido — grava normalmente, sem aviso', async () => {
-      h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 404: not found');
-      const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
-      expect(r).toEqual({ ok: true });
-      expect(h.updates).toHaveLength(1);
     });
 
     it('sonda indeterminada (rede/5xx/timeout) NÃO bloqueia — grava mesmo assim, com aviso', async () => {
       // Não dá para impedir alguém de configurar uma credencial nova só
       // porque a Focus está instável no momento do salvamento.
-      h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 500: boom');
-      const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+      h.estado.erroFocusHom = new Error('Focus GET /v2/codigos_cnae/6201501 → 500: boom');
+      const r = await salvarConfigFocusAction({ token_hom: TOKEN_HOM });
       expect(r.ok).toBe(true);
       expect('aviso' in r && r.aviso).toMatch(/não foi possível confirmar/i);
+      expect('aviso' in r && r.aviso).toMatch(/homologa/i);
       expect(h.updates).toHaveLength(1);
       expect(h.auditorias).toHaveLength(1);
     });
 
     it('timeout/erro de rede sem status também é indeterminado, não bloqueia', async () => {
-      h.estado.erroFocus = new Error('ETIMEDOUT');
-      const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+      h.estado.erroFocusProd = new Error('ETIMEDOUT');
+      const r = await salvarConfigFocusAction({ token_prod: TOKEN_PROD });
       expect(r.ok).toBe(true);
       expect('aviso' in r && r.aviso).toBeTruthy();
+    });
+
+    it('um indeterminado e o outro aceito: grava os dois, aviso menciona só o indeterminado', async () => {
+      h.estado.erroFocusHom = new Error('ETIMEDOUT');
+      const r = await salvarConfigFocusAction({ token_hom: TOKEN_HOM, token_prod: TOKEN_PROD });
+      expect(r.ok).toBe(true);
+      expect('aviso' in r && r.aviso).toMatch(/homologa/i);
+      expect('aviso' in r && r.aviso).not.toMatch(/produ/i);
+      const v = h.updates[0].valores;
+      expect(v.token_hom_cifrado).toBeTruthy();
+      expect(v.token_prod_cifrado).toBeTruthy();
     });
   });
 
   it('sem linha no banco, INSERE com id=1', async () => {
     h.estado.linha = null;
-    const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+    const r = await salvarConfigFocusAction({ token_hom: TOKEN_HOM });
     expect(r).toEqual({ ok: true });
     expect(h.inserts).toHaveLength(1);
     expect(h.inserts[0].valores.id).toBe(1);
@@ -259,14 +315,14 @@ describe('salvarConfigFocusAction', () => {
     // Zero linhas afetadas é a falha mais enganosa do PostgREST: sem o
     // `.select('id')`, ele devolve sucesso. A lição está registrada em
     // `fix(seguranca): zero linhas afetadas deixa de ser lido como sucesso`.
-    h.estado.linha = { id: 99, token_revenda_cifrado: null };
-    const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+    h.estado.linha = { id: 99, token_hom_cifrado: null, token_prod_cifrado: null };
+    const r = await salvarConfigFocusAction({ token_hom: TOKEN_HOM });
     expect(r.ok).toBe(false);
   });
 
   it('erro de leitura não vira gravação', async () => {
     h.estado.erroLeitura = { message: 'schema cache' };
-    const r = await salvarConfigFocusAction({ token_revenda: TOKEN });
+    const r = await salvarConfigFocusAction({ token_hom: TOKEN_HOM });
     expect(r.ok).toBe(false);
     expect(h.updates).toHaveLength(0);
     expect(h.inserts).toHaveLength(0);
@@ -276,36 +332,36 @@ describe('salvarConfigFocusAction', () => {
 describe('testarConexaoFocusAction', () => {
   it('exige AdminBalu', async () => {
     h.estado.guard = { error: 'Acesso restrito.' };
-    const r = await testarConexaoFocusAction();
+    const r = await testarConexaoFocusAction('hom');
     expect(r).toEqual({ ok: false, error: 'Acesso restrito.' });
     expect(h.sondas).toHaveLength(0);
   });
 
-  // A INVARIANTE Nº 5: a sonda tem de bater na REVENDA.
-  it('sonda /v2/empresas, não o catálogo de CNAEs', async () => {
-    await testarConexaoFocusAction();
-    expect(h.consultarEmpresa).toHaveBeenCalledTimes(1);
-    expect(h.sondas).toEqual([1]);
+  // A INVARIANTE Nº 5: a sonda tem de bater no catálogo, não em /v2/empresas.
+  it('sonda /v2/codigos_cnae no ambiente pedido, sem tokenOverride (usa o gravado)', async () => {
+    await testarConexaoFocusAction('prod');
+    expect(h.consultarCnae).toHaveBeenCalledTimes(1);
+    expect(h.sondas).toEqual([{ codigo: '6201501', env: 'prod', tokenOverride: undefined }]);
   });
 
-  it('404 é SUCESSO — o token entrou na revenda e não achou o id, que é o esperado', async () => {
-    h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 404: not found');
-    const r = await testarConexaoFocusAction();
-    expect(r).toEqual({ ok: true });
+  it('hom e prod sondam ambientes diferentes', async () => {
+    await testarConexaoFocusAction('hom');
+    await testarConexaoFocusAction('prod');
+    expect(h.sondas.map((s) => s.env)).toEqual(['hom', 'prod']);
   });
 
-  it('401 é lido como token sem acesso à revenda', async () => {
-    h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 401: denied');
-    const r = await testarConexaoFocusAction();
+  it('401 é lido como token sem acesso NAQUELE ambiente', async () => {
+    h.estado.erroFocusHom = new Error('Focus GET /v2/codigos_cnae/6201501 → 401: denied');
+    const r = await testarConexaoFocusAction('hom');
     expect(r.ok).toBe(false);
-    expect('error' in r && r.error).toMatch(/revenda/);
+    expect('error' in r && r.error).toMatch(/homologa/i);
   });
 
   // O CONTRÁRIO DISSO É O DEFEITO: ler 5xx/timeout como "token inválido"
   // mandaria o admin trocar uma credencial que estava certa.
-  it('erro que NÃO é 401/403/404 diz explicitamente que o token não foi recusado', async () => {
-    h.estado.erroFocus = new Error('Focus GET /v2/empresas/1 → 500: boom');
-    const r = await testarConexaoFocusAction();
+  it('erro que NÃO é 401/403 diz explicitamente que o token não foi recusado', async () => {
+    h.estado.erroFocusProd = new Error('Focus GET /v2/codigos_cnae/6201501 → 500: boom');
+    const r = await testarConexaoFocusAction('prod');
     expect(r.ok).toBe(false);
     expect('error' in r && r.error).toMatch(/não recusou o token/);
   });
@@ -322,17 +378,18 @@ describe('limparConfigFocusAction', () => {
     expect(h.updates).toHaveLength(0);
   });
 
-  it('grava NULL na coluna cifrada — volta o app ao fallback de ambiente', async () => {
-    h.estado.linha = { id: 1, token_revenda_cifrado: 'enc:v1:algumacoisa' };
+  it('grava NULL nas DUAS colunas cifradas — volta o app ao fallback de ambiente', async () => {
+    h.estado.linha = { id: 1, token_hom_cifrado: 'enc:v1:algumacoisa', token_prod_cifrado: 'enc:v1:outracoisa' };
     const r = await limparConfigFocusAction();
     expect(r).toEqual({ ok: true });
     expect(h.updates).toHaveLength(1);
-    expect(h.updates[0].valores.token_revenda_cifrado).toBeNull();
+    expect(h.updates[0].valores.token_hom_cifrado).toBeNull();
+    expect(h.updates[0].valores.token_prod_cifrado).toBeNull();
     expect(h.updates[0].eq).toContainEqual(['id', 1]);
   });
 
   it('audita a limpeza com alvoId null e o id do singleton no meta', async () => {
-    h.estado.linha = { id: 1, token_revenda_cifrado: 'enc:v1:algumacoisa' };
+    h.estado.linha = { id: 1, token_hom_cifrado: 'enc:v1:algumacoisa', token_prod_cifrado: null };
     await limparConfigFocusAction();
     expect(h.auditorias).toHaveLength(1);
     expect(h.auditorias[0].acao).toBe('focus.config_limpar');
@@ -348,7 +405,7 @@ describe('limparConfigFocusAction', () => {
   });
 
   it('erro de escrita não vira sucesso', async () => {
-    h.estado.linha = { id: 1, token_revenda_cifrado: 'enc:v1:algumacoisa' };
+    h.estado.linha = { id: 1, token_hom_cifrado: 'enc:v1:algumacoisa', token_prod_cifrado: null };
     h.estado.erroEscrita = { message: 'boom' };
     const r = await limparConfigFocusAction();
     expect(r.ok).toBe(false);

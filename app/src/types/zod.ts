@@ -453,17 +453,22 @@ export const ExplicacaoTextoSchema = z.object({
 });
 
 /**
- * 0094/0095 — o token de REVENDA da Focus na fronteira da action do AdminBalu.
+ * 0094/0095/0099 — os tokens da Focus (hom/prod) na fronteira da action do
+ * AdminBalu.
  *
- * UM token, não um par por ambiente: a 0095 registra a sondagem que provou que
- * os dois tokens do `.env.local` não têm acesso a `/v2/empresas*`. O par
- * hom/prod pertence ao token da EMPRESA, que não passa por esta tela.
+ * PAR POR AMBIENTE, de volta: a 0095 tinha reduzido a UM campo (`token_revenda`)
+ * com base numa leitura errada de uma sonda contra `/v2/empresas` — ver o
+ * cabeçalho da 0099, que desfaz isso. `token_hom` e `token_prod` são
+ * independentes: a tela grava cada um no seu ambiente, e o caminho comum é
+ * trocar só um dos dois.
  *
- * Opcional de propósito: vazio quer dizer "não trocar". A action é que recusa
- * gravar quando não há nada a gravar — aqui não dá para saber o que já existe.
+ * Os dois opcionais de propósito: vazio quer dizer "não trocar". A action é
+ * que recusa gravar quando NENHUM dos dois veio preenchido — aqui não dá para
+ * saber o que já existe no banco.
  */
 export const ConfigFocusSchema = z.object({
-  token_revenda: z.string().max(500).optional(),
+  token_hom: z.string().max(500).optional(),
+  token_prod: z.string().max(500).optional(),
 });
 export type ConfigFocusInput = z.infer<typeof ConfigFocusSchema>;
 
