@@ -1,112 +1,126 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-20 (sessão 31 — **Bloco 5 implementado numa branch, REPROVADO na revisão final e corrigido**: 20 tasks, 9 defeitos do autor achados durante a execução, e um décimo — o mais grave — achado pela revisão. Não mergeado.)
+> **Última atualização:** 2026-08-20 (sessão 31 — **Bloco 5 mergeado e publicado**. Emissão fiscal decidida por empresa, telas de credencial e de documentos legais no ar. Onze defeitos do autor corrigidos no caminho. O bloqueio da Focus (`permissao_negada`) segue sendo o único impedimento real da emissão, e é chamado no suporte deles.)
 
-> ## 🆕 SESSÃO 31 (2026-08-20, tarde) — Bloco 5 na branch, reprovado e corrigido
+> ## 🆕 SESSÃO 31 (2026-08-20, tarde/noite) — Bloco 5 MERGEADO, e o dia em que o autor errou onze vezes
 >
-> **Branch `bloco-5-producao-fiscal`, NÃO mergeada.** `main` segue como ficou
-> pela manhã (11 commits + deploy verde).
+> **`main` em `6243a98`, deploy Ready.** Tudo publicado. A branch
+> `bloco-5-producao-fiscal` foi mergeada e continua no remoto como histórico.
 >
-> ### O que o bloco faz
+> ### O que entrou em produção hoje
 >
-> Tira a emissão fiscal do `env: FocusEnv = 'hom'` **fixo** e a torna decidida
-> **por empresa**. Migrations **0096, 0097 e 0098**, aplicadas e verificadas.
+> **Manhã** — credenciais saem do `.env` e ganham tela no admin (Focus e SERPRO),
+> migrations 0094/0095.
 >
-> - **Modelo híbrido:** cada empresa traz a própria conta na Focus
->   (`focus_origem='propria'`) ou compra da Balu (`'balu'`). Só o caminho `balu`
->   depende da API de Empresas, que está com 401 desde 23/07.
-> - **`empresa_credenciais_focus`**: os tokens por empresa, cifrados, numa tabela
->   **fechada para `anon`/`authenticated`** — `has_table_privilege` false nos 7
->   privilégios, provado pela API com a chave anon (401 `42501`).
-> - **`decidirCredencial`**: a guarda. Quatro critérios para produção, e falhar
->   é **erro nomeado** — nunca queda silenciosa para homologação.
-> - **`notas_fiscais.ambiente`**: cada nota carimba onde nasceu; status, download
->   e cancelamento seguem o carimbo da nota, não o da empresa.
-> - **Tela do contador** cadastra a credencial do cliente, com custódia declarada
->   e anti-IDOR — exceção ao "painel somente visualização" que **não** derruba a
->   garantia: a RLS segue sem policy de escrita, a escrita é service role com
->   permissão provada em código.
+> **Tarde** — Bloco 5 inteiro: emissão fiscal decidida **por empresa** em vez do
+> `env: FocusEnv = 'hom'` fixo. Migrations 0096, 0097, 0098, 0099.
 >
-> ### 🔴 DEZ defeitos do autor, e nenhum apareceria em teste verde
+> **Além disso:** tela de documentos legais no admin (o advogado edita termos e
+> privacidade), rota **pública** `/documentos/[tipo]` com link no rodapé,
+> "Assinatura" some para empresa de carteira, e o campo de WhatsApp do escritório
+> passa a mostrar o estado real do canal.
+>
+> ### 🔴 O BLOQUEIO QUE NÃO É NOSSO — leia isto antes de qualquer coisa
+>
+> A Focus responde **`401 permissao_negada — Contate o suporte técnico`** em
+> `/v2/empresas` **desde 23/07/2026**. Último cadastro bem-sucedido: **09/06**.
+> Nada mudou do nosso lado entre as duas datas.
+>
+> **É a causa raiz de tudo que parece quebrado no produto:**
+>
+> ```
+> Focus bloqueia /v2/empresas
+>   → snapshotFocusEmpresa nunca roda
+>     → empresas_fiscais.focus_habilita_* fica NULL
+>       → o seletor de tipo de nota desabilita NFS-e, NF-e e NFC-e
+> ```
+>
+> Medido: das 4 empresas, **3 nunca foram sincronizadas** (`focus_empresa_id`
+> nulo). A AL PISCINAS é a prova por contraste — sincronizada em 09/06, e o
+> NFS-e dela aparece habilitado até hoje.
+>
+> **Isso NÃO se resolve com código.** Já foi tentado e descartado: trocar token,
+> inverter ambientes, mudar endereço, mexer no payload. É chamado no suporte
+> deles. **PDF pronto para o Eduardo em
+> `Direcionamento/Focus-NFe-permissao-negada-2026-08-20.pdf`**, com as
+> evidências e o texto do chamado.
+>
+> ### 🔴 ONZE defeitos do autor, e nenhum apareceria em suíte verde
 >
 > | # | defeito | achado por |
 > |---|---|---|
-> | 1 | `REVOKE` de coluna não subtrai do grant de tabela no Postgres | agente (task 1) |
+> | 1 | `REVOKE` de coluna não subtrai do grant de tabela no Postgres | agente |
 > | 2 | mensagem de recusa mentia para `origem='propria'` | revisor de spec |
 > | 3 | os 9 testes da guarda passavam com a regra da origem APAGADA | revisor (mutação) |
-> | 4 | client de sessão não lê a tabela fechada — emissão morreria | autor, antes de despachar |
-> | 5 | a task que esvaziou `companies.focus_token` quebrou 7 caminhos; o plano cobria 3 | agente (task 6) |
-> | 6 | autor afirmou vazamento que NÃO existia, e que um campo não era consumido quando era | agente (task 19) |
-> | 7 | anti-IDOR checava a empresa e usava o `companyId` cru do formulário | agente (task 13) |
-> | 8 | `atualizarEmpresaNaFocus` **lê** a coluna que se parou de escrever | agente (task 20) |
-> | 9 | **o inquilino ligava produção sozinho** — ver abaixo | revisão final |
-> | 10 | queda silenciosa `prod→hom` quando a leitura de `empresas_fiscais` falha | revisão final |
+> | 4 | client de sessão não lê a tabela fechada | autor |
+> | 5 | esvaziar `companies.focus_token` quebrou 7 caminhos; o plano cobria 3 | agente |
+> | 6 | autor afirmou vazamento que NÃO existia | agente |
+> | 7 | anti-IDOR checava e usava o `companyId` cru | agente |
+> | 8 | `atualizarEmpresaNaFocus` **lê** a coluna que se parou de escrever | agente |
+> | 9 | **o inquilino ligava produção sozinho** por PATCH | revisão final |
+> | 10 | queda silenciosa `prod→hom` em erro de leitura | revisão final |
+> | 11 | **desenhei a tela da Focus errada** — ver abaixo | o dono |
 >
-> ### 🔴 O nono, que é a lição da sessão
+> **O 11º é o mais instrutivo.** Sondei os tokens contra `/v2/empresas`, vi 401 e
+> concluí *"não são tokens de revenda, a tela precisa de outro campo"*. A
+> conclusão certa era a que a própria Focus escreveu: **`permissao_negada` é
+> permissão DA CONTA**. Redesenhei a tela inteira (0095) em cima de uma leitura
+> errada de um 401, e o dono corrigiu. A 0099 desfez.
 >
-> A 0097 trancou o **segredo** e deixou os **quatro insumos que decidem o uso
-> dele** em `empresas_fiscais` — tabela que o dono da empresa escreve pelo
-> navegador (`authenticated=arwdm`, policy `user_owns_company`). Um único
-> `PATCH` no PostgREST ligando `focus_ambiente='prod'`, `focus_origem='propria'`
-> e `focus_producao_declarada=true` passaria nos quatro critérios e emitiria
-> **nota fiscal real** — sem contador, sem custódia, sem a Focus ter habilitado
-> nada.
+> **Padrão do dia:** eu tinha a evidência certa e tirei a conclusão errada. Seis
+> dos onze foram achados por agentes que instruí a **desconfiar do plano** — e um
+> deles só porque **se recusou a aplicar minha instrução** sem antes conferir se
+> a premissa era verdadeira.
 >
-> Não era explorável (nada no produto grava `focus_ambiente`, nenhuma empresa
-> tinha token de produção), mas era bomba armada.
+> ### Segurança corrigida (nenhum era explorável, todos eram bomba armada)
 >
-> **Conserto na 0098**, pelo molde da 0036: trigger com `current_user` e
-> **SECURITY INVOKER obrigatório** — num SECURITY DEFINER o `current_user` vira
-> `postgres` e o gate nunca bloqueia. **Provado executando o ataque**, em
-> transação com ROLLBACK, com o papel e o JWT reais do dono:
+> - **SSRF** que vazava o token da Focus por `xml_url` relativa forjada
+> - credencial viajando para **bucket S3 do atacante** mesmo passando na allowlist
+> - **cancelamento de nota fiscal de outro cliente** via `current_company`
+> - quatro colunas de decisão fiscal **graváveis pelo próprio inquilino** — a
+>   0097 trancou o segredo e deixou o interruptor do lado de fora; a **0098**
+>   fecha, com trigger no molde da 0036, **provado executando o ataque** com o
+>   JWT do dono em transação com ROLLBACK
+> - a auditoria das telas de credencial **nunca gravou nada**: `audit_log.alvo_id`
+>   é uuid e as actions passavam `'1'`; `registrarAuditoria` não conferia o erro
 >
-> | tentativa | resultado |
-> |---|---|
-> | dono liga produção em `empresas_fiscais` | BLOQUEADO `DECISAO_FISCAL_RESTRITA` |
-> | dono reescreve o carimbo da nota | BLOQUEADO `AMBIENTE_IMUTAVEL` |
-> | mesmo update por `service_role` | PASSOU — backend intacto |
-> | dono altera coluna não protegida | PASSOU — a trava é cirúrgica |
-> | segunda linha fiscal viva | BLOQUEADO pelo índice único parcial |
+> ### ⚠️ Dívidas registradas, com desenho pronto
 >
-> ### A revisão final reprovou, e valeu
+> - **`profiles_update` e `notas_fiscais_update` sem restrição de coluna.** As
+>   guardas de aplicação fecham os vetores conhecidos; a camada de banco é defesa
+>   em profundidade. **NÃO fiz** porque travar `current_company` errado quebra o
+>   seletor de empresa (4 pontos legítimos o escrevem).
+> - **Nada no produto escreve `focus_origem` nem `focus_ambiente`** — produção é
+>   inalcançável pela interface; exige `UPDATE` manual. A aba "Credencial Focus"
+>   do contador está **inerte** para as 5 empresas atuais, todas `'balu'`.
+> - **Nenhum caminho pede `habilita_nfsen_producao` à Focus:** as três chamadas de
+>   `atualizarEmpresaNaFocus` passam `'hom'` literal.
+> - **Playwright nunca rodou** — não há `E2E_SUPABASE_URL`; o Supabase é só
+>   produção e a `guarda-ambiente` pula. Os testes de fronteira do contador estão
+>   **escritos e não provados**.
+> - **O seletor de tipo de nota não explica por que bloqueia.** Decisão do dono:
+>   deixar como está por ora.
+> - Os textos legais ainda abrem com *"Minuta técnica — pendente de revisão
+>   jurídica"* e **não mencionam WhatsApp**. O advogado já tem por onde editar.
+> - Certificado do contratante (PIPER) **vence em 02/06/2027**.
 >
-> Rodou **26 mutações**; 12 sobreviveram — entre elas **trocar
-> `env = credencial.ambiente` de volta por `'hom'` sem derrubar nenhum dos 1971
-> testes**. A mudança-título do bloco podia ser desfeita em silêncio, porque
-> nenhum teste importava `notas_fiscais/actions.ts`.
+> ### Decisões do dono, para não rediscutir
 >
-> Os 5 bloqueios foram corrigidos. **As 8 mutações nomeadas agora morrem**, cada
-> uma com o vermelho literal registrado no commit `47313fc`.
+> - **PIPER (`61061690000183`, `gestao@excluvia.com.br`) é administradora MASTER
+>   e NÃO emite.** O teste de emissão real em produção tem dono: **Eduardo**.
+> - Os dois tokens do `.env.local` são **de empresa**, um por ambiente, e
+>   funcionam. Não são de revenda.
+> - **WhatsApp de suporte e número do canal são campos separados** — manter.
+> - Documento legal publicado **pode ser reescrito no lugar** (app não lançado);
+>   a tela avisa quantos aceitaram. Pós-lançamento, reintroduzir a recusa é
+>   mudança de poucas linhas em `documentos/actions.ts`.
 >
-> ### ⚠️ O que o bloco NÃO entrega (não prometer)
+> ### Linha de base
 >
-> - **Nada no produto escreve `focus_origem` nem `focus_ambiente`.** Produção é
->   inalcançável pela interface para as duas origens — exige `UPDATE` manual no
->   banco. A aba "Credencial Focus" do contador está **inerte para as 5 empresas
->   atuais**, todas `'balu'`.
-> - **Nenhum caminho pede `habilita_nfsen_producao` à Focus:** as três chamadas
->   de `atualizarEmpresaNaFocus` passam `'hom'` literal, e
->   `focus.atualizarEmpresa`/`consultarEmpresa` **ignoram o `env`** e forçam a
->   base de revenda. Para `origem='balu'` a produção tem **dois** bloqueios
->   independentes, não um.
-> - **Emissão real em produção** não foi feita e não é deste bloco. Dono do
->   teste: o administrador **Eduardo**, no ambiente dele. A **PIPER**
->   (`61061690000183`, conta `gestao@excluvia.com.br`) permanece só como
->   **administradora MASTER** e não emite.
-> - **Playwright não rodou** — não há `E2E_SUPABASE_URL`; o Supabase é só
->   produção desde 14/08 e a `guarda-ambiente` pula os testes destrutivos. Os
->   dois casos de fronteira do contador estão **escritos e não provados**.
+> **tsc 0 · 2092 testes · 36 pulados · build limpo.** Banco: 0 tokens em texto
+> puro, credenciais cifradas em tabela fechada, 0 empresas em produção.
 >
-> ### Estado ao fim
->
-> **tsc 0 · 1985 testes · 36 pulados · build limpo.** Banco: 0 tokens em texto
-> puro, 2 credenciais cifradas, 0 notas com ambiente inválido, 0 empresas em
-> produção.
->
-> **Decisão pendente: merge da branch para `main`.**
->
-
 > ## 🆕 SESSÃO 30 (2026-08-20) — chaves de integração na plataforma, não no `.env`
 >
 > Pedido do usuário: ter, nas configurações do admin, cards para a chave da IA,
