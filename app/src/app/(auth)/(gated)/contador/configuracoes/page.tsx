@@ -35,9 +35,13 @@ export default async function ContadorConfiguracoesPage() {
   // SLA vem de leitura própria: o guard `getContabilidadeCtx` seleciona uma
   // lista fixa de colunas (branding do Bloco A) e não vale alargá-la para todo
   // consumidor por causa desta tela.
+  // Estado do canal de atendimento, só para exibição junto do campo de WhatsApp.
+  // `uazapi_numero` e `uazapi_status` são as ÚNICAS colunas de canal que a 0091
+  // libera para `authenticated` — os dois tokens não têm GRANT nenhum, e é
+  // proposital. Ler só estas duas mantém a tela honesta sem alargar exposição.
   const { data: slaRow, error: erroSla } = await supabase
     .from('contabilidades')
-    .select('sla_resposta_horas')
+    .select('sla_resposta_horas, uazapi_status, uazapi_numero')
     .eq('id', c.id)
     .maybeSingle();
   // Mesmo cuidado da tela de subconta: GRANT por coluna em `contabilidades`
@@ -71,6 +75,10 @@ export default async function ContadorConfiguracoesPage() {
         }}
         logoUrlInicial={logoUrlInicial}
         linkInicial={linkInicial}
+        canal={{
+          status: (slaRow?.uazapi_status as string | null) ?? null,
+          numero: (slaRow?.uazapi_numero as string | null) ?? null,
+        }}
       />
 
       <SlaForm initial={slaInicial} />
