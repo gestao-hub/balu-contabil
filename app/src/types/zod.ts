@@ -484,3 +484,26 @@ export const ConfigSerproSchema = z.object({
   consumer_secret: z.string().max(500).optional(),
 });
 export type ConfigSerproInput = z.infer<typeof ConfigSerproSchema>;
+
+/**
+ * Documentos legais (Termos de Uso / Política de Privacidade) na fronteira das
+ * actions do AdminBalu — `documento_versoes` (migration 0039).
+ *
+ * `versao` sem espaço porque compõe a chave `(tipo, versao)` que `aceites`
+ * referencia; espaço ali é erro de digitação disfarçado de versão nova. Não
+ * valida formato numérico de propósito — o texto é livre (ex.: "1.0", "2",
+ * "2026-08").
+ */
+export const DocumentoVersaoSchema = z.object({
+  tipo: z.enum(['termos', 'privacidade']),
+  versao: z.string().trim().min(1, 'Informe a versão.')
+    .refine((v) => !/\s/.test(v), 'A versão não pode ter espaços.'),
+  conteudo_md: z.string().trim().min(1, 'O conteúdo não pode ficar vazio.'),
+});
+export type DocumentoVersaoInput = z.infer<typeof DocumentoVersaoSchema>;
+
+export const PublicarDocumentoSchema = z.object({
+  tipo: z.enum(['termos', 'privacidade']),
+  versao: z.string().trim().min(1, 'Informe a versão.'),
+});
+export type PublicarDocumentoInput = z.infer<typeof PublicarDocumentoSchema>;
