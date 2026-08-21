@@ -128,8 +128,8 @@ export default async function Page() {
           Focus NFe
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          O token de revenda com que a plataforma cadastra empresa, atualiza cadastro e envia
-          certificado. A emissão de nota usa o token de cada empresa, não este.
+          Os dois tokens da conta da plataforma na Focus — homologação e produção. Não são
+          intercambiáveis, e a emissão de nota usa o token de cada empresa, não estes.
         </p>
         <Link
           href="/admin/configuracoes/focus"
