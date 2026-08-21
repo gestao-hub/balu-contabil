@@ -136,6 +136,12 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         userRole={userRole}
         companies={(companies ?? []).map((c) => ({ id: c.id, nome: c.nome }))}
         currentCompanyId={currentCompany}
+        // MESMO CRITERIO DO GATE DE COBRANCA, e nao o objeto `escritorio` acima:
+        // `assertAssinaturaEmpresa` libera pela PRESENCA de `contabilidade_id`,
+        // enquanto `escritorio` so e montado com o escritorio ja `aprovada`.
+        // Usar `escritorio` faria a empresa ligada a um escritorio pendente ver
+        // "Assinatura" enquanto a cobranca ja a trata como coberta.
+        empresaDeCarteira={Boolean(currentCompanyContabilidadeId)}
         temEscritorio={!!membro}
         temCobrancasDoEscritorio={temCobrancasDoEscritorio}
         escritorio={escritorio}

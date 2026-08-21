@@ -4,7 +4,7 @@
 // comprovante antes da compensação. É a página onde os próximos ajustes de
 // plataforma vão morar.
 import Link from 'next/link';
-import { CreditCard, Sparkles, SlidersHorizontal, FileText, Landmark } from 'lucide-react';
+import { CreditCard, Sparkles, SlidersHorizontal, FileText, Landmark, Scale } from 'lucide-react';
 import { requireAdminBaluPage } from '@/lib/admin/guard';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { statusEfetivo, type StatusAssinatura } from '@/lib/billing/status';
@@ -128,8 +128,8 @@ export default async function Page() {
           Focus NFe
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          O token de revenda com que a plataforma cadastra empresa, atualiza cadastro e envia
-          certificado. A emissão de nota usa o token de cada empresa, não este.
+          Os dois tokens da conta da plataforma na Focus — homologação e produção. Não são
+          intercambiáveis, e a emissão de nota usa o token de cada empresa, não estes.
         </p>
         <Link
           href="/admin/configuracoes/focus"
@@ -170,6 +170,24 @@ export default async function Page() {
           className="mt-3 inline-block rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
         >
           Abrir parâmetros
+        </Link>
+      </section>
+
+      <section className="rounded-md border border-border bg-surface p-4">
+        <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Scale className="size-4 shrink-0 text-primary" />
+          Documentos legais
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Termos de Uso e Política de Privacidade — os documentos que os usuários aceitam.
+          Alterar o texto de uma versão publicada faz todo mundo ver a tela de aceite de novo
+          no próximo acesso.
+        </p>
+        <Link
+          href="/admin/configuracoes/documentos"
+          className="mt-3 inline-block rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+        >
+          Abrir documentos
         </Link>
       </section>
 

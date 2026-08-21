@@ -1,35 +1,38 @@
 'use server';
-// 0094/0095 — token de revenda da Focus NFe (AdminBalu).
+// 0094/0095/0099 — tokens da Focus NFe para a conta da PLATAFORMA (AdminBalu).
 //
-// O QUE ESTA TELA DECIDE: com que token a plataforma fala com a API de REVENDA
-// da Focus — cadastrar empresa, atualizar cadastro, enviar certificado, ler o
-// catálogo de CNAEs e de municípios. É o token que age em nome de todos os
-// clientes; não há credencial mais sensível no produto.
+// O QUE ESTA TELA DECIDE: com que token a plataforma fala com a Focus em nome
+// da conta da plataforma — hoje, na prática, o catálogo de CNAEs e o de
+// municípios. Cadastro de empresa (`POST /v2/empresas`) também usa um destes
+// dois tokens (o de produção — ver `lib/clients/focus-nfe.ts:criarEmpresa`),
+// mas está bloqueado por permissão da CONTA no Gateway da Focus desde
+// 23/07/2026, independente de qual token for gravado aqui (ver 0099).
 //
 // O QUE ELA **NÃO** DECIDE: a emissão. Nota fiscal sai com o token DA EMPRESA
-// (`companies.focus_token`), que a Focus devolve no POST /v2/empresas. É por
-// isso que aqui há UM campo e não um par hom/prod — ver o cabeçalho da 0095,
-// que registra a sondagem em que essa confusão foi desfeita.
+// (`companies.focus_token`), que a Focus devolve no POST /v2/empresas.
 //
-// POR QUE ELA EXISTE: até 20/08/2026 o token vinha de `process.env
-// .FOCUS_NFE_TOKEN`, que existe na Vercel e NÃO existia no `.env.local` — lá
-// havia `FOCUS_NFE_TOKEN_PRODUÇÃO` e `FOCUS_NFE_HOMOLOGAÇÃO`, nomes que o
-// código nunca leu. O desenvolvimento local ficou com a Focus morta sem que
-// nada denunciasse.
+// DOIS CAMPOS, DE VOLTA. A 0095 tinha reduzido isto a um token só
+// ("de revenda"), com base numa sonda contra `/v2/empresas` lida errado — ver
+// o cabeçalho da 0099, que desfaz isso e registra a medição que prova o par
+// hom/prod. Os dois tokens são independentes: um é válido em
+// `homologacao.focusnfe.com.br`, o outro em `api.focusnfe.com.br`, e um NÃO
+// serve no lugar do outro.
 //
 // ⚠️ UPDATE, NUNCA UPSERT — a mesma armadilha registrada em
 // `admin/configuracoes/ia/actions.ts`: o upsert do PostgREST manda NULL nas
-// colunas ausentes do payload.
+// colunas ausentes do payload. Como aqui um campo vazio pode significar "não
+// mexer nesse token", um upsert trocaria por engano o token que NÃO veio no
+// formulário.
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdminBaluAction } from '@/lib/admin/guard';
 import { registrarAuditoria } from '@/lib/security/audit';
-import { guardarTokenFocus, invalidarCacheFocus } from '@/lib/fiscal/config-focus';
+import { guardarTokenFocus, invalidarCacheFocus, type AmbienteFocus } from '@/lib/fiscal/config-focus';
 import { focus } from '@/lib/clients/focus-nfe';
 import {
-  classificarSondaRevendaFocus,
-  type ResultadoSondaRevendaFocus,
-} from '@/lib/fiscal/focus-revenda-sonda';
+  classificarSondaTokenFocus,
+  type ResultadoSondaTokenFocus,
+} from '@/lib/fiscal/focus-token-sonda';
 import { ConfigFocusSchema } from '@/types/zod';
 
 // `aviso` existe só no caminho de sucesso: CONSERTO 1 grava mesmo quando a
@@ -39,27 +42,38 @@ type ActionResult = { ok: true; aviso?: string } | { ok: false; error: string };
 
 const ROTA = '/admin/configuracoes/focus';
 
-/** Empresa inexistente na revenda. A sonda tem de bater num endpoint de
- *  REVENDA, e não no catálogo: em 20/08/2026 os tokens do `.env.local` deram
- *  200 em `/v2/codigos_cnae` e 401 em `/v2/empresas` — testar pelo catálogo
- *  teria aprovado um token que não serve para nada que esta tela promete. */
-const ID_SONDA = 1;
+function nomeAmbiente(ambiente: AmbienteFocus): string {
+  return ambiente === 'hom' ? 'homologação' : 'produção';
+}
+
+/** Código de CNAE real e fixo, presente no catálogo dos dois ambientes. A
+ *  sonda tem de bater num endpoint que DISCRIMINA por token — em 20/08/2026
+ *  os dois tokens da conta deram 200 em `/v2/codigos_cnae` cada um na sua
+ *  base, e 401 nos dois em `/v2/empresas` (permissão da conta, não do
+ *  token) — testar por `/v2/empresas` teria recusado tokens corretos. */
+const CODIGO_CNAE_SONDA = '6201501';
 
 /**
- * Sonda `GET /v2/empresas/:id` contra a revenda e classifica o resultado com
- * a MESMA regra para os dois chamadores deste arquivo:
- *   - `testarConexaoFocusAction` — sem `token`, resolve o que já está gravado.
- *   - `salvarConfigFocusAction` — com `token`, sonda o candidato do formulário
- *     ANTES de gravar (conserto 1: ver o comentário lá).
- * A classificação em si é pura e mora em `lib/fiscal/focus-revenda-sonda.ts`,
+ * Sonda `GET /v2/codigos_cnae/6201501` **na base do ambiente informado** e
+ * classifica o resultado com a MESMA regra para os dois chamadores deste
+ * arquivo:
+ *   - `testarConexaoFocusAction` — sem `token`, resolve o que já está gravado
+ *     para aquele ambiente.
+ *   - `salvarConfigFocusAction` — com `token`, sonda o candidato do
+ *     formulário ANTES de gravar (conserto 1) — precisa sondar com o que
+ *     está SENDO SALVO, não com o que já está no banco.
+ * A classificação em si é pura e mora em `lib/fiscal/focus-token-sonda.ts`,
  * testável sem rede.
  */
-async function sondarRevendaFocus(token?: string): Promise<ResultadoSondaRevendaFocus> {
+async function sondarTokenFocus(
+  ambiente: AmbienteFocus,
+  token?: string,
+): Promise<ResultadoSondaTokenFocus> {
   try {
-    await focus.consultarEmpresa(ID_SONDA, undefined, token);
+    await focus.consultarCnae(CODIGO_CNAE_SONDA, ambiente, token);
     return { status: 'aceito' };
   } catch (e) {
-    return classificarSondaRevendaFocus(e);
+    return classificarSondaTokenFocus(e);
   }
 }
 
@@ -72,51 +86,82 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
     return { ok: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos.' };
   }
 
-  const token = (parsed.data.token_revenda ?? '').trim();
-  if (!token) {
-    // Sem isto o "salvar" com o campo vazio gravaria só o carimbo de data e
-    // diria "salvo" — o admin sairia achando que trocou o token.
-    return { ok: false, error: 'Cole o token de revenda para salvar.' };
+  const tokenHom = (parsed.data.token_hom ?? '').trim();
+  const tokenProd = (parsed.data.token_prod ?? '').trim();
+  if (!tokenHom && !tokenProd) {
+    // Sem isto o "salvar" com os dois campos em branco atualizaria só o
+    // carimbo de data e diria "salvo" — o admin sairia achando que trocou
+    // algum dos tokens. O caminho comum é trocar só UM dos dois — por isso
+    // isto exige pelo menos um, não os dois.
+    return { ok: false, error: 'Cole ao menos um token (homologação ou produção) para salvar.' };
   }
 
-  // CONSERTO 1 (Bloco 5 produção fiscal, 20/08/2026): antes disto a tela
-  // gravava o token e só testava DEPOIS, se o admin lembrasse de clicar em
-  // "Testar conexão". Foi assim que o token de EMISSÃO de uma empresa — que
-  // FUNCIONA nas consultas de catálogo — foi colado neste campo, gravado sem
-  // reclamar, e passou a derrubar cadastro de empresa, upload de certificado
-  // A1 e o botão Sincronizar com 401 em produção. E como campo vazio significa
-  // "não trocar", não havia caminho pela interface para desfazer. Agora a
-  // sonda roda ANTES do UPDATE/INSERT, com o token que está SENDO SALVO — não
-  // o que já está no banco.
-  let aviso: string | undefined;
-  const sonda = await sondarRevendaFocus(token);
-  if (sonda.status === 'recusado') {
+  // CONSERTO 1 (Bloco 5 produção fiscal, 20/08/2026), agora por ambiente: cada
+  // token preenchido é sondado NO SEU AMBIENTE antes de ir para o UPDATE —
+  // com o candidato do formulário, não com o que já está no banco. Se
+  // QUALQUER um dos dois for recusado, NADA é gravado — nem o outro campo,
+  // mesmo que ele tenha passado: gravar metade de uma troca deixaria o admin
+  // sem saber qual dos dois está valendo.
+  const candidatos: Array<{ ambiente: AmbienteFocus; token: string }> = [];
+  if (tokenHom) candidatos.push({ ambiente: 'hom', token: tokenHom });
+  if (tokenProd) candidatos.push({ ambiente: 'prod', token: tokenProd });
+
+  type SondaItem = { ambiente: AmbienteFocus; token: string; sonda: ResultadoSondaTokenFocus };
+  const sondas: SondaItem[] = await Promise.all(
+    candidatos.map(async (c) => ({ ...c, sonda: await sondarTokenFocus(c.ambiente, c.token) })),
+  );
+
+  const recusada = sondas.find((s) => s.sonda.status === 'recusado');
+  if (recusada) {
+    // NADA é gravado quando um dos dois é recusado — nem o outro campo, ainda
+    // que ele tenha passado na sonda: gravar metade de uma troca deixaria o
+    // admin sem saber qual dos dois está valendo (ver o laço de escrita
+    // abaixo, que só roda depois deste `return`).
     return {
       ok: false,
       error:
-        'A Focus recusou este token na API de revenda (401/403) — nada foi salvo. Confira se ' +
-        'você não colou o token de EMISSÃO de uma empresa por engano: ele é diferente do token ' +
-        'da conta de revenda, e costuma funcionar em consultas de catálogo mesmo sem acesso à ' +
-        'revenda — foi exatamente essa confusão que derrubou a Focus em produção em 20/08/2026.',
+        `A Focus recusou o token de ${nomeAmbiente(recusada.ambiente)} (401/403) — nada foi ` +
+        'salvo. Confira se você não trocou os campos: o token de homologação não funciona em ' +
+        'produção, e o de produção não funciona em homologação — cada um só vale na base do ' +
+        'seu próprio ambiente.',
     };
   }
-  if (sonda.status === 'indeterminado') {
-    // Rede fora do ar, 5xx ou timeout não pode travar quem está configurando
-    // uma credencial nova: a Focus pode estar instável e o token, correto.
-    aviso =
-      `Salvo, mas não foi possível confirmar o acesso à revenda agora ` +
-      `(${sonda.motivo.slice(0, 140)}). Teste a conexão quando puder.`;
+
+  // Nenhuma recusa: os que sobraram são 'aceito' ou 'indeterminado'. Rede
+  // fora do ar, 5xx ou timeout não podem travar quem está configurando uma
+  // credencial nova — a Focus pode estar instável e o token, correto.
+  const ehIndeterminado = (
+    s: SondaItem,
+  ): s is SondaItem & { sonda: Extract<ResultadoSondaTokenFocus, { status: 'indeterminado' }> } =>
+    s.sonda.status === 'indeterminado';
+  const indeterminados = sondas.filter(ehIndeterminado);
+  let aviso: string | undefined;
+  if (indeterminados.length > 0) {
+    const partes = indeterminados.map(
+      (s) => `${nomeAmbiente(s.ambiente)} (${s.sonda.motivo.slice(0, 100)})`,
+    );
+    aviso = `Salvo, mas não foi possível confirmar: ${partes.join('; ')}. Teste a conexão quando puder.`;
   }
 
   const patch: Record<string, unknown> = {
     atualizado_por: ctx.userId,
     atualizado_em: new Date().toISOString(),
   };
+  const trocou = { hom: false, prod: false };
   try {
-    patch.token_revenda_cifrado = guardarTokenFocus(token);
+    for (const s of sondas) {
+      const cifrado = guardarTokenFocus(s.token);
+      if (s.ambiente === 'hom') {
+        patch.token_hom_cifrado = cifrado;
+        trocou.hom = true;
+      } else {
+        patch.token_prod_cifrado = cifrado;
+        trocou.prod = true;
+      }
+    }
   } catch {
-    // `guardarTokenFocus` recusa devolver valor não cifrado. Gravar em claro o
-    // token que age em nome de todos os clientes seria pior que falhar.
+    // `guardarTokenFocus` recusa devolver valor não cifrado. Gravar em claro
+    // um token desta conta seria pior que falhar.
     return { ok: false, error: 'Não foi possível proteger o token. Nada foi salvo.' };
   }
 
@@ -124,7 +169,7 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
   const { data: atual, error: eLer } = await sb
     .from('config_focus').select('id').eq('id', 1).maybeSingle();
   if (eLer) {
-    console.error('[0095] config_focus leitura falhou:', eLer.message);
+    console.error('[0099] config_focus leitura falhou:', eLer.message);
     return { ok: false, error: 'Não foi possível ler a configuração. Tente de novo.' };
   }
 
@@ -134,7 +179,7 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
     const { data, error } = await sb
       .from('config_focus').update(patch).eq('id', 1).select('id');
     if (error) {
-      console.error('[0095] config_focus update falhou:', error.message);
+      console.error('[0099] config_focus update falhou:', error.message);
       return { ok: false, error: 'Não foi possível salvar. Tente de novo.' };
     }
     if ((data?.length ?? 0) === 0) {
@@ -143,18 +188,19 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
   } else {
     const { error } = await sb.from('config_focus').insert({ id: 1, ...patch });
     if (error) {
-      console.error('[0095] config_focus insert falhou:', error.message);
+      console.error('[0099] config_focus insert falhou:', error.message);
       return { ok: false, error: 'Não foi possível salvar. Tente de novo.' };
     }
   }
 
-  // O cache de 60s de `obterTokenRevendaFocus` valeria contra o token velho até
+  // O cache de 60s de `obterTokenFocus` valeria contra o token velho até
   // expirar. Invalidar aqui faz a troca valer na chamada seguinte — inclusive
   // no "testar conexão" que o admin costuma clicar logo depois.
   invalidarCacheFocus();
 
   // A AUDITORIA NÃO MENCIONA O TOKEN — nem mascarado. Máscara em log é segredo
-  // pela metade, e o que interessa auditar é QUEM trocou e QUANDO.
+  // pela metade, e o que interessa auditar é QUEM trocou, QUANDO e QUAL DOS
+  // DOIS.
   //
   // CONSERTO 3: `audit_log.alvo_id` é uuid, e a string `'1'` não é — o insert
   // falhava com erro de sintaxe, calado, porque `registrarAuditoria` não
@@ -165,7 +211,13 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
     acao: 'focus.config_salvar',
     alvoTipo: 'config_focus',
     alvoId: null,
-    meta: { config_id: 1, trocou_token: true, sonda: sonda.status },
+    meta: {
+      config_id: 1,
+      trocou_hom: trocou.hom,
+      trocou_prod: trocou.prod,
+      sonda_hom: sondas.find((s) => s.ambiente === 'hom')?.sonda.status ?? null,
+      sonda_prod: sondas.find((s) => s.ambiente === 'prod')?.sonda.status ?? null,
+    },
   });
 
   revalidatePath(ROTA);
@@ -173,14 +225,12 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
 }
 
 /**
- * Limpa o token de revenda gravado — volta a plataforma a usar
- * `FOCUS_NFE_TOKEN` do ambiente.
+ * Limpa os dois tokens gravados — volta a plataforma a usar as variáveis de
+ * ambiente (0099).
  *
  * CONSERTO 2 (Bloco 5 produção fiscal): antes disto não existia caminho pela
  * interface para desfazer uma gravação ruim. Campo vazio no formulário
- * sempre significou "não trocar" — nunca "apagar" —, e foi exatamente essa
- * lacuna que deixou o token de emissão colado por engano em 20/08/2026 preso
- * no banco até alguém corrigir na mão, direto no Supabase.
+ * sempre significou "não trocar" — nunca "apagar".
  */
 export async function limparConfigFocusAction(): Promise<ActionResult> {
   const ctx = await requireAdminBaluAction();
@@ -192,14 +242,15 @@ export async function limparConfigFocusAction(): Promise<ActionResult> {
   const { data, error } = await sb
     .from('config_focus')
     .update({
-      token_revenda_cifrado: null,
+      token_hom_cifrado: null,
+      token_prod_cifrado: null,
       atualizado_por: ctx.userId,
       atualizado_em: new Date().toISOString(),
     })
     .eq('id', 1)
     .select('id');
   if (error) {
-    console.error('[0095] config_focus limpar falhou:', error.message);
+    console.error('[0099] config_focus limpar falhou:', error.message);
     return { ok: false, error: 'Não foi possível limpar. Tente de novo.' };
   }
   if ((data?.length ?? 0) === 0) {
@@ -221,34 +272,36 @@ export async function limparConfigFocusAction(): Promise<ActionResult> {
 }
 
 /**
- * Testa o token JÁ GRAVADO contra a API de REVENDA da Focus, de verdade — a
+ * Testa o token JÁ GRAVADO de um ambiente contra a Focus, de verdade — a
  * pedido do admin, depois de salvar.
  *
- * Nenhum dado de contribuinte atravessa: o id da sonda é uma constante deste
- * arquivo, de uma empresa que não é nossa. A classificação (401/403 recusa,
- * 404 aprova, resto é indeterminado) é a mesma que `salvarConfigFocusAction`
- * usa para testar o token NOVO antes de gravar — ver `sondarRevendaFocus` e
- * `classificarSondaRevendaFocus`.
+ * Nenhum dado de contribuinte atravessa: o código de CNAE da sonda é uma
+ * constante deste arquivo. A classificação (401/403 recusa, resto é
+ * indeterminado) é a mesma que `salvarConfigFocusAction` usa para testar o
+ * token NOVO antes de gravar — ver `sondarTokenFocus` e
+ * `classificarSondaTokenFocus`.
  */
-export async function testarConexaoFocusAction(): Promise<ActionResult> {
+export async function testarConexaoFocusAction(ambiente: AmbienteFocus): Promise<ActionResult> {
   const ctx = await requireAdminBaluAction();
   if ('error' in ctx) return { ok: false, error: ctx.error };
 
-  const sonda = await sondarRevendaFocus();
+  const sonda = await sondarTokenFocus(ambiente);
   if (sonda.status === 'aceito') return { ok: true };
   if (sonda.status === 'recusado') {
     return {
       ok: false,
-      error: 'A Focus recusou o token: ele não tem acesso à API de revenda (401/403).',
+      error: `A Focus recusou o token de ${nomeAmbiente(ambiente)}: ele não vale nesse ambiente (401/403).`,
     };
   }
   if (/não configurado/i.test(sonda.motivo)) {
-    return { ok: false, error: 'Não há token de revenda guardado.' };
+    return { ok: false, error: `Não há token de ${nomeAmbiente(ambiente)} guardado.` };
   }
   // Curto de propósito: a resposta da Focus pode trazer corpo longo, e o
   // toast não é lugar de despejar HTML de gateway.
   return {
     ok: false,
-    error: `A Focus não recusou o token, mas a chamada falhou: ${sonda.motivo.slice(0, 160)}`,
+    error:
+      `A Focus não recusou o token de ${nomeAmbiente(ambiente)}, mas a chamada falhou: ` +
+      `${sonda.motivo.slice(0, 160)}`,
   };
 }

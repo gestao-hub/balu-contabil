@@ -21,6 +21,7 @@ import Logo from '@/components/Logo';
 import ThemeToggle from '@/components/ThemeToggle';
 import { SinoNotificacoes } from '@/components/notificacoes/SinoNotificacoes';
 import { hrefAtivo } from '@/components/menu-ativo';
+import { itensVisiveis } from './menu-visibilidade';
 
 // Os values batem com o option set Bubble (lowercase). Para exibição, label é capitalizada.
 type Role = 'empresa' | 'contador' | 'adminbalu';
@@ -63,6 +64,11 @@ export type MenuLateralProps = {
    *  nele. */
   temCobrancasDoEscritorio?: boolean;
   escritorio?: EscritorioBranding | null;
+  /** Empresa ativa pertence a carteira de um escritorio (`contabilidade_id`
+   *  preenchido). Quem paga a assinatura nesse caso e o escritorio — ver
+   *  `assertAssinaturaEmpresa` em lib/billing/gate.ts, que libera SEMPRE para
+   *  empresa de carteira. */
+  empresaDeCarteira?: boolean;
 };
 
 type NavItem = {
@@ -80,6 +86,11 @@ type NavItem = {
    *  `precisaEmpresa` acima. A página continua acessível por URL e se explica
    *  sozinha ("nenhuma cobrança do seu escritório por aqui ainda"). */
   precisaCobranca?: boolean;
+  /** Some quando a empresa ativa e de carteira: a assinatura dela ja esta
+   *  incluida na do escritorio, entao a tela nao teria o que oferecer alem de
+   *  confundir. Empresa AVULSA continua vendo — ela paga a propria e precisa
+   *  de vencimento, troca de cartao e regularizacao. */
+  ocultaEmCarteira?: boolean;
   /** Título do grupo a que o item pertence. Itens com a MESMA `secao` têm de
    *  estar adjacentes na lista: o cabeçalho é desenhado antes do primeiro e um
    *  fecho depois do último, sem reordenar nada. Item sem `secao` continua solto,
@@ -142,13 +153,13 @@ const NAV: NavItem[] = [
   // porque sem empresa corrente a tela vira beco "Nenhuma empresa
   // selecionada" — mesma regra dos demais itens de empresa acima.
   { href: '/contador/assinatura',   label: 'Assinatura',     Icon: CreditCard, roles: ['contador'] },
-  { href: '/conta/assinatura',      label: 'Assinatura',     Icon: CreditCard, precisaEmpresa: true },
+  { href: '/conta/assinatura',      label: 'Assinatura',     Icon: CreditCard, precisaEmpresa: true, ocultaEmCarteira: true },
   { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
 ];
 
 export default function MenuLateral({
   userName, userRole, companies, currentCompanyId, temEscritorio,
-  temCobrancasDoEscritorio = false, escritorio = null,
+  temCobrancasDoEscritorio = false, escritorio = null, empresaDeCarteira = false,
 }: MenuLateralProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -172,21 +183,18 @@ export default function MenuLateral({
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [companyMenuOpen]);
-  const items = NAV
-    .filter((i) => !i.roles || i.roles.includes(userRole))
-    // `/contador` (painel) é o ponto de ENTRADA do contador: sempre visível pro
-    // papel contador — a própria página redireciona pra /contador/cadastro quem
-    // ainda não tem escritório (senão o contador recém-criado fica sem caminho de
-    // UI nenhum). As sub-rotas (equipe, config) só aparecem com escritório pronto.
-    .filter((i) => i.href === '/contador' || !i.href.startsWith('/contador/') || temEscritorio)
-    // Itens de empresa só com empresa própria (contador/admin sem empresa não os vê).
-    .filter((i) => !i.precisaEmpresa || userRole === 'empresa' || companies.length > 0)
-    // Existe boleto? (ver o tipo acima). `escritorio.proprio` é o contador
-    // olhando a si mesmo: ele cobra pelo painel /contador/honorarios, não por
-    // esta tela de cliente.
-    .filter((i) => !i.precisaCobranca || (temCobrancasDoEscritorio && !escritorio?.proprio))
-    // Admin usa /admin (Visão geral) como home; o "/" (dashboard de empresa) é beco pra ele.
-    .filter((i) => !(userRole === 'adminbalu' && i.href === '/'));
+  // QUEM VÊ O QUÊ. A regra mora em `menu-visibilidade.ts`, com teste — mesmo
+  // caminho que `menu-ativo.ts` seguiu. O gatilho foi "Assinatura", que some
+  // para empresa de carteira: errar para o lado de esconder demais tira de uma
+  // empresa AVULSA o caminho de pagar, e isso não aparece em `tsc` nem em build.
+  const items = itensVisiveis(NAV, {
+    userRole,
+    qtdEmpresas: companies.length,
+    temEscritorio: Boolean(temEscritorio),
+    temCobrancasDoEscritorio,
+    escritorioProprio: Boolean(escritorio?.proprio),
+    empresaDeCarteira,
+  });
 
   // QUAL ITEM ACENDE. A regra mora em `menu-ativo.ts`, com teste: a seção
   // Cobranças introduziu hrefs que são prefixo uns dos outros, e o

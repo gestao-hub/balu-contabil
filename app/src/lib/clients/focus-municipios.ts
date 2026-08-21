@@ -1,5 +1,5 @@
 import 'server-only';
-import { obterTokenRevendaFocus } from '@/lib/fiscal/config-focus';
+import { obterTokenFocus } from '@/lib/fiscal/config-focus';
 
 const BASE = 'https://api.focusnfe.com.br';
 const PAGE_SIZE = 100;
@@ -23,14 +23,16 @@ export type FocusMunicipio = {
   ultima_emissao_nfse?: string | null;
 };
 
-/** `BASE` é sempre `api.focusnfe.com.br` — o catálogo de municípios é consulta
- *  de referência e vive junto da API de revenda, então usa o token de revenda
- *  (ver 0095). */
+/** `BASE` é sempre `api.focusnfe.com.br` — o catálogo de municípios só existe
+ *  nessa base (não há espelho em `homologacao.focusnfe.com.br`), então usa o
+ *  token de PRODUÇÃO da conta da plataforma (0099): é o único que a Focus
+ *  reconhece nesse host — o de homologação daria 401 aqui, mesmo sendo um
+ *  token válido no ambiente dele. */
 async function authHeader(): Promise<string> {
-  const token = await obterTokenRevendaFocus();
+  const token = await obterTokenFocus('prod');
   if (!token) {
     throw new Error(
-      'Token de revenda da Focus não configurado — preencha em /admin/configuracoes/focus.',
+      'Token de produção da Focus não configurado — preencha em /admin/configuracoes/focus.',
     );
   }
   return 'Basic ' + Buffer.from(`${token}:`).toString('base64');

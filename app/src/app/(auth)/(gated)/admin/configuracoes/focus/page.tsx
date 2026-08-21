@@ -1,10 +1,11 @@
-// 0094/0095 — token de revenda da Focus NFe (AdminBalu).
+// 0094/0095/0099 — tokens da Focus NFe (AdminBalu), por ambiente.
 //
-// A COLUNA CIFRADA NÃO SAI DAQUI. A página lê `token_revenda_cifrado` só para
-// decidir um booleano e o descarta; o que atravessa para o Client Component é
-// apenas "tem ou não tem". Mandar a coluna cifrada para a tela colocaria o
-// segredo no HTML servido ao navegador — cifrado, mas ao alcance de qualquer
-// extensão e de qualquer print.
+// AS COLUNAS CIFRADAS NÃO SAEM DAQUI. A página lê `token_hom_cifrado` e
+// `token_prod_cifrado` só para decidir dois booleanos e os descarta; o que
+// atravessa para o Client Component é apenas "tem ou não tem" de cada um.
+// Mandar a coluna cifrada para a tela colocaria o segredo no HTML servido ao
+// navegador — cifrado, mas ao alcance de qualquer extensão e de qualquer
+// print.
 import { requireAdminBaluPage } from '@/lib/admin/guard';
 import { createAdminClient } from '@/lib/supabase/admin';
 import ConfigFocusForm from './ConfigFocusForm';
@@ -17,7 +18,7 @@ export default async function Page() {
 
   const { data, error } = await sb
     .from('config_focus')
-    .select('token_revenda_cifrado, atualizado_em')
+    .select('token_hom_cifrado, token_prod_cifrado, atualizado_em')
     .eq('id', 1)
     .maybeSingle();
 
@@ -25,9 +26,9 @@ export default async function Page() {
     <div>
       <h1 className="mb-1 text-xl font-semibold">Focus NFe</h1>
       <p className="text-sm text-muted-foreground">
-        O token com que a plataforma cadastra empresa, atualiza cadastro e envia
-        certificado em nome dos clientes. Trocar aqui não exige deploy, e toda alteração
-        vai para o registro de auditoria.
+        Os dois tokens (homologação e produção) com que a plataforma fala com a Focus em
+        nome da conta da plataforma. Trocar aqui não exige deploy, e toda alteração vai
+        para o registro de auditoria.
       </p>
     </div>
   );
@@ -37,7 +38,7 @@ export default async function Page() {
   // quando ele está lá, e o pior desfecho não é a mensagem errada: é ele colar
   // outro token por cima de um estado que não está enxergando.
   if (error) {
-    console.error('[0095] config_focus leitura falhou na pagina:', error.message);
+    console.error('[0099] config_focus leitura falhou na pagina:', error.message);
     return (
       <div className="space-y-6 p-6">
         {cabecalho}
@@ -58,7 +59,10 @@ export default async function Page() {
       {cabecalho}
 
       <ConfigFocusForm
-        inicial={{ temToken: Boolean(data?.token_revenda_cifrado) }}
+        inicial={{
+          temHom: Boolean(data?.token_hom_cifrado),
+          temProd: Boolean(data?.token_prod_cifrado),
+        }}
       />
     </div>
   );

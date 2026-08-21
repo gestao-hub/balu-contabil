@@ -3,8 +3,10 @@
 // Task 18: form de branding (nome/WhatsApp/remetente + logo) e link do escritório.
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Loader2, Save, Upload, Link2, Copy, Check, Ban, Image as ImageIcon,
+  MessageCircle, CircleAlert, CircleCheck,
 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { ContabilidadeBrandingSchema } from '@/types/zod';
@@ -18,15 +20,59 @@ type Initial = {
   email_remetente_nome: string;
 };
 
+/** Estado do canal de atendimento, só para exibição. Vem da tela própria
+ *  (`/contador/configuracoes/whatsapp`), que é quem provisiona a instância. */
+export type CanalWhatsapp = {
+  status: string | null;
+  numero: string | null;
+};
+
 type Props = {
   initial: Initial;
   logoUrlInicial: string | null;
   linkInicial: string | null;
+  canal: CanalWhatsapp;
 };
+
+/** O CAMPO ACIMA NÃO LIGA O ATENDIMENTO, e essa é a confusão que este aviso
+ *  existe para desfazer: `whatsapp_suporte` é número de EXIBIÇÃO (aparece para
+ *  o cliente como contato do escritório) e salvar aqui não cria instância na
+ *  uazapi nem pareia nada. Quem provisiona é `/contador/configuracoes/whatsapp`.
+ *  Sem este bloco, o contador preenche o campo, salva, e fica esperando
+ *  mensagens que nunca chegam — descobrindo o engano pela ausência delas. */
+function AvisoCanal({ canal }: { canal: CanalWhatsapp }) {
+  const conectado = canal.status === 'conectado';
+  const emProgresso = canal.status === 'conectando';
+  const Icone = conectado ? CircleCheck : CircleAlert;
+  const cor = conectado
+    ? 'text-emerald-600'
+    : emProgresso ? 'text-amber-600' : 'text-muted-foreground-2';
+
+  const texto = conectado
+    ? `Atendimento por WhatsApp ativo${canal.numero ? ` no número ${formatTel(canal.numero)}` : ''}.`
+    : emProgresso
+      ? 'Atendimento por WhatsApp aguardando o pareamento — o código foi gerado e ainda não foi confirmado no aparelho.'
+      : 'O atendimento por WhatsApp NÃO está ativo. O número acima é apenas o contato exibido aos seus clientes.';
+
+  return (
+    <div className="mt-1 flex flex-wrap items-start gap-1.5 text-xs text-muted-foreground">
+      <Icone className={`mt-0.5 size-3.5 shrink-0 ${cor}`} />
+      <span>
+        {texto}{' '}
+        <Link
+          href="/contador/configuracoes/whatsapp"
+          className="text-primary underline-offset-2 hover:underline"
+        >
+          {conectado ? 'Gerenciar canal' : 'Configurar o canal de atendimento'}
+        </Link>
+      </span>
+    </div>
+  );
+}
 
 const MAX_LOGO_BYTES = 4 * 1024 * 1024; // 4MB — mesmo limite do endpoint (checagem antecipada, sem round-trip)
 
-export default function EscritorioConfigForm({ initial, logoUrlInicial, linkInicial }: Props) {
+export default function EscritorioConfigForm({ initial, logoUrlInicial, linkInicial, canal }: Props) {
   const router = useRouter();
   const toast = useToast();
   const [form, setForm] = useState<Initial>(initial);
@@ -169,7 +215,10 @@ export default function EscritorioConfigForm({ initial, logoUrlInicial, linkInic
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-xs font-medium text-muted-foreground-2">WhatsApp de suporte</span>
+            <span className="text-xs font-medium text-muted-foreground-2">
+              <MessageCircle className="mr-1 inline size-3.5" />
+              WhatsApp de suporte (exibido ao cliente)
+            </span>
             <input
               type="tel"
               value={formatTel(form.whatsapp_suporte)}
@@ -178,6 +227,7 @@ export default function EscritorioConfigForm({ initial, logoUrlInicial, linkInic
               maxLength={16}
               className="rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm"
             />
+            <AvisoCanal canal={canal} />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-xs font-medium text-muted-foreground-2">Nome do remetente (e-mails)</span>
