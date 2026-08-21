@@ -4,7 +4,14 @@
  * empresa já cadastrada na Focus (default AL Piscinas — assume que Focus 2.0
  * smoke já rodou). Mostra payload mandado, status do PUT e snapshot pós-PUT.
  *
- * Pré-condição: a empresa já precisa ter focus_token em `companies`.
+ * Pré-condição: a empresa já precisa ter credencial cifrada em
+ * `empresa_credenciais_focus` (hom ou prod).
+ *
+ * Bloqueio 5 da revisão final: este script gateava em `companies.focus_token`,
+ * coluna de texto puro que nenhum caminho do produto escreve mais (a
+ * credencial mora cifrada em `empresa_credenciais_focus` desde 0096/0097) —
+ * ficou sempre vazia e o script travava sempre. Conserto: checa a existência
+ * da credencial na tabela certa.
  *
  * Uso: node --env-file=.env.local --import tsx scripts/focus2.1-put-smoke.ts [cnpj]
  */
@@ -26,7 +33,7 @@ async function main() {
   console.log('[1/4] Localizando empresa…');
   let q = supabase
     .from('companies')
-    .select('id, nome, cnpj, focus_token, focus_status, focus_last_check, updated_at')
+    .select('id, nome, cnpj, focus_status, focus_last_check, updated_at')
     .is('deleted_at', null);
   q = targetArg
     ? q.eq('cnpj', targetArg.replace(/\D+/g, ''))
@@ -37,8 +44,14 @@ async function main() {
   if (!company) { console.error('Empresa não encontrada.'); process.exit(1); }
   console.log(`     ✓ ${company.nome} · CNPJ ${company.cnpj} · id=${company.id}`);
   console.log(`     antes: focus_status=${company.focus_status}, focus_last_check=${company.focus_last_check}`);
-  if (!company.focus_token) {
-    console.error('     ✗ Empresa SEM focus_token — rode focus2-snapshot-smoke (POST) primeiro.');
+
+  const { data: cred } = await supabase
+    .from('empresa_credenciais_focus')
+    .select('token_hom_cifrado, token_prod_cifrado')
+    .eq('empresa_id', company.id)
+    .maybeSingle();
+  if (!cred?.token_hom_cifrado && !cred?.token_prod_cifrado) {
+    console.error('     ✗ Empresa SEM credencial em empresa_credenciais_focus — rode focus1-smoke (POST) primeiro.');
     process.exit(1);
   }
 

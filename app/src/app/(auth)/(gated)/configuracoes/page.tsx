@@ -166,7 +166,11 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       serproTokenExpiration: (empresaFiscal?.serpro_token_procurador_expiration as string | null) ?? null,
       contratanteConfigurado,
       focusStatus: (company.focus_status as 'ok' | 'erro' | null) ?? null,
-      focusToken: (company.focus_token as string | null) ?? null,
+      // O sinal de "cadastrada" é o focus_empresa_id, não o token — o token
+      // saiu de `companies` na 0097, e gatear nele deixava o Diagnóstico
+      // permanentemente dizendo "não cadastrada" (medido: 0 de 5 empresas com
+      // focus_token, inclusive as com focus_empresa_id preenchido).
+      focusEmpresaId: (empresaFiscal?.focus_empresa_id as number | null) ?? null,
       focusLastCheck: (company.focus_last_check as string | null) ?? null,
       focusLastError: (company.focus_last_error as string | null) ?? null,
       // Focus 2.0: snapshot só vira "presente" depois do GET após POST/PUT.
@@ -269,6 +273,13 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
           certEnviadoEm={certEnviadoEm}
           certValidoAte={certValidoAte}
           certPeloEscritorio={certPeloEscritorio}
+          // Task 15: rastro (não segredo) de quem cadastrou a credencial da
+          // Focus desta empresa. `focus_token_por`/`focus_token_em` ficaram em
+          // `companies` de propósito (0097) — o titular precisa ver que o
+          // escritório cadastrou por ele, mesmo princípio de cert_enviado_por
+          // (0085). O TOKEN em si nunca vem pra cá: mora cifrado em
+          // empresa_credenciais_focus, fechada para authenticated.
+          credencialFocusCadastradaEm={(company.focus_token_em as string | null) ?? null}
           // Idem: nunca repassa nfse_senha_login/nfse_token_api (cifrados em
           // repouso) pro client — só indicadores de "já configurado".
           nfseInitial={

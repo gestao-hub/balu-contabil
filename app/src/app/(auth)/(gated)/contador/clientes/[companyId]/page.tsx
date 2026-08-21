@@ -5,6 +5,7 @@
 // (policy de dono em `companies`) mas que não está na carteira do escritório.
 import { notFound, redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 import { MSG_ASSINATURA_PENDENTE, MSG_SUBCONTA_NAO_APROVADA } from '@/lib/billing/mensagens';
@@ -13,6 +14,7 @@ import type { TipoValor } from '@/lib/billing/avulso';
 import VisaoCliente from './VisaoCliente';
 import type { ServicoOpcao } from './CobrarDialog';
 import type { CertInfo } from './CertificadoCliente';
+import type { CredencialFocusInfo } from './CredencialFocusCard';
 
 export default async function ClienteDrillDown(
   { params, searchParams }: { params: Promise<{ companyId: string }>;
@@ -37,7 +39,7 @@ export default async function ClienteDrillDown(
     alvoTipo: 'company', alvoId: companyId, contabilidadeId: ctx.contabilidade.id,
   });
 
-  const [{ data: notas }, { data: guias }, { data: declaracoes }, catalogo, subconta, gate, { data: certRow }] = await Promise.all([
+  const [{ data: notas }, { data: guias }, { data: declaracoes }, catalogo, subconta, gate, { data: certRow }, { data: fiscalRow }, { data: credRow }] = await Promise.all([
     supabase.from('notas_fiscais')
       .select('id, tipo_documento, data_emissao, status, valor_total')
       .eq('company_id', companyId).order('data_emissao', { ascending: false }).limit(50),
@@ -71,6 +73,19 @@ export default async function ClienteDrillDown(
     supabase.from('arquivos_auxiliares')
       .select('storage_key, cert_not_after, cert_cnpj, cert_enviado_por, cert_enviado_em, updated_at')
       .eq('company_id', companyId).is('deleted_at', null).maybeSingle(),
+    // Bloco 5 — origem da Focus e a declaração de produção. `empresas_fiscais`
+    // segue lida pela SESSÃO (`empresas_fiscais_select_contador`, 0033): não
+    // guarda segredo, só metadado.
+    supabase.from('empresas_fiscais')
+      .select('focus_origem, focus_producao_declarada')
+      .eq('empresa_id', companyId).maybeSingle(),
+    // `empresa_credenciais_focus` e fechada para authenticated (0097): esta
+    // leitura EXIGE client de service role. Com o client de sessao ela volta
+    // vazia e a tela mentiria dizendo "nenhum token guardado".
+    createAdminClient()
+      .from('empresa_credenciais_focus')
+      .select('token_hom_cifrado, token_prod_cifrado')
+      .eq('empresa_id', companyId).maybeSingle(),
   ]);
 
   // Falha de leitura do catálogo NÃO pode chegar como "catálogo vazio": o
@@ -112,6 +127,17 @@ export default async function ClienteDrillDown(
     origem: !enviadoPor ? 'desconhecido' : enviadoPor === empresa.user_id ? 'cliente' : 'escritorio',
   };
 
+  // Bloco 5 — nunca a coluna cifrada aqui: só booleanos. Mandar
+  // `token_*_cifrado` para o Client Component colocaria o segredo no HTML do
+  // navegador, mesmo que a tela nunca o exiba.
+  const credencialFocus: CredencialFocusInfo = {
+    companyId,
+    origem: (fiscalRow?.focus_origem as 'propria' | 'balu' | null) ?? 'balu',
+    temHom: Boolean(credRow?.token_hom_cifrado),
+    temProd: Boolean(credRow?.token_prod_cifrado),
+    producaoDeclarada: Boolean(fiscalRow?.focus_producao_declarada),
+  };
+
   return (
     <VisaoCliente
       empresa={empresa}
@@ -121,6 +147,7 @@ export default async function ClienteDrillDown(
       declaracoes={declaracoes ?? []}
       cobranca={{ servicos, podeCobrar, motivoBloqueio, linkBloqueio }}
       cert={cert}
+      credencialFocus={credencialFocus}
     />
   );
 }

@@ -19,6 +19,7 @@ import { registrarDeclaracaoAnualContadorAction } from '@/app/(auth)/(gated)/con
 import type { DeclaracaoAnualTipo } from '@/lib/fiscal/declaracoes-anuais/tipos';
 import CobrarDialog, { type ServicoOpcao } from './CobrarDialog';
 import CertificadoCliente, { type CertInfo } from './CertificadoCliente';
+import CredencialFocusCard, { type CredencialFocusInfo } from './CredencialFocusCard';
 
 type Empresa = { id: string; nome: string | null; razao_social: string | null; cnpj: string | null };
 
@@ -51,6 +52,8 @@ type Props = {
   declaracoes: DeclaracaoRow[];
   cobranca: CobrancaProps;
   cert: CertInfo;
+  /** Bloco 5 — a credencial da Focus do cliente (aba "Focus"). */
+  credencialFocus: CredencialFocusInfo;
 };
 
 const TABS = [
@@ -58,6 +61,7 @@ const TABS = [
   { key: 'guias', label: 'Guias' },
   { key: 'declaracoes', label: 'Declarações' },
   { key: 'certificado', label: 'Certificado' },
+  { key: 'focus', label: 'Credencial Focus' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -78,7 +82,7 @@ function badgeDeclaracao(status: string | null): { label: string; cls: string } 
   return { label: 'Pendente', cls: 'bg-alert/10 text-alert' };
 }
 
-export default function VisaoCliente({ empresa, tab, notas, guias, declaracoes, cobranca, cert }: Props) {
+export default function VisaoCliente({ empresa, tab, notas, guias, declaracoes, cobranca, cert, credencialFocus }: Props) {
   const active: TabKey = (TABS.find((t) => t.key === tab)?.key ?? 'notas') as TabKey;
   const nomeExibicao = empresa.razao_social || empresa.nome || '—';
 
@@ -142,6 +146,8 @@ export default function VisaoCliente({ empresa, tab, notas, guias, declaracoes, 
         <GuiasTable guias={guias} />
       ) : active === 'certificado' ? (
         <CertificadoCliente companyId={empresa.id} cert={cert} />
+      ) : active === 'focus' ? (
+        <CredencialFocusCard {...credencialFocus} />
       ) : (
         <>
           <DeclaracoesAnuaisCard

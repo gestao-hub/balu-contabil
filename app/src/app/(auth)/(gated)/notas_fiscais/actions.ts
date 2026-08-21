@@ -9,6 +9,9 @@ import { createServerClient } from '@/lib/supabase/server';
 import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
 import { assertAssinaturaEmpresa } from '@/lib/billing/gate';
 import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
+import { resolverCredencialEmissao, tokenParaAmbiente, MENSAGEM_RECUSA } from '@/lib/fiscal/resolver-credencial';
+import { registrarAuditoria } from '@/lib/security/audit';
+import { empresaDoDono, MENSAGEM_NAO_E_DONO } from '@/lib/auth/empresa-dono';
 import { assertTipoDoc, validarJustificativa, cancelamentoSoPortal, type TipoDoc } from '@/lib/fiscal/notas-tipo';
 import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import { buildNfsePayload } from '@/lib/fiscal/nfse-payload';
@@ -136,7 +139,8 @@ export async function exportNotasCsvAction(filtros: NotasFiltros): Promise<Expor
  *      imediato com mensagem traduzida.
  *   7. Redireciona pro detalhe.
  *
- * `env` decidido por `empresas_fiscais.emitir_nota_homol_antes_producao` (true → hom).
+ * `env` (hom|prod) e o token decididos por `resolverCredencialEmissao`, a
+ * guarda de emissão do Bloco 5 (ver `@/lib/fiscal/resolver-credencial`).
  */
 export type EmitirNotaInput = {
   clienteId: string;
@@ -163,24 +167,36 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
     .select('current_company')
     .eq('user_id', user.id)
     .single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR: `resolverCredencialEmissao` mais abaixo roda com SERVICE ROLE e
+  // decifra o token da empresa apontada aqui. Hoje o insert seguinte bateria na
+  // RLS de `notas_fiscais`, mas a ordem das linhas não pode ser a única coisa
+  // impedindo que a credencial de outro CNPJ seja lida. Ver `empresaDoDono`.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
+
   const assinatura = await assertAssinaturaEmpresa(companyId);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const { data: company } = await supabase
     .from('companies')
-    .select('cnpj, codigo_municipio, razao_social, focus_token')
+    .select('cnpj, codigo_municipio, razao_social')
     .eq('id', companyId)
     .single();
   if (!company) return { ok: false, error: 'Empresa não encontrada.' };
-  if (!company.focus_token) {
-    return { ok: false, error: 'Empresa ainda não está cadastrada na Focus. Vá no Diagnóstico e clique "Sincronizar com Focus".' };
-  }
+  // Bloco 5: NÃO gatear em `company.focus_token` aqui — a Task 2 já migrou o
+  // token para `empresa_credenciais_focus` e esvaziou esta coluna para TODA
+  // empresa (medido em 20/08/2026: 0 de 5 empresas têm `focus_token`, inclusive
+  // as 2 com credencial de verdade na tabela nova). Deixar este `if` de pé
+  // bloquearia a emissão de toda empresa antes mesmo de chegar em
+  // `resolverCredencialEmissao`, que já cobre esta mesma checagem (motivo
+  // `sem_token_homologacao`) lendo do lugar certo.
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('Code_regime_tributario, emitir_nota_homol_antes_producao')
+    .select('Code_regime_tributario')
     .eq('empresa_id', companyId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -236,6 +252,31 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
     return { ok: false, error: e instanceof Error ? e.message : 'Erro ao montar a nota.' };
   }
 
+  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — o
+  // único lugar do produto que faz essa escolha. Antes daqui havia um
+  // `const env: FocusEnv = 'hom'` fixo, com dois bugs documentados no lugar: o
+  // default de `emitir_nota_homol_antes_producao` mandava empresa nova para
+  // produção, e o token salvo era o de homologação. Os dois deixam de existir:
+  // o ambiente é coluna da empresa e os tokens são dois campos separados.
+  //
+  // Resolvida ANTES do insert (bloqueio 3 da revisão final): o `ambiente` é
+  // gravado no PRÓPRIO insert, não num update de sucesso. Antes, a nota nascia
+  // sem `ambiente` (ficava no DEFAULT 'hom' da coluna) e só ganhava o carimbo
+  // certo se `focus.emitirNfse` respondesse sem lançar. Se a Focus aceitasse a
+  // nota em PRODUÇÃO e a chamada estourasse por timeout logo depois, a nota
+  // ficava carimbada 'hom' para sempre — status, download e cancelamento
+  // passavam a ler a base errada para uma nota que existe em produção. Como a
+  // recusa agora acontece antes de existir linha nenhuma, não há mais nota
+  // 'erro' de credencial para limpar depois (ver ausência do update abaixo).
+  //
+  // NÃO passar `supabase` aqui: a credencial mora em `empresa_credenciais_focus`,
+  // fechada para `authenticated` (0097). O default da função é service role.
+  const credencial = await resolverCredencialEmissao(companyId);
+  if (!credencial.ok) {
+    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
+  }
+  const env: FocusEnv = credencial.ambiente;
+
   // Inserir nota local `pendente` ANTES do POST: garante que mesmo se a Focus
   // demorar/timeout, o estado fica registrado e o ref é único.
   const ref = generateRef(companyId);
@@ -263,6 +304,7 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
       payload_focusnfe: payload as unknown as Record<string, unknown>,
       cliente_id: cliente.id,
       cnae: cnaeNota,
+      ambiente: env,
     })
     .select('id')
     .single();
@@ -271,22 +313,14 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
   }
   const notaId = nota.id as string;
 
-  // MVP: SEMPRE emitir em homologação. Lógica original tinha 2 bugs:
-  //   1) Default `emitir_nota_homol_antes_producao = false` levava novas
-  //      empresas direto pra produção (contra intenção do user).
-  //   2) Token salvo é `token_homologacao` (vem do POST /v2/empresas inicial).
-  //      Mandar token-hom pra URL prod (api.focusnfe.com.br) dá 401.
-  // Quando suportarmos produção real, adicionamos um campo dedicado
-  // `ambiente_atual` ('hom'|'prod') em empresas_fiscais e migramos o token
-  // pra `token_producao` antes de chavear. Tarefa em backlog (PR 4.x).
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _flagIgnoradaPorEnquanto = fiscal.emitir_nota_homol_antes_producao;
-  const env: FocusEnv = 'hom';
-
   try {
-    const resp = await focus.emitirNfse(ref, payload, company.focus_token as string, env);
+    const resp = await focus.emitirNfse(ref, payload, credencial.token, env);
     // 202 (processando_autorizacao): mantém status='pendente'; webhook completa.
     // Quando Focus retorna sucesso síncrono (raro pra NFSe), já tem dados.
+    // NÃO manda `ambiente` aqui: já foi gravado no insert acima. O trigger da
+    // 0098 usa `IS DISTINCT FROM` — reenviar o MESMO valor passaria — mas
+    // duplicar a fonte de verdade é convite a divergência (ver bloqueio 3 da
+    // revisão final), não proteção nenhuma.
     await supabase
       .from('notas_fiscais')
       .update({
@@ -307,6 +341,17 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
       .eq('id', notaId)
       .eq('company_id', companyId);
     return { ok: false, error: friendly };
+  }
+
+  if (credencial.ambiente === 'prod') {
+    // Só produção. Homologação é teste e encheria a trilha de ruído — e
+    // trilha com ruído é trilha que ninguém lê.
+    await registrarAuditoria({
+      actorUserId: user.id,
+      acao: 'nota.emitida_producao',
+      alvoTipo: 'notas_fiscais', alvoId: notaId,
+      meta: { ref, tipo_documento: 'NFSe', company_id: companyId },
+    });
   }
 
   revalidatePath('/notas_fiscais');
@@ -335,19 +380,30 @@ export async function atualizarStatusNotaAction(
 
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR: `current_company` é escolha do usuário (`profiles_update` só
+  // checa `user_id = auth.uid()`), e `tokenParaAmbiente` abaixo roda com SERVICE
+  // ROLE — devolveria o token decifrado de qualquer empresa apontada aqui. Ver
+  // `empresaDoDono`. Daqui em diante só o id PROVADO.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
-    .select('id, tipo_documento, referencia, payload_focusnfe')
+    .select('id, tipo_documento, referencia, payload_focusnfe, ambiente')
     .eq('id', id).eq('company_id', companyId).maybeSingle();
   if (!nota) return { ok: false, error: 'Nota não encontrada.' };
 
-  const { data: company } = await supabase
-    .from('companies').select('focus_token').eq('id', companyId).single();
-  if (!company?.focus_token) {
-    return { ok: false, error: 'Empresa sem token Focus — sincronize no Diagnóstico.' };
+  // NÃO passa por `resolverCredencialEmissao` de propósito: a guarda de
+  // produção decide onde uma nota NOVA nasce. Aplicá-la aqui impediria de
+  // consultar o status de uma nota já emitida só porque o certificado venceu
+  // depois — e o status é justamente o que diz se ela foi autorizada.
+  const ambienteNota = ((nota.ambiente ?? 'hom') as FocusEnv);
+  const tokenDaNota = await tokenParaAmbiente(companyId, ambienteNota);
+  if (!tokenDaNota) {
+    return { ok: false, error: `Esta nota foi emitida em ${ambienteNota === 'prod' ? 'produção' : 'homologação'} e não há token desse ambiente cadastrado.` };
   }
 
   const ref = nota.referencia as string;
@@ -355,11 +411,11 @@ export async function atualizarStatusNotaAction(
   let resp: Record<string, unknown>;
   try {
     if (tipoDoc === 'NFe') {
-      resp = await focus.consultarStatusNfe(ref, company.focus_token as string, 'hom');
+      resp = await focus.consultarStatusNfe(ref, tokenDaNota, ambienteNota);
     } else if (tipoDoc === 'NFCe') {
-      resp = await focus.consultarStatusNfce(ref, company.focus_token as string, 'hom');
+      resp = await focus.consultarStatusNfce(ref, tokenDaNota, ambienteNota);
     } else {
-      resp = await focus.consultarStatusNfse(ref, company.focus_token as string, 'hom');
+      resp = await focus.consultarStatusNfse(ref, tokenDaNota, ambienteNota);
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -415,14 +471,27 @@ export async function cancelarNotaAction(
     .select('current_company')
     .eq('user_id', user.id)
     .single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR, E A REGRA DE QUEM CANCELA. `current_company` é escolha livre do
+  // usuário (`profiles_update` só checa `user_id = auth.uid()`), e a leitura da
+  // nota logo abaixo PASSA para o membro do escritório contábil — ele enxerga
+  // as notas dos clientes por `notas_fiscais_select_contador` (0033). Enxergar
+  // não é poder cancelar: `tokenParaAmbiente` roda com SERVICE ROLE e o
+  // `focus.cancelarNfse` seguinte cancela documento fiscal REAL de outro CNPJ na
+  // prefeitura — o `update` bate na RLS e falha, deixando banco e SEFAZ
+  // divergentes. Cancelar é do TITULAR; o painel do contador é somente
+  // visualização (ver `empresaDoDono`). Daqui em diante só o id PROVADO.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
+
   const assinatura = await assertAssinaturaEmpresa(companyId);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
-    .select('id, tipo_documento, referencia, status, origem')
+    .select('id, tipo_documento, referencia, status, origem, ambiente')
     .eq('id', id)
     .eq('company_id', companyId)
     .maybeSingle();
@@ -446,15 +515,24 @@ export async function cancelarNotaAction(
   // Cancelamento exige o token da EMPRESA (igual emissão).
   const { data: companyForCancel } = await supabase
     .from('companies')
-    .select('focus_token, municipio, uf')
+    .select('municipio, uf')
     .eq('id', companyId)
     .single();
-  if (!companyForCancel?.focus_token) {
-    return { ok: false, error: 'Empresa sem token Focus — sincronize no Diagnóstico antes.' };
+  if (!companyForCancel) {
+    return { ok: false, error: 'Empresa não encontrada.' };
   }
-  const focusToken = companyForCancel.focus_token as string;
 
-  const env: FocusEnv = 'hom'; // produção depende do token Focus (Blocked) + flags da empresa
+  // NÃO passa por `resolverCredencialEmissao`: o ambiente não se decide aqui,
+  // já foi decidido na emissão e está carimbado em `nota.ambiente`. Cancelar
+  // uma nota de produção pela base de homologação devolve 404 — e o usuário
+  // leria "nota não encontrada" para uma nota que existe.
+  const ambienteNota = ((nota.ambiente ?? 'hom') as FocusEnv);
+  const focusToken = await tokenParaAmbiente(companyId, ambienteNota);
+  if (!focusToken) {
+    return { ok: false, error: `Esta nota foi emitida em ${ambienteNota === 'prod' ? 'produção' : 'homologação'} e não há token desse ambiente cadastrado.` };
+  }
+
+  const env: FocusEnv = ambienteNota;
   const justif = justificativa.trim();
 
   let tipo: TipoDoc;
@@ -621,15 +699,23 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
 
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR: mesma razão de `emitirNotaAction` — `resolverCredencialEmissao`
+  // abaixo é service role. Ver `empresaDoDono`.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
+
   const assinatura = await assertAssinaturaEmpresa(companyId);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const { data: company } = await supabase
-    .from('companies').select('cnpj, focus_token').eq('id', companyId).single();
+    .from('companies').select('cnpj').eq('id', companyId).single();
   if (!company) return { ok: false, error: 'Empresa não encontrada.' };
-  if (!company.focus_token) return { ok: false, error: 'Empresa não está cadastrada na Focus. Sincronize no Diagnóstico.' };
+  // Bloco 5: NÃO gatear em `company.focus_token` aqui — a coluna foi esvaziada
+  // pela Task 2 (token mora em `empresa_credenciais_focus` agora). Quem cobre
+  // esta checagem é `resolverCredencialEmissao`, chamado abaixo.
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
@@ -657,6 +743,15 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
     return { ok: false, error: e instanceof Error ? e.message : 'Erro ao montar a nota.' };
   }
 
+  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — ver
+  // o comentário completo em `emitirNotaAction` (NFS-e) acima. Resolvida ANTES
+  // do insert (bloqueio 3 da revisão final): `ambiente` é gravado no PRÓPRIO
+  // insert, não num update de sucesso — ver o mesmo comentário.
+  const credencial = await resolverCredencialEmissao(companyId);
+  if (!credencial.ok) {
+    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
+  }
+
   const ref = generateRef(companyId);
   const total = payload.items.reduce((s, it) => s + it.valor_bruto, 0);
   const { data: nota, error: insertErr } = await supabase
@@ -670,13 +765,15 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
       valor_total: Math.round(total * 100) / 100,
       payload_focusnfe: payload as unknown as Record<string, unknown>,
       cliente_id: cliente.id,
+      ambiente: credencial.ambiente,
     })
     .select('id').single();
   if (insertErr || !nota) return { ok: false, error: insertErr?.message ?? 'Falha ao registrar a nota.' };
   const notaId = nota.id as string;
 
   try {
-    const resp = await focus.emitirNfe(ref, payload, company.focus_token as string, 'hom');
+    const resp = await focus.emitirNfe(ref, payload, credencial.token, credencial.ambiente);
+    // NÃO manda `ambiente`: já foi gravado no insert acima (ver comentário lá).
     await supabase.from('notas_fiscais')
       .update({ payload_focusnfe: { request: payload, response: resp } })
       .eq('id', notaId).eq('company_id', companyId);
@@ -688,6 +785,18 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
       .eq('id', notaId).eq('company_id', companyId);
     return { ok: false, error: friendly };
   }
+
+  if (credencial.ambiente === 'prod') {
+    // Só produção. Homologação é teste e encheria a trilha de ruído — e
+    // trilha com ruído é trilha que ninguém lê.
+    await registrarAuditoria({
+      actorUserId: user.id,
+      acao: 'nota.emitida_producao',
+      alvoTipo: 'notas_fiscais', alvoId: notaId,
+      meta: { ref, tipo_documento: 'NFe', company_id: companyId },
+    });
+  }
+
   revalidatePath('/notas_fiscais');
   return { ok: true, notaId };
 }
@@ -742,15 +851,22 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
 
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR: mesma razão de `emitirNotaAction` — `resolverCredencialEmissao`
+  // abaixo é service role. Ver `empresaDoDono`.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
+
   const assinatura = await assertAssinaturaEmpresa(companyId);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 
   const { data: company } = await supabase
-    .from('companies').select('cnpj, focus_token').eq('id', companyId).single();
+    .from('companies').select('cnpj').eq('id', companyId).single();
   if (!company) return { ok: false, error: 'Empresa não encontrada.' };
-  if (!company.focus_token) return { ok: false, error: 'Empresa não está cadastrada na Focus. Sincronize no Diagnóstico.' };
+  // Bloco 5: NÃO gatear em `company.focus_token` aqui — ver o mesmo
+  // comentário em `emitirNfeAction` acima.
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
@@ -771,6 +887,15 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
     return { ok: false, error: e instanceof Error ? e.message : 'Erro ao montar a nota.' };
   }
 
+  // Bloco 5: quem decide ambiente e token é `resolverCredencialEmissao` — ver
+  // o comentário completo em `emitirNotaAction` (NFS-e) acima. Resolvida ANTES
+  // do insert (bloqueio 3 da revisão final): `ambiente` é gravado no PRÓPRIO
+  // insert, não num update de sucesso — ver o mesmo comentário.
+  const credencial = await resolverCredencialEmissao(companyId);
+  if (!credencial.ok) {
+    return { ok: false, error: MENSAGEM_RECUSA[credencial.motivo] };
+  }
+
   const ref = generateRef(companyId);
   const total = payload.items.reduce((s, it) => s + it.valor_bruto, 0);
   const { data: nota, error: insertErr } = await supabase
@@ -783,13 +908,15 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
       status: 'pendente',
       valor_total: Math.round(total * 100) / 100,
       payload_focusnfe: payload as unknown as Record<string, unknown>,
+      ambiente: credencial.ambiente,
     })
     .select('id').single();
   if (insertErr || !nota) return { ok: false, error: insertErr?.message ?? 'Falha ao registrar a nota.' };
   const notaId = nota.id as string;
 
   try {
-    const resp = await focus.emitirNfce(ref, payload, company.focus_token as string, 'hom');
+    const resp = await focus.emitirNfce(ref, payload, credencial.token, credencial.ambiente);
+    // NÃO manda `ambiente`: já foi gravado no insert acima (ver comentário lá).
     await supabase.from('notas_fiscais')
       .update({ payload_focusnfe: { request: payload, response: resp } })
       .eq('id', notaId).eq('company_id', companyId);
@@ -801,6 +928,18 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
       .eq('id', notaId).eq('company_id', companyId);
     return { ok: false, error: friendly };
   }
+
+  if (credencial.ambiente === 'prod') {
+    // Só produção. Homologação é teste e encheria a trilha de ruído — e
+    // trilha com ruído é trilha que ninguém lê.
+    await registrarAuditoria({
+      actorUserId: user.id,
+      acao: 'nota.emitida_producao',
+      alvoTipo: 'notas_fiscais', alvoId: notaId,
+      meta: { ref, tipo_documento: 'NFCe', company_id: companyId },
+    });
+  }
+
   revalidatePath('/notas_fiscais');
   return { ok: true, notaId };
 }

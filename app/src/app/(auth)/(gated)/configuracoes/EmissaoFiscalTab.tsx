@@ -2,7 +2,7 @@
 // Server Component com 2 seções: Cert e NFS-e. O status na Focus mora na aba
 // Diagnóstico (sub-itens "Empresa cadastrada" + "Autenticação funcionando"),
 // não duplicamos aqui.
-import { ShieldCheck, Building2 } from 'lucide-react';
+import { ShieldCheck, Building2, KeyRound } from 'lucide-react';
 import CertificadoForm from './CertificadoForm';
 import NfseForm, { type MunicipioInfo } from './NfseForm';
 
@@ -13,6 +13,14 @@ type Props = {
   certValidoAte: string | null;
   /** 0085: o certificado veio do escritório contábil, não do próprio dono. */
   certPeloEscritorio: boolean;
+  /**
+   * Task 15 — rastro (não segredo) de quando o escritório contábil cadastrou
+   * a credencial da Focus desta empresa (`companies.focus_token_em`). O token
+   * em si nunca chega aqui: mora cifrado em `empresa_credenciais_focus`,
+   * fechada para `authenticated` (0097). null = ninguém cadastrou credencial
+   * pelo escritório (ex.: empresa cadastrada direto pelo Balu / origem 'balu').
+   */
+  credencialFocusCadastradaEm: string | null;
   // NFS-e (mesmos props do antigo NfseForm). Credenciais (Task 10 — cifradas em
   // repouso) NUNCA chegam aqui em texto: só indicadores `*_configurado`.
   nfseInitial: {
@@ -30,6 +38,20 @@ type Props = {
 export default function EmissaoFiscalTab(props: Props) {
   return (
     <div className="space-y-10">
+      {/* Task 15 — transparência da custódia (mesmo princípio de
+          cert_enviado_por, 0085): quando o escritório contábil cadastrou a
+          credencial da Focus desta empresa, o titular precisa ver isso. */}
+      {props.credencialFocusCadastradaEm && (
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 p-4 text-sm">
+          <KeyRound className="size-5 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground-2">
+            A credencial fiscal desta empresa foi cadastrada pelo seu escritório de
+            contabilidade em{' '}
+            {new Date(props.credencialFocusCadastradaEm).toLocaleDateString('pt-BR')}.
+          </p>
+        </div>
+      )}
+
       <Section
         icon={<ShieldCheck className="size-5 text-primary" />}
         title="Certificado A1"

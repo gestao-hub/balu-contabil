@@ -1,7 +1,8 @@
 'use client';
 // @custom — Focus 2.1/3: client island do botão "Sincronizar com Focus" no Diagnóstico.
 // Adaptativo: a action decide POST (cadastro inicial) ou PUT (atualização)
-// baseado em `companies.focus_token`. UI mostra sempre "Sincronizar".
+// baseado em `empresas_fiscais.focus_empresa_id` (Task 20 — não mais
+// `companies.focus_token`, esvaziada pela 0097). UI mostra sempre "Sincronizar".
 import { useState, useTransition } from 'react';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';

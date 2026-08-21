@@ -1,6 +1,7 @@
 // @custom — Focus 1/3: sync helper reusável. Lê o estado atual da empresa no
 // banco (companies + empresas_fiscais), monta o payload Focus, chama
-// POST /v2/empresas e persiste o resultado em companies.focus_*.
+// POST /v2/empresas e persiste o resultado em companies.focus_* (status) +
+// empresa_credenciais_focus (os dois tokens, cifrados — Bloco 5/0097).
 //
 // Best-effort: nunca lança pra fora. Resultado expresso no return.
 // Usado pelo cadastro inicial (createCompanyAction — Focus 1) e pelo botão
@@ -15,6 +16,8 @@ import {
   withCredenciaisPrefeitura,
 } from './focus-empresa-update-payload';
 import type { RegimeCode } from './regime';
+import { guardarTokenEmpresa } from './credencial-empresa';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 /**
  * Extras opcionais pro PUT — usados nos momentos em que os secrets estão em
@@ -34,11 +37,14 @@ export type SyncFocusResult =
 
 /**
  * Lê empresa+empresas_fiscais por `companyId`, dispara POST /v2/empresas e
- * persiste `focus_token` + `focus_status` + `focus_last_check` + `focus_last_error`.
+ * persiste os dois tokens (cifrados) em `empresa_credenciais_focus` +
+ * `focus_status` / `focus_last_check` / `focus_last_error` em `companies`.
  * Sempre escreve `focus_last_check` (mesmo em erro).
  *
  * Não exige session do usuário — usa o supabase client passado (caller decide
- * service_role ou anon-with-RLS).
+ * service_role ou anon-with-RLS) para `companies`/`empresas_fiscais`. A escrita
+ * em `empresa_credenciais_focus` usa SEMPRE `createAdminClient()` internamente
+ * — ver o comentário no ponto de uso.
  */
 export async function syncEmpresaNaFocus(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,6 +52,19 @@ export async function syncEmpresaNaFocus(
   companyId: string,
 ): Promise<SyncFocusResult> {
   const now = new Date().toISOString();
+
+  // Bloco 5: empresa que usa a própria conta na Focus não é cadastrada por nós.
+  // Sem esta guarda, o sync sobrescreveria com o token da conta da plataforma o
+  // token que o contador cadastrou — e o cliente passaria a emitir com a
+  // credencial errada, em silêncio.
+  const { data: fiscalOrigem } = await supabase
+    .from('empresas_fiscais').select('focus_origem').eq('empresa_id', companyId).maybeSingle();
+  if ((fiscalOrigem?.focus_origem ?? 'balu') === 'propria') {
+    return {
+      ok: false,
+      error: 'Esta empresa usa a própria conta na Focus. O cadastro é feito no painel dela, não por aqui.',
+    };
+  }
 
   // 1) Lê empresa
   const { data: company, error: cErr } = await supabase
@@ -94,13 +113,50 @@ export async function syncEmpresaNaFocus(
     );
 
     const resp = await focus.criarEmpresa(payload, 'hom');
-    const token = resp.token_homologacao ?? resp.token_producao ?? null;
     const focusEmpresaId = typeof resp.id === 'number' ? resp.id : null;
+
+    // Bloco 5: os DOIS tokens vao, cada um na sua coluna, para
+    // `empresa_credenciais_focus` — cifrados e fora do alcance de
+    // `authenticated` (0097). Antes daqui gravava-se
+    // `token_homologacao ?? token_producao` em texto puro em
+    // `companies.focus_token`: guardava um dos dois, esquecia qual, e repopulava
+    // a coluna que a migracao de seguranca tinha esvaziado.
+    //
+    // `createAdminClient()` aqui, NUNCA o `supabase` recebido por parâmetro:
+    // `empresa_credenciais_focus` é fechada para `authenticated` (0097), e
+    // `syncFocusEmpresaAction` (configuracoes/actions.ts) chama esta função com
+    // o client de SESSÃO do usuário. Com esse client a escrita voltaria erro
+    // (RLS/grant) e a empresa ficaria cadastrada na Focus sem credencial
+    // nenhuma salva — em silêncio, se ninguém checasse o retorno.
+    const admin = createAdminClient();
+    try {
+      const patchCred: Record<string, unknown> = {
+        empresa_id: companyId,
+        atualizado_em: now,
+      };
+      if (resp.token_homologacao) patchCred.token_hom_cifrado = guardarTokenEmpresa(resp.token_homologacao);
+      if (resp.token_producao)    patchCred.token_prod_cifrado = guardarTokenEmpresa(resp.token_producao);
+
+      if (patchCred.token_hom_cifrado || patchCred.token_prod_cifrado) {
+        const { error: credErr } = await admin
+          .from('empresa_credenciais_focus')
+          .upsert(patchCred, { onConflict: 'empresa_id' });
+        if (credErr) throw new Error(credErr.message);
+      }
+    } catch (credErr) {
+      // A empresa FOI cadastrada na Focus (o POST acima já aconteceu), mas a
+      // credencial não foi guardada — sem ela ninguém emite nota nenhuma. Isto
+      // é ERRO, não sucesso: `focus_status` NÃO pode virar 'ok' aqui, senão o
+      // Diagnóstico mostraria "cadastrada" para uma empresa sem token utilizável.
+      const msg = credErr instanceof Error ? credErr.message : String(credErr);
+      const erroCompleto = `Empresa cadastrada na Focus, mas a credencial não pôde ser salva: ${msg}`;
+      await persistError(supabase, companyId, erroCompleto, now);
+      return { ok: false, error: erroCompleto };
+    }
 
     await supabase
       .from('companies')
       .update({
-        focus_token: token,
         focus_status: 'ok',
         focus_last_check: now,
         focus_last_error: null,
@@ -113,7 +169,9 @@ export async function syncEmpresaNaFocus(
       await snapshotFocusEmpresa(supabase, companyId, focusEmpresaId, now);
     }
 
-    return { ok: true, token };
+    // O token em claro nunca sai desta função: quem precisa dele pra emitir lê
+    // `empresa_credenciais_focus` via `resolver-credencial.ts` e decifra lá.
+    return { ok: true, token: null };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await persistError(supabase, companyId, msg, now);
@@ -123,18 +181,31 @@ export async function syncEmpresaNaFocus(
 
 /**
  * Lê GET /v2/empresas/:id da Focus e persiste o estado relevante em
- * `empresas_fiscais.focus_*`. Best-effort: nunca lança, apenas loga em erro.
+ * `empresas_fiscais.focus_*`. Best-effort no GET; a ESCRITA, não.
+ *
+ * ⚠️ ESCREVE COM SERVICE ROLE, e o `supabase` do parâmetro é usado só para o
+ * `persistError`. Motivo: esta função grava `focus_empresa_id` e
+ * `focus_habilita_nfsen_producao` — colunas que a 0098/0099 protegem com
+ * trigger contra escrita de `authenticated`. E TRÊS chamadores reais passam o
+ * client de SESSÃO (`configuracoes/actions.ts`, o botão Sincronizar, e o
+ * upload de certificado). Com o client de sessão o trigger derruba o UPDATE
+ * INTEIRO, e como o resultado nunca era lido, o snapshot virava no-op
+ * silencioso: `focus_empresa_id` nunca persistia, o Diagnóstico ficava
+ * eternamente em "não cadastrada" e o sync tentava CADASTRAR DE NOVO para
+ * sempre. Achado pela revisão de 20/08/2026.
  */
 async function snapshotFocusEmpresa(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any, 'public', any>,
+  _supabase: SupabaseClient<any, 'public', any>,
   companyId: string,
   focusEmpresaId: number,
   now: string,
 ): Promise<void> {
   try {
     const snap = await focus.consultarEmpresa(focusEmpresaId, 'hom');
-    await supabase
+    // ERRO LIDO, e não descartado: era exatamente o descarte que escondia a
+    // rejeição do trigger.
+    const { error } = await createAdminClient()
       .from('empresas_fiscais')
       .update({
         focus_empresa_id: focusEmpresaId,
@@ -148,7 +219,11 @@ async function snapshotFocusEmpresa(
         focus_habilita_nfce: snap.habilita_nfce ?? false,
         focus_sync_em: now,
       })
-      .eq('empresa_id', companyId);
+      .eq('empresa_id', companyId)
+      .is('deleted_at', null);
+    if (error) {
+      console.error('[syncEmpresaNaFocus] snapshot NAO gravado:', companyId, error.message);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[syncEmpresaNaFocus] snapshot GET falhou:', msg);
@@ -165,8 +240,9 @@ async function snapshotFocusEmpresa(
  * em companies.focus_last_error.
  *
  * Pré-condições:
- *   - companies.focus_token deve existir (cadastro inicial já feito).
- *     Se não existir, sugerimos rodar `syncEmpresaNaFocus` (POST) primeiro.
+ *   - `empresas_fiscais.focus_empresa_id` deve existir (cadastro inicial já
+ *     feito — é o id que o POST devolveu). Se não existir, sugerimos rodar
+ *     `syncEmpresaNaFocus` (POST) primeiro.
  *
  * Trigger:
  *  - botão "Sincronizar com Focus" no Diagnóstico (sem extras → payload base puro)
@@ -182,6 +258,22 @@ export async function atualizarEmpresaNaFocus(
 ): Promise<SyncFocusResult> {
   const now = new Date().toISOString();
 
+  // Bloco 5: mesma guarda de `syncEmpresaNaFocus` (cadastro), agora para
+  // ATUALIZAÇÃO. O contexto do Bloco 5 é explícito: origem 'propria' → Balu
+  // "não cadastra, não atualiza e não sobe certificado" na Focus. Sem isto,
+  // uma empresa que já tinha `focus_empresa_id` (cadastrada como 'balu' antes
+  // de trocar para 'propria') continuaria recebendo PUTs com o token de
+  // REVENDA da Balu — criando um registro fantasma que não corresponde à conta
+  // Focus que a empresa de fato usa para emitir.
+  const { data: fiscalOrigemUpd } = await supabase
+    .from('empresas_fiscais').select('focus_origem').eq('empresa_id', companyId).maybeSingle();
+  if ((fiscalOrigemUpd?.focus_origem ?? 'balu') === 'propria') {
+    return {
+      ok: false,
+      error: 'Esta empresa usa a própria conta na Focus. A atualização é feita no painel dela, não por aqui.',
+    };
+  }
+
   const { data: company, error: cErr } = await supabase
     .from('companies')
     .select('*')
@@ -191,12 +283,11 @@ export async function atualizarEmpresaNaFocus(
     return { ok: false, error: cErr?.message ?? 'Empresa não encontrada.' };
   }
 
-  if (!company.focus_token) {
-    const msg = 'Empresa ainda não cadastrada na Focus. Cadastre primeiro.';
-    await persistError(supabase, companyId, msg, now);
-    return { ok: false, error: msg };
-  }
-
+  // O sinal de "já cadastrada" é `empresas_fiscais.focus_empresa_id`, não
+  // `companies.focus_token` (a coluna saiu de uso na Task 20 — 0097 já a
+  // tinha fechado para `authenticated`, e o sync parou de escrever nela). A
+  // checagem propriamente dita acontece abaixo, junto do fetch de `fiscal`,
+  // porque é a mesma consulta.
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
     .select('Code_regime_tributario, empresa_fiscal_ativada, focus_empresa_id, focus_codigo_municipio')
@@ -277,7 +368,10 @@ export async function atualizarEmpresaNaFocus(
     // Snapshot pós-PUT.
     await snapshotFocusEmpresa(supabase, companyId, focusEmpresaId, now);
 
-    return { ok: true, token: company.focus_token as string };
+    // PUT não devolve token novo nenhum (o token da empresa não muda numa
+    // atualização) — e mesmo que devolvesse, não sai em claro daqui (mesmo
+    // motivo do `syncEmpresaNaFocus` acima).
+    return { ok: true, token: null };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await persistError(supabase, companyId, msg, now);
