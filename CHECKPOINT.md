@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-24 (sessão 32 — **as duas dívidas de coluna da sessão 31, fechadas**. Produção fiscal deixou de exigir `UPDATE` manual no banco: o contador liga pela tela, e a guarda de emissão responde ANTES de gravar. E a 0100 tira do inquilino o que não é dele — `notas_fiscais` sem UPDATE, `profiles` com coluna travada e `current_company` validada. **Tudo publicado e aplicado**: deploy `d2bcs89vs` Ready e a 0100 comitada no banco, 13/13 nos checks. **Parte 2 da sessão**: conexão de WhatsApp por QR code, no escritório e — pela primeira vez — na plataforma. **0101 escrita e provada, NÃO aplicada.**)
+> **Última atualização:** 2026-08-24 (sessão 32 — **as duas dívidas de coluna da sessão 31, fechadas**. Produção fiscal deixou de exigir `UPDATE` manual no banco: o contador liga pela tela, e a guarda de emissão responde ANTES de gravar. E a 0100 tira do inquilino o que não é dele — `notas_fiscais` sem UPDATE, `profiles` com coluna travada e `current_company` validada. **Tudo publicado e aplicado**: 0100, 0101 e 0102 no banco, com os checks conferidos fora da transação. **Partes 2 a 4**: WhatsApp conecta por QR (escritório e plataforma), o admin token saiu do `.env`, e a apresentação do assistente virou adaptativa. **Pendente: o teste de ponta a ponta do canal** — ver a parte 4.)
 
 > ## 🆕 SESSÃO 32 (2026-08-24) — as duas dívidas de coluna, fechadas
 >
@@ -302,6 +302,110 @@
 '` virou quebra de linha de verdade dentro de um literal TS).
 > Nos arquivos com acento, editar por indice de linha e montar escapes com
 > `chr(92)`. Custou tres idas e voltas nesta sessao.
+>
+> ## 🆕 SESSAO 32 — PARTE 4 (2026-08-24) — a saudacao, e os dois defeitos que so a producao mostrou
+>
+> ### O QUE O USUARIO PEDIU
+>
+> A abertura da conversa tinha de **se adaptar** ao que a pessoa escreve:
+>
+> | mensagem | resposta esperada |
+> |---|---|
+> | `Olá` | `Olá, sou o Assistente da Balu Contábil. Como posso te ajudar hoje?` |
+> | `olá, como você está? preciso de ajuda com abertura de MEI` | cumprimenta, se identifica, diz que está bem em uma frase, e emenda no MEI |
+>
+> ### A INVERSAO DE CONTRATO
+>
+> Ate 24/08 o codigo colava `SAUDACAO_INICIAL` antes de toda primeira resposta e
+> o prompt **PROIBIA** o modelo de cumprimentar (decisao de 19/08: "texto fixo
+> nao pode virar parafrase"). Deu certo em teste e errado na vida — a saudacao
+> aparecia grudada numa resposta que ignorava a pergunta social.
+>
+> Agora **o prompt PEDE** a abertura, e o codigo garante so o que nao pode
+> faltar: a **IDENTIDADE**. `garantirApresentacao` (era `comSaudacao`) confere se
+> a resposta se apresentou e, se nao, poe a frase de reserva na frente —
+> comparando **sem acento e sem caixa**, senao a rede dispara em cima de uma
+> resposta boa e o cliente recebe DUAS aberturas.
+>
+> **O que se perde, dito por escrito:** a abertura deixa de ser byte a byte a
+> mesma. Foi decisao do usuario — troca consciente de "identidade identica" por
+> "conversa coerente". Ha teste prendendo que a proibicao antiga nao volte.
+>
+> ### 🔴 OS DOIS DEFEITOS QUE SO A PRODUCAO MOSTROU
+>
+> As duas linhas gravadas contam a historia inteira:
+>
+> ```
+> 17:13:21  "Ola"                                     -> resposta_enviada: NULL
+> 17:21:15  "Ola, tudo bem? ... preciso abrir um mei" -> "Ola! Para abrir um MEI..."
+> ```
+>
+> **(a) O `Ola` sozinho nao era respondido, e isso era DELIBERADO.** Numero
+> desconhecido cai na guarda de 12/08: sem ser pergunta e sem termo fiscal, o
+> webhook cala. A guarda esta certa sobre o que queria impedir — resposta
+> **fiscal** a quem nao perguntou nada — e errada sobre o cumprimento em si.
+> Numero de empresa que recebe "ola" e fica mudo parece numero errado.
+>
+> Cumprimento sozinho passou a receber a apresentacao **fixa**: sem IA (nao ha o
+> que raciocinar sobre "oi"), sem conteudo fiscal, sem escalar. O resto do
+> silencio deliberado continua de pe — inclusive o teste do ACHADO 4, que trocou
+> `"bom dia"` por `"tudo certo entao"`; `"e simples assim"` **nao serve** ali,
+> porque casa com `TERMO_FISCAL`.
+>
+> `ehSoCumprimento` decide **por subtracao**, nao por lista de frases: tira do
+> texto toda abertura conhecida e, se nao sobrar nada, era so cumprimento. Um
+> `startsWith('ola')` classificaria `"ola, preciso abrir um MEI"` como
+> cumprimento — a mensagem que MAIS precisa da resposta completa.
+>
+> **(b) A linha muda CONSUMIA a apresentacao** — o mais insidioso. Aquele `Ola`
+> sem resposta criava a linha de auditoria, o historico deixava de ser vazio, e
+> a mensagem SEGUINTE vinha sem apresentacao. A saudacao era gasta por uma
+> conversa que nunca aconteceu. `historico.length === 0` virou
+> `ninguemFoiAtendido(historico)`: o que conta e troca **completa**.
+>
+> O fixture do teste que simulava "interacao anterior" tambem nao tinha
+> `resposta_enviada` — passou a ter, porque era ele que estava mentindo sobre o
+> mundo.
+>
+> ### JANELA DE CONVERSA: 12 horas
+>
+> "Primeira mensagem" queria dizer "a primeira que este telefone JA MANDOU, na
+> historia" — o numero de teste, com 14 trocas desde 12/08, nunca mais seria
+> cumprimentado. `JANELA_CONVERSA_HORAS = 12` recorta conversa e memoria pela
+> mesma regra. Nao ha numero certo aqui, ha um numero explicito.
+>
+> ### ⚠️ ERRO MEU, para nao repetir
+>
+> Eu disse ao usuario "use o mesmo numero, as 14 trocas dele sao de mais de 12h
+> atras". **Estava errado:** olhei o `primeira` (12/08) e ignorei o `ultima`, que
+> era daquele mesmo dia. O teste seguinte falhou por causa disso e custou uma
+> rodada inteira. Ler a coluna certa da consulta que eu mesmo escrevi.
+>
+> ### 🔴 O QUE FALTA — o teste de ponta a ponta
+>
+> **Nada disso foi verificado com WhatsApp conectado.** O canal esta
+> desconectado desde 16:33. Ao retomar:
+>
+> 1. Conectar em `/admin/configuracoes/whatsapp` (o QR aparece sozinho; agora da
+>    para recarregar a pagina sem derrubar a sessao).
+> 2. De um numero **sem conversa nas ultimas 12h**, mandar `Olá` sozinho →
+>    esperado: a frase completa, e **nada mais**.
+> 3. Na sequencia, a pergunta do MEI → esperado: resposta **sem** repetir o
+>    cumprimento.
+> 4. De outro numero, `olá, como você está? preciso de ajuda com abertura de
+>    MEI` → esperado: cumprimento + identificacao + "estamos bem" + o MEI, numa
+>    mensagem so.
+> 5. **Os tres pontinhos** — o unico ponto ainda NAO PROVADO de toda a sessao
+>    (ver parte 3). Se nao aparecerem, sondar `/message/presence` com a
+>    instancia no ar.
+>
+> ⚠️ O historico do `553291511415` tem 2 trocas de 24/08. Dentro da janela de
+> 12h ele NAO sera cumprimentado — usar outro numero ou apagar aquelas linhas.
+>
+> ### Linha de base (parte 4)
+>
+> **tsc 0 · 2183 testes · 36 pulados · build limpo.** (+32 sobre a parte 3: 25 do
+> detector de cumprimento, o resto entre webhook e prompt.)
 >
 > ### Linha de base (parte 3)
 >
