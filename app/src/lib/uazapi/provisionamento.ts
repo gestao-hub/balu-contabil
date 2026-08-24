@@ -12,6 +12,7 @@
 // O `UAZAPI_ADMIN_TOKEN` só existe aqui. Ele provisiona qualquer instância do
 // servidor; jamais pode chegar ao cliente nem virar resposta de action.
 import 'server-only';
+import { adminTokenDaUazapi } from './config-plataforma';
 
 const TIMEOUT_MS = 20_000;
 
@@ -50,9 +51,47 @@ async function chamar(
   }
 }
 
-function admin(): Record<string, string> | null {
-  const t = process.env.UAZAPI_ADMIN_TOKEN;
+/**
+ * O cabeçalho de admin, com o token vindo do BANCO (0102) e o ambiente como
+ * retaguarda. Assíncrona desde 24/08/2026 — quem chama tem de esperar.
+ */
+async function admin(): Promise<Record<string, string> | null> {
+  const t = await adminTokenDaUazapi();
   return t ? { admintoken: t } : null;
+}
+
+/**
+ * Sonda o ADMIN TOKEN contra o serviço real, para o botão "Testar" da tela do
+ * admin não aprovar credencial que não serve.
+ *
+ * ✅ MEDIDO em 24/08/2026: `GET /instance/all` com admintoken válido → **200**
+ * com a lista de instâncias; com token errado ou sem cabeçalho → **401**. É
+ * admin-scoped e só-leitura, então discrimina de verdade sem criar recurso.
+ *
+ * Lição da sessão 31 embutida: a sonda bate no que a tela PROMETE. Testar este
+ * token por um endpoint de instância aprovaria um valor que não provisiona nada.
+ *
+ * ⚠️ DEVOLVE SÓ A CONTAGEM. A lista traz as instâncias de TODOS os produtos
+ * hospedados no servidor compartilhado, com os tokens delas — nada disso pode
+ * chegar à tela nem ao log.
+ */
+export async function sondarAdminToken(token: string): Promise<Resultado<{ instancias: number }>> {
+  const url = base();
+  if (!url) return { ok: false, erro: 'UAZAPI_BASE_URL não configurada.' };
+  try {
+    const res = await fetch(`${url}/instance/all`, {
+      headers: { admintoken: token },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (res.status === 401) {
+      return { ok: false, erro: 'A uazapi recusou este admin token (401). Confira o valor no painel deles.' };
+    }
+    if (!res.ok) return { ok: false, erro: `uazapi respondeu ${res.status} ao testar o admin token.` };
+    const j = await res.json();
+    return { ok: true, dados: { instancias: Array.isArray(j) ? j.length : 0 } };
+  } catch (e) {
+    return { ok: false, erro: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Cria a instância do escritório. Devolve id e token — o token é a credencial
@@ -60,8 +99,14 @@ function admin(): Record<string, string> | null {
 export async function criarInstancia(
   nomeEscritorio: string,
 ): Promise<Resultado<{ id: string; token: string }>> {
-  const cab = admin();
-  if (!cab) return { ok: false, erro: 'UAZAPI_ADMIN_TOKEN não configurado.' };
+  const cab = await admin();
+  if (!cab) {
+    return {
+      ok: false,
+      erro: 'O admin token da uazapi não está configurado. Cadastre-o em '
+        + 'Admin → Configurações → WhatsApp da plataforma.',
+    };
+  }
 
   // Prefixo obrigatório: o servidor é compartilhado com instâncias de outros
   // produtos, e quem olhar a lista de lá precisa saber o que é nosso.

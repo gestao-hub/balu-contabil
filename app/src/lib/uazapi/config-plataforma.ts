@@ -35,12 +35,13 @@ export function lerTokenPlataforma(cifrado: string | null): string | null {
 export type LinhaConfigWhatsapp = {
   instancia_id: string | null;
   token_cifrado: string | null;
+  admin_token_cifrado: string | null;
   status: string | null;
   numero: string | null;
   conectado_em: string | null;
 };
 
-const COLUNAS = 'instancia_id, token_cifrado, status, numero, conectado_em';
+const COLUNAS = 'instancia_id, token_cifrado, admin_token_cifrado, status, numero, conectado_em';
 
 /** A linha singleton, ou `null` quando ainda não existe. Erro de leitura sobe
  *  como `erro` — nunca vira "não configurado", que faria o admin colar
@@ -74,4 +75,48 @@ export async function tokenDaPlataforma(): Promise<string | null> {
     console.error('[0101] token da plataforma nao decifra:', e instanceof Error ? e.message : e);
     return null;
   }
+}
+
+/**
+ * O ADMIN TOKEN da uazapi — a credencial que provisiona QUALQUER instância do
+ * servidor compartilhado (37 delas em 24/08/2026, quase todas de outros
+ * produtos). É a mais forte desta integração, e a única que cria recurso.
+ *
+ * PRECEDÊNCIA: banco (0102) primeiro, `UAZAPI_ADMIN_TOKEN` como retaguarda.
+ *
+ * POR QUE SAIU DO AMBIENTE: em 24/08/2026 a variável existia no `.env.local` e
+ * **não existia na Vercel**. Resultado: `criarInstancia` respondia
+ * "UAZAPI_ADMIN_TOKEN não configurado" em produção e só em produção —
+ * provisionar canal nunca funcionou publicado, desde a 0091, e local funcionava
+ * sempre. Variável de ambiente some sem avisar; campo de formulário, não.
+ */
+export async function adminTokenDaUazapi(): Promise<string | null> {
+  const r = await lerConfigWhatsapp();
+  if (r.ok && r.linha?.admin_token_cifrado) {
+    try {
+      return lerTokenPlataforma(r.linha.admin_token_cifrado);
+    } catch (e) {
+      // Gravação corrompida NÃO cai para o ambiente em silêncio: seria trocar
+      // uma credencial por outra sem ninguém pedir. Erro no log, e o caminho
+      // segue para a retaguarda só quando a coluna está VAZIA.
+      console.error('[0102] admin token nao decifra:', e instanceof Error ? e.message : e);
+      return null;
+    }
+  }
+  return process.env.UAZAPI_ADMIN_TOKEN ?? null;
+}
+
+/** Grava o admin token cifrado. A tabela é singleton (id = 1). */
+export async function gravarAdminToken(token: string, porUserId: string): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const { error } = await createAdminClient().from('config_whatsapp').upsert({
+    id: 1,
+    admin_token_cifrado: guardarTokenPlataforma(token),
+    atualizado_por: porUserId,
+    atualizado_em: new Date().toISOString(),
+  }, { onConflict: 'id' });
+  if (error) {
+    console.error('[0102] admin token nao gravado:', error.message);
+    return { ok: false, erro: error.message };
+  }
+  return { ok: true };
 }

@@ -206,10 +206,43 @@
 >   escritório. Há teste mordendo isso (`admin/.../whatsapp/actions.test.ts`),
 >   mas o desenho continua sendo duas portas para a mesma casa.
 >
+> ### 🔴 O DEFEITO QUE A TELA DENUNCIOU NA PRIMEIRA ABERTURA
+>
+> A página publicada respondeu **"UAZAPI_ADMIN_TOKEN não configurado"**. Medido
+> na hora, e o diagnóstico é curto:
+>
+> | variável | `.env.local` | Vercel produção |
+> |---|---|---|
+> | `UAZAPI_BASE_URL` | ✅ | ✅ |
+> | `UAZAPI_TOKEN` | ✅ | ✅ |
+> | `UAZAPI_WEBHOOK_SECRET` | ✅ | ✅ |
+> | **`UAZAPI_ADMIN_TOKEN`** | ✅ | ❌ |
+>
+> **Não é defeito da tela nova: provisionar canal de WhatsApp NUNCA funcionou
+> em produção.** O canal do escritório existe desde a 0091 (19/08) com o mesmo
+> buraco — local funciona sempre, publicado nunca, e ninguém tinha como saber.
+> É a 0094 de novo, com o sinal trocado: lá o nome tinha acento e o certo só
+> existia na Vercel; aqui o nome está certo dos dois lados e a variável só
+> existe de um.
+>
+> **Correção (0102), na doutrina da sessão 30:** o admin token é *credencial de
+> plataforma* — provisiona QUALQUER instância do servidor compartilhado (37 em
+> 24/08, quase todas de outros produtos). Foi para `config_whatsapp.admin_token_cifrado`
+> com campo em `/admin/configuracoes/whatsapp`, precedência banco → ambiente.
+> Acrescentar a variável na Vercel resolveria hoje e deixaria o buraco aberto
+> para a próxima pessoa.
+>
+> O botão **testa antes de gravar**: `GET /instance/all` com o admintoken →
+> **200** com a lista; token errado ou ausente → **401** (medido em 24/08).
+> Admin-scoped, só-leitura, e discrimina de verdade. A resposta traz as
+> instâncias de todos os produtos do servidor, então **só a contagem** sai de
+> lá — nunca o conteúdo.
+>
 > ### Linha de base (parte 2)
 >
-> **tsc 0 · 2141 testes · 36 pulados · build limpo.** (+20: 15 no canal do
-> escritório, 13 no da plataforma, menos os que foram reescritos.)
+> **tsc 0 · 2147 testes · 36 pulados · build limpo.** (+26 sobre a parte 1: 15
+> no canal do escritório, 19 no da plataforma — 6 deles só do admin token —
+> menos os que foram reescritos.)
 >
 
 > **Registro anterior:** 2026-08-20 (sessão 31 — **Bloco 5 mergeado e publicado**. Emissão fiscal decidida por empresa, telas de credencial e de documentos legais no ar. Onze defeitos do autor corrigidos no caminho. O bloqueio da Focus (`permissao_negada`) segue sendo o único impedimento real da emissão, e é chamado no suporte deles.)

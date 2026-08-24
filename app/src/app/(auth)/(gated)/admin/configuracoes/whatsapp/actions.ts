@@ -21,10 +21,11 @@ import { requireAdminBaluAction } from '@/lib/admin/guard';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { getSiteUrl } from '@/lib/site-url';
 import {
-  guardarTokenPlataforma, lerTokenPlataforma, lerConfigWhatsapp,
+  guardarTokenPlataforma, lerTokenPlataforma, lerConfigWhatsapp, gravarAdminToken,
 } from '@/lib/uazapi/config-plataforma';
 import {
   criarInstancia, configurarWebhookUrl, pedirQrCode, statusInstancia, desconectarInstancia,
+  sondarAdminToken,
 } from '@/lib/uazapi/provisionamento';
 
 type ActionResult<T = undefined> =
@@ -212,4 +213,37 @@ export async function desconectarPlataformaAction(): Promise<ActionResult> {
 
   revalidatePath('/admin/configuracoes/whatsapp');
   return { ok: true };
+}
+
+/**
+ * Grava o ADMIN TOKEN da uazapi — a credencial que provisiona qualquer
+ * instância do servidor compartilhado.
+ *
+ * TESTA CONTRA O SERVIÇO REAL ANTES DE GRAVAR, e não é zelo: um token errado
+ * aqui só se manifesta na próxima tentativa de conectar um canal, com a
+ * mensagem "não configurado" — que mente, porque configurado está. Mesmo
+ * padrão do botão "Testar" da Focus (sessão 30).
+ */
+export async function salvarAdminTokenAction(tokenBruto: string): Promise<ActionResult<{ instancias: number }>> {
+  const g = await requireAdminBaluAction();
+  if ('error' in g) return { ok: false, error: g.error };
+
+  const token = (tokenBruto ?? '').trim();
+  if (!token) return { ok: false, error: 'Cole o admin token da uazapi.' };
+
+  const sonda = await sondarAdminToken(token);
+  if (!sonda.ok) return { ok: false, error: sonda.erro };
+
+  const r = await gravarAdminToken(token, g.userId);
+  if (!r.ok) return { ok: false, error: 'Não foi possível salvar. Tente de novo.' };
+
+  await registrarAuditoria({
+    actorUserId: g.userId,
+    acao: 'whatsapp_plataforma.admin_token_salvo', alvoTipo: 'config', alvoId: null,
+    // NUNCA o token, nem mascarado. A contagem é o que prova que ele funciona.
+    meta: { instancias_visiveis: sonda.dados.instancias },
+  });
+
+  revalidatePath('/admin/configuracoes/whatsapp');
+  return { ok: true, dados: { instancias: sonda.dados.instancias } };
 }
