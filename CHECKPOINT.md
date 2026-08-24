@@ -1,23 +1,30 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-24 (sessão 32 — **as duas dívidas de coluna da sessão 31, fechadas**. Produção fiscal deixou de exigir `UPDATE` manual no banco: o contador liga pela tela, e a guarda de emissão responde ANTES de gravar. E a 0100 tira do inquilino o que não é dele — `notas_fiscais` sem UPDATE, `profiles` com coluna travada e `current_company` validada. **A 0100 está escrita, provada em rollback contra o banco real e NÃO aplicada** — ver "o que falta" abaixo.)
+> **Última atualização:** 2026-08-24 (sessão 32 — **as duas dívidas de coluna da sessão 31, fechadas**. Produção fiscal deixou de exigir `UPDATE` manual no banco: o contador liga pela tela, e a guarda de emissão responde ANTES de gravar. E a 0100 tira do inquilino o que não é dele — `notas_fiscais` sem UPDATE, `profiles` com coluna travada e `current_company` validada. **Tudo publicado e aplicado**: deploy `d2bcs89vs` Ready e a 0100 comitada no banco, 13/13 nos checks.)
 
 > ## 🆕 SESSÃO 32 (2026-08-24) — as duas dívidas de coluna, fechadas
 >
 > Pedido do usuário: as frentes 2 e 3 da lista de dívidas da sessão 31 —
 > "fechar o caminho de produção fiscal" e "trancar colunas no banco".
 >
-> ### 🔴 O QUE FALTA FAZER, e a ordem importa
+> ### ✅ Publicado e aplicado, nesta ordem
 >
-> 1. **Deploy do código** (`main`, este merge). Ele é compatível com o banco de
->    hoje: escrever `notas_fiscais` por service role funciona com ou sem a 0100.
-> 2. **Só então** `node scratchpad/_aplicar-0100.mjs --aplicar` (a partir de
->    `balu/app`). Rodar sem a flag prova e desfaz.
+> 1. **`main` em `e6d0984`**, deploy de produção `d2bcs89vs` **Ready** (42s).
+> 2. **0100 aplicada** logo depois, com os 13 checks passando na transação que
+>    comitou. Conferida FORA da transação por `scratchpad/_check-0100.mjs`:
+>    0 policies de UPDATE em `notas_fiscais`, a de INSERT de pé, 3 triggers em
+>    `profiles` (2 novos + `updated_at`), CHECK E.164 presente, os dois triggers
+>    SECURITY **INVOKER**, e nada perdido (4 empresas vivas, 4 perfis, 2 notas).
 >
-> **Não inverta.** A versão publicada hoje ainda atualiza `notas_fiscais` pela
-> sessão do usuário; aplicar a 0100 antes do deploy deixa emissão, polling e
-> cancelamento gravando no vazio, em silêncio.
+> **A ordem era obrigatória e foi respeitada:** a versão publicada antes deste
+> deploy ainda atualizava `notas_fiscais` pela sessão do usuário. Aplicar a 0100
+> primeiro teria deixado emissão, polling e cancelamento gravando no vazio, em
+> silêncio — nenhum desses caminhos lê o retorno do `update`.
+>
+> ⚠️ **`companies` tem 5 linhas e 4 vivas** — `dev.ide` está soft-deleted desde
+> 23/07/2026. Contar sem `deleted_at IS NULL` dá um susto à toa, e deu: o
+> primeiro `_check-0100.mjs` acusou "empresa perdida" que nunca existiu.
 >
 > ### Frente 2 — produção fiscal alcançável pela interface
 >
