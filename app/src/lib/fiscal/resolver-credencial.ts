@@ -124,6 +124,34 @@ export async function resolverCredencialEmissao(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any, 'public', any> = createAdminClient(),
 ): Promise<Credencial> {
+  const leitura = await lerEstadoFiscal(companyId, supabase);
+  if (!leitura.ok) return { ok: false, motivo: leitura.motivo };
+  return decidirCredencial(leitura.estado, agora);
+}
+
+export type LeituraEstadoFiscal =
+  | { ok: true; estado: EstadoFiscal }
+  | { ok: false; motivo: MotivoRecusa };
+
+/**
+ * O `EstadoFiscal` da empresa, LIDO e não julgado — a leitura que
+ * `resolverCredencialEmissao` faz antes de aplicar a guarda.
+ *
+ * Existe separada porque quem LIGA a produção (a tela do contador) precisa
+ * responder "o que aconteceria se eu ligasse?" ANTES de gravar. Sem isto, a
+ * única forma de saber era gravar `focus_ambiente = 'prod'` e esperar a
+ * primeira emissão falhar — trocando um erro na tela de configuração por um
+ * erro na frente do cliente, na hora de emitir a nota.
+ *
+ * ⚠️ Mesmos avisos de `resolverCredencialEmissao`: SERVICE ROLE por default, e
+ * QUEM CHAMA É RESPONSÁVEL POR TER PROVADO QUE `companyId` PERTENCE A QUEM
+ * ESTÁ PEDINDO.
+ */
+export async function lerEstadoFiscal(
+  companyId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, 'public', any> = createAdminClient(),
+): Promise<LeituraEstadoFiscal> {
   const [fiscal, cred, cert] = await Promise.all([
     supabase.from('empresas_fiscais')
       .select('focus_origem, focus_ambiente, focus_habilita_nfsen_producao, focus_producao_declarada')
@@ -195,7 +223,7 @@ export async function resolverCredencialEmissao(
     producaoDeclarada: Boolean(fiscal.data?.focus_producao_declarada),
   };
 
-  return decidirCredencial(estado, agora);
+  return { ok: true, estado };
 }
 
 /**

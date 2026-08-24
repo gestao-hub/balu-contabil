@@ -15,6 +15,7 @@ import VisaoCliente from './VisaoCliente';
 import type { ServicoOpcao } from './CobrarDialog';
 import type { CertInfo } from './CertificadoCliente';
 import type { CredencialFocusInfo } from './CredencialFocusCard';
+import { lerEstadoFiscal, decidirCredencial, MENSAGEM_RECUSA } from '@/lib/fiscal/resolver-credencial';
 
 export default async function ClienteDrillDown(
   { params, searchParams }: { params: Promise<{ companyId: string }>;
@@ -77,8 +78,8 @@ export default async function ClienteDrillDown(
     // segue lida pela SESSÃO (`empresas_fiscais_select_contador`, 0033): não
     // guarda segredo, só metadado.
     supabase.from('empresas_fiscais')
-      .select('focus_origem, focus_producao_declarada')
-      .eq('empresa_id', companyId).maybeSingle(),
+      .select('focus_origem, focus_ambiente, focus_producao_declarada, focus_empresa_id')
+      .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle(),
     // `empresa_credenciais_focus` e fechada para authenticated (0097): esta
     // leitura EXIGE client de service role. Com o client de sessao ela volta
     // vazia e a tela mentiria dizendo "nenhum token guardado".
@@ -130,12 +131,32 @@ export default async function ClienteDrillDown(
   // Bloco 5 — nunca a coluna cifrada aqui: só booleanos. Mandar
   // `token_*_cifrado` para o Client Component colocaria o segredo no HTML do
   // navegador, mesmo que a tela nunca o exiba.
+  const origemFocus = (fiscalRow?.focus_origem as 'propria' | 'balu' | null) ?? 'balu';
+  const ambienteFocus = (fiscalRow?.focus_ambiente as string | null) === 'prod' ? 'prod' : 'hom';
+
+  // POR QUE PRODUÇÃO ESTÁ (OU NÃO) AO ALCANCE — respondido aqui, no servidor,
+  // com a MESMA guarda que decide a emissão. A alternativa era a tela oferecer
+  // "Produção", a pessoa salvar, e o "não" aparecer semanas depois na primeira
+  // nota. Roda a guarda contra o estado real da empresa, só com `ambiente` em
+  // 'prod' — nada é gravado, é uma pergunta.
+  let bloqueioProducao: string | null = null;
+  if (ambienteFocus !== 'prod') {
+    const leitura = await lerEstadoFiscal(companyId, createAdminClient());
+    const veredito = leitura.ok
+      ? decidirCredencial({ ...leitura.estado, origem: origemFocus, ambiente: 'prod' })
+      : ({ ok: false, motivo: leitura.motivo } as const);
+    if (!veredito.ok) bloqueioProducao = MENSAGEM_RECUSA[veredito.motivo];
+  }
+
   const credencialFocus: CredencialFocusInfo = {
     companyId,
-    origem: (fiscalRow?.focus_origem as 'propria' | 'balu' | null) ?? 'balu',
+    origem: origemFocus,
+    ambiente: ambienteFocus,
     temHom: Boolean(credRow?.token_hom_cifrado),
     temProd: Boolean(credRow?.token_prod_cifrado),
     producaoDeclarada: Boolean(fiscalRow?.focus_producao_declarada),
+    cadastradaNaContaBalu: fiscalRow?.focus_empresa_id != null,
+    bloqueioProducao,
   };
 
   return (

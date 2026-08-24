@@ -11,7 +11,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { KeyRound, Loader2, ShieldCheck, ShieldAlert, Building2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
-import { salvarCredencialFocusClienteAction } from './focus-actions';
+import { salvarCredencialFocusClienteAction, definirModoFiscalAction } from './focus-actions';
 
 const rotuloCampo = 'text-xs font-medium text-muted-foreground-2';
 const campo = 'rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm';
@@ -19,14 +19,29 @@ const campo = 'rounded-md border border-border bg-surface-2 text-foreground px-3
 export type CredencialFocusInfo = {
   companyId: string;
   /** 'propria' = o cliente traz a própria conta Focus; 'balu' = cadastrada
-   *  pela plataforma no cadastro — esta tela não se aplica a ela. */
+   *  pela plataforma no cadastro. Decide QUEM digita a credencial. */
   origem: 'propria' | 'balu';
+  /** Onde esta empresa emite HOJE. 'prod' faz nota fiscal de verdade. */
+  ambiente: 'hom' | 'prod';
   temHom: boolean;
   temProd: boolean;
   producaoDeclarada: boolean;
+  /** `empresas_fiscais.focus_empresa_id` preenchido: já existe cadastro desta
+   *  empresa dentro da conta Focus da Balu. Sair de 'balu' abandona esse
+   *  cadastro, e por isso pede confirmação. */
+  cadastradaNaContaBalu: boolean;
+  /** Por que produção está fora de alcance agora, já em português — o mesmo
+   *  motivo que a guarda de emissão daria. `null` quando está liberada.
+   *  Calculado no servidor a cada render: a tela nunca oferece um caminho que
+   *  a guarda vai recusar depois, na frente do cliente. */
+  bloqueioProducao: string | null;
 };
 
-export default function CredencialFocusCard({ companyId, origem, temHom, temProd, producaoDeclarada }: CredencialFocusInfo) {
+export default function CredencialFocusCard(props: CredencialFocusInfo) {
+  const {
+    companyId, origem, ambiente, temHom, temProd,
+    producaoDeclarada, cadastradaNaContaBalu, bloqueioProducao,
+  } = props;
   const toast = useToast();
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
@@ -35,16 +50,124 @@ export default function CredencialFocusCard({ companyId, origem, temHom, temProd
   const [declaraProducao, setDeclaraProducao] = useState(producaoDeclarada);
   const [autorizado, setAutorizado] = useState(false);
 
+  // Modo de emissão (origem + ambiente) — formulário À PARTE, com estado
+  // próprio: trocar o modo não regrava token nenhum, e salvar token não muda o
+  // ambiente sem querer. Juntar os dois num submit só faria o clique em
+  // "Salvar credencial" ligar produção de raspão.
+  const [modoPendente, iniciarModo] = useTransition();
+  const [origemEsc, setOrigemEsc] = useState<'propria' | 'balu'>(origem);
+  const [ambienteEsc, setAmbienteEsc] = useState<'hom' | 'prod'>(ambiente);
+  const [ciente, setCiente] = useState(false);
+  const precisaCiencia = origem === 'balu' && origemEsc === 'propria' && cadastradaNaContaBalu;
+  const modoMudou = origemEsc !== origem || ambienteEsc !== ambiente;
+
+  function salvarModo(e: React.FormEvent) {
+    e.preventDefault();
+    if (!modoMudou) return;
+    iniciarModo(async () => {
+      const r = await definirModoFiscalAction({
+        companyId,
+        origem: origemEsc,
+        ambiente: ambienteEsc,
+        ciente_do_cadastro: ciente,
+      });
+      if (!r.ok) { toast('error', r.error); return; }
+      toast('success', ambienteEsc === 'prod'
+        ? 'Modo salvo. Esta empresa passa a emitir NOTA FISCAL REAL.'
+        : 'Modo de emissão salvo.');
+      setCiente(false);
+      router.refresh();
+    });
+  }
+
+  const cardModo = (
+    <form onSubmit={salvarModo} className="mb-4 max-w-2xl space-y-4 rounded-lg border border-border bg-surface p-4">
+      <div className="flex items-start gap-3 text-sm">
+        {ambiente === 'prod'
+          ? <ShieldCheck className="size-5 shrink-0 text-success" />
+          : <Building2 className="size-5 shrink-0 text-primary" />}
+        <div>
+          <p className="font-medium text-foreground">Modo de emissão</p>
+          <p className="text-muted-foreground-2">
+            {ambiente === 'prod'
+              ? 'Esta empresa emite em PRODUÇÃO: as notas valem para a prefeitura.'
+              : 'Esta empresa emite em homologação — as notas são de teste e não valem para a prefeitura.'}
+          </p>
+        </div>
+      </div>
+
+      <label className="flex flex-col gap-1">
+        <span className={rotuloCampo}>Conta na Focus</span>
+        <select
+          value={origemEsc}
+          onChange={(e) => setOrigemEsc(e.target.value as 'propria' | 'balu')}
+          className={campo}
+        >
+          <option value="balu">Conta da Balu — a plataforma cadastra e mantém a empresa na Focus</option>
+          <option value="propria">Conta do próprio cliente — a credencial é digitada aqui</option>
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className={rotuloCampo}>Ambiente</span>
+        <select
+          value={ambienteEsc}
+          onChange={(e) => setAmbienteEsc(e.target.value as 'hom' | 'prod')}
+          className={campo}
+        >
+          <option value="hom">Homologação (teste)</option>
+          <option value="prod">Produção (nota fiscal real)</option>
+        </select>
+        {bloqueioProducao && ambiente !== 'prod' && (
+          <span className="flex items-start gap-1.5 text-[11px] text-alert">
+            <ShieldAlert className="mt-px size-3.5 shrink-0" />
+            {bloqueioProducao}
+          </span>
+        )}
+      </label>
+
+      {precisaCiencia && (
+        <label className="flex items-start gap-2 rounded-lg border border-alert/40 bg-surface-2 p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={ciente}
+            onChange={(e) => setCiente(e.target.checked)}
+            className="mt-0.5 size-4 shrink-0"
+          />
+          <span className="text-muted-foreground-2">
+            Esta empresa já está cadastrada na conta Focus da Balu. Ao passar para a conta do
+            cliente, o Balu deixa de manter esse cadastro — nada mais é enviado para ele, nem
+            certificado nem alteração de dados.
+          </span>
+        </label>
+      )}
+
+      <div className="flex justify-end">
+        <button
+          type="submit"
+          disabled={modoPendente || !modoMudou}
+          className="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-semibold text-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {modoPendente && <Loader2 className="size-4 animate-spin" />}
+          Salvar modo
+        </button>
+      </div>
+    </form>
+  );
+
   if (origem !== 'propria') {
     return (
-      <section className="max-w-2xl rounded-lg border border-border bg-surface p-4">
-        <div className="flex items-start gap-3 text-sm">
-          <Building2 className="size-5 shrink-0 text-primary" />
-          <p className="text-muted-foreground-2">
-            Esta empresa emite pela conta Focus da Balu — a credencial foi gerada no cadastro
-            dela, não é digitada aqui. Esta tela só se aplica a empresas que trazem a própria
-            conta Focus.
-          </p>
+      <section className="max-w-2xl">
+        {cardModo}
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <div className="flex items-start gap-3 text-sm">
+            <Building2 className="size-5 shrink-0 text-primary" />
+            <p className="text-muted-foreground-2">
+              Esta empresa emite pela conta Focus da Balu — a credencial foi gerada no cadastro
+              dela, não é digitada aqui. O campo de token só aparece para empresas que trazem a
+              própria conta Focus.
+            </p>
+          </div>
         </div>
       </section>
     );
@@ -80,6 +203,7 @@ export default function CredencialFocusCard({ companyId, origem, temHom, temProd
 
   return (
     <section className="max-w-2xl">
+      {cardModo}
       <div className="mb-4 flex items-start gap-3 rounded-lg border border-border bg-surface-2 p-4 text-sm">
         {temHom || temProd
           ? <ShieldCheck className="size-5 shrink-0 text-success" />

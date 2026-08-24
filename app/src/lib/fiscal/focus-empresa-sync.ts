@@ -253,7 +253,18 @@ export async function atualizarEmpresaNaFocus(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any, 'public', any>,
   companyId: string,
-  env: FocusEnv = 'hom',
+  // OMITIR É O CAMINHO CERTO: sem valor, o ambiente sai de
+  // `empresas_fiscais.focus_ambiente` — a mesma coluna que decide a emissão.
+  //
+  // Era `env: FocusEnv = 'hom'`, e os TRÊS chamadores de produto passavam
+  // `'hom'` literal. O efeito: `decidirFlagsNfse` mandava sempre
+  // `habilita_nfsen_homologacao` no PUT, e NENHUM caminho do produto jamais
+  // pedia `habilita_nfsen_producao` à Focus. Uma empresa marcada para produção
+  // no Balu continuava, do lado da Focus, habilitada só em homologação — e a
+  // emissão real morria lá, depois de a tela daqui já ter dito que estava
+  // tudo certo. Só passe um valor explícito em script de smoke, onde o
+  // ambiente é o objeto do teste.
+  env?: FocusEnv,
   extras: AtualizarFocusExtras = {},
 ): Promise<SyncFocusResult> {
   const now = new Date().toISOString();
@@ -265,14 +276,23 @@ export async function atualizarEmpresaNaFocus(
   // de trocar para 'propria') continuaria recebendo PUTs com o token de
   // REVENDA da Balu — criando um registro fantasma que não corresponde à conta
   // Focus que a empresa de fato usa para emitir.
+  // `deleted_at is null` aqui e não só no select de baixo: `maybeSingle()` sobre
+  // uma linha soft-deleted devolveria origem nula, e a queda para o default
+  // `'balu'` liberaria justamente o PUT que a guarda existe para impedir.
   const { data: fiscalOrigemUpd } = await supabase
-    .from('empresas_fiscais').select('focus_origem').eq('empresa_id', companyId).maybeSingle();
+    .from('empresas_fiscais').select('focus_origem, focus_ambiente')
+    .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
   if ((fiscalOrigemUpd?.focus_origem ?? 'balu') === 'propria') {
     return {
       ok: false,
       error: 'Esta empresa usa a própria conta na Focus. A atualização é feita no painel dela, não por aqui.',
     };
   }
+
+  // Desvio pela negativa, como em `decidirCredencial`: valor inesperado na
+  // coluna cai em homologação, a direção que não emite documento real.
+  const ambiente: FocusEnv =
+    env ?? ((fiscalOrigemUpd?.focus_ambiente as string | null) === 'prod' ? 'prod' : 'hom');
 
   const { data: company, error: cErr } = await supabase
     .from('companies')
@@ -338,7 +358,7 @@ export async function atualizarEmpresaNaFocus(
         empresa_fiscal_ativada: fiscal.empresa_fiscal_ativada as boolean | null,
       },
       codigoIbge,
-      env,
+      ambiente,
     );
 
     // Acopla extras quando o caller passou (upload de cert / save de credenciais).
@@ -354,7 +374,7 @@ export async function atualizarEmpresaNaFocus(
     }
 
     // PUT pela revenda — path usa o ID numérico interno (não o CNPJ).
-    await focus.atualizarEmpresa(focusEmpresaId, payload as unknown as Record<string, unknown>, env);
+    await focus.atualizarEmpresa(focusEmpresaId, payload as unknown as Record<string, unknown>, ambiente);
 
     await supabase
       .from('companies')

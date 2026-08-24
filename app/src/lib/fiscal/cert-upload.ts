@@ -168,7 +168,7 @@ export async function processarUploadCertificado(
     );
   } else if (fiscalForFocus?.focus_empresa_id != null) {
     // Chamada EXISTENTE, inalterada — só movida para dentro do `else if`.
-    const focusResult = await atualizarEmpresaNaFocus(supabase, companyId, 'hom', {
+    const focusResult = await atualizarEmpresaNaFocus(supabase, companyId, undefined, {
       certificado: { base64: entrada.bytes.toString('base64'), senha: entrada.senha },
     });
     if (!focusResult.ok) {
