@@ -13,7 +13,11 @@
 //   6. o QR vazar para a auditoria — é credencial de sessão do WhatsApp, e quem
 //      o ler no minuto seguinte conecta o próprio aparelho no lugar do Balu;
 //   7. erro de leitura da config virar "ainda não existe" e provisionar por
-//      cima de uma instância que está no ar.
+//      cima de uma instância que está no ar;
+//   8. (0102) o admin token ser gravado SEM ser testado contra a uazapi — um
+//      valor errado só se manifestaria na próxima tentativa de conectar, com a
+//      mensagem "não configurado", que mente: configurado está;
+//   9. o admin token vazar para a auditoria.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const h = vi.hoisted(() => {
@@ -49,6 +53,8 @@ const h = vi.hoisted(() => {
       { ok: true as const, dados: { status: 'connected', numero: '5511999990000', qrcode: null as string | null } }
     )),
     desconectarInstancia: vi.fn(async (..._a: unknown[]) => ({ ok: true as const, dados: {} })),
+    sondarAdminToken: vi.fn(async (..._a: unknown[]) => ({ ok: true as const, dados: { instancias: 37 } })),
+    gravarAdminToken: vi.fn(async (..._a: unknown[]) => ({ ok: true as const })),
   };
 });
 
@@ -63,6 +69,7 @@ vi.mock('@/lib/site-url', () => ({ getSiteUrl: () => 'https://balucontabil.com.b
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/uazapi/config-plataforma', () => ({
   lerConfigWhatsapp: h.lerConfigWhatsapp,
+  gravarAdminToken: h.gravarAdminToken,
   // A cifra de verdade não roda aqui (exigiria CERT_ENC_KEY): o que importa é
   // que o valor gravado NÃO seja o token em claro, e o prefixo prova isso.
   guardarTokenPlataforma: (v: string) => `enc:v1:${v}`,
@@ -74,10 +81,12 @@ vi.mock('@/lib/uazapi/provisionamento', () => ({
   pedirQrCode: h.pedirQrCode,
   statusInstancia: h.statusInstancia,
   desconectarInstancia: h.desconectarInstancia,
+  sondarAdminToken: h.sondarAdminToken,
 }));
 
 import {
   conectarPlataformaAction, statusPlataformaAction, desconectarPlataformaAction,
+  salvarAdminTokenAction,
 } from './actions';
 
 beforeEach(() => {
@@ -240,5 +249,73 @@ describe('desconectarPlataformaAction', () => {
 
     expect(r).toEqual({ ok: false, error: 'Acesso restrito.' });
     expect(h.desconectarInstancia).not.toHaveBeenCalled();
+  });
+});
+
+describe('salvarAdminTokenAction (0102)', () => {
+  // POR QUE ESTE BLOCO EXISTE. Em 24/08/2026 `UAZAPI_ADMIN_TOKEN` estava no
+  // `.env.local` e NÃO estava na Vercel: provisionar canal respondia "não
+  // configurado" em produção e só em produção, desde a 0091, e ninguém tinha
+  // como saber porque local funcionava. O token passou a morar no banco; o que
+  // não pode voltar é a credencial entrar sem ninguém conferir se ela serve.
+  const TOKEN = 'admin-token-obviamente-falso-0001';
+
+  it('quem NAO e AdminBalu nao grava nada', async () => {
+    h.estado.guard = { error: 'Acesso restrito.' };
+
+    const r = await salvarAdminTokenAction(TOKEN);
+
+    expect(r).toEqual({ ok: false, error: 'Acesso restrito.' });
+    expect(h.sondarAdminToken).not.toHaveBeenCalled();
+    expect(h.gravarAdminToken).not.toHaveBeenCalled();
+  });
+
+  it('token vazio (ou so espaco) nao chega a sondar', async () => {
+    expect((await salvarAdminTokenAction('')).ok).toBe(false);
+    expect((await salvarAdminTokenAction('   ')).ok).toBe(false);
+    expect(h.sondarAdminToken).not.toHaveBeenCalled();
+    expect(h.gravarAdminToken).not.toHaveBeenCalled();
+  });
+
+  it('TESTA ANTES DE GRAVAR: uazapi recusou, nada e salvo', async () => {
+    h.sondarAdminToken.mockResolvedValueOnce(
+      { ok: false as const, erro: 'A uazapi recusou este admin token (401).' } as never,
+    );
+
+    const r = await salvarAdminTokenAction(TOKEN);
+
+    expect(r).toEqual({ ok: false, error: 'A uazapi recusou este admin token (401).' });
+    expect(h.gravarAdminToken).not.toHaveBeenCalled();
+    expect(h.registrarAuditoria).not.toHaveBeenCalled();
+  });
+
+  it('uazapi aceitou: grava, e devolve a contagem como prova', async () => {
+    const r = await salvarAdminTokenAction(`  ${TOKEN}  `);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.dados.instancias).toBe(37);
+    // O valor sondado e o gravado sao o MESMO, e sem os espacos da colagem.
+    expect(h.sondarAdminToken).toHaveBeenCalledWith(TOKEN);
+    expect(h.gravarAdminToken).toHaveBeenCalledWith(TOKEN, 'admin_1');
+  });
+
+  it('o admin token NUNCA entra na auditoria', async () => {
+    await salvarAdminTokenAction(TOKEN);
+
+    expect(h.registrarAuditoria).toHaveBeenCalledTimes(1);
+    const registro = JSON.stringify(h.registrarAuditoria.mock.calls[0]);
+    expect(registro).not.toContain(TOKEN);
+    // O que fica registrado e a PROVA de que funcionou, nao o segredo.
+    expect(registro).toContain('37');
+  });
+
+  it('falha ao gravar nao vira sucesso silencioso', async () => {
+    h.gravarAdminToken.mockResolvedValueOnce({ ok: false as const, erro: 'banco fora' } as never);
+
+    const r = await salvarAdminTokenAction(TOKEN);
+
+    expect(r.ok).toBe(false);
+    expect(h.registrarAuditoria).not.toHaveBeenCalled();
   });
 });

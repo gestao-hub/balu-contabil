@@ -8,6 +8,7 @@
 import { requireAdminBaluPage } from '@/lib/admin/guard';
 import { lerConfigWhatsapp } from '@/lib/uazapi/config-plataforma';
 import WhatsappPlataformaClient from './WhatsappPlataformaClient';
+import AdminTokenForm from './AdminTokenForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +49,11 @@ export default async function Page() {
   return (
     <div className="space-y-6 p-6">
       {cabecalho}
+      {/* O ADMIN TOKEN VEM PRIMEIRO de propósito: sem ele nenhuma instância é
+          criada, e o QR abaixo falharia com uma mensagem que a pessoa não tem
+          como consertar sem sair da tela. */}
+      <AdminTokenForm configurado={Boolean(r.linha?.admin_token_cifrado)} />
+
       <WhatsappPlataformaClient
         status={r.linha?.status ?? 'desconectado'}
         numero={r.linha?.numero ?? null}
