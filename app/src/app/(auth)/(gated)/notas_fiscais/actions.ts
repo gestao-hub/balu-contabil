@@ -6,6 +6,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
 import { assertAssinaturaEmpresa } from '@/lib/billing/gate';
 import { focus, generateRef, type FocusEnv } from '@/lib/clients/focus-nfe';
@@ -52,6 +53,34 @@ type ExportRow = {
 function esc(v: unknown): string {
   const s = v == null ? '' : String(v).replace(/[\r\n]+/g, ' ');
   return /[";\n\r,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * O ponto de escrita de `notas_fiscais` — SERVICE ROLE, sessão 32 / 0100.
+ *
+ * POR QUE NÃO O CLIENT DE SESSÃO. Tudo que estas actions gravam numa nota são
+ * FATOS QUE VIERAM DA FOCUS: status, número, chave de acesso, protocolo,
+ * `pdf_url`, `xml_url`. Enquanto a escrita saía pelo client de sessão, o banco
+ * não tinha como distinguir "o servidor gravou o que a Focus respondeu" de
+ * "o dono da empresa mandou um PATCH pelo PostgREST com a chave anon" — as
+ * duas chegavam como `authenticated`, e a policy `notas_fiscais_update` (0010)
+ * autorizava as duas, coluna por coluna, sem restrição nenhuma.
+ *
+ * O que isso armava: `xml_url` gravável pelo titular RECARREGA o SSRF que a
+ * sessão 31 fechou no lado do fetch (url relativa forjada levando o token da
+ * Focus para o servidor do atacante), e `status`/`valor_total` graváveis
+ * mexem na base de cálculo que a apuração lê para gerar a guia.
+ *
+ * Com a escrita aqui, a 0100 pôde tirar o UPDATE do inquilino por inteiro. O
+ * INSERT continua pela sessão de propósito: a policy `notas_fiscais_insert`
+ * exige `user_owns_company` e é ela a guarda daquele caminho.
+ *
+ * ⚠️ SEM RLS POR BAIXO. O filtro `.eq('company_id', ...)` é a ÚNICA barreira —
+ * SÓ passe um companyId já provado por `empresaDoDono`, nunca o
+ * `current_company` cru.
+ */
+function escritaDeNota() {
+  return createAdminClient().from('notas_fiscais');
 }
 
 export async function exportNotasCsvAction(filtros: NotasFiltros): Promise<ExportResult> {
@@ -321,8 +350,7 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
     // 0098 usa `IS DISTINCT FROM` — reenviar o MESMO valor passaria — mas
     // duplicar a fonte de verdade é convite a divergência (ver bloqueio 3 da
     // revisão final), não proteção nenhuma.
-    await supabase
-      .from('notas_fiscais')
+    await escritaDeNota()
       .update({
         // grava resposta sincrona pra debug
         payload_focusnfe: { request: payload, response: resp },
@@ -332,8 +360,7 @@ export async function emitirNotaAction(input: EmitirNotaInput): Promise<EmitirNo
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : String(e);
     const friendly = traduzirErroFocus(errMsg);
-    await supabase
-      .from('notas_fiscais')
+    await escritaDeNota()
       .update({
         status: 'erro',
         payload_focusnfe: { request: payload, error: errMsg },
@@ -445,8 +472,7 @@ export async function atualizarStatusNotaAction(
   if (numero) update.numero_nf = numero;
   if (serie) update.serie = serie;
 
-  const { error } = await supabase
-    .from('notas_fiscais').update(update).eq('id', id).eq('company_id', companyId);
+  const { error } = await escritaDeNota().update(update).eq('id', id).eq('company_id', companyId);
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/notas_fiscais/${id}`);
@@ -500,8 +526,7 @@ export async function cancelarNotaAction(
   // Nota manual (lançamento): não tem documento na Focus → cancela só no banco, sem chamar a API.
   if (nota.origem === 'manual') {
     if (nota.status === 'cancelada') return { ok: false, error: 'Esta nota já está cancelada.' };
-    const { error: cancErr } = await supabase
-      .from('notas_fiscais')
+    const { error: cancErr } = await escritaDeNota()
       .update({ status: 'cancelada' })
       .eq('id', id).eq('company_id', companyId);
     if (cancErr) return { ok: false, error: cancErr.message };
@@ -561,8 +586,7 @@ export async function cancelarNotaAction(
     return { ok: false, error: e instanceof Error ? e.message : 'Falha ao cancelar na Focus.' };
   }
 
-  const { error } = await supabase
-    .from('notas_fiscais')
+  const { error } = await escritaDeNota()
     .update({
       status: 'cancelada',
       cancelled_at: new Date().toISOString(),
@@ -774,13 +798,13 @@ export async function emitirNfeAction(input: EmitirNfeInput): Promise<EmitirNota
   try {
     const resp = await focus.emitirNfe(ref, payload, credencial.token, credencial.ambiente);
     // NÃO manda `ambiente`: já foi gravado no insert acima (ver comentário lá).
-    await supabase.from('notas_fiscais')
+    await escritaDeNota()
       .update({ payload_focusnfe: { request: payload, response: resp } })
       .eq('id', notaId).eq('company_id', companyId);
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
     const friendly = traduzirErroFocus(errMsg);
-    await supabase.from('notas_fiscais')
+    await escritaDeNota()
       .update({ status: 'erro', payload_focusnfe: { request: payload, error: errMsg } })
       .eq('id', notaId).eq('company_id', companyId);
     return { ok: false, error: friendly };
@@ -917,13 +941,13 @@ export async function emitirNfceAction(input: EmitirNfceInput): Promise<EmitirNo
   try {
     const resp = await focus.emitirNfce(ref, payload, credencial.token, credencial.ambiente);
     // NÃO manda `ambiente`: já foi gravado no insert acima (ver comentário lá).
-    await supabase.from('notas_fiscais')
+    await escritaDeNota()
       .update({ payload_focusnfe: { request: payload, response: resp } })
       .eq('id', notaId).eq('company_id', companyId);
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : 'Falha ao emitir na Focus.';
     const friendly = traduzirErroFocus(errMsg);
-    await supabase.from('notas_fiscais')
+    await escritaDeNota()
       .update({ status: 'erro', payload_focusnfe: { request: payload, error: errMsg } })
       .eq('id', notaId).eq('company_id', companyId);
     return { ok: false, error: friendly };
