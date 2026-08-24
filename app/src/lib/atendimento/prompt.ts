@@ -28,13 +28,28 @@
  * apresentações diferentes, e a identidade do produto vira sorteio. É a mesma
  * regra do resto do projeto — o determinístico decide, a IA explica.
  *
- * Ortografia revisada em cima do texto original ("Olá Sou o Balu Assistente do
- * sistema Balucontábil, me diga como posso ajuda-lo hoje"): pontuação depois da
- * interjeição, vírgula do aposto, acento em "ajudá-lo" e ênclise no início da
- * frase, que é o registro profissional que este prompt exige.
+ * TEXTO TROCADO EM 24/08/2026, a pedido do usuário. Ele vale para quem escreve
+ * pela primeira vez — cliente cadastrado ou pessoa qualquer procurando
+ * informação; a saudação é a mesma para os dois, e é assim de propósito: quem
+ * chega ainda não foi identificado quando ela é montada.
+ *
+ * Ortografia revisada em cima do texto original ("Olá, eu Sou o Assistente da
+ * Balu-contabil, como posso te ajuar hoje?"), pelo mesmo critério que já tinha
+ * sido aplicado à versão de 19/08:
+ *
+ *   - "Sou" → "sou": está no meio da frase, não no começo;
+ *   - "ajuar" → "ajudar": erro de digitação;
+ *   - "Balu-contabil" → "Balu Contábil": é o nome do produto, e é assim que ele
+ *     aparece em todo o resto da interface;
+ *   - vírgula → ponto antes de "Como posso": eram duas orações independentes
+ *     emendadas por vírgula.
+ *
+ * O TRATAMENTO INFORMAL FOI MANTIDO. "te ajudar" no lugar de "ajudá-lo" é
+ * escolha do usuário, não descuido — a versão anterior era formal, e a troca
+ * para o registro informal é justamente parte do pedido.
  */
 export const SAUDACAO_INICIAL =
-  'Olá! Sou o Balu, assistente do sistema Balu Contábil. Diga-me como posso ajudá-lo hoje.';
+  'Olá, eu sou o Assistente da Balu Contábil. Como posso te ajudar hoje?';
 
 /**
  * Põe a saudação antes da resposta, e só na primeira mensagem da conversa.

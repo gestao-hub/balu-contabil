@@ -71,14 +71,33 @@ export default function ConexaoWhatsapp(props: ConexaoWhatsappProps) {
     setStatus('conectando');
   }, [aoConectar]);
 
-  // O QR aparece SOZINHO ao abrir a tela: provisiona a instância se ainda não
-  // houver e já mostra o código. Só quando não há nada conectado e ninguém
-  // escolheu o caminho por código — senão a tela pediria QR por cima de uma
-  // conexão que já existe, e a uazapi recusaria com razão.
+  // O QR aparece SOZINHO ao abrir a tela — mas SÓ depois de perguntar ao
+  // provedor como está a conexão.
+  //
+  // ⚠️ POR QUE A CONSULTA VEM ANTES (achado em 24/08/2026, com a instância da
+  // plataforma na mão). `POST /instance/connect` numa instância já conectada
+  // DERRUBA a sessão viva para parear de novo. O `inicial` aqui é o espelho do
+  // BANCO, e ele fica velho fácil: só é atualizado pelo polling de quem está
+  // com a tela aberta. Bastava recarregar a página depois de conectar para o
+  // efeito pedir QR por cima de um número que estava atendendo — e desconectá-lo.
+  //
+  // Perguntar primeiro custa uma requisição e usa a FONTE em vez do espelho.
   useEffect(() => {
     if (inicial === 'conectado' || porCodigo) return;
-    void gerarQr();
-  }, [inicial, porCodigo, gerarQr]);
+    let vivo = true;
+    void (async () => {
+      const r = await aoConsultar();
+      if (!vivo) return;
+      if (r.ok && r.dados.status === 'conectado') {
+        // Espelho estava velho: mostra o que é verdade e NÃO pede QR nenhum.
+        setStatus('conectado');
+        setNumero(r.dados.numero);
+        return;
+      }
+      await gerarQr();
+    })();
+    return () => { vivo = false; };
+  }, [inicial, porCodigo, gerarQr, aoConsultar]);
 
   // Polling enquanto a conexão está em curso. Sem o `clearInterval` do
   // desmonte, sair da página deixaria a consulta rodando para sempre.

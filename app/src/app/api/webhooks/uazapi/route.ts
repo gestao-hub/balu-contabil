@@ -52,7 +52,7 @@ import { buscarSituacaoAtualMei } from '@/lib/explicacoes/situacao-atual-mei';
 import { montarPromptAtendimento, comSaudacao } from '@/lib/atendimento/prompt';
 import { gerarTexto } from '@/lib/ai/cliente';
 import { lerChaveIa } from '@/lib/ai/config-ia';
-import { enviarMensagem, type ConfigUazapi } from '@/lib/uazapi/cliente';
+import { enviarMensagem, marcarDigitando, type ConfigUazapi } from '@/lib/uazapi/cliente';
 import {
   escritorioPorWebhookToken, escritorioPorId, configDaPlataforma, type EscritorioDoCanal,
 } from '@/lib/uazapi/instancia';
@@ -593,6 +593,24 @@ export async function POST(req: Request) {
       throw new Error(erroClaim.message);
     }
     atendimentoId = (claim as { id: string }).id;
+
+    // "DIGITANDO…" no aparelho de quem escreveu — pedido do usuário, 24/08/2026.
+    //
+    // AQUI, e não mais cedo: só depois do claim se sabe que ESTA requisição vai
+    // responder. Antes dele, uma reentrega da mesma mensagem pela uazapi ligaria
+    // o indicador de novo numa conversa que já foi atendida.
+    //
+    // E aqui, e não mais tarde: o que vem a seguir é a chamada de IA, que é o
+    // trecho lento — é exatamente o silêncio que os três pontinhos preenchem.
+    //
+    // SEM `await` DE PROPÓSITO: é enfeite de experiência, e a resposta é o
+    // produto. Esperar por ele atrasaria a mensagem para melhorar a espera dela.
+    // `void` + o catch interno de `marcarDigitando` garantem que uma falha aqui
+    // não vire promessa rejeitada sem dono.
+    // `.catch` alem do try/catch interno de `marcarDigitando`: `void` numa
+    // promessa rejeitada e unhandled rejection, e o processo pode derrubar a
+    // requisicao inteira por causa do enfeite. Cinto e suspensorio, de proposito.
+    void marcarDigitando(canalDeSaida, entrada.from).catch(() => {});
 
     // Casamento TOLERANTE a formato, e não `.eq()` cru. O `.eq()` que morava
     // aqui não casava nunca em produção: o opt-in grava E.164 com `+`

@@ -128,6 +128,39 @@ export async function conectarWhatsappAction(): Promise<ActionResult<{ qrcode: s
   const cfgQr = await configurarWebhook(inst.token, getSiteUrl(), inst.linha.uazapi_webhook_token ?? '');
   if (!cfgQr.ok) console.error('[whatsapp escritorio] webhook nao configurado:', cfgQr.erro);
 
+  // ⚠️ PERGUNTA AO PROVEDOR ANTES DE PEDIR QR — achado em 24/08/2026, com a
+  // instância da plataforma na mão.
+  //
+  // `POST /instance/connect` numa instância JÁ CONECTADA **derruba a sessão
+  // viva** para começar um pareamento novo (`lastDisconnect` com motivo
+  // "disconnected by API", 2 minutos depois de um cadastro bem-sucedido). E o
+  // gatilho não era um clique: a tela pede QR sozinha ao montar sempre que o
+  // ESPELHO no banco não disser 'conectado' — e o espelho fica velho fácil,
+  // porque só é atualizado pelo polling de quem está com a tela aberta.
+  //
+  // Resultado: recarregar a página depois de conectar DESCONECTAVA o número.
+  // O `pedirQrCode` tem uma guarda para "já conectada", mas ela nunca disparava
+  // — quando a resposta chega, a uazapi já derrubou a sessão e o QR novo veio
+  // junto. A guarda tem de vir ANTES da chamada, e contra a FONTE, não contra
+  // o espelho.
+  //
+  // De quebra, isto cura o espelho: um status que ficou para trás é corrigido
+  // aqui, e a próxima abertura da tela já nasce sabendo.
+  const jaConectado = await statusInstancia(inst.token);
+  if (jaConectado.ok && jaConectado.dados.status === 'connected') {
+    const adminSync = createAdminClient();
+    await adminSync.from('contabilidades').update({
+      uazapi_status: 'conectado',
+      ...(jaConectado.dados.numero ? { uazapi_numero: jaConectado.dados.numero } : {}),
+      uazapi_conectado_em: new Date().toISOString(),
+    }).eq('id', g.id);
+    return {
+      ok: false,
+      error: 'Este canal já está conectado. Recarregue a página; para trocar de aparelho, '
+        + 'use "Desconectar número" antes de ler um QR novo.',
+    };
+  }
+
   const qr = await pedirQrCode(inst.token);
   if (!qr.ok) return { ok: false, error: qr.erro };
 

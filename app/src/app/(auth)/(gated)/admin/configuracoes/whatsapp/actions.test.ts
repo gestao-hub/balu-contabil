@@ -95,6 +95,12 @@ beforeEach(() => {
   h.estado.guard = { userId: 'admin_1' };
   h.estado.config = { ok: true, linha: null };
   process.env.UAZAPI_WEBHOOK_SECRET = 'segredo-da-plataforma';
+  // DESCONECTADO por padrao: `conectarPlataformaAction` consulta o status ANTES
+  // de pedir QR (guarda de 24/08), e um default 'connected' faria todo teste de
+  // conexao bater na guarda em vez de exercitar o caminho que ele testa.
+  h.statusInstancia.mockResolvedValue(
+    { ok: true as const, dados: { status: 'disconnected', numero: null as unknown as string, qrcode: null } },
+  );
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -182,6 +188,24 @@ describe('conectarPlataformaAction', () => {
     expect(h.criarInstancia).not.toHaveBeenCalled();
   });
 
+  it('canal JA conectado: recusa o QR, NAO chama connect, e cura o espelho', async () => {
+    // Ver o gemeo deste teste no canal do escritorio: /instance/connect numa
+    // instancia conectada derruba a sessao viva, e a tela pedia QR sozinha ao
+    // montar com base num espelho de banco que fica velho.
+    h.estado.config = { ok: true, linha: { instancia_id: 'inst_plat', token_cifrado: 'enc:v1:tok-da-plataforma' } };
+    h.statusInstancia.mockResolvedValueOnce(
+      { ok: true as const, dados: { status: 'connected', numero: '5511999990000', qrcode: null } },
+    );
+
+    const r = await conectarPlataformaAction();
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/ja esta conectado|já está conectado/i);
+    expect(h.pedirQrCode).not.toHaveBeenCalled();
+    const u = h.escritas.filter((x) => 'status' in x).at(-1);
+    expect(u).toMatchObject({ status: 'conectado', numero: '5511999990000' });
+  });
+
   it('FALHA FECHADA: erro de leitura nao vira "ainda nao existe"', async () => {
     h.estado.config = { ok: false, erro: 'conexao caiu' };
 
@@ -205,6 +229,9 @@ describe('statusPlataformaAction', () => {
     // O numero NAO e digitado em lugar nenhum desta tela: ele vem do `owner`
     // da instancia, depois que alguem escaneou.
     h.estado.config = { ok: true, linha: { instancia_id: 'inst_plat', token_cifrado: 'enc:v1:tok-da-plataforma' } };
+    h.statusInstancia.mockResolvedValueOnce(
+      { ok: true as const, dados: { status: 'connected', numero: '5511999990000', qrcode: null } },
+    );
 
     const r = await statusPlataformaAction();
 

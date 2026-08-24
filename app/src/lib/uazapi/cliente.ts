@@ -53,3 +53,46 @@ export async function enviarMensagem(
     return { ok: false, erro: e instanceof Error ? e.message : String(e) };
   }
 }
+
+/**
+ * Liga o "digitando…" no WhatsApp de quem escreveu.
+ *
+ * ✅ CAMINHO CONFIRMADO em 24/08/2026 contra `grupoide.uazapi.com`:
+ * `POST /message/presence` com header `token` e corpo `{ number, presence }`
+ * respondeu **503 "WhatsApp disconnected: session is not reconnectable"** —
+ * a rota existe e aceitou o payload; só faltava a sessão viva. Os candidatos
+ * `/chat/presence` e `/send/presence` responderam **405**, que é rota que não
+ * existe para POST. ⚠️ O sucesso com sessão CONECTADA ainda não foi observado:
+ * a instância estava fora do ar na hora da sondagem.
+ *
+ * BEST-EFFORT E NUNCA BLOQUEIA. Isto é enfeite de experiência; a resposta é o
+ * produto. Se a presença falhar, o cliente recebe a mensagem do mesmo jeito e
+ * ninguém fica sabendo — por isso o retorno é `void` e o catch é mudo, exceto
+ * pelo log. Deixar isto no caminho crítico trocaria "resposta sem os três
+ * pontinhos" por "resposta nenhuma".
+ */
+export async function marcarDigitando(
+  cfg: ConfigUazapi | null, telefone: string, duracaoMs = 15_000,
+): Promise<void> {
+  if (!cfg) return;
+  try {
+    await fetch(`${cfg.baseUrl.replace(/\/+$/, '')}/message/presence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', token: cfg.token },
+      // Mesma normalização do envio: o número pode vir de cadastro (E.164 com
+      // `+`), de um JID (`…@s.whatsapp.net`) ou já em dígitos.
+      body: JSON.stringify({
+        number: soDigitosWhatsapp(telefone),
+        presence: 'composing',
+        delay: duracaoMs,
+      }),
+      // Timeout CURTO, e menor que o do envio: o cliente está esperando a
+      // resposta, e uma presença lenta atrasaria justamente o que ela existe
+      // para disfarçar.
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (e) {
+    console.warn('[uazapi] presenca "digitando" falhou (segue o envio):',
+      e instanceof Error ? e.message : String(e));
+  }
+}

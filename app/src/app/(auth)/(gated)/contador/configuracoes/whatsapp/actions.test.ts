@@ -91,8 +91,15 @@ beforeEach(() => {
   h.pedirPareamento.mockClear();
   h.pedirQrCode.mockClear();
   h.registrarAuditoria.mockClear();
+  // `mockClear` explicito: este arquivo nao usa vi.clearAllMocks(), e sem isto a
+  // contagem de chamadas se acumula entre testes (7 chamadas num teste que nao
+  // fez nenhuma -- foi assim que apareceu).
+  h.statusInstancia.mockClear();
+  // DESCONECTADO por padrao. `conectarWhatsappAction` consulta o status ANTES de
+  // pedir QR (guarda de 24/08), entao um default 'connected' faria todo teste de
+  // conexao bater na guarda em vez de exercitar o caminho que ele testa.
   h.statusInstancia.mockResolvedValue(
-    { ok: true as const, dados: { status: 'connected', numero: '553299998888', qrcode: null } },
+    { ok: true as const, dados: { status: 'disconnected', numero: null as unknown as string, qrcode: null } },
   );
 });
 
@@ -161,6 +168,30 @@ describe('conectarWhatsappAction — QR code (caminho principal)', () => {
     expect(h.pedirQrCode).toHaveBeenCalledTimes(1);
   });
 
+  it('canal JA conectado: recusa o QR, NAO chama connect, e cura o espelho', async () => {
+    // ACHADO EM 24/08/2026, com a instancia da plataforma na mao: POST
+    // /instance/connect numa instancia conectada DERRUBA a sessao viva para
+    // parear de novo. E o gatilho nao era um clique -- a tela pedia QR sozinha
+    // ao montar sempre que o ESPELHO no banco nao dissesse 'conectado', e o
+    // espelho fica velho porque so o polling de quem esta com a tela aberta o
+    // atualiza. Recarregar a pagina depois de conectar desconectava o numero.
+    h.estado.linha.uazapi_instancia_id = 'inst_1';
+    h.estado.linha.uazapi_token_cifrado = 'enc:v1:tok-secreto';
+    h.statusInstancia.mockResolvedValueOnce(
+      { ok: true as const, dados: { status: 'connected', numero: '553299998888', qrcode: null } },
+    );
+
+    const r = await conectarWhatsappAction();
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/ja esta conectado|já está conectado/i);
+    // A guarda tem de vir ANTES da chamada: depois nao adianta, a sessao ja caiu.
+    expect(h.pedirQrCode).not.toHaveBeenCalled();
+    // E o espelho velho fica curado de passagem.
+    const u = h.updates.filter((x) => 'uazapi_status' in x).at(-1);
+    expect(u).toMatchObject({ uazapi_status: 'conectado', uazapi_numero: '553299998888' });
+  });
+
   it('recusa da uazapi vira erro na tela, sem gravar conectando', async () => {
     h.pedirQrCode.mockResolvedValueOnce(
       { ok: false as const, erro: 'Esta instância já está conectada.' } as never,
@@ -225,6 +256,9 @@ describe('statusWhatsappAction', () => {
 
   it('traduz o vocabulario da uazapi para o do banco e carimba a conexao', async () => {
     h.estado.linha.uazapi_token_cifrado = 'enc:v1:tok-secreto';
+    h.statusInstancia.mockResolvedValueOnce(
+      { ok: true as const, dados: { status: 'connected', numero: '553299998888', qrcode: null } },
+    );
 
     const r = await statusWhatsappAction();
 

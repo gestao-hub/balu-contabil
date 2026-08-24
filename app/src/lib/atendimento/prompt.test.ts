@@ -93,13 +93,19 @@ describe('assimetria de registro — entende informal, responde profissional', (
 
 describe('saudacao inicial — texto fixo, definido pelo usuario', () => {
   it('e exatamente a frase acordada, ja com a ortografia corrigida', () => {
+    // Texto trocado pelo usuario em 24/08/2026. E o mesmo para cliente
+    // cadastrado e para quem so esta procurando informacao -- quando ela e
+    // montada, quem escreveu ainda nao foi identificado.
     expect(SAUDACAO_INICIAL).toBe(
-      'Olá! Sou o Balu, assistente do sistema Balu Contábil. Diga-me como posso ajudá-lo hoje.');
-    // Os quatro erros do texto original nao podem voltar.
-    expect(SAUDACAO_INICIAL).toMatch(/^Olá!/);          // pontuacao apos a interjeicao
-    expect(SAUDACAO_INICIAL).toContain('Balu, assistente');  // virgula do aposto
-    expect(SAUDACAO_INICIAL).toContain('ajudá-lo');     // acento agudo
-    expect(SAUDACAO_INICIAL).not.toMatch(/ajuda-lo|Balucontábil|me diga/i);
+      'Olá, eu sou o Assistente da Balu Contábil. Como posso te ajudar hoje?');
+    // Os erros do texto original nao podem voltar.
+    expect(SAUDACAO_INICIAL).toContain('eu sou');       // minuscula no meio da frase
+    expect(SAUDACAO_INICIAL).toContain('te ajudar');    // "ajuar" era erro de digitacao
+    expect(SAUDACAO_INICIAL).toContain('Balu Contábil'); // nome do produto, como no resto da interface
+    expect(SAUDACAO_INICIAL).not.toMatch(/ajuar|Balu-contabil|eu Sou/);
+    // O registro INFORMAL e escolha do usuario: a versao anterior era formal
+    // ("ajuda-lo"), e a troca faz parte do pedido -- nao e descuido a corrigir.
+    expect(SAUDACAO_INICIAL).not.toContain('ajudá-lo');
   });
 
   it('so aparece na PRIMEIRA mensagem da conversa', () => {

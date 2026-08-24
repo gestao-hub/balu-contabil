@@ -173,6 +173,7 @@ const h = vi.hoisted(() => {
   // 0091 — resolucao de tenant, mockada na fronteira.
   const CANAL_PLATAFORMA = { baseUrl: 'https://instancia.uazapi.com', token: 'tok-plataforma' };
   const configDaPlataforma = vi.fn(() => CANAL_PLATAFORMA);
+  const marcarDigitando = vi.fn(async (..._a: unknown[]) => {});
   const escritorioPorWebhookToken = vi.fn(async () => estado.escritorio);
   const escritorioPorId = vi.fn(async () => estado.escritorio);
   // painel_contador_por_id (modo ESCRITORIO) e qualquer outra RPC.
@@ -186,12 +187,16 @@ const h = vi.hoisted(() => {
     inserts, updates, estado, from, rpc, enviarMensagem, configDeEnv, buscarSituacaoAtualMei,
     gerarTexto, lerChaveIa, limitar,
     configDaPlataforma, escritorioPorWebhookToken, escritorioPorId, CANAL_PLATAFORMA,
+    marcarDigitando,
   };
 });
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: h.from, rpc: h.rpc }) }));
 vi.mock('@/lib/security/rate-limit', () => ({ limitar: h.limitar }));
-vi.mock('@/lib/uazapi/cliente', () => ({ enviarMensagem: h.enviarMensagem, configDeEnv: h.configDeEnv }));
+vi.mock('@/lib/uazapi/cliente', () => ({
+  enviarMensagem: h.enviarMensagem, configDeEnv: h.configDeEnv,
+  marcarDigitando: h.marcarDigitando,
+}));
 vi.mock('@/lib/explicacoes/situacao-atual-mei', () => ({ buscarSituacaoAtualMei: h.buscarSituacaoAtualMei }));
 vi.mock('@/lib/ai/cliente', () => ({ gerarTexto: h.gerarTexto }));
 vi.mock('@/lib/ai/config-ia', () => ({ lerChaveIa: h.lerChaveIa }));
@@ -203,6 +208,7 @@ vi.mock('@/lib/uazapi/instancia', () => ({
 }));
 
 import { POST } from './route';
+import { SAUDACAO_INICIAL } from '@/lib/atendimento/prompt';
 
 beforeEach(() => {
   process.env.UAZAPI_WEBHOOK_SECRET = SEGREDO;
@@ -225,6 +231,7 @@ beforeEach(() => {
   h.limitar.mockClear();
   h.limitar.mockImplementation(async () => true);
   h.enviarMensagem.mockClear();
+  h.marcarDigitando.mockClear();
   h.gerarTexto.mockClear();
   h.lerChaveIa.mockClear();
   h.buscarSituacaoAtualMei.mockClear();
@@ -638,6 +645,36 @@ describe('webhook uazapi', () => {
   });
 });
 
+describe('presenca "digitando..." (24/08/2026)', () => {
+  // POR QUE ISTO E TESTADO. E enfeite de experiencia, entao some facil numa
+  // refatoracao e ninguem nota -- ate alguem reclamar que o assistente demora
+  // "em silencio". E o inverso e pior: se um dia isto virar `await` no caminho
+  // critico, uma uazapi lenta passa a atrasar a RESPOSTA para melhorar a espera
+  // dela. Os dois testes abaixo prendem as duas pontas.
+  it('avisa "digitando" para quem escreveu, antes de responder', async () => {
+    h.estado.textoGerado = JSON.stringify({ resposta: 'O limite e R$ 81.000.', resolvido: true });
+
+    await POST(requisicaoFalsa({ messageId: 'dig-1', from: '5532987006789', text: 'qual o limite?' }, SEGREDO));
+
+    expect(h.marcarDigitando).toHaveBeenCalledTimes(1);
+    const [canal, telefone] = h.marcarDigitando.mock.calls[0] as [unknown, string];
+    expect(telefone).toBe('5532987006789');
+    // Pelo MESMO canal que vai responder: avisar "digitando" por um numero e
+    // responder por outro seria pior do que nao avisar nada.
+    expect(canal).toBe(h.enviarMensagem.mock.calls[0]?.[0]);
+  });
+
+  it('falha na presenca NAO impede a resposta', async () => {
+    h.marcarDigitando.mockRejectedValueOnce(new Error('uazapi fora do ar'));
+    h.estado.textoGerado = JSON.stringify({ resposta: 'O limite e R$ 81.000.', resolvido: true });
+
+    const res = await POST(requisicaoFalsa({ messageId: 'dig-2', from: '5532987006789', text: 'qual o limite?' }, SEGREDO));
+
+    expect(res.status).toBe(200);
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('saudacao da primeira mensagem', () => {
   it('a PRIMEIRA mensagem da conversa vem com a saudacao fixa', async () => {
     h.estado.interacaoAnterior = null;              // nenhuma troca anterior
@@ -647,8 +684,11 @@ describe('saudacao da primeira mensagem', () => {
 
     const [, msg] = h.enviarMensagem.mock.calls[0] as [unknown, { texto: string }];
     expect(msg.texto).toBe(
-      'Olá! Sou o Balu, assistente do sistema Balu Contábil. Diga-me como posso ajudá-lo hoje.'
-      + '\n\nO MEI é o Microempreendedor Individual.');
+      // Compara com a CONSTANTE, nao com o texto literal: a frase e do usuario
+      // e ja mudou uma vez (19/08 -> 24/08). Duplicar o texto aqui faz o teste
+      // quebrar a cada troca de copy, dizendo que o webhook regrediu quando o
+      // que mudou foi a frase. Que ela seja a acordada e assunto de prompt.test.ts.
+      SAUDACAO_INICIAL + '\n\nO MEI é o Microempreendedor Individual.');
   });
 
   it('a SEGUNDA mensagem NAO repete a saudacao', async () => {
@@ -661,7 +701,7 @@ describe('saudacao da primeira mensagem', () => {
 
     const [, msg] = h.enviarMensagem.mock.calls[0] as [unknown, { texto: string }];
     expect(msg.texto).toBe('O limite é de R$ 81.000 por ano.');
-    expect(msg.texto).not.toMatch(/Olá! Sou o Balu/);
+    expect(msg.texto).not.toContain(SAUDACAO_INICIAL);
   });
 });
 
