@@ -66,7 +66,7 @@ const h = vi.hoisted(() => {
     erroUpdate: null as ErroPg | null,
     // Consultado pela busca de "primeira interação" (persona Assistente Balu):
     // null = nenhum atendimento anterior para este telefone = primeira mensagem.
-    interacaoAnterior: null as { id: string } | null,
+    interacaoAnterior: null as { id: string; resposta_enviada?: string | null } | null,
     // 0091 — canal por escritorio. null = canal da plataforma.
     escritorio: null as null | {
       id: string; nome: string; slaHoras: number | null;
@@ -637,11 +637,59 @@ describe('webhook uazapi', () => {
   });
 
   it('nao e a primeira interacao (ja existe atendimento anterior): NAO pede saudacao', async () => {
-    h.estado.interacaoAnterior = { id: 'atend_antigo' };
+    // COM resposta: uma troca so conta como anterior se alguem foi de fato
+    // atendido. Linha muda nao consome a apresentacao (ver ninguemFoiAtendido).
+    h.estado.interacaoAnterior = { id: 'atend_antigo', resposta_enviada: 'Ja respondi antes.' };
     await POST(requisicaoFalsa({ messageId: 'm-repetida', from: '+5532987006790', text: 'oi de novo' }, SEGREDO));
     const chamada = h.gerarTexto.mock.calls[0];
     const promptEnviado = String(chamada?.[1] ?? chamada?.[0]);
     expect(promptEnviado.toLowerCase()).not.toMatch(/primeira mensagem/);
+  });
+});
+
+describe('cumprimento sozinho (24/08/2026)', () => {
+  // ACHADO EM PRODUCAO, no primeiro teste real: "Ola" de numero desconhecido
+  // caia na guarda de silencio de 12/08 (nao e pergunta, nao tem termo fiscal)
+  // e ficava SEM RESPOSTA. Pior: a linha ficava gravada, o historico deixava de
+  // ser vazio, e a mensagem seguinte -- a que foi respondida -- vinha sem
+  // apresentacao. A saudacao era consumida por uma conversa que nunca houve.
+  it('"Ola" de numero desconhecido recebe a apresentacao, e nao silencio', async () => {
+    h.estado.profile = null;   // telefone nao cadastrado
+
+    const res = await POST(requisicaoFalsa(
+      { messageId: 'ola-1', from: '5511999990000', text: 'Ola' }, SEGREDO));
+
+    expect(res.status).toBe(200);
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(1);
+    const [, msg] = h.enviarMensagem.mock.calls[0] as [unknown, { texto: string }];
+    expect(msg.texto).toBe(SAUDACAO_INICIAL);
+    // Sem IA: nao ha o que raciocinar sobre "oi", e chamar o modelo aqui
+    // custaria dinheiro para produzir a mesma frase.
+    expect(h.gerarTexto).not.toHaveBeenCalled();
+  });
+
+  it('a resposta ao cumprimento FICA GRAVADA (senao ela nao conta como atendimento)', async () => {
+    h.estado.profile = null;
+
+    await POST(requisicaoFalsa(
+      { messageId: 'ola-2', from: '5511999990000', text: 'bom dia!' }, SEGREDO));
+
+    const upd = h.updates.find((u) => u.tabela === 'whatsapp_atendimentos' && 'resposta_enviada' in u.valores);
+    expect(upd?.valores.resposta_enviada).toBe(SAUDACAO_INICIAL);
+    expect(upd?.valores.atendido_em).toBeTruthy();
+  });
+
+  it('cumprimento COM pergunta nao cai aqui: segue para a resposta completa', async () => {
+    // O falso positivo caro: tratar isto como cumprimento faria o assistente
+    // cumprimentar e IGNORAR o que a pessoa pediu.
+    h.estado.profile = null;
+    h.estado.textoGerado = JSON.stringify({ resposta: 'Para abrir o MEI ...', resolvido: true });
+
+    await POST(requisicaoFalsa(
+      { messageId: 'ola-3', from: '5511999990000', text: 'ola, preciso de ajuda para abrir um MEI' }, SEGREDO));
+
+    const [, msg] = h.enviarMensagem.mock.calls[0] as [unknown, { texto: string }];
+    expect(msg.texto).toContain('MEI');
   });
 });
 
@@ -694,7 +742,7 @@ describe('saudacao da primeira mensagem', () => {
   it('a SEGUNDA mensagem NAO repete a saudacao', async () => {
     // O erro que ninguem lembra de testar: cumprimentar de novo a cada
     // mensagem faz o assistente parecer que esqueceu a conversa.
-    h.estado.interacaoAnterior = { id: 'atend_anterior' };
+    h.estado.interacaoAnterior = { id: 'atend_anterior', resposta_enviada: 'Ja respondi antes.' };
     h.estado.textoGerado = JSON.stringify({ resposta: 'O limite é de R$ 81.000 por ano.', resolvido: true });
 
     await POST(requisicaoFalsa({ messageId: 'saud-2', from: '5532987006789', text: 'e o limite?' }, SEGREDO));
@@ -858,7 +906,13 @@ describe('achados do code-review', () => {
     h.estado.escritorio = ESCRITORIO;
     h.estado.profile = null;
 
-    const res = await POST(urlCanal({ messageId: 'cr2', from: '5511988887777', text: 'bom dia' }));
+    // O texto mudou em 24/08: "bom dia" passou a ser RESPONDIDO de proposito
+    // (numero de empresa que recebe cumprimento e fica mudo parece numero
+    // errado). O silencio deliberado que este teste protege continua valendo
+    // para o que nao e pergunta NEM cumprimento NEM termo fiscal -- "e simples
+    // assim" NAO serve de exemplo aqui: e curto e casa com TERMO_FISCAL
+    // ("simples"), entao merece resposta pela regra de cima.
+    const res = await POST(urlCanal({ messageId: 'cr2', from: '5511988887777', text: 'tudo certo entao' }));
     const body = await res.json();
 
     expect(body.reason).toBe('telefone_desconhecido');

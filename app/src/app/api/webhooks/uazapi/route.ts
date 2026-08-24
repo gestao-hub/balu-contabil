@@ -49,7 +49,10 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { segredoDaQuery } from '../segredo';
 import { limitar } from '@/lib/security/rate-limit';
 import { buscarSituacaoAtualMei } from '@/lib/explicacoes/situacao-atual-mei';
-import { montarPromptAtendimento, garantirApresentacao } from '@/lib/atendimento/prompt';
+import {
+  montarPromptAtendimento, garantirApresentacao, SAUDACAO_INICIAL,
+} from '@/lib/atendimento/prompt';
+import { ehSoCumprimento } from '@/lib/atendimento/saudacao';
 import { gerarTexto } from '@/lib/ai/cliente';
 import { lerChaveIa } from '@/lib/ai/config-ia';
 import { enviarMensagem, marcarDigitando, type ConfigUazapi } from '@/lib/uazapi/cliente';
@@ -174,6 +177,22 @@ async function clientesDoCanal(
     const cid = contabDe.get(p.current_company) ?? null;
     return !cid || !jaTemCanalProprio.has(cid);
   });
+}
+
+/**
+ * Ninguém foi ATENDIDO ainda nesta conversa?
+ *
+ * ⚠️ NÃO É `historico.length === 0`, e a diferença apareceu em produção no
+ * primeiro teste real (24/08/2026). Um "Olá" de número desconhecido criava a
+ * linha de auditoria e saía SEM resposta (a guarda de silêncio de 12/08). A
+ * linha ficava lá, o histórico deixava de ser vazio, e a mensagem SEGUINTE —
+ * a que de fato foi respondida — vinha sem apresentação nenhuma. A saudação
+ * tinha sido consumida por uma conversa que nunca aconteceu.
+ *
+ * O que conta é troca COMPLETA: alguém perguntou e alguém respondeu.
+ */
+function ninguemFoiAtendido(historico: TrocaAnterior[]): boolean {
+  return !historico.some((t) => t.resposta !== null);
 }
 
 /**
@@ -355,7 +374,7 @@ async function atenderContador(
       + 'ou abra o painel do escritório.',
   });
 
-  const texto = garantirApresentacao(gerada.resposta, historico.length === 0);
+  const texto = garantirApresentacao(gerada.resposta, ninguemFoiAtendido(historico));
   const envio = await enviarMensagem(ctx.canal, { telefone: ctx.entrada.from, texto });
   if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
 
@@ -726,6 +745,31 @@ export async function POST(req: Request) {
       const mereceResposta = pareceUmaPergunta(entrada.text)
         || (textoCurto && TERMO_FISCAL.test(entrada.text));
 
+      // CUMPRIMENTO SOZINHO NAO E SILENCIO (24/08/2026, pedido do usuario).
+      //
+      // A guarda abaixo existe desde 12/08 para impedir que a mensagem de um
+      // estranho vire atendimento automatico, e ela continua certa sobre o que
+      // queria impedir: resposta FISCAL a quem nao perguntou nada. Mas ela
+      // tratava "ola" como ruido, e numero de empresa que recebe "ola" e fica
+      // mudo parece numero errado.
+      //
+      // A resposta aqui e a apresentacao FIXA: sem IA (nao ha o que raciocinar
+      // sobre "oi"), sem conteudo fiscal e sem escalar para ninguem. Quem so
+      // cumprimentou recebe cumprimento e um convite a perguntar -- e a
+      // proxima mensagem, ja com pergunta, cai no fluxo normal.
+      if (!mereceResposta && ehSoCumprimento(entrada.text)) {
+        const envioOla = await enviarMensagem(canalDeSaida, {
+          telefone: entrada.from, texto: SAUDACAO_INICIAL,
+        });
+        if (!envioOla.ok) {
+          console.error('[webhook uazapi] falha ao responder cumprimento:', envioOla.erro ?? 'desconhecido');
+        }
+        await admin.from('whatsapp_atendimentos')
+          .update({ resposta_enviada: SAUDACAO_INICIAL, resolvido: envioOla.ok, atendido_em: agoraIso() })
+          .eq('id', atendimentoId);
+        return NextResponse.json({ ok: true, reason: 'cumprimento' }, { status: 200 });
+      }
+
       if (!mereceResposta) {
         // Sem insert aqui: o claim acima já é a linha de auditoria completa
         // para este ramo (message_id_externo, telefone, mensagem_recebida,
@@ -806,7 +850,7 @@ export async function POST(req: Request) {
 
       // A saudação entra aqui, no ponto de saída — o mesmo texto para todo
       // mundo, e só na primeira mensagem da conversa.
-      const textoGeral = garantirApresentacao(respostaGeral.resposta, historicoSemConta.length === 0);
+      const textoGeral = garantirApresentacao(respostaGeral.resposta, ninguemFoiAtendido(historicoSemConta));
 
       const envioGeral = await enviarMensagem(canalDeSaida, {
         telefone: entrada.from, texto: textoGeral,
@@ -841,7 +885,7 @@ export async function POST(req: Request) {
     // telefone entram no prompt.
     const historico = await lerHistorico(admin, entrada.from, atendimentoId,
       { contabilidadeId: escritorioDoCanal?.id ?? null });
-    const primeiraInteracao = historico.length === 0;
+    const primeiraInteracao = ninguemFoiAtendido(historico);
 
     // BASE JURÍDICA como apoio (415 documentos da legislação vigente, mantidos
     // pelo cron do RAG). Era consumida só pelo catálogo do 6A; o atendimento
