@@ -49,7 +49,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { segredoDaQuery } from '../segredo';
 import { limitar } from '@/lib/security/rate-limit';
 import { buscarSituacaoAtualMei } from '@/lib/explicacoes/situacao-atual-mei';
-import { montarPromptAtendimento, comSaudacao } from '@/lib/atendimento/prompt';
+import { montarPromptAtendimento, garantirApresentacao } from '@/lib/atendimento/prompt';
 import { gerarTexto } from '@/lib/ai/cliente';
 import { lerChaveIa } from '@/lib/ai/config-ia';
 import { enviarMensagem, marcarDigitando, type ConfigUazapi } from '@/lib/uazapi/cliente';
@@ -177,6 +177,16 @@ async function clientesDoCanal(
 }
 
 /**
+ * Depois de quantas horas de silêncio a próxima mensagem começa uma conversa
+ * NOVA — e portanto volta a ser cumprimentada.
+ *
+ * 12 horas: quem escreve de manhã e de novo à noite é cumprimentado duas
+ * vezes; quem está no meio de uma conversa, nunca. Não há número certo aqui,
+ * há um número explícito — e este é o lugar de mudá-lo.
+ */
+const JANELA_CONVERSA_HORAS = 12;
+
+/**
  * Últimas trocas do MESMO telefone, do mais antigo para o mais recente — é
  * assim que se lê uma conversa.
  *
@@ -195,7 +205,14 @@ async function lerHistorico(
     .from('whatsapp_atendimentos')
     .select('mensagem_recebida, resposta_enviada, created_at')
     .eq('telefone', telefone)
-    .neq('id', atendimentoId);
+    .neq('id', atendimentoId)
+    // JANELA DE CONVERSA (24/08/2026). Sem ela, "primeira mensagem" queria
+    // dizer "a primeira que este telefone JA MANDOU, na historia" — e o numero
+    // de teste, com 14 trocas desde 12/08, nunca mais seria cumprimentado.
+    // Ninguem escreve depois de dias e espera ser tratado como quem nunca
+    // saiu: retomar do zero e o comportamento certo, e a memoria de dias
+    // atras nao ajudaria a responder a pergunta de hoje.
+    .gte('created_at', new Date(Date.now() - JANELA_CONVERSA_HORAS * 3_600_000).toISOString());
 
   // Canal de ESCRITÓRIO filtra pelo escritório. Canal da PLATAFORMA não filtra
   // — e isso é uma correção do code-review de 19/08/2026, não descuido.
@@ -338,7 +355,7 @@ async function atenderContador(
       + 'ou abra o painel do escritório.',
   });
 
-  const texto = comSaudacao(gerada.resposta, historico.length === 0);
+  const texto = garantirApresentacao(gerada.resposta, historico.length === 0);
   const envio = await enviarMensagem(ctx.canal, { telefone: ctx.entrada.from, texto });
   if (!envio.ok) console.error('[webhook uazapi] falha ao enviar resposta:', envio.erro ?? 'desconhecido');
 
@@ -789,7 +806,7 @@ export async function POST(req: Request) {
 
       // A saudação entra aqui, no ponto de saída — o mesmo texto para todo
       // mundo, e só na primeira mensagem da conversa.
-      const textoGeral = comSaudacao(respostaGeral.resposta, historicoSemConta.length === 0);
+      const textoGeral = garantirApresentacao(respostaGeral.resposta, historicoSemConta.length === 0);
 
       const envioGeral = await enviarMensagem(canalDeSaida, {
         telefone: entrada.from, texto: textoGeral,
@@ -872,7 +889,7 @@ export async function POST(req: Request) {
     // Saudação no ponto de saída, igual ao ramo sem cadastro: `resposta` já é o
     // que vai ao cliente E o que é gravado em `resposta_enviada`, então os dois
     // não podem divergir.
-    const resposta = comSaudacao(gerada.resposta, primeiraInteracao);
+    const resposta = garantirApresentacao(gerada.resposta, primeiraInteracao);
     let resolvido = gerada.resolvido;
 
     const envio = await enviarMensagem(canalDeSaida, { telefone: entrada.from, texto: resposta });

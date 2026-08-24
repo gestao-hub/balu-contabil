@@ -20,47 +20,62 @@
 //    jurídico livre da IA. Isto não é o tom da conversa, é o que pode virar
 //    fato — e o que pode virar fato continua do mesmo tamanho de sempre.
 /**
- * A saudação da primeira mensagem de cada conversa — TEXTO FIXO, definido pelo
- * usuário em 19/08/2026.
+ * A APRESENTAÇÃO DE RESERVA — e a identidade que nenhuma resposta pode perder.
  *
- * Não é instrução ao modelo, é código. Pedir "se apresente" devolvia uma
- * paráfrase diferente a cada conversa: quem escreve duas vezes recebe duas
- * apresentações diferentes, e a identidade do produto vira sorteio. É a mesma
- * regra do resto do projeto — o determinístico decide, a IA explica.
+ * MUDOU DE PAPEL EM 24/08/2026, a pedido do usuário. Até aqui esta frase era
+ * colada pelo CÓDIGO antes de toda primeira resposta, sempre igual. O efeito
+ * ficou evidente no primeiro teste real: quem escrevia "olá, como você está?
+ * preciso de ajuda com MEI" recebia um cumprimento genérico grudado numa
+ * resposta que ignorava a pergunta social. A saudação estava lá; a conversa,
+ * não.
  *
- * TEXTO TROCADO EM 24/08/2026, a pedido do usuário. Ele vale para quem escreve
- * pela primeira vez — cliente cadastrado ou pessoa qualquer procurando
- * informação; a saudação é a mesma para os dois, e é assim de propósito: quem
- * chega ainda não foi identificado quando ela é montada.
+ * Agora quem cumprimenta é o MODELO, com liberdade para responder ao que a
+ * pessoa efetivamente disse — e o código passou a garantir só o que não pode
+ * faltar: **a identificação**. Se a primeira resposta não se apresentar,
+ * `garantirApresentacao` põe esta frase na frente.
  *
- * Ortografia revisada em cima do texto original ("Olá, eu Sou o Assistente da
- * Balu-contabil, como posso te ajuar hoje?"), pelo mesmo critério que já tinha
- * sido aplicado à versão de 19/08:
- *
- *   - "Sou" → "sou": está no meio da frase, não no começo;
- *   - "ajuar" → "ajudar": erro de digitação;
- *   - "Balu-contabil" → "Balu Contábil": é o nome do produto, e é assim que ele
- *     aparece em todo o resto da interface;
- *   - vírgula → ponto antes de "Como posso": eram duas orações independentes
- *     emendadas por vírgula.
- *
- * O TRATAMENTO INFORMAL FOI MANTIDO. "te ajudar" no lugar de "ajudá-lo" é
- * escolha do usuário, não descuido — a versão anterior era formal, e a troca
- * para o registro informal é justamente parte do pedido.
+ * O QUE SE PERDE, dito por escrito: a abertura deixa de ser byte a byte a mesma
+ * em toda conversa. Foi decisão do usuário, e é a troca consciente de
+ * "identidade idêntica" por "conversa coerente". O que NÃO se perde é o nome:
+ * `IDENTIDADE` abaixo continua obrigatória, verificada em código.
  */
 export const SAUDACAO_INICIAL =
   'Olá, eu sou o Assistente da Balu Contábil. Como posso te ajudar hoje?';
 
 /**
- * Põe a saudação antes da resposta, e só na primeira mensagem da conversa.
+ * O trecho que prova que o assistente se apresentou.
  *
- * Idempotente por precaução: se o modelo desobedecer e já vier cumprimentando
- * com o mesmo texto, não duplicamos.
+ * É por ele que `garantirApresentacao` decide se o modelo cumpriu — e é por
+ * isso que ele é curto e sem pontuação: "Assistente da Balu Contábil" aparece
+ * tanto em "Olá, sou o Assistente da Balu Contábil" quanto em "eu sou o
+ * Assistente da Balu Contábil, tudo bem por aqui". Exigir a frase inteira
+ * transformaria a garantia em camisa de força e desfaria a adaptação.
  */
-export function comSaudacao(resposta: string, primeiraInteracao: boolean): string {
+export const IDENTIDADE = 'Assistente da Balu Contábil';
+
+/**
+ * Garante que a PRIMEIRA resposta de uma conversa identifique o assistente.
+ *
+ * O modelo é instruído a se apresentar (ver `montarPromptAtendimento`), e na
+ * prática cumpre. Isto é a rede embaixo: instrução em prompt é pedido, não
+ * contrato — e a identidade do produto não pode depender de o modelo estar de
+ * bom humor. Se a apresentação vier, o texto passa intocado e a conversa fica
+ * natural; se não vier, a frase fixa entra na frente.
+ *
+ * Comparação SEM acento e SEM caixa de propósito: "assistente da balu contabil"
+ * conta como apresentação. Exigir os acentos exatos faria a rede disparar em
+ * cima de uma resposta perfeitamente boa, e o cliente receberia duas aberturas.
+ */
+export function garantirApresentacao(resposta: string, primeiraInteracao: boolean): string {
   const texto = resposta.trim();
-  if (!primeiraInteracao || texto.startsWith(SAUDACAO_INICIAL)) return texto;
+  if (!primeiraInteracao) return texto;
+  if (normalizar(texto).includes(normalizar(IDENTIDADE))) return texto;
   return `${SAUDACAO_INICIAL}\n\n${texto}`;
+}
+
+/** Tira acento e caixa — só para COMPARAR, nunca para exibir. */
+function normalizar(v: string): string {
+  return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
 export type TurnoAnterior = { pergunta: string; resposta: string | null };
@@ -108,15 +123,30 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
       ? '(não consultado — a pergunta não depende dos números da empresa)'
       : 'Não encontramos informação fiscal disponível para responder com segurança.');
 
-  // A saudação é acrescentada pelo CÓDIGO (ver `comSaudacao`), não pedida ao
-  // modelo — texto fixo não pode virar paráfrase. O que o prompt faz aqui é o
-  // contrário do que fazia antes: PROIBIR que o modelo cumprimente, senão a
-  // mensagem chega com duas aberturas.
+  // A ABERTURA DA PRIMEIRA MENSAGEM — pedida ao modelo, não colada por cima.
+  //
+  // Era o contrário até 24/08/2026: o prompt PROIBIA cumprimentar e o código
+  // prefixava um texto fixo. Quem escrevia "olá, como você está? preciso de
+  // ajuda com MEI" recebia o cumprimento genérico grudado numa resposta que
+  // ignorava a pergunta social — saudação havia, conversa não.
+  //
+  // As três regras abaixo são a tradução literal do que o usuário pediu, e a
+  // ordem delas importa: identidade primeiro (é o que o código verifica),
+  // reciprocidade depois (responder ao que foi dito), pergunta em aberto só
+  // quando não há dúvida nenhuma para responder.
   const apresentacao = e.primeiraInteracao
     ? [
-        'Esta é a primeira mensagem desta conversa. A saudação de apresentação já',
-        'será colocada automaticamente ANTES do seu texto: NÃO cumprimente, não se',
-        'apresente e não diga "olá" — comece direto pela resposta à pergunta.',
+        'ESTA É A PRIMEIRA MENSAGEM DESTA CONVERSA. Abra a resposta assim:',
+        `1. Cumprimente e identifique-se como "${IDENTIDADE}". Esta parte é`,
+        '   obrigatória e deve aparecer com estas palavras.',
+        '2. Responda ao que a pessoa disse ANTES da dúvida técnica. Se ela',
+        '   perguntou como você está, diga que está bem, em uma frase curta e',
+        '   natural. Se ela só cumprimentou, não invente assunto.',
+        '3. Se houver uma dúvida na mensagem, responda-a na sequência. Se NÃO',
+        '   houver nenhuma, pergunte como pode ajudar e pare por aí.',
+        '',
+        'Escreva como uma mensagem só, corrida — nada de lista numerada nem de',
+        'repetir o cumprimento no fim.',
         '',
       ]
     : [];
