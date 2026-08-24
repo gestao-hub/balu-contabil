@@ -238,6 +238,75 @@
 > instâncias de todos os produtos do servidor, então **só a contagem** sai de
 > lá — nunca o conteúdo.
 >
+> ## 🆕 SESSAO 32 — PARTE 3 (2026-08-24) — o primeiro teste real do canal
+>
+> ### 🔴 O DEFEITO QUE O TESTE DO USUARIO ACHOU: recarregar a pagina desconectava o numero
+>
+> Diagnostico com a instancia da plataforma na mao:
+>
+> ```
+> 16:31:13  instancia criada
+> 16:33:09  lastDisconnect — motivo: "disconnected by API"
+> 16:35:55  status=connecting, connected=false, owner=553291511415, profileName="Walace"
+> ```
+>
+> `owner` e `profileName` preenchidos provam que **o QR foi escaneado e
+> conectou**. Dois minutos depois a sessao caiu por chamada de API — e a chamada
+> era nossa: **`POST /instance/connect` numa instancia JA CONECTADA derruba a
+> sessao viva** para parear de novo, e a tela pedia QR sozinha ao montar sempre
+> que o ESPELHO no banco nao dissesse `conectado`. O espelho fica velho porque
+> so o polling de quem esta com a tela aberta o atualiza.
+>
+> A guarda dentro de `pedirQrCode` existia e **nunca disparava**: quando a
+> resposta chega, a sessao ja caiu e o QR novo veio junto. **A guarda tem de vir
+> ANTES da chamada, e contra a FONTE** (`statusInstancia`), nao contra o espelho.
+> Corrigido nos dois canais; um status atrasado e curado de passagem.
+>
+> ### Saudacao nova (pedido do usuario)
+>
+> `Olá, eu sou o Assistente da Balu Contábil. Como posso te ajudar hoje?`
+>
+> Ortografia revisada pelo mesmo criterio da versao de 19/08, com o que mudou
+> registrado no proprio codigo. **O tratamento informal (`te ajudar`) e escolha
+> do usuario, nao descuido** — ha teste prendendo, para ninguem "corrigir" de
+> volta para `ajudá-lo`.
+>
+> O teste do webhook parou de duplicar o texto e passou a comparar com a
+> CONSTANTE: a frase ja mudou duas vezes, e duplicada ela faz o teste acusar
+> regressao do webhook a cada troca de copy.
+>
+> ### "Digitando..." — ⚠️ a unica coisa NAO PROVADA desta sessao
+>
+> `POST /message/presence` com `{ number, presence: 'composing', delay }`.
+> Sondagem de 24/08 com a instancia FORA DO AR:
+>
+> | caminho | resposta | leitura |
+> |---|---|---|
+> | `/message/presence` | **503** `WhatsApp disconnected` | a rota existe e aceitou o payload |
+> | `/instance/presence` | 503 | idem |
+> | `/chat/presence` | 405 | rota inexistente para POST |
+> | `/send/presence` | 405 | idem |
+>
+> **O sucesso com sessao CONECTADA nunca foi observado** — e o comentario no
+> codigo diz isso. E o unico ponto "provavel" em vez de "provado" da sessao.
+>
+> Entra depois do claim (antes dele, uma reentrega ligaria o indicador numa
+> conversa ja atendida) e antes da chamada de IA, que e o trecho lento. Sem
+> `await` e com catch duplo: e enfeite, e a resposta e o produto.
+>
+> ### Armadilha de ferramenta, para nao repetir
+>
+> Editar arquivo UTF-8 por script Python via heredoc **nao casa strings
+> acentuadas** (o stdin chega em cp1252 no Windows) e **come um nivel de
+> escape** (`'
+'` virou quebra de linha de verdade dentro de um literal TS).
+> Nos arquivos com acento, editar por indice de linha e montar escapes com
+> `chr(92)`. Custou tres idas e voltas nesta sessao.
+>
+> ### Linha de base (parte 3)
+>
+> **tsc 0 · 2151 testes · 36 pulados · build limpo.**
+>
 > ### Linha de base (parte 2)
 >
 > **tsc 0 · 2147 testes · 36 pulados · build limpo.** (+26 sobre a parte 1: 15
