@@ -203,7 +203,7 @@ export async function GET(req: Request) {
   if (ePendWhats) {
     console.error('[cron obrigacoes] notificacoes_pendentes_whatsapp', ePendWhats.message);
   } else {
-    const cfgPlataforma = configDaPlataforma();
+    const cfgPlataforma = await configDaPlataforma();
     const inicioWhats = Date.now();
     const filaWhats = pendWhats ?? [];
 

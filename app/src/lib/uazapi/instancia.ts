@@ -12,6 +12,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { decifrarCampo } from '@/lib/crypto/envelope';
 import type { ConfigUazapi } from './cliente';
+import { tokenDaPlataforma } from './config-plataforma';
 
 /** Dados do escritório que o atendimento pode usar — e SÓ eles.
  *
@@ -111,14 +112,33 @@ export async function escritorioPorId(
 }
 
 /**
- * A instância da PLATAFORMA (variáveis de ambiente).
+ * A instância da PLATAFORMA — o número oficial do Balu.
  *
- * Decisão D8 (19/08/2026): ela permanece, com o número oficial do Balu, e
- * atende as empresas **sem escritório**. Não é código legado a remover.
+ * Decisão D8 (19/08/2026): ela permanece e atende as empresas **sem
+ * escritório**. Não é código legado a remover.
+ *
+ * PASSOU A LER DO BANCO em 24/08/2026 (0101), com `UAZAPI_TOKEN` de retaguarda.
+ * Antes o token só existia no ambiente, e por isso **não havia tela para
+ * conectar este canal**: era criar a instância na mão no painel da uazapi,
+ * copiar o token e colar numa variável. A tela nova
+ * (`/admin/configuracoes/whatsapp`) grava em `config_whatsapp`, e é esta função
+ * que faz a tela valer alguma coisa — card que não alimenta o cliente é card
+ * decorativo (lição da sessão 30, com a Focus).
+ *
+ * A retaguarda no ambiente fica de pé de propósito: é ela que está no ar hoje,
+ * e derrubá-la no mesmo deploy que estreia a tela deixaria o canal mudo até
+ * alguém conectar.
+ *
+ * VIROU ASSÍNCRONA. Quem chama tem de esperar — um `configDaPlataforma()` sem
+ * `await` devolve uma Promise, que é *truthy*, e o canal passaria adiante um
+ * objeto sem `token`: mensagem nenhuma sai e nada acusa.
  */
-export function configDaPlataforma(): ConfigUazapi | null {
+export async function configDaPlataforma(): Promise<ConfigUazapi | null> {
   const baseUrl = process.env.UAZAPI_BASE_URL;
-  const token = process.env.UAZAPI_TOKEN;
-  if (!baseUrl || !token) return null;
+  if (!baseUrl) return null;
+
+  const doBanco = await tokenDaPlataforma();
+  const token = doBanco ?? process.env.UAZAPI_TOKEN;
+  if (!token) return null;
   return { baseUrl, token };
 }

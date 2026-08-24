@@ -85,16 +85,82 @@ export async function criarInstancia(
 export async function configurarWebhook(
   tokenInstancia: string, siteUrl: string, tokenWebhook: string,
 ): Promise<Resultado<Record<string, unknown>>> {
+  return configurarWebhookUrl(
+    tokenInstancia,
+    `${siteUrl.replace(/\/+$/, '')}/api/webhooks/uazapi?t=${tokenWebhook}`,
+  );
+}
+
+/**
+ * A camada baixa: aponta o webhook para uma URL JÁ MONTADA.
+ *
+ * Existe porque o canal da PLATAFORMA (0101) entra na mesma rota por outra
+ * porta — `?s=<UAZAPI_WEBHOOK_SECRET>` em vez de `?t=<token do escritório>`,
+ * que é como `/api/webhooks/uazapi` distingue os dois. Reaproveitar
+ * `configurarWebhook` para isso produziria `https://site?s=SEGREDO/api/...`:
+ * uma URL sintaticamente válida, aceita pela uazapi, e que nunca entregaria
+ * mensagem nenhuma.
+ *
+ * `excludeMessages` não é opcional aqui tampouco: sem ele, grupo e eco da
+ * própria instância entram no atendimento.
+ */
+export async function configurarWebhookUrl(
+  tokenInstancia: string, url: string,
+): Promise<Resultado<Record<string, unknown>>> {
   return chamar('/webhook', { token: tokenInstancia }, {
     enabled: true,
-    url: `${siteUrl.replace(/\/+$/, '')}/api/webhooks/uazapi?t=${tokenWebhook}`,
+    url,
     events: ['messages'],
     excludeMessages: ['wasSentByApi', 'fromMe', 'isGroup'],
   });
 }
 
+/**
+ * Pede o QR CODE de conexão. É o mesmo `/instance/connect` do pareamento por
+ * código, SEM o campo `phone` — e é essa ausência que troca `paircode` por
+ * `qrcode` na resposta.
+ *
+ * ✅ CONTRATO CONFIRMADO ao vivo em 24/08/2026 contra `grupoide.uazapi.com`:
+ * HTTP 200, `instance.qrcode` já vem como **data-URI pronta**
+ * (`data:image/png;base64,…`, ~1,8 KB) e `instance.status` vira `connecting`.
+ * Não há biblioteca de QR envolvida de nenhum lado — a tela põe a string
+ * inteira num `<img src>`.
+ *
+ * O QR ROTACIONA SOZINHO no servidor (medido: 1834 → 1850 chars em 20s), e
+ * `statusInstancia` devolve sempre o atual. Por isso a tela NÃO precisa
+ * rechamar esta função para renovar: o polling de status já traz o QR novo.
+ * Rechamar só faz sentido quando o `connecting` inteiro caducar.
+ */
+export async function pedirQrCode(
+  tokenInstancia: string,
+): Promise<Resultado<{ qrcode: string; status: string }>> {
+  const r = await chamar('/instance/connect', { token: tokenInstancia }, {});
+  if (!r.ok) return r;
+
+  const i = (r.dados.instance ?? r.dados) as Record<string, unknown>;
+  const qrcode = typeof i.qrcode === 'string' ? i.qrcode : '';
+  // String vazia é o que a uazapi devolve quando NÃO há QR (instância já
+  // conectada, ou ainda sem sessão). Tratar como sucesso mandaria a tela
+  // renderizar um `<img src="">` — quadrado quebrado, sem explicação.
+  if (!qrcode) {
+    const jaConectado = String(i.status ?? '') === 'connected';
+    return {
+      ok: false,
+      erro: jaConectado
+        ? 'Esta instância já está conectada. Desconecte o número atual antes de ler um QR novo.'
+        : 'A uazapi não devolveu o QR code. Tente novamente.',
+    };
+  }
+  return { ok: true, dados: { qrcode, status: String(i.status ?? 'connecting') } };
+}
+
 /** Pede o código de pareamento para um número. O código expira em minutos — a
- *  tela precisa oferecer "gerar outro" desde a primeira versão. */
+ *  tela precisa oferecer "gerar outro" desde a primeira versão.
+ *
+ *  CONTINUA EXISTINDO depois do QR virar o caminho principal, e não é código
+ *  morto: **não dá para escanear o QR com o mesmo aparelho que se quer
+ *  conectar**. Escritório com um celular só não tem outra saída senão o
+ *  código. */
 export async function pedirPareamento(
   tokenInstancia: string, telefone: string,
 ): Promise<Resultado<{ paircode: string; status: string }>> {
@@ -110,10 +176,15 @@ export async function pedirPareamento(
 }
 
 /** Status atual: `connected` | `connecting` | `disconnected`, mais o número
- *  conectado quando existe. */
+ *  conectado quando existe e o QR corrente quando a conexão está em curso.
+ *
+ *  O `qrcode` sai daqui, e não de uma segunda chamada, porque o servidor
+ *  mantém o QR vivo e o rotaciona sozinho (confirmado em 24/08/2026). Uma
+ *  requisição por ciclo de polling entrega as duas coisas que a tela precisa:
+ *  o código novo e o momento em que ele deixou de ser necessário. */
 export async function statusInstancia(
   tokenInstancia: string,
-): Promise<Resultado<{ status: string; numero: string | null }>> {
+): Promise<Resultado<{ status: string; numero: string | null; qrcode: string | null }>> {
   const r = await chamar('/instance/status', { token: tokenInstancia }, undefined, 'GET');
   if (!r.ok) return r;
 
@@ -123,6 +194,8 @@ export async function statusInstancia(
     dados: {
       status: String(i.status ?? 'disconnected'),
       numero: typeof i.owner === 'string' && i.owner ? i.owner.replace(/\D+/g, '') : null,
+      // Vazia quando não há QR — normaliza para null e a tela decide com `??`.
+      qrcode: typeof i.qrcode === 'string' && i.qrcode ? i.qrcode : null,
     },
   };
 }

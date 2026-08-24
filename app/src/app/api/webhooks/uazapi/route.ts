@@ -551,9 +551,13 @@ export async function POST(req: Request) {
     // uma leitura ruim) — com o prompt assinando como o escritório A. Se a
     // mensagem chegou pelo canal dele, é por ele que a resposta volta; sem
     // token, ninguém responde.
+    // `await` obrigatório desde a 0101: `configDaPlataforma` passou a ler o
+    // token do banco. Sem ele, a expressão devolveria uma Promise — que é
+    // truthy — e o canal de saída seria um objeto sem `baseUrl` nem `token`:
+    // nenhuma resposta sairia, e nada acusaria.
     const canalDeSaida = escritorioDoCanal
       ? escritorioDoCanal.configDeResposta
-      : configDaPlataforma();
+      : await configDaPlataforma();
 
     // Idempotência via CLAIM atômico: o INSERT abaixo é a própria linha de
     // auditoria (usada pelo resto do fluxo e, no caminho de telefone
