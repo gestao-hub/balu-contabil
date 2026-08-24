@@ -1,7 +1,123 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-20 (sessão 31 — **Bloco 5 mergeado e publicado**. Emissão fiscal decidida por empresa, telas de credencial e de documentos legais no ar. Onze defeitos do autor corrigidos no caminho. O bloqueio da Focus (`permissao_negada`) segue sendo o único impedimento real da emissão, e é chamado no suporte deles.)
+> **Última atualização:** 2026-08-24 (sessão 32 — **as duas dívidas de coluna da sessão 31, fechadas**. Produção fiscal deixou de exigir `UPDATE` manual no banco: o contador liga pela tela, e a guarda de emissão responde ANTES de gravar. E a 0100 tira do inquilino o que não é dele — `notas_fiscais` sem UPDATE, `profiles` com coluna travada e `current_company` validada. **A 0100 está escrita, provada em rollback contra o banco real e NÃO aplicada** — ver "o que falta" abaixo.)
+
+> ## 🆕 SESSÃO 32 (2026-08-24) — as duas dívidas de coluna, fechadas
+>
+> Pedido do usuário: as frentes 2 e 3 da lista de dívidas da sessão 31 —
+> "fechar o caminho de produção fiscal" e "trancar colunas no banco".
+>
+> ### 🔴 O QUE FALTA FAZER, e a ordem importa
+>
+> 1. **Deploy do código** (`main`, este merge). Ele é compatível com o banco de
+>    hoje: escrever `notas_fiscais` por service role funciona com ou sem a 0100.
+> 2. **Só então** `node scratchpad/_aplicar-0100.mjs --aplicar` (a partir de
+>    `balu/app`). Rodar sem a flag prova e desfaz.
+>
+> **Não inverta.** A versão publicada hoje ainda atualiza `notas_fiscais` pela
+> sessão do usuário; aplicar a 0100 antes do deploy deixa emissão, polling e
+> cancelamento gravando no vazio, em silêncio.
+>
+> ### Frente 2 — produção fiscal alcançável pela interface
+>
+> O Bloco 5 tinha parado num ponto cego: a 0096 criou `focus_origem` e
+> `focus_ambiente`, a 0098 trancou as duas contra o inquilino, e **nada no
+> produto escrevia uma nem outra**. A aba "Credencial Focus" do contador
+> devolvia cedo para toda empresa `'balu'` — ou seja, para as cinco que existem.
+>
+> - **`definirModoFiscalAction`** (`contador/clientes/[companyId]/focus-actions.ts`):
+>   grava origem e ambiente com service role (a 0098 só deixa o backend passar),
+>   com `requireEscritorioAprovado` + `companyDaCarteira` antes de qualquer
+>   escrita e auditoria com o de→para.
+> - **A pré-validação é o ponto.** Antes de gravar `'prod'`, a action roda a
+>   PRÓPRIA guarda de emissão (`decidirCredencial`) contra o estado real do
+>   banco, com origem/ambiente trocados pelos valores pedidos. Recusou? A tela
+>   mostra o motivo nomeado e **não grava**. Antes disso, a única forma de
+>   descobrir era gravar e esperar a primeira emissão falhar — na frente do
+>   cliente, não na tela de quem configurou. Para isso `lerEstadoFiscal` foi
+>   extraída de `resolverCredencialEmissao`, **sem mudar o comportamento dela**.
+> - **O ambiente sai do banco, não de um literal.** `atualizarEmpresaNaFocus`
+>   tinha `env: FocusEnv = 'hom'` e os três chamadores de produto passavam
+>   `'hom'` na mão. Efeito silencioso: `decidirFlagsNfse` mandava sempre
+>   `habilita_nfsen_homologacao`, e **nenhum caminho do produto jamais pedia
+>   `habilita_nfsen_producao` à Focus**. Agora o parâmetro é opcional e, omitido,
+>   sai de `empresas_fiscais.focus_ambiente`; os três omitem. Valor inesperado
+>   na coluna cai em `'hom'`, nunca em `'prod'`.
+> - **A tela**: `CredencialFocusCard` ganha o card "Modo de emissão", que
+>   aparece **também** para origem `'balu'` — é o que tira o card da inércia. O
+>   motivo do bloqueio de produção é calculado no servidor a cada render, com a
+>   mesma guarda. Sair de `'balu'` numa empresa que já tem `focus_empresa_id`
+>   pede confirmação explícita: aquele cadastro na conta Focus da Balu fica
+>   órfão e não há volta por aqui.
+>
+> ### Frente 3 — a 0100, escrita e provada
+>
+> **`notas_fiscais`: a policy de UPDATE sai inteira.** Tudo que se grava numa
+> nota depois do INSERT é fato que veio da Focus — não existe coluna que o
+> titular precise escrever com a própria mão. As oito escritas de
+> `notas_fiscais/actions.ts` passaram a sair por `escritaDeNota()` (service
+> role), cada uma filtrando pelo `company_id` já provado por `empresaDoDono`. O
+> **INSERT continua pela sessão de propósito**: `notas_fiscais_insert` exige
+> `user_owns_company` e é a guarda daquele caminho.
+>
+> Os dois vetores que isso desarma:
+> - **`xml_url` gravável RECARREGA o SSRF da sessão 31.** Lá a correção foi na
+>   LEITURA; a ESCRITA continuou aberta por `PATCH` no PostgREST.
+> - **`status` e `valor_total` graváveis** mexem na base de cálculo que a
+>   apuração lê para gerar a guia.
+>
+> **`profiles`: travar o que é morto, VALIDAR o que é escolha.** A sessão 31
+> parou aqui por um motivo certo — travar `current_company` quebraria o seletor
+> de empresa. A saída não é travar, é validar: `current_company` passa a exigir
+> empresa que o usuário **possui** ou que está na **carteira do escritório
+> dele**, que é exatamente o que os quatro pontos legítimos produzem e o estado
+> real das 4 linhas do banco. Fecha o vetor de `lib/auth/empresa-dono.ts`.
+> Travadas de verdade: `id`, `user_id`, `company_id` (coluna morta),
+> `created_at` e `deleted_at` (carimbo da LGPD, escrito pela RPC SECURITY
+> DEFINER, que passa por cima do gate). Mais um **CHECK E.164** em
+> `whatsapp_numero` — a canonicalização morava só em `conta/actions.ts`.
+>
+> ### O que foi medido no banco antes de desenhar (24/08/2026)
+>
+> | pergunta | resposta |
+> |---|---|
+> | perfis com `current_company` inválido (nem dono nem carteira) | **0** de 4 |
+> | perfis cujo `current_company` é da carteira, não próprio | **1** (membro de escritório) — por isso o ramo da carteira existe |
+> | números de WhatsApp fora do E.164 | **0** de 1 |
+> | funções do banco que escrevem `notas_fiscais` | **nenhuma** |
+> | funções do banco que escrevem `profiles` | `add_company_to_profile` (INVOKER, passa pela regra) e `anonimizar_usuario` (DEFINER dono `postgres`, desviada) |
+> | empresas em produção | **0** — as 5 seguem `balu`/`hom` |
+>
+> ### Provado, não suposto
+>
+> `scratchpad/_aplicar-0100.mjs` roda a migration numa transação e executa os
+> ataques **como a sessão de usuários reais** (`SET ROLE authenticated` + claim
+> `sub`), com ROLLBACK no fim: **13 de 13**. Inclui o ataque (`UPDATE` de
+> `xml_url`/`status` pelo titular → **0 linhas**) e as não-regressões que
+> importam: seletor de empresa continua trocando, membro de escritório continua
+> abrindo empresa da carteira, `service_role` continua atualizando a nota, e o
+> titular continua inserindo.
+>
+> ### ⚠️ Dívidas que esta sessão NÃO fechou
+>
+> - **`whatsapp_numero` continua sem prova de posse.** O CHECK garante a FORMA,
+>   não que o número seja de quem o cadastrou — a action também nunca garantiu
+>   (a confirmação por mensagem da uazapi é a Task 5/6, não feita). Quem
+>   cadastra o número de outra pessoa antes dela faz o bot atender por ela.
+> - **Playwright segue sem rodar** (sessão 31): não há `E2E_SUPABASE_URL`.
+> - **O bloqueio da Focus (`permissao_negada`) continua de pé** e segue sendo o
+>   impedimento real da emissão pelo caminho `'balu'`. O caminho `'propria'`,
+>   que não depende da API de Empresas, agora tem interruptor.
+>
+> ### Linha de base
+>
+> **tsc 0 · 2121 testes · 36 pulados · build limpo.** (Eram 2092 na sessão 31;
+> os 29 novos são as invariantes do interruptor de produção e das escritas por
+> service role.)
+>
+
+> **Registro anterior:** 2026-08-20 (sessão 31 — **Bloco 5 mergeado e publicado**. Emissão fiscal decidida por empresa, telas de credencial e de documentos legais no ar. Onze defeitos do autor corrigidos no caminho. O bloqueio da Focus (`permissao_negada`) segue sendo o único impedimento real da emissão, e é chamado no suporte deles.)
 
 > ## 🆕 SESSÃO 31 (2026-08-20, tarde/noite) — Bloco 5 MERGEADO, e o dia em que o autor errou onze vezes
 >
