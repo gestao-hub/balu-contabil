@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-24 (sessão 32 — **as duas dívidas de coluna da sessão 31, fechadas**. Produção fiscal deixou de exigir `UPDATE` manual no banco: o contador liga pela tela, e a guarda de emissão responde ANTES de gravar. E a 0100 tira do inquilino o que não é dele — `notas_fiscais` sem UPDATE, `profiles` com coluna travada e `current_company` validada. **Tudo publicado e aplicado**: deploy `d2bcs89vs` Ready e a 0100 comitada no banco, 13/13 nos checks.)
+> **Última atualização:** 2026-08-24 (sessão 32 — **as duas dívidas de coluna da sessão 31, fechadas**. Produção fiscal deixou de exigir `UPDATE` manual no banco: o contador liga pela tela, e a guarda de emissão responde ANTES de gravar. E a 0100 tira do inquilino o que não é dele — `notas_fiscais` sem UPDATE, `profiles` com coluna travada e `current_company` validada. **Tudo publicado e aplicado**: deploy `d2bcs89vs` Ready e a 0100 comitada no banco, 13/13 nos checks. **Parte 2 da sessão**: conexão de WhatsApp por QR code, no escritório e — pela primeira vez — na plataforma. **0101 escrita e provada, NÃO aplicada.**)
 
 > ## 🆕 SESSÃO 32 (2026-08-24) — as duas dívidas de coluna, fechadas
 >
@@ -117,11 +117,99 @@
 >   impedimento real da emissão pelo caminho `'balu'`. O caminho `'propria'`,
 >   que não depende da API de Empresas, agora tem interruptor.
 >
-> ### Linha de base
+> ### Linha de base (parte 1)
 >
 > **tsc 0 · 2121 testes · 36 pulados · build limpo.** (Eram 2092 na sessão 31;
 > os 29 novos são as invariantes do interruptor de produção e das escritas por
 > service role.)
+>
+> ## 🆕 SESSÃO 32 — PARTE 2 (2026-08-24) — WhatsApp conecta por QR code
+>
+> Pedido do usuário: trocar "digitar o número" por **QR code** na conexão de
+> WhatsApp — escanear e pronto, com a instância criada sozinha. Escopo fechado
+> com ele: **admin e contador por ora**; a empresa fica de fora (ver abaixo).
+>
+> ### 🔴 O QUE FALTA FAZER
+>
+> 1. **Deploy do código** (este merge).
+> 2. `node scratchpad/_aplicar-0101.mjs --aplicar` (a partir de `balu/app`).
+>
+> Aqui a ordem é **indiferente**: a 0101 só CRIA uma tabela nova, e
+> `configDaPlataforma` mantém `UAZAPI_TOKEN` como retaguarda. Nada regride se
+> uma metade chegar antes da outra.
+>
+> ### O contrato do QR, medido e não suposto
+>
+> `provisionamento.ts` diz no cabeçalho que tudo ali foi validado ao vivo,
+> porque a doc da uazapi é um SPA sem contrato. O QR nunca tinha sido. Sondado
+> em 24/08/2026 contra `grupoide.uazapi.com`
+> (`scripts/uazapi-qr-smoke.ts`, `scripts/uazapi-qr-refresh.ts`):
+>
+> | pergunta | resposta medida |
+> |---|---|
+> | como se pede o QR | `POST /instance/connect` **sem** `phone` — é a ausência do campo que troca `paircode` por `qrcode` |
+> | formato | **data-URI pronta** (`data:image/png;base64,…`, ~1,8 KB). Nenhuma biblioteca de QR, dos dois lados |
+> | ele expira? | **rotaciona sozinho no servidor**: 1834 → 1850 chars em 20s |
+> | como renovar | `GET /instance/status` **já devolve o QR corrente** → o polling da tela é **uma** chamada, não duas |
+> | quando não há QR | campo vem `""` — tratado como erro nomeado, senão a tela renderiza `<img src="">` |
+>
+> ### O que existe agora
+>
+> - **Contador** (`/contador/configuracoes/whatsapp`): abre, provisiona a
+>   instância sozinha e mostra o QR. **Não pede mais o número** — e isso corrige
+>   um defeito silencioso: antes a plataforma gravava `uazapi_numero` com o que
+>   foi digitado, **antes** de saber qual aparelho de fato conectou. Agora o
+>   número vem do `owner` da instância, depois.
+> - **Admin** (`/admin/configuracoes/whatsapp`, **tela nova**): o número oficial
+>   do Balu, que atende as empresas sem escritório (decisão D8). Até aqui esse
+>   canal **não tinha tela nenhuma** — provisionar exigia criar a instância na
+>   mão no painel da uazapi e colar o token numa variável de ambiente.
+>   Migration **0101** (`config_whatsapp`), no molde da 0094.
+> - **`components/ConexaoWhatsapp.tsx`**: a mecânica do QR mora num lugar só.
+>   Duplicá-la garantiria que uma das duas telas ficasse para trás no dia em que
+>   o contrato da uazapi mudasse.
+> - **O pareamento por código continua**, atrás de um link — e **não é legado**:
+>   não dá para escanear um QR com o mesmo aparelho que se quer conectar.
+>   Escritório com um celular só depende dele.
+>
+> ### ⚠️ Efeitos colaterais reais desta sessão, no banco e no servidor de terceiro
+>
+> - **Foi criada uma instância uazapi de verdade**: `r42092cbc8ff21d`, nomeada
+>   `balu-Escritório Teste Balu`, no servidor **compartilhado**
+>   `grupoide.uazapi.com` (que hospedava 37 instâncias de outros produtos em
+>   19/08). Ela foi **gravada** em `contabilidades` (id, token cifrado, webhook
+>   token) pelo mesmo caminho que a action usaria — não é órfã. Ninguém
+>   escaneou: ela está `connecting` do lado deles.
+> - `configDaPlataforma` **virou assíncrona** (lê o token do banco). Os dois
+>   chamadores ganharam `await`. Sem ele a expressão devolveria uma Promise —
+>   que é *truthy* — e o canal passaria adiante um objeto sem `token`: nenhuma
+>   mensagem sairia e nada acusaria.
+>
+> ### Decisões do dono, para não rediscutir
+>
+> - **A empresa NÃO ganha canal por QR agora.** O campo de `/conta`, onde o
+>   empresário digita o número, é **destino de aviso**, não instância — trocá-lo
+>   por QR transformaria o celular pessoal dele num robô e quebraria as
+>   notificações. Canal próprio por empresa custaria um slot de instância por
+>   CNPJ no servidor compartilhado.
+> - **O segredo do webhook da plataforma continua no ambiente.** A rota
+>   `/api/webhooks/uazapi` valida o canal da plataforma comparando `?s=` com
+>   `UAZAPI_WEBHOOK_SECRET`. Movê-lo para o banco no mesmo deploy que estreia a
+>   tela seria trocar a porta de entrada do WhatsApp e o provisionamento de uma
+>   vez. As três variáveis existem em produção (conferido).
+>
+> ### ⚠️ Dívida registrada
+>
+> - **O webhook da plataforma leva `?s=` e o do escritório leva `?t=`.** São
+>   caminhos diferentes na mesma rota, e um `?t=` na instância da plataforma
+>   faria as mensagens do número oficial entrarem como se fossem de um
+>   escritório. Há teste mordendo isso (`admin/.../whatsapp/actions.test.ts`),
+>   mas o desenho continua sendo duas portas para a mesma casa.
+>
+> ### Linha de base (parte 2)
+>
+> **tsc 0 · 2141 testes · 36 pulados · build limpo.** (+20: 15 no canal do
+> escritório, 13 no da plataforma, menos os que foram reescritos.)
 >
 
 > **Registro anterior:** 2026-08-20 (sessão 31 — **Bloco 5 mergeado e publicado**. Emissão fiscal decidida por empresa, telas de credencial e de documentos legais no ar. Onze defeitos do autor corrigidos no caminho. O bloqueio da Focus (`permissao_negada`) segue sendo o único impedimento real da emissão, e é chamado no suporte deles.)

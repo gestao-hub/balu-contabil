@@ -21,7 +21,8 @@ import { cifrarCampo, decifrarCampo } from '@/lib/crypto/envelope';
 import { getSiteUrl } from '@/lib/site-url';
 import { soDigitosWhatsapp } from '@/lib/whatsapp/numero';
 import {
-  criarInstancia, configurarWebhook, pedirPareamento, statusInstancia, desconectarInstancia,
+  criarInstancia, configurarWebhook, pedirQrCode, pedirPareamento, statusInstancia,
+  desconectarInstancia,
 } from '@/lib/uazapi/provisionamento';
 
 type ActionResult<T = undefined> =
@@ -106,8 +107,56 @@ async function garantirInstancia(contabilidadeId: string): Promise<
   };
 }
 
-/** Conectar: cria a instância se preciso e devolve o código de pareamento. */
-export async function conectarWhatsappAction(numeroBruto: string): Promise<ActionResult<{ paircode: string }>> {
+/**
+ * Conectar por QR CODE — o caminho principal desde 24/08/2026.
+ *
+ * NÃO PEDE NÚMERO, e essa é a diferença que importa: quem escaneia decide qual
+ * aparelho entra, e o número real chega depois pelo `owner` da instância, em
+ * `statusWhatsappAction`. Antes o escritório digitava um número e a plataforma
+ * o gravava ANTES de saber se aquele aparelho tinha de fato conectado.
+ */
+export async function conectarWhatsappAction(): Promise<ActionResult<{ qrcode: string }>> {
+  const g = await requireEscritorioAprovado();
+  if (!g.ok) return { ok: false, error: g.error };
+
+  const inst = await garantirInstancia(g.id);
+  if (!inst.ok) return { ok: false, error: inst.error };
+
+  // Mesmo motivo do caminho por código, logo abaixo: webhook reconfigurado a
+  // cada conexão, para que um 502 passageiro no provisionamento não deixe o
+  // escritório capaz de enviar e incapaz de receber, para sempre.
+  const cfgQr = await configurarWebhook(inst.token, getSiteUrl(), inst.linha.uazapi_webhook_token ?? '');
+  if (!cfgQr.ok) console.error('[whatsapp escritorio] webhook nao configurado:', cfgQr.erro);
+
+  const qr = await pedirQrCode(inst.token);
+  if (!qr.ok) return { ok: false, error: qr.erro };
+
+  const adminQr = createAdminClient();
+  // `uazapi_numero` NÃO é escrito aqui: ninguém sabe ainda qual número vai
+  // encostar no QR. Ele entra em `statusWhatsappAction`, vindo do `owner`.
+  await adminQr.from('contabilidades').update({ uazapi_status: 'conectando' }).eq('id', g.id);
+
+  await registrarAuditoria({
+    actorUserId: g.userId,
+    acao: 'whatsapp.qrcode_solicitado', alvoTipo: 'contabilidade', alvoId: g.id,
+    contabilidadeId: g.id,
+    // NUNCA o QR na auditoria: ele é credencial de sessão do WhatsApp — quem o
+    // lê no minuto seguinte conecta o próprio aparelho no lugar do escritório.
+    meta: {},
+  });
+
+  revalidatePath('/contador/configuracoes/whatsapp');
+  return { ok: true, dados: { qrcode: qr.dados.qrcode } };
+}
+
+/**
+ * Conectar por CÓDIGO de pareamento — a saída para quem tem um aparelho só.
+ *
+ * Não é legado nem fallback de erro: **não dá para escanear um QR com o mesmo
+ * celular que se quer conectar**. Escritório com um único aparelho depende
+ * deste caminho, e por isso ele continua de pé, inteiro e testado.
+ */
+export async function conectarPorCodigoAction(numeroBruto: string): Promise<ActionResult<{ paircode: string }>> {
   const g = await requireEscritorioAprovado();
   if (!g.ok) return { ok: false, error: g.error };
 
@@ -157,7 +206,7 @@ export async function conectarWhatsappAction(numeroBruto: string): Promise<Actio
 /** Status: consulta a uazapi e sincroniza o banco. Chamado em polling pela tela
  *  enquanto o pareamento não conclui. */
 export async function statusWhatsappAction(): Promise<
-  ActionResult<{ status: string; numero: string | null }>
+  ActionResult<{ status: string; numero: string | null; qrcode: string | null }>
 > {
   const g = await requireEscritorioAprovado();
   if (!g.ok) return { ok: false, error: g.error };
@@ -166,7 +215,7 @@ export async function statusWhatsappAction(): Promise<
   const { data } = await admin.from('contabilidades').select(COLUNAS).eq('id', g.id).maybeSingle();
   const linha = data as LinhaCanal | null;
   const token = decifrarCampo(linha?.uazapi_token_cifrado ?? null);
-  if (!token) return { ok: true, dados: { status: 'desconectado', numero: null } };
+  if (!token) return { ok: true, dados: { status: 'desconectado', numero: null, qrcode: null } };
 
   const st = await statusInstancia(token);
   if (!st.ok) return { ok: false, error: st.erro };
@@ -182,7 +231,10 @@ export async function statusWhatsappAction(): Promise<
   }).eq('id', g.id);
 
   revalidatePath('/contador/configuracoes/whatsapp');
-  return { ok: true, dados: { status: nosso, numero: st.dados.numero } };
+  // O QR vai junto: o servidor o rotaciona sozinho, e devolvê-lo aqui deixa o
+  // polling da tela ser UMA chamada em vez de duas. Só faz sentido enquanto a
+  // conexão está em curso — conectado, o campo vem vazio da uazapi mesmo.
+  return { ok: true, dados: { status: nosso, numero: st.dados.numero, qrcode: st.dados.qrcode } };
 }
 
 /** Desconectar o número. A instância CONTINUA existindo — é assim que se troca

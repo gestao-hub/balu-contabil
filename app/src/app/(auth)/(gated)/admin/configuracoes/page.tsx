@@ -4,7 +4,7 @@
 // comprovante antes da compensação. É a página onde os próximos ajustes de
 // plataforma vão morar.
 import Link from 'next/link';
-import { CreditCard, Sparkles, SlidersHorizontal, FileText, Landmark, Scale } from 'lucide-react';
+import { CreditCard, FileText, Landmark, MessageCircle, Scale, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { requireAdminBaluPage } from '@/lib/admin/guard';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { statusEfetivo, type StatusAssinatura } from '@/lib/billing/status';
@@ -153,6 +153,24 @@ export default async function Page() {
           className="mt-3 inline-block rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
         >
           Configurar SERPRO
+        </Link>
+      </section>
+
+      <section className="rounded-md border border-border bg-surface p-4">
+        <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <MessageCircle className="size-4 shrink-0 text-primary" />
+          WhatsApp da plataforma
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          O número oficial do Balu, que atende as empresas sem escritório contábil vinculado.
+          Conecta por QR code — quem tem escritório é atendido pelo número dele, configurado
+          no painel do contador.
+        </p>
+        <Link
+          href="/admin/configuracoes/whatsapp"
+          className="mt-3 inline-block rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+        >
+          Conectar WhatsApp
         </Link>
       </section>
 
