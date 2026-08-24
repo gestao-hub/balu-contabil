@@ -23,7 +23,15 @@
 // `municipios_nfse` so pra um teste que nao e sobre essa regra).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-type Chamada = { tabela: string; valores: Record<string, unknown>; eq: unknown[][] };
+type Chamada = {
+  tabela: string;
+  valores: Record<string, unknown>;
+  eq: unknown[][];
+  /** Qual client fez a escrita. A 0100 tirou o UPDATE de `notas_fiscais` do
+   *  inquilino: escrita que sair pela sessão passa a ser derrubada pela RLS em
+   *  produção, e aqui o teste morde antes. */
+  cliente: 'sessao' | 'admin';
+};
 
 const h = vi.hoisted(() => {
   const inserts: Chamada[] = [];
@@ -103,8 +111,8 @@ const h = vi.hoisted(() => {
     return chain;
   }
 
-  function insertInto(tabela: string, valores: Record<string, unknown>) {
-    const chamada: Chamada = { tabela, valores, eq: [] };
+  function insertInto(tabela: string, valores: Record<string, unknown>, cliente: 'sessao' | 'admin' = 'sessao') {
+    const chamada: Chamada = { tabela, valores, eq: [], cliente };
     inserts.push(chamada);
     return {
       select: (_cols: string) => ({
@@ -116,8 +124,8 @@ const h = vi.hoisted(() => {
     };
   }
 
-  function updateInto(tabela: string, valores: Record<string, unknown>) {
-    const chamada: Chamada = { tabela, valores, eq: [] };
+  function updateInto(tabela: string, valores: Record<string, unknown>, cliente: 'sessao' | 'admin' = 'sessao') {
+    const chamada: Chamada = { tabela, valores, eq: [], cliente };
     updates.push(chamada);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const chain: any = {
@@ -131,15 +139,21 @@ const h = vi.hoisted(() => {
     return chain;
   }
 
-  const from = vi.fn((tabela: string) => ({
+  const fabricarFrom = (cliente: 'sessao' | 'admin') => vi.fn((tabela: string) => ({
     select: (_cols: string) => selectFrom(tabela),
-    insert: (valores: Record<string, unknown>) => insertInto(tabela, valores),
-    update: (valores: Record<string, unknown>) => updateInto(tabela, valores),
+    insert: (valores: Record<string, unknown>) => insertInto(tabela, valores, cliente),
+    update: (valores: Record<string, unknown>) => updateInto(tabela, valores, cliente),
   }));
+
+  const from = fabricarFrom('sessao');
+  // Mesmo banco falso, client diferente: o que muda é o carimbo em `cliente`,
+  // e é ele que prova que a escrita saiu por service role.
+  const fromAdmin = fabricarFrom('admin');
 
   const getUser = vi.fn(async () => ({ data: { user: estado.user } }));
   const supabase = { from, auth: { getUser } };
   const createServerClient = vi.fn(async () => supabase);
+  const createAdminClient = vi.fn(() => ({ from: fromAdmin }));
 
   // `...args: unknown[]` não são enfeite: sem eles o TS infere aridade zero e
   // `mock.calls[0]` vira `[]` — mesma lição de `focus-actions.test.ts`.
@@ -174,7 +188,9 @@ const h = vi.hoisted(() => {
     updates,
     estado,
     from,
+    fromAdmin,
     createServerClient,
+    createAdminClient,
     focus,
     generateRef,
     resolverCredencialEmissao,
@@ -189,6 +205,7 @@ const h = vi.hoisted(() => {
 
 vi.mock('next/cache', () => ({ revalidatePath: h.revalidatePath }));
 vi.mock('@/lib/supabase/server', () => ({ createServerClient: h.createServerClient }));
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: h.createAdminClient }));
 vi.mock('@/lib/lgpd/pendencia-aceite', () => ({ assertAceitesEmDia: h.assertAceitesEmDia }));
 vi.mock('@/lib/billing/gate', () => ({ assertAssinaturaEmpresa: h.assertAssinaturaEmpresa }));
 vi.mock('@/lib/clients/focus-nfe', () => ({ focus: h.focus, generateRef: h.generateRef }));
@@ -426,6 +443,80 @@ describe('cancelarNotaAction — cancelamento le o ambiente CARIMBADO na nota', 
 // Nos mocks: `estado.company.user_id` e o dono da empresa apontada por
 // `current_company`. Com ele diferente de `estado.user.id`, a action TEM de
 // recusar antes de qualquer chamada a Focus.
+describe('0100: toda escrita em notas_fiscais sai por SERVICE ROLE', () => {
+  // POR QUE ESTE BLOCO EXISTE
+  // A 0100 removeu a policy `notas_fiscais_update`: o inquilino não atualiza
+  // mais nota nenhuma pelo PostgREST, porque tudo que se grava numa nota são
+  // FATOS DA FOCUS (status, número, chave, protocolo, `pdf_url`, `xml_url`) e
+  // o banco não tinha como separar "o servidor gravou o que a Focus
+  // respondeu" de um PATCH forjado — as duas chegavam como `authenticated`.
+  //
+  // A contrapartida é que estas actions PRECISAM escrever por service role.
+  // Trocar `escritaDeNota()` de volta por `supabase` passa no `tsc`, passa em
+  // todos os outros testes, e só quebra em produção: a RLS derruba o UPDATE,
+  // a emissão fica sem o `payload_focusnfe` da resposta e o cancelamento
+  // diverge do que está na SEFAZ. Estes testes mordem essa troca.
+  const JUSTIFICATIVA = 'Emissao feita por engano, cliente cancelou o pedido.';
+
+  const updatesDeNota = () => h.updates.filter((u) => u.tabela === 'notas_fiscais');
+
+  it('emissão de NFS-e grava a resposta da Focus por service role', async () => {
+    await emitirNotaAction(inputNfse());
+    const escritas = updatesDeNota();
+    expect(escritas.length).toBeGreaterThan(0);
+    for (const u of escritas) expect(u.cliente).toBe('admin');
+  });
+
+  it('polling de status grava por service role, filtrando pela empresa provada', async () => {
+    h.estado.notaExistente = {
+      id: 'nota-1', tipo_documento: 'NFSe', referencia: 'ref-nota-1',
+      status: 'pendente', origem: 'balu', ambiente: 'hom',
+    };
+    await atualizarStatusNotaAction('nota-1');
+    const escritas = updatesDeNota();
+    expect(escritas.length).toBeGreaterThan(0);
+    for (const u of escritas) {
+      expect(u.cliente).toBe('admin');
+      // SEM RLS POR BAIXO: o filtro por empresa é a única barreira que sobra.
+      expect(u.eq).toContainEqual(['company_id', 'empresa-1']);
+    }
+  });
+
+  it('cancelamento grava por service role, filtrando pela empresa provada', async () => {
+    h.estado.notaExistente = {
+      id: 'nota-1', tipo_documento: 'NFSe', referencia: 'ref-nota-1',
+      status: 'ativa', origem: 'balu', ambiente: 'hom',
+    };
+    await cancelarNotaAction('nota-1', JUSTIFICATIVA);
+    const escritas = updatesDeNota();
+    expect(escritas.length).toBeGreaterThan(0);
+    for (const u of escritas) {
+      expect(u.cliente).toBe('admin');
+      expect(u.eq).toContainEqual(['company_id', 'empresa-1']);
+    }
+  });
+
+  it('cancelamento de nota manual também sai por service role', async () => {
+    h.estado.notaExistente = {
+      id: 'nota-manual-1', tipo_documento: 'NFSe', referencia: 'ref-manual',
+      status: 'ativa', origem: 'manual', ambiente: 'hom',
+    };
+    await cancelarNotaAction('nota-manual-1', JUSTIFICATIVA);
+    const escritas = updatesDeNota();
+    expect(escritas.length).toBeGreaterThan(0);
+    for (const u of escritas) expect(u.cliente).toBe('admin');
+  });
+
+  it('o INSERT continua pela SESSÃO — a policy notas_fiscais_insert é a guarda dele', async () => {
+    // Mover o insert para service role também não seria erro de compilação, e
+    // custaria a única checagem de posse que existe naquele caminho
+    // (`user_owns_company` na policy de INSERT, que a 0100 manteve de pé).
+    await emitirNotaAction(inputNfse());
+    const insert = h.inserts.find((i) => i.tabela === 'notas_fiscais');
+    expect(insert?.cliente).toBe('sessao');
+  });
+});
+
 describe('IDOR: current_company apontando para empresa de outro dono', () => {
   const JUSTIFICATIVA = 'Emissao feita por engano, cliente cancelou o pedido.';
   const empresaAlheia = () => {

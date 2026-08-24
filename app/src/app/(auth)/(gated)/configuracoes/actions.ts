@@ -197,7 +197,8 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
         (companyRow?.codigo_municipio as string | null) ||
         null;
       if (!isAderenteNfsenNacional(codigoIbge)) {
-        const r = await atualizarEmpresaNaFocus(supabase, companyId, 'hom', {
+        // Sem ambiente literal: quem decide é `empresas_fiscais.focus_ambiente`.
+        const r = await atualizarEmpresaNaFocus(supabase, companyId, undefined, {
           credenciaisPrefeitura: { login: loginRaw, senha: senhaRaw },
         });
         if (!r.ok) {
@@ -277,7 +278,7 @@ export async function syncFocusEmpresaAction(): Promise<{ ok: true } | { ok: fal
     .maybeSingle();
 
   const result = fiscalSync?.focus_empresa_id != null
-    ? await atualizarEmpresaNaFocus(supabase, companyId, 'hom')
+    ? await atualizarEmpresaNaFocus(supabase, companyId)
     : await syncEmpresaNaFocus(supabase, companyId);
 
   revalidatePath('/configuracoes');

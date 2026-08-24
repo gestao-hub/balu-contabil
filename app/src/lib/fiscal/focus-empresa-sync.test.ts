@@ -21,7 +21,9 @@ type CriarEmpresaResp = { id: number; token_homologacao?: string; token_producao
 
 const h = vi.hoisted(() => ({
   criarEmpresa: vi.fn(async (): Promise<CriarEmpresaResp> => ({ id: 1, token_homologacao: 'tok-hom' })),
-  atualizarEmpresa: vi.fn(async () => ({})),
+  // `...args: unknown[]` não é enfeite: sem eles o TS infere aridade zero e
+  // `mock.calls[0][2]` (o ambiente do PUT) nem compila.
+  atualizarEmpresa: vi.fn(async (..._args: unknown[]) => ({})),
   consultarEmpresa: vi.fn(async () => ({})),
 }));
 
@@ -165,6 +167,100 @@ describe('atualizarEmpresaNaFocus — Bloco 5: guarda de origem', () => {
 // não existe mais como destino de escrita: o sync antigo guardava
 // `token_homologacao ?? token_producao` em texto puro ali, perdendo um dos dois
 // tokens e repopulando a coluna que a migração de segurança tinha esvaziado. ---
+/**
+ * Stub COMPLETO: `companies` responde de verdade, para o fluxo chegar até o PUT.
+ * O de cima (`makeSupabase`) derruba `companies` de propósito e por isso não
+ * serve para observar o ambiente que chega na Focus.
+ */
+function makeSupabaseCompleto(focusAmbiente: string | null) {
+  return {
+    from: (table: string) => {
+      if (table === 'empresas_fiscais') {
+        return makeChain({
+          data: {
+            focus_origem: 'balu',
+            focus_ambiente: focusAmbiente,
+            // 1 = Simples Nacional no vocabulário da Focus (`regimeCodeToFocus`
+            // só aceita 1..4); o stub de cima usa 'anexo3' porque nunca chega
+            // a montar payload.
+            Code_regime_tributario: '1',
+            empresa_fiscal_ativada: true,
+            focus_empresa_id: 216964,
+            focus_codigo_municipio: '4113700',
+          },
+          error: null,
+        });
+      }
+      if (table === 'companies') {
+        return makeChain({
+          data: {
+            cnpj: '61061690000183',
+            razao_social: 'EMPRESA TESTE LTDA',
+            nome: 'Empresa Teste',
+            logradouro: 'Rua das Flores',
+            numero: '100',
+            sem_numero: false,
+            bairro: 'Centro',
+            municipio: 'Londrina',
+            uf: 'PR',
+            cep: '86010000',
+            codigo_municipio: '4113700',
+          },
+          error: null,
+        });
+      }
+      return makeChain({ data: null, error: null });
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+}
+
+describe('atualizarEmpresaNaFocus — sessão 32: o ambiente sai do banco, não de um literal', () => {
+  // POR QUE: os TRÊS chamadores de produto passavam `'hom'` literal. Efeito
+  // colateral silencioso: `decidirFlagsNfse` mandava sempre
+  // `habilita_nfsen_homologacao`, então NENHUM caminho do produto jamais pedia
+  // `habilita_nfsen_producao` à Focus. Uma empresa marcada para produção no
+  // Balu seguia, do lado da Focus, habilitada só em homologação — e a emissão
+  // real morria lá, depois de a tela daqui já ter dito que estava tudo certo.
+  const envDaChamada = () => h.atualizarEmpresa.mock.calls[0]?.[2];
+  const payloadDaChamada = () =>
+    h.atualizarEmpresa.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
+
+  it("sem env explícito e com focus_ambiente='prod', o PUT vai para produção", async () => {
+    const r = await atualizarEmpresaNaFocus(makeSupabaseCompleto('prod'), 'empresa-1');
+    expect(r.ok).toBe(true);
+    expect(envDaChamada()).toBe('prod');
+  });
+
+  it("sem env explícito e com focus_ambiente='hom', o PUT segue em homologação", async () => {
+    const r = await atualizarEmpresaNaFocus(makeSupabaseCompleto('hom'), 'empresa-1');
+    expect(r.ok).toBe(true);
+    expect(envDaChamada()).toBe('hom');
+  });
+
+  it('coluna nula ou com valor inesperado cai em homologação, nunca em produção', async () => {
+    await atualizarEmpresaNaFocus(makeSupabaseCompleto(null), 'empresa-1');
+    expect(envDaChamada()).toBe('hom');
+    h.atualizarEmpresa.mockClear();
+    await atualizarEmpresaNaFocus(makeSupabaseCompleto('PRODUCAO'), 'empresa-1');
+    expect(envDaChamada()).toBe('hom');
+  });
+
+  it('env explícito ainda manda — é o que os scripts de smoke usam', async () => {
+    await atualizarEmpresaNaFocus(makeSupabaseCompleto('prod'), 'empresa-1', 'hom');
+    expect(envDaChamada()).toBe('hom');
+  });
+
+  it("empresa em produção pede `habilita_nfsen_producao` à Focus, e não a flag de homologação", async () => {
+    // O município do stub (4113700, Londrina/PR) é o único da lista
+    // `ADERENTES_NFSEN_NACIONAL`; é por isso que a flag do payload é a
+    // `nfsen_*` e não a `habilita_nfse` legada.
+    await atualizarEmpresaNaFocus(makeSupabaseCompleto('prod'), 'empresa-1');
+    expect(payloadDaChamada()).toMatchObject({ habilita_nfsen_producao: true });
+    expect(payloadDaChamada()).not.toHaveProperty('habilita_nfsen_homologacao');
+  });
+});
+
 describe('syncEmpresaNaFocus — Task 20.1: tokens vão para empresa_credenciais_focus', () => {
   const COMPANY_ID = 'empresa-happy-path';
   const TOKEN_HOM = 'TESTE-focus-hom-obviamente-falso-0001';
