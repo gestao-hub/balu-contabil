@@ -8,17 +8,25 @@
 > Relatório completo, com o que ficou provado seguro e o que NÃO foi
 > verificado: `docs/investigations/2026-08-25-auditoria-seguranca.md`.
 >
-> ### 🔴 FALTA VOCÊ RODAR — nesta ordem
+> ### ✅ APLICADO E CONFIRMADO — 0103 e 0104 estão no banco
+>
+> Conferido FORA da transação por `scratchpad/_check-0103-0104.mjs`, 13/13:
 >
 > ```
-> node scratchpad/_aplicar-0103.mjs --aplicar   # a partir de balu/app
-> node scratchpad/_aplicar-0104.mjs --aplicar
-> git push origin main
+> 0103: bucket privado · 0 policies citando o bucket · 6 objetos intactos
+> 0104: role_types com 0 policies de escrita e 1 de SELECT · 0 bucket sem teto
+> nada perdido: 8 contas / 8 papéis · 4 empresas vivas / 4 perfis / 2 notas
+> estranho: anon key lista 0 itens · contratante do SERPRO -> 400 (era 200)
+> backend: service_role ainda baixa o certificado -> 200
 > ```
 >
-> As duas migrations são independentes do deploy: elas só fecham acesso que
-> **nenhum caminho do produto usa**. A 0104 depende da 0103 (é ela que define o
-> teto de `company-certificates`); rodar fora de ordem falha alto, de propósito.
+> **A última linha é a que importa:** a emissão fiscal continua alcançando o
+> certificado. Só o estranho perdeu o acesso. E `tests/storage-postura.spec.ts`,
+> sem uma linha alterada, foi de **2 vermelhos para 13 verdes** — a mesma suíte
+> que denunciou o buraco agora prova que ele fechou.
+>
+> **Falta só o push:** `git push origin main` (4 commits — as duas migrations,
+> as correções de código e este registro).
 >
 > ### O achado que importa
 >

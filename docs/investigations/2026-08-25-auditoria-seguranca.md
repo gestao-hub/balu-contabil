@@ -11,14 +11,29 @@ via runner node+pg lendo `SUPABASE_PASSWORD` do `app/.env.local`, e requisiçõe
 >
 > | # | Achado | Correção | Estado |
 > |---|---|---|---|
-> | 1 | Bucket de certificados público | migration **0103** | 🟡 escrita e provada em rollback — **falta você aplicar** |
-> | 2 | Qualquer conta apaga certificado alheio | migration **0103** (mesma) | 🟡 idem |
-> | 3 | Papel escolhido pelo usuário (`user_metadata` + `role_types_delete`) | `gate-context.ts` + `admin/users.ts` + migration **0104** | 🟢 código em `main`; 🟡 0104 falta aplicar |
-> | 4 | Config de bucket sem revisão nem teste | `tests/storage-postura.spec.ts` | 🟢 feito — o teste **morde** (2 vermelhos hoje) |
+> | 1 | Bucket de certificados público | migration **0103** | 🟢 **APLICADA e confirmada** |
+> | 2 | Qualquer conta apaga certificado alheio | migration **0103** (mesma) | 🟢 **APLICADA** |
+> | 3 | Papel escolhido pelo usuário (`user_metadata` + `role_types_delete`) | `gate-context.ts` + `admin/users.ts` + migration **0104** | 🟢 código em `main` · 0104 **APLICADA** |
+> | 4 | Config de bucket sem revisão nem teste | `tests/storage-postura.spec.ts` | 🟢 feito — o teste mordeu (2 vermelhos → **13 verdes**) |
 > | 5 | Token do escritório na query string | — | 🔴 **não corrigido** (ver nota abaixo) |
 > | 6 | 5 CVEs high em produção | `npm audit fix` + `overrides` de postcss | 🟢 **0 vulnerabilidades** em produção |
 > | 7 | Cron sem comparação em tempo constante | `lib/security/segredo.ts` + `checarCron()` | 🟢 feito |
-> | 8 | Buckets sem teto de tamanho | migration **0104** | 🟡 falta aplicar |
+> | 8 | Buckets sem teto de tamanho | migration **0104** | 🟢 **APLICADA** |
+>
+> ### Confirmação pós-aplicação (`scratchpad/_check-0103-0104.mjs`, fora da transação)
+>
+> ```
+> 0103: bucket privado · 0 policies citando o bucket · 6 objetos intactos
+> 0104: role_types com 0 policies de escrita e 1 de SELECT · 0 bucket sem teto
+> nada perdido: 8 contas / 8 papéis · 4 empresas vivas / 4 perfis / 2 notas
+> estranho: anon key lista 0 itens · contratante do SERPRO -> 400 (era 200)
+> backend: service_role ainda baixa o certificado -> 200
+> ```
+>
+> A última linha é a que autoriza dormir tranquilo: **a emissão fiscal continua
+> alcançando o certificado**. Só o estranho perdeu o acesso. E
+> `storage-postura.spec.ts`, sem uma linha alterada, foi de 2 vermelhos para
+> **13 verdes**.
 >
 > **Linha de base após as correções:** tsc 0 · 2183 testes · 36 pulados · build
 > limpo — idêntica à da sessão 32 parte 4.
