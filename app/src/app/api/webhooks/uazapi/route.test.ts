@@ -379,6 +379,56 @@ describe('webhook uazapi', () => {
     expect(h.enviarMensagem).not.toHaveBeenCalled();
   });
 
+  // ═══ ACHADO NO TESTE DE PONTA A PONTA, 25/08/2026 ═══
+  //
+  // "Ok obrigado", mandado logo depois de duas respostas do assistente, ficou
+  // mudo: a guarda de 12/08 pergunta "e pergunta ou termo fiscal?" e nada mais.
+  // A pergunta e a certa para a PRIMEIRA mensagem de um estranho e errada para
+  // a terceira de uma conversa em andamento -- quem agradece um atendimento e
+  // recebe silencio conclui que a conversa caiu.
+  //
+  // Os dois testes abaixo prendem as DUAS pontas: a conversa em andamento passa
+  // a ser sempre respondida, e o estranho de primeira viagem continua em
+  // silencio. Apagar `jaEstaEmConversa` deixa o primeiro vermelho; trocar a
+  // regua por "responde sempre" deixa o segundo.
+  it('AGRADECIMENTO em conversa JA EM ANDAMENTO e respondido (nao cai no silencio)', async () => {
+    h.estado.profile = null;                       // numero nao cadastrado
+    h.estado.interacaoAnterior = { id: 'atend_anterior', resposta_enviada: 'O MEI e ...' };
+    h.estado.textoGerado = JSON.stringify({ resposta: 'De nada! Estou a disposicao.', resolvido: true });
+
+    const res = await POST(requisicaoFalsa(
+      { messageId: 'obrigado-1', from: '5532987006792', text: 'Ok obrigado' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.reason).not.toBe('telefone_desconhecido');
+    expect(h.enviarMensagem).toHaveBeenCalledTimes(1);
+  });
+
+  it('a MESMA mensagem, sem conversa anterior, continua em silencio (incidente de 12/08)', async () => {
+    h.estado.profile = null;
+    h.estado.interacaoAnterior = null;             // ninguem foi atendido nesta janela
+
+    const res = await POST(requisicaoFalsa(
+      { messageId: 'obrigado-2', from: '5532987006792', text: 'Ok obrigado' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.reason).toBe('telefone_desconhecido');
+    expect(h.enviarMensagem).not.toHaveBeenCalled();
+  });
+
+  // Os pontinhos foram movidos para junto da chamada de IA em 25/08: antes eles
+  // acendiam logo apos o claim, ANTES da decisao de responder, entao mensagem
+  // silenciada de proposito prometia resposta e nao entregava.
+  it('mensagem silenciada NAO acende os pontinhos', async () => {
+    h.estado.profile = null;
+    h.estado.interacaoAnterior = null;
+
+    await POST(requisicaoFalsa(
+      { messageId: 'sem-pontinhos', from: '5532987006792', text: 'Ta bom entao 👍' }, SEGREDO));
+
+    expect(h.marcarDigitando).not.toHaveBeenCalled();
+  });
+
   it('resolvido=true: responde ao cliente e NAO escala', async () => {
     h.estado.textoGerado = JSON.stringify({ resposta: 'Seu DAS está em dia.', resolvido: true });
     h.estado.company = { id: 'empresa_1', contabilidade_id: 'contab_1' };

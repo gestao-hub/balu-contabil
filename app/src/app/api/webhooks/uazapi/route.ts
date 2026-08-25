@@ -257,6 +257,29 @@ async function lerHistorico(
 }
 
 /**
+ * "DIGITANDO…" no aparelho de quem escreveu — pedido do usuário, 24/08/2026.
+ *
+ * ONDE: coladinho em cada chamada de IA, que é o trecho lento — é exatamente
+ * esse silêncio que os três pontinhos preenchem.
+ *
+ * POR QUE NÃO MAIS CEDO (movido em 25/08/2026): morava logo depois do claim,
+ * antes de o código decidir se ia responder. Efeito colateral achado no teste
+ * de ponta a ponta: mensagem que cai no silêncio deliberado — o "👍" de um
+ * conhecido do dono do número — acendia os pontinhos e depois não vinha nada.
+ * Prometer resposta e não entregar é pior que o silêncio limpo, porque a
+ * pessoa fica esperando.
+ *
+ * SEM `await` DE PROPÓSITO: é enfeite de experiência, e a resposta é o produto.
+ * Esperar por ele atrasaria a mensagem para melhorar a espera dela. `void` mais
+ * o `.catch` — além do try/catch interno de `marcarDigitando` — porque `void`
+ * numa promessa rejeitada é unhandled rejection, e o processo pode derrubar a
+ * requisição inteira por causa do enfeite. Cinto e suspensório, de propósito.
+ */
+function pontinhos(canal: ConfigUazapi | null, telefone: string): void {
+  void marcarDigitando(canal, telefone).catch(() => {});
+}
+
+/**
  * A chamada ao provedor de IA, usada pelos DOIS ramos (número cadastrado e
  * dúvida geral de número desconhecido).
  *
@@ -356,6 +379,7 @@ async function atenderContador(
     contabilidadeId: ctx.escritorio.id,
   });
 
+  pontinhos(ctx.canal, ctx.entrada.from);
   const gerada = await responderComIa(admin, {
     pergunta: ctx.entrada.text,
     // O contador não tem "situação fiscal própria" — o que ele tem é carteira.
@@ -630,24 +654,6 @@ export async function POST(req: Request) {
     }
     atendimentoId = (claim as { id: string }).id;
 
-    // "DIGITANDO…" no aparelho de quem escreveu — pedido do usuário, 24/08/2026.
-    //
-    // AQUI, e não mais cedo: só depois do claim se sabe que ESTA requisição vai
-    // responder. Antes dele, uma reentrega da mesma mensagem pela uazapi ligaria
-    // o indicador de novo numa conversa que já foi atendida.
-    //
-    // E aqui, e não mais tarde: o que vem a seguir é a chamada de IA, que é o
-    // trecho lento — é exatamente o silêncio que os três pontinhos preenchem.
-    //
-    // SEM `await` DE PROPÓSITO: é enfeite de experiência, e a resposta é o
-    // produto. Esperar por ele atrasaria a mensagem para melhorar a espera dela.
-    // `void` + o catch interno de `marcarDigitando` garantem que uma falha aqui
-    // não vire promessa rejeitada sem dono.
-    // `.catch` alem do try/catch interno de `marcarDigitando`: `void` numa
-    // promessa rejeitada e unhandled rejection, e o processo pode derrubar a
-    // requisicao inteira por causa do enfeite. Cinto e suspensorio, de proposito.
-    void marcarDigitando(canalDeSaida, entrada.from).catch(() => {});
-
     // Casamento TOLERANTE a formato, e não `.eq()` cru. O `.eq()` que morava
     // aqui não casava nunca em produção: o opt-in grava E.164 com `+`
     // (`+5532987006789`), a uazapi entrega dígitos crus, e celular brasileiro
@@ -741,8 +747,36 @@ export async function POST(req: Request) {
       // conhecido do dono do número virava atendimento automático — o incidente
       // de 12/08 de volta. O corte por tamanho é o mesmo do `termoSolto` do
       // classificador, e vale só para quem NÃO é cliente deste canal.
+      // O histórico sobe para ANTES da régua (25/08/2026): a guarda de 12/08
+      // precisa saber se esta conversa já está em andamento. Ele é lido uma vez
+      // só e reaproveitado mais abaixo, no prompt.
+      const historicoSemConta = await lerHistorico(admin, entrada.from, atendimentoId,
+        { contabilidadeId: escritorioDoCanal?.id ?? null });
+
+      // ═══ A GUARDA DE 12/08 NÃO OPINA SOBRE QUEM JÁ ESTÁ SENDO ATENDIDO ═══
+      //
+      // Achado no teste de ponta a ponta de 25/08: "Ok obrigado", mandado logo
+      // depois de duas respostas do assistente, ficou mudo. Quem agradece um
+      // atendimento e recebe silêncio conclui que a conversa caiu.
+      //
+      // A guarda continua certa sobre o que nasceu para impedir — resposta
+      // automática a um ESTRANHO que só conversava com o dono do número — e
+      // errada quando aplicada a uma conversa em andamento. Ela pergunta "isto
+      // é pergunta ou termo fiscal?", que é a pergunta certa para a PRIMEIRA
+      // mensagem de alguém e a pergunta errada para a terceira.
+      //
+      // `ninguemFoiAtendido` é a mesma régua que decide a apresentação, e conta
+      // troca COMPLETA dentro da janela de 12h. Então: o "👍" de um conhecido do
+      // dono do número segue em silêncio (ninguém o atendeu), e o "Ok obrigado"
+      // de quem acabou de ser respondido, não.
+      //
+      // Decisão do usuário (25/08): "a IA precisa responder sempre, até que uma
+      // demanda não esteja ao seu alcance, ou o usuário peça para falar com um
+      // atendente ou contador".
+      const jaEstaEmConversa = !ninguemFoiAtendido(historicoSemConta);
       const textoCurto = entrada.text.trim().length <= 40;
-      const mereceResposta = pareceUmaPergunta(entrada.text)
+      const mereceResposta = jaEstaEmConversa
+        || pareceUmaPergunta(entrada.text)
         || (textoCurto && TERMO_FISCAL.test(entrada.text));
 
       // CUMPRIMENTO SOZINHO NAO E SILENCIO (24/08/2026, pedido do usuario).
@@ -823,8 +857,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, reason: 'telefone_desconhecido' }, { status: 200 });
       }
 
-      const historicoSemConta = await lerHistorico(admin, entrada.from, atendimentoId,
-        { contabilidadeId: escritorioDoCanal?.id ?? null });
+      pontinhos(canalDeSaida, entrada.from);
       const respostaGeral = await responderComIa(admin, {
         pergunta: entrada.text,
         // Sem empresa não há situação fiscal — e o prompt já trata essa ausência
@@ -915,6 +948,7 @@ export async function POST(req: Request) {
         .data?.contabilidade_id ?? null,
     );
 
+    pontinhos(canalDeSaida, entrada.from);
     const gerada = await responderComIa(admin, {
       pergunta: entrada.text,
       situacaoFiscalTexto: situacao?.texto ?? null,
