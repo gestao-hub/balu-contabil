@@ -4,12 +4,11 @@
 // honorarios_recorrencia_unique). Mesmo padrão de auth do cron/sync-municipios.
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { checarCron } from '@/lib/security/segredo';
 
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return NextResponse.json({ error: 'CRON_SECRET não configurado' }, { status: 500 });
-  if ((req.headers.get('authorization') ?? '') !== `Bearer ${secret}`)
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  const recusa = checarCron(req);
+  if (recusa) return NextResponse.json(recusa.body, { status: recusa.status });
   const admin = createAdminClient();
   const { data, error } = await admin.rpc('gerar_honorarios_recorrentes');
   if (error) {

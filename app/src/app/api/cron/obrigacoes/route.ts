@@ -16,6 +16,7 @@ import { dentroDoOrcamento } from '@/lib/fiscal/apuracao-cron-plano';
 import { enviarMensagem, type ConfigUazapi } from '@/lib/uazapi/cliente';
 import { configDaPlataforma, escritorioPorId } from '@/lib/uazapi/instancia';
 import { verificarSaudeDosCanais } from '@/lib/uazapi/saude';
+import { checarCron } from '@/lib/security/segredo';
 
 // TEMPO DE EXECUCAO — 60s, o teto do plano Hobby da Vercel.
 //
@@ -89,10 +90,8 @@ function montarTextoWhatsapp(n: {
 }
 
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return NextResponse.json({ error: 'CRON_SECRET não configurado' }, { status: 500 });
-  if ((req.headers.get('authorization') ?? '') !== `Bearer ${secret}`)
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  const recusa = checarCron(req);
+  if (recusa) return NextResponse.json(recusa.body, { status: recusa.status });
 
   const admin = createAdminClient();
 

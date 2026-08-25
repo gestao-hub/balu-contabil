@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { fetchAllMunicipiosFocus } from '@/lib/clients/focus-municipios';
+import { checarCron } from '@/lib/security/segredo';
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -9,15 +10,8 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 }
 
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json({ error: 'CRON_SECRET não configurado' }, { status: 500 });
-  }
-
-  const auth = req.headers.get('authorization') ?? '';
-  if (auth !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-  }
+  const recusa = checarCron(req);
+  if (recusa) return NextResponse.json(recusa.body, { status: recusa.status });
 
   const start = Date.now();
 

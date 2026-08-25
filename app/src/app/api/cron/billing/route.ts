@@ -5,6 +5,7 @@
 // `next build`.
 import { NextResponse } from 'next/server';
 import { rodarBilling } from '@/lib/billing/cron';
+import { checarCron } from '@/lib/security/segredo';
 
 // TEMPO DE EXECUCAO — 60s, o teto do plano Hobby da Vercel.
 //
@@ -22,10 +23,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return NextResponse.json({ error: 'CRON_SECRET não configurado' }, { status: 500 });
-  if ((req.headers.get('authorization') ?? '') !== `Bearer ${secret}`)
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  const recusa = checarCron(req);
+  if (recusa) return NextResponse.json(recusa.body, { status: recusa.status });
 
   try {
     return NextResponse.json({ ok: true, ...(await rodarBilling()) });

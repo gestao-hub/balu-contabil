@@ -32,7 +32,11 @@ export async function listarUsuariosPlataforma(): Promise<AdminUser[]> {
         email: u.email ?? null,
         criadoEm: u.created_at ?? null,
         emailConfirmado: !!u.email_confirmed_at,
-        papel: papelPorUser.get(u.id) ?? (u.user_metadata?.type as string | undefined) ?? null,
+        // Sem fallback para `user_metadata`: aquele valor é escrito pelo
+        // próprio usuário, então exibi-lo como "papel" mostra a um AdminBalu
+        // uma escolha do auditado com cara de fato do sistema. `null` = sem
+        // papel, que é a verdade quando falta a linha em `role_types`.
+        papel: papelPorUser.get(u.id) ?? null,
       });
     }
     if (users.length < perPage) break;

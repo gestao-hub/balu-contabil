@@ -22,8 +22,18 @@ export const getGateContext = cache(async () => {
     supabase.from('role_types').select('type').eq('user_id', user.id).maybeSingle(),
   ]);
 
-  // role_types.type é a fonte canônica; user_metadata como fallback.
-  const rawRole = (roleRow?.type as string | null) ?? (user.user_metadata?.type as string | null) ?? '';
+  // `role_types.type` é a ÚNICA fonte. Não há fallback para `user_metadata` —
+  // aquele objeto é gravável pelo próprio dono da sessão (GoTrue
+  // `PUT /auth/v1/user`, com a anon key), então um papel lido de lá é um papel
+  // escolhido pelo usuário. O fallback só disparava quando faltava a linha em
+  // `role_types`, e a policy de DELETE daquela tabela deixava o usuário apagar
+  // a própria (auditoria 25/08; a 0104 fechou a policy, isto fecha a leitura).
+  //
+  // Medido antes de remover: 8 contas, 8 linhas em `role_types`, ZERO órfãs —
+  // ninguém dependia do fallback. E 3 contas já tinham `metadata` divergindo
+  // do papel real (uma `AdminBalu` com `metadata=Empresa`), o que mostra que
+  // aquele valor era resíduo de cadastro, não fonte.
+  const rawRole = (roleRow?.type as string | null) ?? '';
   return {
     user,
     currentCompany: (profile?.current_company as string | null) ?? null,
