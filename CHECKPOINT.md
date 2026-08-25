@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-25 (sessão 33 — **auditoria de segurança da plataforma inteira, com evidência**. O banco passou bem: RLS em 48/48, zero view, zero segredo no bundle, isolamento de tenant intacto. O buraco estava FORA dele: o bucket `company-certificates` é **público** — os 4 certificados A1 e o contratante do SERPRO baixam com `200` sem credencial nenhuma, e a anon key lista o bucket e entrega os caminhos. Corrigido em código e migration; **as 0103 e 0104 faltam ser aplicadas**. CVEs de produção: 5 high → **0**.)
+> **Última atualização:** 2026-08-25 (sessão 33 — **auditoria de segurança + o canal de WhatsApp fechado de ponta a ponta**. Parte 1: o bucket `company-certificates` era público; 0103/0104 aplicadas, CVEs de produção 5 high → 0. Parte 2: o roteiro de 5 passos da sessão 32 **passou inteiro**, inclusive os três pontinhos, que eram o único ponto nunca provado. O teste real achou 3 defeitos — silêncio no agradecimento, pontinhos antes da decisão, e saudação repetida na 2ª resposta — todos corrigidos. E o **encerramento por inatividade** entrou e rodou em produção, com pg_cron de minuto em minuto. **Pendente: reconferir a saudação com o deploy novo.**)
 
 > ## 🆕 SESSÃO 33 (2026-08-25) — a auditoria, e o que o painel escondia
 >
@@ -121,6 +121,125 @@
 > Nada da sessão 32 parte 4 foi verificado com o canal conectado. O roteiro de 5
 > passos segue válido, na parte 4 abaixo. **Aplique as duas migrations antes** —
 > elas não dependem do canal, e o canal não depende delas.
+>
+
+> ## 🆕 SESSÃO 33 — PARTE 2 (2026-08-25) — o canal de WhatsApp, fechado de ponta a ponta
+>
+> ### ✅ O ROTEIRO DA SESSÃO 32 PASSOU INTEIRO
+>
+> | Passo | Resultado |
+> |---|---|
+> | 1 — conectar por QR, recarregar a página | ✅ `conectado` às 17:47:49 |
+> | 2 — `Olá` sozinho → só a apresentação | ✅ frase exata, sem IA, sem conteúdo fiscal |
+> | 3 — pergunta seguinte sem repetir a identidade | ✅ |
+> | 4 — mensagem combinada, de número novo | ✅ cumprimento + identificação + MEI, numa mensagem |
+> | 5 — **os três pontinhos** | ✅ **provado** — era o único ponto NUNCA verificado da sessão 32 |
+>
+> ### 🔴 TRÊS DEFEITOS QUE SÓ O TESTE REAL ACHOU
+>
+> **(a) `"Ok obrigado"` ficou mudo** (`bad7350`). Caía na guarda de 12/08, que
+> pergunta "é pergunta ou termo fiscal?" e nada mais. É a pergunta certa para a
+> PRIMEIRA mensagem de um estranho e a errada para a terceira de uma conversa em
+> andamento. Agora ela só opina enquanto `ninguemFoiAtendido` — o "👍" de um
+> conhecido do dono do número segue em silêncio; quem acabou de ser atendido, não.
+>
+> **(b) Os pontinhos acendiam ANTES da decisão de responder** (`bad7350`). Mensagem
+> silenciada de propósito prometia resposta e não entregava — pior que o silêncio
+> limpo. `marcarDigitando` virou `pontinhos()` e foi para junto das TRÊS chamadas
+> de IA. **O teste de presença que já existia pegou que eu tinha esquecido a
+> terceira** (cliente cadastrado) antes de eu perceber.
+>
+> **(c) Saudação repetida na 2ª resposta** (`30bafb9`). A pessoa respondeu `"Sim"`
+> e recebeu `"Olá! Para abrir um MEI…"`. **O código não colou nada** —
+> `garantirApresentacao` só age quando ninguém foi atendido. Quem cumprimentou foi
+> o MODELO, porque o ramo do prompt para "não é a primeira mensagem" era `[]`.
+> Até 24/08 o prompt PROIBIA cumprimentar; a parte 4 trocou a proibição por uma
+> instrução condicional e **a proibição saiu junto, para todas as outras**.
+> Silêncio não é instrução: o modelo preenche.
+>
+> ⚠️ **`primeiraInteracao` era calculado em TRÊS lugares e a parte 4 corrigiu UM.**
+> As linhas 407 (contador) e 887 (dúvida geral) seguiam com `length === 0`,
+> enquanto 944 já usava `ninguemFoiAtendido`. Com `length === 0`, uma linha MUDA
+> faz o histórico deixar de ser vazio sem ninguém ter sido atendido — e prompt e
+> código discordavam dentro da mesma requisição. Os três agora usam a mesma régua.
+>
+> ### 🆕 ENCERRAMENTO POR INATIVIDADE (`61b79c1`, migration 0105)
+>
+> Pedido do usuário: agradeceu → responde ao agradecimento; 5 min sem interação →
+> despede-se e encerra.
+>
+> **Escopo escolhido pelo usuário entre duas leituras: o relógio SÓ é armado por um
+> agradecimento.** Conversa que para no meio não é encerrada — 5 minutos é pouco
+> para o ritmo do WhatsApp.
+>
+> `ehAgradecimento` decide por subtração e exige as DUAS metades: tem de sobrar
+> nada **e** tem de ter havido agradecimento. Sem a primeira, "obrigado, mas ainda
+> tenho uma dúvida" viraria despedida; sem a segunda, "ok" sozinho armaria o
+> relógio de quem só pausou para ler.
+>
+> Quem arma (webhook) e quem dispara (cron) são separados: a regra existe num lugar
+> só. Três recusas com teste: pessoa voltou a falar → cancela sem despedida; envio
+> falhou → NÃO carimba `encerrado_em`; escalou para o contador → não arma.
+>
+> **🔬 PROVADO EM PRODUÇÃO:**
+>
+> ```
+> 19:20:38  "Ok muito obrigado" -> respondido, encerrar_em = 19:25:40
+> 19:25:00  rodada do cron -> encerrados: 0  (ainda nao venceu)
+> 19:26:00  rodada do cron -> encerrados: 1
+> 19:26:02  encerrado_em gravado, encerrar_em limpo
+> ```
+>
+> Os 22s de atraso são a varredura de minuto em minuto, como documentado.
+>
+> ### 🔑 INFRA — o que mudou fora do código
+>
+> - **`CRON_SECRET` de produção foi ROTACIONADO.** O valor antigo estava marcado
+>   como **Sensitive** na Vercel: `vercel env pull` devolve o literal
+>   `[SENSITIVE]`, e não há como lê-lo — nem pelo CLI. A única saída era trocar.
+>   O valor novo está em `cron.job` (job 3), recuperável pelo runner de banco.
+> - ⚠️ **`honorarios-recorrentes` e `obrigacoes` usam a MESMA variável.** O
+>   redeploy já subiu com o valor novo, mas **conferir a execução de `obrigacoes`
+>   amanhã às 11h** — é a primeira depois da troca.
+> - **O CLI da Vercel está autenticado nesta máquina** (`luan-4913`, escopo
+>   `gestao-9664s-projects`). Foi assim que a variável foi trocada e o redeploy
+>   feito, sem token de API — que NÃO existe na pasta do projeto (procurado:
+>   `.vercel/`, `credenciais/`, e o Trello).
+> - **pg_cron job [3] `whatsapp-encerrar-inativos`**, `* * * * *`, batendo em
+>   `/api/cron/whatsapp-encerrar`. Agendado por
+>   `scratchpad/_agendar-cron-encerramento.mjs`, que **recusa segredo `dev-*`** —
+>   agendar com o errado criaria um job tomando 401 a cada minuto, em silêncio.
+> - Conferir execuções: `net._http_response`, não só `cron.job_run_details` — o
+>   `net.http_get` retorna na hora, então o job fica "succeeded" mesmo com 401 do
+>   outro lado.
+>
+> ### 💡 A LIÇÃO DE TESTE DESTA PARTE
+>
+> Existia um teste para o ramo do prompt que quebrou, e ele afirmava só a
+> **AUSÊNCIA** do bloco da primeira mensagem. Assertiva negativa passa igual com o
+> ramo vazio — que era exatamente o defeito. Ficou verde o tempo todo, com o bug
+> em produção. Trocado por exigência **positiva**, mais um teste que prende os dois
+> ramos como mutuamente exclusivos.
+>
+> ### 🔴 O QUE FALTA — reconferir a saudação
+>
+> A correção (c) foi publicada no deploy `8vim8a1zg` (19:31) e **não foi testada
+> com gente**. Ao retomar, de um número FORA da janela de 12h:
+>
+> 1. `Olá, preciso abrir um MEI` → cumprimento + identificação + resposta
+> 2. uma segunda mensagem curta (`Sim`, `E quanto custa?`) → **direto ao assunto**,
+>    sem "Olá" e sem repetir quem é
+> 3. `Obrigado` → responde ao agradecimento e grava `encerrar_em`
+> 4. 5 minutos parado → despedida e `encerrado_em`
+>
+> ⚠️ `553291511415` está queimado (conversa de 25/08 à noite). Usar
+> `553291638563` ou outro. **Nunca** o `553287006789`: é o número da própria
+> instância, e o webhook o ignora por `fromMe`.
+>
+> ### Linha de base (parte 2)
+>
+> **tsc 0 · 2204 testes · 36 pulados · build limpo.** (+21 sobre a parte 1: 6 do
+> detector de agradecimento, 10 do cron de encerramento, 5 entre webhook e prompt.)
 >
 
 > ## 🆕 SESSÃO 32 (2026-08-24) — as duas dívidas de coluna, fechadas
