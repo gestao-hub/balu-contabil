@@ -53,6 +53,7 @@ import {
   montarPromptAtendimento, garantirApresentacao, SAUDACAO_INICIAL,
 } from '@/lib/atendimento/prompt';
 import { ehSoCumprimento } from '@/lib/atendimento/saudacao';
+import { ehAgradecimento, MINUTOS_ATE_ENCERRAR } from '@/lib/atendimento/agradecimento';
 import { gerarTexto } from '@/lib/ai/cliente';
 import { lerChaveIa } from '@/lib/ai/config-ia';
 import { enviarMensagem, marcarDigitando, type ConfigUazapi } from '@/lib/uazapi/cliente';
@@ -254,6 +255,25 @@ async function lerHistorico(
     pergunta: (a.mensagem_recebida as string) ?? '',
     resposta: (a.resposta_enviada as string | null) ?? null,
   }));
+}
+
+/**
+ * Arma o relógio de encerramento quando a mensagem que acabou de ser respondida
+ * era SÓ um agradecimento (pedido do usuário, 25/08/2026).
+ *
+ * Devolve o pedaço de `update` a espalhar — `{}` quando não há o que armar, para
+ * o chamador poder fazer `...armarEncerramento(texto)` sem um `if` em cada um
+ * dos pontos de saída.
+ *
+ * ⚠️ SÓ ARMA QUANDO A RESPOSTA SAIU. O parâmetro `entregue` existe porque
+ * encerrar um atendimento cuja resposta não chegou ao cliente seria fechar a
+ * porta na cara dele: ele não recebeu nem o "de nada", e ainda receberia a
+ * despedida cinco minutos depois — ou nem isso, se o canal seguir fora do ar.
+ * Sem entrega, a linha fica aberta e o SLA do escritório continua valendo.
+ */
+function armarEncerramento(texto: string, entregue: boolean): Record<string, string> {
+  if (!entregue || !ehAgradecimento(texto)) return {};
+  return { encerrar_em: new Date(Date.now() + MINUTOS_ATE_ENCERRAR * 60_000).toISOString() };
 }
 
 /**
@@ -897,7 +917,10 @@ export async function POST(req: Request) {
       // atendido. NÃO há escalação: não existe contador a quem escalar a dúvida
       // de um número que não é cliente de ninguém.
       await admin.from('whatsapp_atendimentos')
-        .update({ resposta_enviada: textoGeral, resolvido: envioGeral.ok, atendido_em: agoraIso() })
+        .update({
+          resposta_enviada: textoGeral, resolvido: envioGeral.ok, atendido_em: agoraIso(),
+          ...armarEncerramento(entrada.text, envioGeral.ok),
+        })
         .eq('id', atendimentoId);
 
       return NextResponse.json({ ok: true, reason: 'duvida_geral_sem_conta' }, { status: 200 });
@@ -994,6 +1017,9 @@ export async function POST(req: Request) {
       .from('whatsapp_atendimentos')
       .update({
         profile_user_id: profile.user_id, resposta_enviada: resposta, resolvido,
+        // Só quando a IA deu o assunto por encerrado: se escalou, quem deve a
+        // próxima palavra é o contador, e o robô não se despede por ele.
+        ...(resolvido ? armarEncerramento(entrada.text, envio.ok) : {}),
         ...(contabilidadeId ? { contabilidade_id: contabilidadeId } : {}),
         // Fila do escritório = o que espera humano. Escalou (`!resolvido`) →
         // fica aberta e o relógio do SLA corre; resolvida pela IA → fecha aqui.
