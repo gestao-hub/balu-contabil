@@ -7,6 +7,45 @@
 via runner node+pg lendo `SUPABASE_PASSWORD` do `app/.env.local`, e requisições
 **sem credencial nenhuma** contra o Storage.
 
+> ## Estado das correções (atualizado 25/08, fim da sessão)
+>
+> | # | Achado | Correção | Estado |
+> |---|---|---|---|
+> | 1 | Bucket de certificados público | migration **0103** | 🟡 escrita e provada em rollback — **falta você aplicar** |
+> | 2 | Qualquer conta apaga certificado alheio | migration **0103** (mesma) | 🟡 idem |
+> | 3 | Papel escolhido pelo usuário (`user_metadata` + `role_types_delete`) | `gate-context.ts` + `admin/users.ts` + migration **0104** | 🟢 código em `main`; 🟡 0104 falta aplicar |
+> | 4 | Config de bucket sem revisão nem teste | `tests/storage-postura.spec.ts` | 🟢 feito — o teste **morde** (2 vermelhos hoje) |
+> | 5 | Token do escritório na query string | — | 🔴 **não corrigido** (ver nota abaixo) |
+> | 6 | 5 CVEs high em produção | `npm audit fix` + `overrides` de postcss | 🟢 **0 vulnerabilidades** em produção |
+> | 7 | Cron sem comparação em tempo constante | `lib/security/segredo.ts` + `checarCron()` | 🟢 feito |
+> | 8 | Buckets sem teto de tamanho | migration **0104** | 🟡 falta aplicar |
+>
+> **Linha de base após as correções:** tsc 0 · 2183 testes · 36 pulados · build
+> limpo — idêntica à da sessão 32 parte 4.
+>
+> **O achado 5 não foi corrigido de propósito.** Trocar o token da query por
+> header exige remigrar o provisionamento dos canais **já conectados** na
+> uazapi, e um canal que quebra é um escritório sem atendimento. É mudança que
+> pede janela combinada, não um commit no fim de auditoria. Some-se a isto que
+> não achei caminho de **rotação** do token de um escritório já provisionado —
+> as duas coisas deviam ser resolvidas juntas.
+>
+> **Duas descobertas da execução das correções, que não estavam na auditoria:**
+>
+> 1. O `npm install` **podou o `pg`**, que nunca esteve no `package.json` —
+>    vivia como pacote solto e sustenta `ia.smoke.test.ts` e os 192 runners do
+>    scratchpad. Dois arquivos de teste quebraram. Agora é `devDependency`
+>    declarada. Foi a linha de base que pegou, não a leitura do diff.
+> 2. Restam **3 vulnerabilidades só de desenvolvimento** (vitest `critical` —
+>    o servidor da UI lê arquivo arbitrário; vite `high`). Não sobem no deploy,
+>    mas valem atenção de quem roda `vitest --ui`.
+>
+> **Item do "não verificado" que caiu:** os 11 testes verdes de
+> `storage-postura.spec.ts` provaram que `abertura-documentos`, `branding` e os
+> três buckets de comprovante **não** respondem à anon key.
+>
+> ---
+>
 > **Limites respeitados:** nenhuma escrita foi comitada. A única transação de
 > escrita (migration 0103) rodou com `ROLLBACK`. Nenhum dado de cliente foi
 > extraído — as provas usam contagem de linhas, nome de coluna, status HTTP e

@@ -1,7 +1,119 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-24 (sessão 32 — **as duas dívidas de coluna da sessão 31, fechadas**. Produção fiscal deixou de exigir `UPDATE` manual no banco: o contador liga pela tela, e a guarda de emissão responde ANTES de gravar. E a 0100 tira do inquilino o que não é dele — `notas_fiscais` sem UPDATE, `profiles` com coluna travada e `current_company` validada. **Tudo publicado e aplicado**: 0100, 0101 e 0102 no banco, com os checks conferidos fora da transação. **Partes 2 a 4**: WhatsApp conecta por QR (escritório e plataforma), o admin token saiu do `.env`, e a apresentação do assistente virou adaptativa. **Pendente: o teste de ponta a ponta do canal** — ver a parte 4.)
+> **Última atualização:** 2026-08-25 (sessão 33 — **auditoria de segurança da plataforma inteira, com evidência**. O banco passou bem: RLS em 48/48, zero view, zero segredo no bundle, isolamento de tenant intacto. O buraco estava FORA dele: o bucket `company-certificates` é **público** — os 4 certificados A1 e o contratante do SERPRO baixam com `200` sem credencial nenhuma, e a anon key lista o bucket e entrega os caminhos. Corrigido em código e migration; **as 0103 e 0104 faltam ser aplicadas**. CVEs de produção: 5 high → **0**.)
+
+> ## 🆕 SESSÃO 33 (2026-08-25) — a auditoria, e o que o painel escondia
+>
+> Relatório completo, com o que ficou provado seguro e o que NÃO foi
+> verificado: `docs/investigations/2026-08-25-auditoria-seguranca.md`.
+>
+> ### 🔴 FALTA VOCÊ RODAR — nesta ordem
+>
+> ```
+> node scratchpad/_aplicar-0103.mjs --aplicar   # a partir de balu/app
+> node scratchpad/_aplicar-0104.mjs --aplicar
+> git push origin main
+> ```
+>
+> As duas migrations são independentes do deploy: elas só fecham acesso que
+> **nenhum caminho do produto usa**. A 0104 depende da 0103 (é ela que define o
+> teto de `company-certificates`); rodar fora de ordem falha alto, de propósito.
+>
+> ### O achado que importa
+>
+> `company-certificates` estava com `public = true` e quatro policies cuja única
+> condição era o próprio `bucket_id`. Medido, não suposto:
+>
+> ```
+> POST /storage/v1/object/list/company-certificates  (só a anon key)
+>      -> 200, listando as 4 pastas de empresa e `system`
+> HEAD /storage/v1/object/public/company-certificates/<uuid>/certificado.enc
+>      -> 200, sem header nenhum, nos 6 objetos
+> ```
+>
+> **O UUID no caminho nunca foi defesa** — a anon key está no bundle de toda
+> página, e a API de listagem entrega as pastas. E `system/` guarda o
+> certificado **contratante do SERPRO**, que vale pela plataforma inteira.
+>
+> As policies de UPDATE e DELETE eram piores que a de leitura: sem uma linha
+> sobre dono, e o cadastro é aberto. Qualquer conta nova apagava ou substituía o
+> certificado de qualquer empresa.
+>
+> **O que mitiga, dito com precisão:** o conteúdo é AES-256-GCM e provei que a
+> `CERT_ENC_KEY` **não** está no bundle. Vazou ciphertext, não chave privada.
+> Mas sobrou uma barreira só.
+>
+> ### 🔴 POR QUE PASSOU POR 32 SESSÕES — a lição, não o bug
+>
+> O bucket e as quatro policies **nunca estiveram numa migration**. Foram
+> criados no painel. A única declaração daquilo no repositório é um comentário
+> em `supabase-storage.ts` chamando o bucket de "privado".
+>
+> Comentário não compila, não roda e não fica vermelho. Zero testes tocavam
+> configuração de bucket. **Regra nova: configuração de bucket entra por
+> migration.** `tests/storage-postura.spec.ts` prende isso — ele não lê código
+> nem migration, refaz o ataque com a anon key e exige que falhe. Rodado com o
+> bucket ainda aberto: **2 vermelhos, 11 verdes**.
+>
+> ### Também corrigido
+>
+> - **O papel deixou de ser escolha do usuário.** `gate-context.ts` caía em
+>   `user_metadata.type` (gravável pelo dono da sessão via GoTrue) quando faltava
+>   a linha em `role_types` — e `role_types_delete` deixava o usuário apagar a
+>   própria. O trigger de AdminBalu não cobria: é `BEFORE INSERT OR UPDATE`, não
+>   DELETE. Não alcançava dado (os guards releem a tabela), alcançava menu,
+>   onboarding e um laço de redirect. Medido antes de remover: 8 contas, 8
+>   papéis, **zero órfãs**. A 0104 derruba as três policies de escrita.
+> - **CVEs de produção: 5 high → 0.** `npm audit fix` (next 15.5.24, sem major) +
+>   `overrides` de postcss ^8.5.26, que vinha aninhada no next. Restam 3 **só de
+>   desenvolvimento** (vitest `critical` na UI, vite `high`) — não sobem.
+> - **Os 4 crons** passaram a usar `timingSafeEqual` como os webhooks já usavam
+>   (`lib/security/segredo.ts`, `checarCron()`).
+>
+> ### ⚠️ Efeito colateral que só a linha de base pegou
+>
+> O `npm install` **podou o `pg`** — ele nunca esteve no `package.json`, vivia
+> como pacote solto e sustenta `ia.smoke.test.ts` e os 192 runners do
+> scratchpad. Dois arquivos de teste quebraram com "Cannot find module 'pg'".
+> Agora é `devDependency` declarada. Nenhuma leitura de diff acharia isso.
+>
+> ### ⚠️ NÃO corrigido, de propósito
+>
+> - **Token do escritório na query string** do webhook uazapi (credencial bearer
+>   em URL → cai em log de proxy/Vercel/uazapi). Trocar por header exige
+>   remigrar os canais **já conectados**, e canal que quebra é escritório sem
+>   atendimento. Pede janela combinada. Junto disso: não achei caminho de
+>   **rotação** do token de um escritório já provisionado — resolver as duas
+>   coisas na mesma leva.
+> - **Rotacionar os certificados** (4 A1 + o contratante do SERPRO), se a decisão
+>   for tratar a exposição como incidente. É sua, não de código.
+>
+> ### Não verificado (o que continua no escuro)
+>
+> - **A Prova C não rodou.** Desativei o guard de admin de propósito para ver se
+>   a suíte ficava vermelha; o classificador barrou o vitest e restaurei o
+>   arquivo (`git diff` vazio, conferido). Pela leitura, os 13 testes fazem
+>   `vi.mock('@/lib/admin/guard')` — provam que cada action **honra** o veredito,
+>   não que o guard o **produz**. Esvaziar `guard.ts` provavelmente deixa os 13
+>   verdes. Precisa de execução para virar achado.
+> - **`CERT_ENC_KEY` de produção** é a mesma do `.env.local`? Não leio as
+>   variáveis da Vercel. Se for, a chave que protege aquele ciphertext está numa
+>   máquina de desenvolvimento, com 8 cópias `.bak` ao lado.
+> - Config de Auth do Supabase (confirmação de e-mail, política de senha — o app
+>   aceita 6 caracteres, proteção contra senha vazada) e DAST no app no ar.
+>
+> ### Linha de base
+>
+> **tsc 0 · 2183 testes · 36 pulados · build limpo** — idêntica à da sessão 32
+> parte 4, com as dependências atualizadas por baixo.
+>
+> ### ⏭️ O teste de ponta a ponta do WhatsApp continua pendente
+>
+> Nada da sessão 32 parte 4 foi verificado com o canal conectado. O roteiro de 5
+> passos segue válido, na parte 4 abaixo. **Aplique as duas migrations antes** —
+> elas não dependem do canal, e o canal não depende delas.
+>
 
 > ## 🆕 SESSÃO 32 (2026-08-24) — as duas dívidas de coluna, fechadas
 >
