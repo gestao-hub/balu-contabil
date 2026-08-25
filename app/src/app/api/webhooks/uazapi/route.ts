@@ -404,7 +404,11 @@ async function atenderContador(
     pergunta: ctx.entrada.text,
     // O contador não tem "situação fiscal própria" — o que ele tem é carteira.
     situacaoFiscalTexto: null,
-    primeiraInteracao: historico.length === 0,
+    // `ninguemFoiAtendido`, nao `length === 0`: uma linha SEM resposta (o
+    // silencio deliberado) faz o historico deixar de ser vazio sem que ninguem
+    // tenha sido atendido. A parte 4 de 24/08 corrigiu isso no ramo do cliente
+    // cadastrado e esqueceu os outros dois — achado em 25/08.
+    primeiraInteracao: ninguemFoiAtendido(historico),
     historico,
     contextoJuridico: await buscarContextoPorPergunta(admin, ctx.entrada.text),
     tipoPergunta: 'especifica',
@@ -884,7 +888,10 @@ export async function POST(req: Request) {
         // como irrelevante numa dúvida geral, em vez de empurrar o modelo a
         // escalar por falta de dado que a pergunta não pedia.
         situacaoFiscalTexto: null,
-        primeiraInteracao: historicoSemConta.length === 0,
+        // Mesma regua do codigo que decide a apresentacao, logo abaixo. Com
+        // `length === 0` os dois discordavam: o prompt achava que a conversa ja
+        // tinha comecado e o codigo prefixava a identidade assim mesmo.
+        primeiraInteracao: ninguemFoiAtendido(historicoSemConta),
         historico: historicoSemConta,
         contextoJuridico: await buscarContextoPorPergunta(admin, entrada.text),
         tipoPergunta: 'geral',

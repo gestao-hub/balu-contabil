@@ -429,6 +429,25 @@ describe('webhook uazapi', () => {
     expect(h.marcarDigitando).not.toHaveBeenCalled();
   });
 
+  // A linha MUDA (sem `resposta_enviada`) nao pode contar como "ja conversamos".
+  // A parte 4 de 24/08 corrigiu isso no ramo do cliente cadastrado e esqueceu os
+  // outros dois, que seguiam com `historico.length === 0`. O sintoma: prompt e
+  // codigo discordavam -- o prompt achava a conversa em andamento e o codigo
+  // prefixava a identidade assim mesmo.
+  it('interacao anterior SEM resposta nao consome a apresentacao (ramo sem conta)', async () => {
+    h.estado.profile = null;
+    h.estado.interacaoAnterior = { id: 'atend_mudo', resposta_enviada: null };
+    h.estado.textoGerado = JSON.stringify({ resposta: 'O MEI e ...', resolvido: true });
+
+    await POST(requisicaoFalsa(
+      { messageId: 'mudo-1', from: '5532987006792', text: 'o que e MEI?' }, SEGREDO));
+
+    const chamada = h.gerarTexto.mock.calls[0];
+    const prompt = String(chamada?.[1] ?? chamada?.[0]);
+    // Trocou de vez: com `length === 0` este prompt viria com a PROIBICAO.
+    expect(prompt).toMatch(/PRIMEIRA MENSAGEM DESTA CONVERSA/);
+  });
+
   it('resolvido=true: responde ao cliente e NAO escala', async () => {
     h.estado.textoGerado = JSON.stringify({ resposta: 'Seu DAS está em dia.', resolvido: true });
     h.estado.company = { id: 'empresa_1', contabilidade_id: 'contab_1' };

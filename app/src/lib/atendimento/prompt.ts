@@ -149,7 +149,25 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
         'repetir o cumprimento no fim.',
         '',
       ]
-    : [];
+    // ═══ E A PROIBIÇÃO, QUANDO NÃO É A PRIMEIRA ═══
+    //
+    // Este ramo era `[]` — o prompt não dizia NADA sobre cumprimento fora da
+    // primeira mensagem. Achado no teste de ponta a ponta de 25/08: a pessoa
+    // respondeu "Sim" a uma pergunta do assistente e recebeu "Olá! Para abrir
+    // um MEI…". O código não colou nada (`garantirApresentacao` só age quando
+    // ninguém foi atendido); quem cumprimentou foi o MODELO, por conta própria.
+    //
+    // Até 24/08 o prompt PROIBIA cumprimentar em qualquer mensagem, e o código
+    // prefixava o texto fixo. A parte 4 trocou a proibição por uma instrução
+    // condicional para a primeira mensagem — e a proibição saiu junto, para
+    // todas as outras. Silêncio não é instrução: o modelo preenche.
+    : [
+        'ESTA CONVERSA JÁ ESTÁ EM ANDAMENTO. Você já cumprimentou e já se',
+        'identificou antes. NÃO cumprimente de novo ("olá", "oi", "bom dia") e',
+        'NÃO repita quem você é. Vá direto ao que foi perguntado, como quem',
+        'continua a mesma conversa.',
+        '',
+      ];
 
   // Memória: só as últimas trocas. O estado que vale é o do banco, e mandar a
   // conversa inteira encareceria o prompt e aumentaria a chance de o modelo se

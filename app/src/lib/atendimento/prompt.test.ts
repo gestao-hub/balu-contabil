@@ -154,9 +154,35 @@ describe('o prompt PEDE a abertura, em vez de proibi-la', () => {
     expect(p).not.toMatch(/N\u00c3O cumprimente/);
   });
 
-  it('fora da primeira mensagem, nao fala de apresentacao nenhuma', () => {
+  // ═══ ACHADO NO TESTE DE PONTA A PONTA, 25/08/2026 ═══
+  //
+  // A pessoa respondeu "Sim" a uma pergunta do assistente e recebeu "Olá! Para
+  // abrir um MEI…". O codigo nao colou nada -- `garantirApresentacao` so age
+  // quando ninguem foi atendido. Quem cumprimentou foi o MODELO, porque este
+  // ramo do prompt era `[]`: nao pedia e nao proibia, e silencio nao e
+  // instrucao.
+  //
+  // O teste que existia aqui so afirmava a AUSENCIA do bloco da primeira
+  // mensagem -- e uma assercao negativa passa igual com o ramo vazio. Por isso
+  // ele ficou verde enquanto o defeito estava em producao. Agora a exigencia e
+  // positiva: o prompt tem de PROIBIR, com todas as letras.
+  it('fora da primeira mensagem, PROIBE cumprimentar e se identificar de novo', () => {
     const p = montarPromptAtendimento({ ...base, primeiraInteracao: false });
     expect(p).not.toMatch(/PRIMEIRA MENSAGEM DESTA CONVERSA/);
+    expect(p).toMatch(/JÁ ESTÁ EM ANDAMENTO/);
+    expect(p).toMatch(/NÃO cumprimente/);
+    expect(p).toMatch(/NÃO repita quem você é/);
+  });
+
+  it('os dois ramos sao exclusivos: nunca pede e proibe ao mesmo tempo', () => {
+    // Pedir a abertura e proibi-la no mesmo prompt deixaria o modelo escolher —
+    // que e o estado de onde o defeito de 25/08 saiu.
+    const primeira = montarPromptAtendimento({ ...base, primeiraInteracao: true });
+    const seguinte = montarPromptAtendimento({ ...base, primeiraInteracao: false });
+    expect(primeira).toMatch(/PRIMEIRA MENSAGEM DESTA CONVERSA/);
+    expect(primeira).not.toMatch(/NÃO cumprimente/);
+    expect(seguinte).toMatch(/NÃO cumprimente/);
+    expect(seguinte).not.toMatch(/PRIMEIRA MENSAGEM DESTA CONVERSA/);
   });
 });
 
