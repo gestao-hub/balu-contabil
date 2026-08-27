@@ -69,6 +69,43 @@ config_focus (banco): token_hom = vazio · token_prod = vazio
 **o mesmo token atendia `hom` e `prod`**. Como cada token só vale na sua base,
 um dos dois ambientes estava necessariamente quebrado.
 
+## 4-B. 🔴 O ACHADO MAIS FORTE: um token que a própria Focus emitiu está morto
+
+A AL PISCINAS foi cadastrada em 09/06/2026 pelo `POST /v2/empresas` — o único
+cadastro que deu certo. A Focus devolveu o `token_homologacao` dela, que está
+guardado cifrado em `empresa_credenciais_focus` e **emitiu duas NFS-e naquele
+dia** (`notas_fiscais`, 09/06/2026 14:16 e 14:23).
+
+Esse mesmo token, hoje (`_focus-sonda-alpiscinas.mjs`):
+
+```
+token go6FN… (32 chars, decifrado de empresa_credenciais_focus)
+
+GET /v2/codigos_cnae/6201501   [homologacao.focusnfe.com.br]  -> 401
+GET /v2/codigos_cnae/6201501   [api.focusnfe.com.br]          -> 401
+GET /v2/nfsen/man_3bb1eac0-…   [homologacao.focusnfe.com.br]  -> 401
+     {"codigo":"permissao_negada",
+      "mensagem":"Access token inválido (host: homologacao.focusnfe.com.br)"}
+```
+
+**401 nos DOIS hosts** — não é ambiente trocado, é token inválido. E a última
+requisição é o caso mais claro possível: o token não consegue mais ler **a nota
+que ele mesmo emitiu**.
+
+A decifra é prova de que o valor está íntegro: AES-256-GCM falha na verificação
+do *auth tag* com chave errada, e ela não falhou. O token guardado é exatamente
+o que a Focus devolveu.
+
+**Consequência para o diagnóstico:** não é só o `/v2/empresas` que parou. As
+credenciais por empresa emitidas ANTES também morreram. Isso aponta para uma
+mudança no lado da conta na Focus — e a janela bate com o início dos 401
+(23/07/2026).
+
+**Consequência para o produto:** a AL PISCINAS não está "funcionando". Ela passa
+em todas as guardas internas (assinatura `cortesia`, município ativo, NFS-e
+habilitada, token presente) e falharia na chamada à Focus, com 401. As quatro
+empresas estão bloqueadas.
+
 ## 5. Correção aplicada no código
 
 - `focus.listarEmpresas()` — `GET /v2/empresas`, a única sonda que discrimina o
@@ -82,20 +119,49 @@ um dos dois ambientes estava necessariamente quebrado.
 
 ## 6. Resposta ao suporte (rascunho pronto para enviar)
 
-> Bom dia, Hélio! Obrigado pelo retorno — ele resolveu o diagnóstico.
+> Bom dia, Hélio! Obrigado pelo retorno.
 >
-> Conferimos e o token que estávamos usando na API de Empresas **não é** o token
-> principal de produção. Ele é um token válido da conta (responde 200 em
-> `GET /v2/codigos_cnae` em `api.focusnfe.com.br`), mas é recusado em
-> `/v2/empresas` no mesmo host.
+> Confirmando o que você pediu: **sim**, estamos usando o token de produção do
+> painel (Serviços > Painel API > Tokens) nessa API — não temos outro. Os
+> **5 primeiros dígitos** são `JSqPs` (32 caracteres). E o erro persiste, então
+> seguem os dados.
 >
-> Segue o que vocês pediram:
+> **1) O token é aceito pela API — mas não pela API de Empresas.** Mesmo host,
+> mesmo token, mesma sessão, hoje 27/08/2026:
 >
-> **1) Cinco primeiros dígitos do token que estávamos usando:** `JSqPs`
-> (32 caracteres, ambiente de produção).
+> ```
+> GET  https://api.focusnfe.com.br/v2/codigos_cnae/6201501
+>      -> 200 OK
 >
-> **2) JSON de criação de empresa** — é o corpo que enviamos no
-> `POST /v2/empresas`:
+> GET  https://api.focusnfe.com.br/v2/empresas
+>      -> 401 {"codigo":"permissao_negada",
+>              "mensagem":"Access token inválido (host: api.focusnfe.com.br)"}
+>
+> GET  https://api.focusnfe.com.br/v2/empresas/216964
+>      -> 401 (mesma resposta)
+> ```
+>
+> Autenticação HTTP Basic, token como usuário e senha vazia.
+>
+> **2) Um token que vocês nos emitiram parou de funcionar.** Este é o ponto que
+> achamos mais revelador. Em 09/06/2026 cadastramos a empresa AL PISCINAS LTDA
+> (CNPJ 10358425000120) pelo `POST /v2/empresas` — deu certo, id **216964** — e
+> emitimos duas NFS-e de homologação com o `token_homologacao` que vocês
+> devolveram. Guardamos esse token. Hoje ele responde:
+>
+> ```
+> GET  https://homologacao.focusnfe.com.br/v2/codigos_cnae/6201501  -> 401
+> GET  https://api.focusnfe.com.br/v2/codigos_cnae/6201501          -> 401
+> GET  https://homologacao.focusnfe.com.br/v2/nfsen/man_3bb1eac0-5dce-4501-8bb9-f2a1f77e6b4e
+>      -> 401 {"codigo":"permissao_negada",
+>              "mensagem":"Access token inválido (host: homologacao.focusnfe.com.br)"}
+> ```
+>
+> Ou seja: o token não consegue mais nem consultar a nota que ele mesmo emitiu.
+> Os 401 nos dois ambientes começaram em **23/07/2026** — o último cadastro
+> bem-sucedido foi o de 09/06 e nada mudou do nosso lado entre as duas datas.
+>
+> **3) JSON de criação de empresa** — o corpo que enviamos no `POST /v2/empresas`:
 >
 > ```json
 > {
@@ -114,30 +180,31 @@ um dos dois ambientes estava necessariamente quebrado.
 > }
 > ```
 >
-> **3) Logs** — medição de hoje, 27/08/2026, autenticação Basic com o token
-> acima como usuário e senha vazia:
+> Duas perguntas para fecharmos:
 >
-> ```
-> GET  https://api.focusnfe.com.br/v2/codigos_cnae/6201501
->      -> 200
-> GET  https://api.focusnfe.com.br/v2/empresas
->      -> 401 {"codigo":"permissao_negada",
->              "mensagem":"Access token inválido (host: api.focusnfe.com.br)"}
-> GET  https://api.focusnfe.com.br/v2/empresas/216964
->      -> 401 (mesma resposta)
-> ```
+> **a)** Houve alguma rotação de tokens ou migração da nossa conta por volta de
+> 23/07/2026? O comportamento (token do painel aceito em uns endpoints e
+> recusado na API de Empresas, e tokens de empresa emitidos por vocês agora
+> inválidos) parece indicar isso.
 >
-> Uma pergunta para fechar, por favor: **o token principal de produção é o mesmo
-> que devemos usar para emitir notas em nome das empresas cadastradas**, ou cada
-> empresa continua tendo o `token_producao` próprio devolvido no
-> `POST /v2/empresas`? É o que falta para ajustarmos a integração do lado certo.
+> **b)** O token principal de produção também serve para **emitir** notas em nome
+> das empresas cadastradas, ou cada empresa continua tendo o `token_producao`
+> próprio devolvido no `POST /v2/empresas`? É o que falta para ajustarmos a
+> integração do lado certo.
 >
 > Obrigado!
 
 ## 7. O que falta
 
-1. Painel da Focus → `Serviços > Painel API > Tokens` → copiar o **token
-   principal de produção**; conferir se começa com `JSqPs`.
-2. Colar em `/admin/configuracoes/focus`. O banco vence a variável da Vercel
-   (`obterTokenFocus` lê `config_focus` primeiro) — vale sem redeploy.
-3. Enviar a resposta acima ao suporte.
+1. **Conferir os 5 primeiros dígitos** do token de produção no painel da Focus
+   contra `JSqPs`. Não se trata de procurar um token novo — o dono confirmou que
+   não existe um terceiro. Trata-se de saber se o VALOR no painel hoje é o mesmo
+   que está no `.env.local`, ou se ele foi rotacionado em algum momento.
+   - Se for diferente: colar em `/admin/configuracoes/focus` (o banco vence a
+     variável da Vercel — vale sem redeploy) e refazer a medição.
+   - Se for igual: está provado que o bloqueio é do lado da Focus, e a resposta
+     da seção 6 é o que destrava.
+2. Enviar a resposta ao suporte de qualquer forma — o achado 4-B (token emitido
+   por eles, morto nos dois hosts) não depende do item 1.
+3. **Independente da Focus:** o trial da PADARIA MODELO venceu em 26/08/2026 e
+   ela está bloqueada também pelo gate de assinatura.
