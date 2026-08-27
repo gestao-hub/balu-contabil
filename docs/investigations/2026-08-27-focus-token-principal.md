@@ -69,42 +69,31 @@ config_focus (banco): token_hom = vazio · token_prod = vazio
 **o mesmo token atendia `hom` e `prod`**. Como cada token só vale na sua base,
 um dos dois ambientes estava necessariamente quebrado.
 
-## 4-B. 🔴 O ACHADO MAIS FORTE: um token que a própria Focus emitiu está morto
+## 4-B. O token da AL PISCINAS está morto — e isso é ESPERADO
 
-A AL PISCINAS foi cadastrada em 09/06/2026 pelo `POST /v2/empresas` — o único
-cadastro que deu certo. A Focus devolveu o `token_homologacao` dela, que está
-guardado cifrado em `empresa_credenciais_focus` e **emitiu duas NFS-e naquele
-dia** (`notas_fiscais`, 09/06/2026 14:16 e 14:23).
-
-Esse mesmo token, hoje (`_focus-sonda-alpiscinas.mjs`):
+Sondado em 27/08: o `token_homologacao` que a Focus devolveu no
+`POST /v2/empresas` de 09/06/2026 responde **401 nos dois hosts**, e não
+consegue mais ler as duas NFS-e que ele mesmo emitiu.
 
 ```
-token go6FN… (32 chars, decifrado de empresa_credenciais_focus)
-
-GET /v2/codigos_cnae/6201501   [homologacao.focusnfe.com.br]  -> 401
-GET /v2/codigos_cnae/6201501   [api.focusnfe.com.br]          -> 401
-GET /v2/nfsen/man_3bb1eac0-…   [homologacao.focusnfe.com.br]  -> 401
-     {"codigo":"permissao_negada",
-      "mensagem":"Access token inválido (host: homologacao.focusnfe.com.br)"}
+token go6FN… (decifrado de empresa_credenciais_focus)
+GET /v2/codigos_cnae/6201501  [homologacao] -> 401
+GET /v2/codigos_cnae/6201501  [api]         -> 401
+GET /v2/nfsen/man_3bb1eac0-…  [homologacao] -> 401
 ```
 
-**401 nos DOIS hosts** — não é ambiente trocado, é token inválido. E a última
-requisição é o caso mais claro possível: o token não consegue mais ler **a nota
-que ele mesmo emitiu**.
+⚠️ **NÃO enviar isto ao suporte como anomalia.** O dono esclareceu (27/08) que
+**o token da conta em uso hoje é NOVO — não é o mesmo dos testes da AL
+PISCINAS**. Um token de empresa emitido sob a credencial antiga morrer junto
+com ela é o comportamento correto, não um defeito. Registrado aqui só para que
+ninguém volte a interpretar esse 401 como evidência de problema na Focus.
 
-A decifra é prova de que o valor está íntegro: AES-256-GCM falha na verificação
-do *auth tag* com chave errada, e ela não falhou. O token guardado é exatamente
-o que a Focus devolveu.
+**O que continua valendo como evidência é só a seção 3**: o token ATUAL é
+aceito em `/v2/codigos_cnae` e recusado em `/v2/empresas`, no mesmo host.
 
-**Consequência para o diagnóstico:** não é só o `/v2/empresas` que parou. As
-credenciais por empresa emitidas ANTES também morreram. Isso aponta para uma
-mudança no lado da conta na Focus — e a janela bate com o início dos 401
-(23/07/2026).
-
-**Consequência para o produto:** a AL PISCINAS não está "funcionando". Ela passa
-em todas as guardas internas (assinatura `cortesia`, município ativo, NFS-e
-habilitada, token presente) e falharia na chamada à Focus, com 401. As quatro
-empresas estão bloqueadas.
+**Consequência para o produto:** a AL PISCINAS não emite — a credencial dela é
+da era anterior. E as outras três empresas do banco são dados de teste. Não há
+nenhuma empresa real emitindo hoje.
 
 ## 5. Correção aplicada no código
 
@@ -143,25 +132,7 @@ empresas estão bloqueadas.
 >
 > Autenticação HTTP Basic, token como usuário e senha vazia.
 >
-> **2) Um token que vocês nos emitiram parou de funcionar.** Este é o ponto que
-> achamos mais revelador. Em 09/06/2026 cadastramos a empresa AL PISCINAS LTDA
-> (CNPJ 10358425000120) pelo `POST /v2/empresas` — deu certo, id **216964** — e
-> emitimos duas NFS-e de homologação com o `token_homologacao` que vocês
-> devolveram. Guardamos esse token. Hoje ele responde:
->
-> ```
-> GET  https://homologacao.focusnfe.com.br/v2/codigos_cnae/6201501  -> 401
-> GET  https://api.focusnfe.com.br/v2/codigos_cnae/6201501          -> 401
-> GET  https://homologacao.focusnfe.com.br/v2/nfsen/man_3bb1eac0-5dce-4501-8bb9-f2a1f77e6b4e
->      -> 401 {"codigo":"permissao_negada",
->              "mensagem":"Access token inválido (host: homologacao.focusnfe.com.br)"}
-> ```
->
-> Ou seja: o token não consegue mais nem consultar a nota que ele mesmo emitiu.
-> Os 401 nos dois ambientes começaram em **23/07/2026** — o último cadastro
-> bem-sucedido foi o de 09/06 e nada mudou do nosso lado entre as duas datas.
->
-> **3) JSON de criação de empresa** — o corpo que enviamos no `POST /v2/empresas`:
+> **2) JSON de criação de empresa** — o corpo que enviamos no `POST /v2/empresas`:
 >
 > ```json
 > {
@@ -182,10 +153,9 @@ empresas estão bloqueadas.
 >
 > Duas perguntas para fecharmos:
 >
-> **a)** Houve alguma rotação de tokens ou migração da nossa conta por volta de
-> 23/07/2026? O comportamento (token do painel aceito em uns endpoints e
-> recusado na API de Empresas, e tokens de empresa emitidos por vocês agora
-> inválidos) parece indicar isso.
+> **a)** Existe alguma habilitação separada para a API de Empresas que precise
+> ser ligada na nossa conta? O mesmo token é aceito em `/v2/codigos_cnae` e
+> recusado em `/v2/empresas`, no mesmo host e na mesma sessão.
 >
 > **b)** O token principal de produção também serve para **emitir** notas em nome
 > das empresas cadastradas, ou cada empresa continua tendo o `token_producao`
