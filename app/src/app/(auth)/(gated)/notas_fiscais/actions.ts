@@ -1126,12 +1126,21 @@ export async function listarTiposEmissaoAction(): Promise<TiposHabilitados> {
   // removido: era um toggle sem nenhum caminho no app que o setasse `true`, então
   // travava TODA empresa no chooser mesmo com a Focus já habilitando. O validador real
   // de NFS-e já o havia abandonado (usa status do município) — alinhamos o resto aqui.
+  //
+  // `focus_habilita_nfsen_producao` ENTROU na sessão 35, e a ausência dela era
+  // defeito: o seletor perguntava só pela flag de HOMOLOGAÇÃO, então uma empresa
+  // habilitada em produção — o alvo do produto — sumia da tela. Hoje isso não
+  // aparecia porque ninguém chegava a produção (o impasse de
+  // `promover-producao.ts`); com a promoção no upload do certificado, uma
+  // empresa pode ter só a flag de produção e precisa continuar enxergando NFS-e.
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
-    .select('focus_habilita_nfse, focus_habilita_nfsen_homologacao, focus_habilita_nfe, focus_habilita_nfce')
+    .select('focus_habilita_nfse, focus_habilita_nfsen_producao, focus_habilita_nfsen_homologacao, focus_habilita_nfe, focus_habilita_nfce')
     .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
   return {
-    nfse: fiscal?.focus_habilita_nfse === true || fiscal?.focus_habilita_nfsen_homologacao === true,
+    nfse: fiscal?.focus_habilita_nfse === true
+      || fiscal?.focus_habilita_nfsen_producao === true
+      || fiscal?.focus_habilita_nfsen_homologacao === true,
     nfe: fiscal?.focus_habilita_nfe === true,
     nfce: fiscal?.focus_habilita_nfce === true,
   };

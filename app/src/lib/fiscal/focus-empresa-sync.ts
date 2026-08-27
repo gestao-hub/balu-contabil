@@ -262,8 +262,14 @@ export async function atualizarEmpresaNaFocus(
   // pedia `habilita_nfsen_producao` à Focus. Uma empresa marcada para produção
   // no Balu continuava, do lado da Focus, habilitada só em homologação — e a
   // emissão real morria lá, depois de a tela daqui já ter dito que estava
-  // tudo certo. Só passe um valor explícito em script de smoke, onde o
-  // ambiente é o objeto do teste.
+  // tudo certo.
+  //
+  // Há DOIS usos legítimos do valor explícito, e nenhum outro:
+  //  1. script de smoke, onde o ambiente é o objeto do teste;
+  //  2. `promoverParaProducao` (sessão 35), que passa 'prod' de propósito
+  //     porque está tentando MUDAR `focus_ambiente` — ler a coluna ali seria
+  //     perguntar à resposta que ele quer produzir, e é exatamente esse laço
+  //     que mantinha toda empresa de origem 'balu' presa em homologação.
   env?: FocusEnv,
   extras: AtualizarFocusExtras = {},
 ): Promise<SyncFocusResult> {

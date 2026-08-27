@@ -18,13 +18,21 @@ import { encryptBlob } from '@/lib/crypto/envelope';
 import { uploadCertificado as storageUploadCertificado } from '@/lib/clients/supabase-storage';
 import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
 import { atualizarEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
+import {
+  promoverParaProducao,
+  mensagemPromocao,
+  type ResultadoPromocao,
+} from '@/lib/fiscal/promover-producao';
 import { formatCnpj } from '@/lib/format/masks';
 
 /** Nome fixo no bucket: 1 certificado por empresa; re-upload sobrescreve. */
 const CERT_FILENAME = 'certificado.enc';
 
 export type CertUploadResult =
-  | { ok: true; warnings: string[]; notAfter: string }
+  // `producao` é o resultado da tentativa de habilitar produção logo após o
+  // certificado subir. OPCIONAL de propósito: ausente quando nem se tentou
+  // (origem 'propria', empresa sem cadastro na Focus, PUT que falhou antes).
+  | { ok: true; warnings: string[]; notAfter: string; producao?: ResultadoPromocao }
   | { ok: false; error: string };
 
 const digitos = (v: unknown) => String(v ?? '').replace(/\D+/g, '');
@@ -135,6 +143,7 @@ export async function processarUploadCertificado(
   // Best-effort daqui pra baixo: o certificado JÁ está salvo, e nenhuma falha
   // de integração externa pode fazer o usuário perder o que subiu.
   const warnings: string[] = [];
+  let producao: ResultadoPromocao | undefined;
 
   const tk = await garantirTokenProcurador(supabase, companyId, {
     keyPem: material.keyPem,
@@ -173,8 +182,23 @@ export async function processarUploadCertificado(
     });
     if (!focusResult.ok) {
       warnings.push(`Certificado salvo localmente, mas falhou ao enviar pra Focus: ${focusResult.error.slice(0, 200)}`);
+    } else {
+      // O CERTIFICADO É O GATILHO DA PRODUÇÃO (sessão 35). Só aqui, depois do
+      // PUT que espelhou o A1 na Focus, a empresa reúne pela primeira vez as
+      // quatro condições de `decidirCredencial` — e é o único gesto do cliente
+      // no fluxo automático. Antes disto ninguém pedia produção à Focus, e a
+      // empresa ficava em homologação para sempre (o impasse descrito no topo
+      // de `promover-producao.ts`).
+      //
+      // Best-effort de novo: o certificado já está salvo e o espelho na Focus
+      // já foi feito. Falhar aqui vira aviso, nunca erro do upload.
+      producao = await promoverParaProducao(companyId);
+      // `ja_em_producao` não é aviso — é a empresa que já estava liberada.
+      if (!producao.liberada && producao.motivo !== 'ja_em_producao') {
+        warnings.push(`Emissão em produção ainda não liberada: ${mensagemPromocao(producao)}`);
+      }
     }
   }
 
-  return { ok: true, warnings, notAfter: material.notAfter };
+  return { ok: true, warnings, notAfter: material.notAfter, producao };
 }

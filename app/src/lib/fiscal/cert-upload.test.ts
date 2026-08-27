@@ -30,7 +30,27 @@ const h = vi.hoisted(() => ({
   encryptBlob: vi.fn(() => Buffer.from('cifrado')),
   storageUploadCertificado: vi.fn(async () => ({ path: 'empresa/certificado.enc' })),
   garantirTokenProcurador: vi.fn(async () => ({ ok: true, token: 'tok', expiration: NOT_AFTER_FUTURO })),
-  atualizarEmpresaNaFocus: vi.fn(async () => ({ ok: true, token: null })),
+  // Retorno anotado à mão nos dois mocks abaixo: sem isso o `vi.fn` infere o
+  // tipo do happy path (`{ ok: true; token: null }`) e um `mockResolvedValue`
+  // com o ramo de ERRO não compila — o ramo que estes testes existem para cobrir.
+  atualizarEmpresaNaFocus: vi.fn(
+    async (): Promise<{ ok: true; token: string | null } | { ok: false; error: string }> =>
+      ({ ok: true, token: null }),
+  ),
+  // Sessão 35: o upload de certificado é o GATILHO da promoção para produção.
+  // Mockado como o resto do I/O — a regra de quando promover é testada pura em
+  // `promover-producao.test.ts`; aqui só se prova o FIO: quem chama, quando, e
+  // o que vira aviso.
+  promoverParaProducao: vi.fn(
+    async (): Promise<
+      | { liberada: true }
+      | { liberada: false; motivo: 'ja_em_producao' | 'origem_propria' | 'nao_cadastrada_na_focus' | 'sem_token_producao' | 'certificado_invalido' }
+      | { liberada: false; motivo: 'focus_recusou'; detalhe: string }
+      | { liberada: false; motivo: 'focus_nao_confirmou' }
+      | { liberada: false; motivo: 'guarda_recusou'; detalhe: 'sem_token_homologacao' | 'sem_token_producao' | 'certificado_invalido' | 'producao_nao_habilitada' | 'producao_nao_declarada' | 'credencial_corrompida' | 'estado_fiscal_ilegivel' }
+      | { liberada: false; motivo: 'nao_gravou' }
+    > => ({ liberada: true }),
+  ),
 }));
 
 vi.mock('@/lib/fiscal/pkcs12', () => ({ parsePkcs12: h.parsePkcs12 }));
@@ -38,6 +58,12 @@ vi.mock('@/lib/crypto/envelope', () => ({ encryptBlob: h.encryptBlob }));
 vi.mock('@/lib/clients/supabase-storage', () => ({ uploadCertificado: h.storageUploadCertificado }));
 vi.mock('@/lib/fiscal/serpro-procurador', () => ({ garantirTokenProcurador: h.garantirTokenProcurador }));
 vi.mock('@/lib/fiscal/focus-empresa-sync', () => ({ atualizarEmpresaNaFocus: h.atualizarEmpresaNaFocus }));
+// `mensagemPromocao` NÃO é mockada: é pura, e é o texto dela que o aviso carrega
+// — mockar deixaria passar um aviso vazio.
+vi.mock('@/lib/fiscal/promover-producao', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/fiscal/promover-producao')>()),
+  promoverParaProducao: h.promoverParaProducao,
+}));
 
 import { conferirCnpjDoCertificado, processarUploadCertificado } from '@/lib/fiscal/cert-upload';
 
@@ -82,6 +108,7 @@ describe('processarUploadCertificado — Bloco 5: origem Focus', () => {
     h.storageUploadCertificado.mockResolvedValue({ path: 'empresa/certificado.enc' });
     h.garantirTokenProcurador.mockResolvedValue({ ok: true, token: 'tok', expiration: NOT_AFTER_FUTURO });
     h.atualizarEmpresaNaFocus.mockResolvedValue({ ok: true, token: null });
+    h.promoverParaProducao.mockResolvedValue({ liberada: true });
   });
 
   it("com origem 'propria', NÃO chama a Focus e devolve o aviso", async () => {
@@ -121,6 +148,109 @@ describe('processarUploadCertificado — Bloco 5: origem Focus', () => {
     );
     expect(r.ok).toBe(true);
     expect(h.atualizarEmpresaNaFocus).toHaveBeenCalledTimes(1);
+  });
+});
+
+// --- Sessão 35: o certificado é o gatilho da produção ----------------------
+//
+// Antes disto, NENHUM caminho do produto pedia `habilita_nfsen_producao` à
+// Focus, e toda empresa de origem 'balu' ficava em homologação para sempre.
+// O upload do A1 é o único gesto do cliente no fluxo automático — e é o momento
+// em que ela reúne pela primeira vez as condições de `decidirCredencial`.
+describe('processarUploadCertificado — a promoção para produção', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.parsePkcs12.mockReturnValue({
+      keyPem: 'key', certPem: 'cert', chainPem: '',
+      notBefore: '2020-01-01T00:00:00.000Z', notAfter: NOT_AFTER_FUTURO,
+      subjectCN: 'EMPRESA TESTE', cnpj: null, fingerprintSha256: 'ff',
+    });
+    h.storageUploadCertificado.mockResolvedValue({ path: 'empresa/certificado.enc' });
+    h.garantirTokenProcurador.mockResolvedValue({ ok: true, token: 'tok', expiration: NOT_AFTER_FUTURO });
+    h.atualizarEmpresaNaFocus.mockResolvedValue({ ok: true, token: null });
+    h.promoverParaProducao.mockResolvedValue({ liberada: true });
+  });
+
+  const subir = (fiscalRow: { focus_empresa_id: number | null; focus_origem: string | null }) =>
+    processarUploadCertificado(
+      makeSupabase(fiscalRow),
+      'empresa-1',
+      { bytes: Buffer.from([1, 2, 3]), senha: 'segredo' },
+      'user-1',
+    );
+
+  it('promove depois de espelhar o certificado na Focus, e devolve o resultado', async () => {
+    const r = await subir({ focus_empresa_id: 999, focus_origem: 'balu' });
+    expect(h.promoverParaProducao).toHaveBeenCalledTimes(1);
+    expect(h.promoverParaProducao).toHaveBeenCalledWith('empresa-1');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.producao).toEqual({ liberada: true });
+      expect(r.warnings).toEqual([]);
+    }
+  });
+
+  it("com origem 'propria', não tenta promover — o PUT lá não é nosso", async () => {
+    const r = await subir({ focus_empresa_id: 999, focus_origem: 'propria' });
+    expect(h.promoverParaProducao).toHaveBeenCalledTimes(0);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.producao).toBe(undefined);
+  });
+
+  it('sem cadastro na Focus, não tenta promover — não há o que habilitar', async () => {
+    const r = await subir({ focus_empresa_id: null, focus_origem: 'balu' });
+    expect(h.promoverParaProducao).toHaveBeenCalledTimes(0);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.producao).toBe(undefined);
+  });
+
+  it('se o espelho do certificado na Focus falhou, NÃO pede produção', async () => {
+    // Pedir produção depois de um PUT que falhou seria habilitar a emissão real
+    // de uma empresa cujo certificado a Focus talvez não tenha recebido.
+    h.atualizarEmpresaNaFocus.mockResolvedValue({ ok: false, error: 'Focus PUT → 500' });
+    const r = await subir({ focus_empresa_id: 999, focus_origem: 'balu' });
+    expect(h.promoverParaProducao).toHaveBeenCalledTimes(0);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.warnings.some((w) => w.includes('falhou ao enviar pra Focus'))).toBe(true);
+      expect(r.producao).toBe(undefined);
+    }
+  });
+
+  it('quando a promoção não passa, o motivo REAL chega como aviso na tela', async () => {
+    // O estado de toda empresa hoje: cadastrada, com A1, e sem token de produção.
+    h.promoverParaProducao.mockResolvedValue({ liberada: false, motivo: 'sem_token_producao' });
+    const r = await subir({ focus_empresa_id: 999, focus_origem: 'balu' });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.warnings.length).toBe(1);
+      expect(r.warnings[0]).toBe(
+        'Emissão em produção ainda não liberada: A Focus ainda não devolveu o token de produção desta empresa.',
+      );
+      expect(r.producao).toEqual({ liberada: false, motivo: 'sem_token_producao' });
+    }
+  });
+
+  it('empresa que JÁ está em produção não gera aviso — não é problema', async () => {
+    h.promoverParaProducao.mockResolvedValue({ liberada: false, motivo: 'ja_em_producao' });
+    const r = await subir({ focus_empresa_id: 999, focus_origem: 'balu' });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.warnings).toEqual([]);
+      expect(r.producao).toEqual({ liberada: false, motivo: 'ja_em_producao' });
+    }
+  });
+
+  it('erro da Focus na promoção vira aviso, e o certificado continua salvo', async () => {
+    h.promoverParaProducao.mockResolvedValue({
+      liberada: false, motivo: 'focus_recusou', detalhe: 'permissao_negada',
+    });
+    const r = await subir({ focus_empresa_id: 999, focus_origem: 'balu' });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.notAfter).toBe(NOT_AFTER_FUTURO);
+      expect(r.warnings[0]).toContain('A Focus recusou a habilitação de produção: permissao_negada');
+    }
   });
 });
 

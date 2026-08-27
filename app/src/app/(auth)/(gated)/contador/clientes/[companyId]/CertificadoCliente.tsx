@@ -51,7 +51,7 @@ export default function CertificadoCliente({ companyId, cert }: { companyId: str
       const r = await uploadCertificadoClienteAction(fd);
       if (!r.ok) { toast('error', r.error); return; }
       if (r.warning) toast('warning', r.warning);
-      else toast('success', 'Certificado enviado.');
+      else toast('success', r.info ?? 'Certificado enviado.');
       setSenha('');
       setAutorizado(false);
       if (fileRef.current) fileRef.current.value = '';

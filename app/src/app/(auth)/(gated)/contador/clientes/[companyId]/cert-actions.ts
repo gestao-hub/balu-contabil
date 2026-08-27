@@ -29,7 +29,7 @@ import { processarUploadCertificado } from '@/lib/fiscal/cert-upload';
 import { registrarAuditoria } from '@/lib/security/audit';
 
 export type UploadCertClienteResult =
-  | { ok: true; warning?: string }
+  | { ok: true; warning?: string; info?: string }
   | { ok: false; error: string };
 
 export async function uploadCertificadoClienteAction(
@@ -71,10 +71,13 @@ export async function uploadCertificadoClienteAction(
     alvoTipo: 'company',
     alvoId: alvo.companyId,
     contabilidadeId: ctx.id,
-    meta: { validade: r.notAfter, declaracao_titular: true },
+    meta: { validade: r.notAfter, declaracao_titular: true, producao_liberada: r.producao?.liberada === true },
   });
 
   revalidatePath(`/contador/clientes/${alvo.companyId}`);
   revalidatePath('/contador');
-  return r.warnings.length ? { ok: true, warning: r.warnings.join(' ') } : { ok: true };
+  if (r.warnings.length) return { ok: true, warning: r.warnings.join(' ') };
+  return r.producao?.liberada
+    ? { ok: true, info: 'Certificado enviado. Emissão em produção liberada para este cliente.' }
+    : { ok: true };
 }

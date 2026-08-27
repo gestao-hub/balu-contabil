@@ -32,7 +32,7 @@ export default function CertificadoForm(
       const r = await uploadCertificadoAction(fd);
       if (!r.ok) { toast('error', r.error); return; }
       if (r.warning) toast('warning', r.warning);
-      else toast('success', 'Certificado enviado.');
+      else toast('success', r.info ?? 'Certificado enviado.');
       setSenha('');
       if (fileRef.current) fileRef.current.value = '';
     } catch (err) {

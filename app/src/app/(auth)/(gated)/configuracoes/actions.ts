@@ -214,7 +214,7 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
 
 export async function uploadCertificadoAction(
   formData: FormData,
-): Promise<{ ok: true; warning?: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; warning?: string; info?: string } | { ok: false; error: string }> {
   const file = formData.get('file');
   const senha = String(formData.get('senha') ?? '');
   if (!(file instanceof File)) return { ok: false, error: 'Selecione o arquivo do certificado.' };
@@ -243,7 +243,14 @@ export async function uploadCertificadoAction(
   if (!r.ok) return r;
 
   revalidatePath('/configuracoes');
-  return r.warnings.length ? { ok: true, warning: r.warnings.join(' ') } : { ok: true };
+  // A tela de emissão passa a oferecer NFS-e no momento em que a produção é
+  // liberada — sem revalidar aqui, o usuário sobe o certificado, lê "produção
+  // liberada" e continua vendo o seletor antigo até recarregar.
+  if (r.producao?.liberada) revalidatePath('/notas_fiscais');
+  if (r.warnings.length) return { ok: true, warning: r.warnings.join(' ') };
+  return r.producao?.liberada
+    ? { ok: true, info: 'Certificado enviado. Emissão em produção liberada.' }
+    : { ok: true };
 }
 
 /**
