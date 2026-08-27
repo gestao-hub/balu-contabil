@@ -1,7 +1,113 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-25 (sessão 33 — **auditoria de segurança + o canal de WhatsApp fechado de ponta a ponta**. Parte 1: o bucket `company-certificates` era público; 0103/0104 aplicadas, CVEs de produção 5 high → 0. Parte 2: o roteiro de 5 passos da sessão 32 **passou inteiro**, inclusive os três pontinhos, que eram o único ponto nunca provado. O teste real achou 3 defeitos — silêncio no agradecimento, pontinhos antes da decisão, e saudação repetida na 2ª resposta — todos corrigidos. E o **encerramento por inatividade** entrou e rodou em produção, com pg_cron de minuto em minuto. **Pendente: reconferir a saudação com o deploy novo.**)
+> **Última atualização:** 2026-08-27 (sessão 34 — **o bloqueio da Focus era nosso**. A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. Medido contra a API real: o MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste. **Pendente: colar o token principal do painel da Focus.**)
+
+> ## 🆕 SESSÃO 34 (2026-08-27) — a Focus respondeu, e a resposta desmontou o diagnóstico
+>
+> ### 🔴 LEIA ISTO ANTES DO BLOCO "O BLOQUEIO QUE NÃO É NOSSO" DA SESSÃO 31
+>
+> **Aquele bloco está errado.** Ele afirma que a Focus bloqueia `/v2/empresas`
+> por permissão da CONTA, "independente de qual token for gravado", e conclui
+> que "isso NÃO se resolve com código, é chamado no suporte deles". O chamado
+> foi aberto, e o suporte respondeu o contrário:
+>
+> > "Consultamos o cadastro de vocês e verificamos que a conta e o acesso estão
+> > liberados, **inclusive, para utilizarem a API de Empresas**. Para operar
+> > nessa API é preciso utilizar, **exclusivamente, o token principal de
+> > produção**. Ele está disponível pelo painel da API navegando por
+> > Serviços > Painel API > Tokens."
+> > — Hélio Marques, Suporte ao Cliente, 27/08/2026
+>
+> Não faltava permissão. Faltava o token certo. O bloqueio era nosso.
+>
+> ### A medição que fecha o caso
+>
+> A própria mensagem da Focus mudou, e a nova entrega a causa:
+>
+> ```
+> antes (23/07 → 20/08):  permissao_negada — "Contate o suporte técnico"
+> AGORA (27/08):          permissao_negada — "Access token inválido (host: api.focusnfe.com.br)"
+> ```
+>
+> Com o token de produção do `.env.local` (`JSqPs…`, 32 chars), contra a API real:
+>
+> ```
+> GET /v2/codigos_cnae/6201501   [api.focusnfe.com.br]  -> 200   ✅
+> GET /v2/empresas               [api.focusnfe.com.br]  -> 401   "Access token inválido"
+> GET /v2/empresas/216964        [api.focusnfe.com.br]  -> 401   "Access token inválido"
+> GET /v2/empresas               [homologacao...]       -> 404   endpoint não existe
+> ```
+>
+> **Mesmo host, mesmo token, um endpoint aceita e o outro não.** O catálogo
+> aceita qualquer token válido da conta; a API de Empresas aceita só o
+> principal. Essa diferença é o veredito inteiro.
+>
+> Também descartado que fosse token de empresa disfarçado: o token de
+> homologação da plataforma **não enxerga** as duas NFS-e que a AL PISCINAS
+> emitiu em 09/06 — 404, idêntico a uma `ref` inventada.
+>
+> ### 🔴 O SEGUNDO PROBLEMA, QUE NINGUÉM TINHA OLHADO: a Vercel
+>
+> ```
+> Vercel (Production):  FOCUS_NFE_TOKEN          ✅ existe (Sensitive, ilegível)
+>                       FOCUS_NFE_TOKEN_PRODUCAO ❌ NÃO EXISTE
+>                       FOCUS_NFE_HOMOLOGACAO    ❌ NÃO EXISTE
+> config_focus (banco): token_hom = vazio · token_prod = vazio
+> ```
+>
+> `obterTokenFocus` cai no genérico quando o específico falta — então em
+> produção **o MESMO token atendia `hom` e `prod`**. Como um token de
+> homologação dá 401 contra a base de produção e vice-versa, um dos dois
+> ambientes estava necessariamente quebrado. É a falha muda que o cabeçalho da
+> `0099` descreve como o motivo de o par existir, acontecendo em produção.
+>
+> ### 💡 POR QUE PASSOU 35 DIAS — a lição, não o bug
+>
+> A sonda da tela `/admin/configuracoes/focus` testava `GET /v2/codigos_cnae`,
+> **que qualquer token válido responde 200**. Ela não distinguia o token
+> principal de um token qualquer: colava-se o errado, aparecia "aceito", e o
+> cadastro de empresa seguia 401 em silêncio.
+>
+> E não foi descuido — foi decisão registrada. O comentário do arquivo dizia,
+> com todas as letras, que "testar por `/v2/empresas` teria recusado tokens
+> corretos". A premissa era falsa, e virou regra de código: **a leitura errada
+> de um 401 foi escrita como comentário e depois obedecida como norma.** É o
+> mesmo padrão do 11º defeito da sessão 31 ("eu tinha a evidência certa e tirei
+> a conclusão errada"), com um agravante — desta vez a conclusão errada foi
+> gravada no repositório e passou a proteger a si mesma.
+>
+> ### ✅ CORRIGIDO NESTA SESSÃO
+>
+> - `focus.listarEmpresas()` novo no cliente — a única sonda que discrimina o
+>   token principal.
+> - Sonda de **produção agora é em dois passos**: catálogo (o token vale nesta
+>   base?) e, só se passar, `/v2/empresas` (e é o principal?). Homologação segue
+>   só no catálogo — `/v2/empresas` não existe naquela base.
+> - Status novo `nao_principal`: **avisa, não bloqueia**. Bloquear deixaria a
+>   plataforma sem token nenhum; calar foi o defeito. O aviso nomeia o endpoint
+>   e o caminho no painel da Focus.
+> - Os três comentários que carregavam a premissa falsa foram reescritos com a
+>   medição no lugar (`focus-token-sonda.ts`, `admin/configuracoes/focus/actions.ts`).
+> - **11 testes novos**, todos com asserção POSITIVA (a lição da sessão 33):
+>   exigem que a segunda sonda aconteça e que o aviso diga o que fazer. Com o
+>   ramo apagado, ficam vermelhos.
+>
+> ### 🔴 O QUE FALTA — e não é código
+>
+> 1. Painel da Focus → `Serviços > Painel API > Tokens` → copiar o **token
+>    principal de produção** e conferir se começa com `JSqPs`. Se não começar,
+>    é o achado.
+> 2. Colar em `/admin/configuracoes/focus`. O banco **vence a variável da
+>    Vercel** (`obterTokenFocus` lê `config_focus` primeiro), então vale sem
+>    redeploy — e a tela agora recusa o token errado em vez de aprová-lo.
+> 3. Responder ao Hélio. Ele pediu três coisas e as três estão em
+>    `docs/investigations/2026-08-27-focus-token-principal.md`.
+>
+> ### Linha de base
+>
+> **tsc 0 · 2215 testes · 36 pulados** (+11 sobre a sessão 33 parte 2).
+>
 
 > ## 🆕 SESSÃO 33 (2026-08-25) — a auditoria, e o que o painel escondia
 >
@@ -677,7 +783,12 @@
 > "Assinatura" some para empresa de carteira, e o campo de WhatsApp do escritório
 > passa a mostrar o estado real do canal.
 >
-> ### 🔴 O BLOQUEIO QUE NÃO É NOSSO — leia isto antes de qualquer coisa
+> ### ~~🔴 O BLOQUEIO QUE NÃO É NOSSO~~ — ⛔ ERRADO, corrigido na sessão 34 (27/08/2026)
+>
+> **A conclusão deste bloco é falsa e ficou 35 dias de pé.** A Focus confirmou
+> por escrito que a conta SEMPRE esteve liberada para a API de Empresas — o
+> que faltava era usar o *token principal de produção*. O texto abaixo fica
+> como registro do erro, não como diagnóstico. Ver a sessão 34, no topo.
 >
 > A Focus responde **`401 permissao_negada — Contate o suporte técnico`** em
 > `/v2/empresas` **desde 23/07/2026**. Último cadastro bem-sucedido: **09/06**.

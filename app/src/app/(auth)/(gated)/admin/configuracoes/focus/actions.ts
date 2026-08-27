@@ -2,11 +2,17 @@
 // 0094/0095/0099 — tokens da Focus NFe para a conta da PLATAFORMA (AdminBalu).
 //
 // O QUE ESTA TELA DECIDE: com que token a plataforma fala com a Focus em nome
-// da conta da plataforma — hoje, na prática, o catálogo de CNAEs e o de
-// municípios. Cadastro de empresa (`POST /v2/empresas`) também usa um destes
-// dois tokens (o de produção — ver `lib/clients/focus-nfe.ts:criarEmpresa`),
-// mas está bloqueado por permissão da CONTA no Gateway da Focus desde
-// 23/07/2026, independente de qual token for gravado aqui (ver 0099).
+// da conta da plataforma — o catálogo de CNAEs, o de municípios e, o que mais
+// importa, o **cadastro de empresa** (`POST /v2/empresas`), que usa o token de
+// PRODUÇÃO gravado aqui (ver `lib/clients/focus-nfe.ts:criarEmpresa`).
+//
+// ⚠️ 27/08/2026 — ESTE CABEÇALHO AFIRMAVA O CONTRÁRIO, e a afirmação era falsa.
+// Dizia que o cadastro de empresa "está bloqueado por permissão da CONTA no
+// Gateway da Focus desde 23/07/2026, independente de qual token for gravado
+// aqui". O suporte da Focus desmentiu por escrito: a conta está liberada para a
+// API de Empresas, e ela exige "exclusivamente o token principal de produção".
+// O token gravado aqui é EXATAMENTE o que decide se o cadastro funciona — a
+// frase antiga tirava desta tela a responsabilidade que é dela.
 //
 // O QUE ELA **NÃO** DECIDE: a emissão. Nota fiscal sai com o token DA EMPRESA
 // (`companies.focus_token`), que a Focus devolve no POST /v2/empresas.
@@ -31,6 +37,7 @@ import { guardarTokenFocus, invalidarCacheFocus, type AmbienteFocus } from '@/li
 import { focus } from '@/lib/clients/focus-nfe';
 import {
   classificarSondaTokenFocus,
+  combinarSondaProducao,
   type ResultadoSondaTokenFocus,
 } from '@/lib/fiscal/focus-token-sonda';
 import { ConfigFocusSchema } from '@/types/zod';
@@ -46,11 +53,13 @@ function nomeAmbiente(ambiente: AmbienteFocus): string {
   return ambiente === 'hom' ? 'homologação' : 'produção';
 }
 
-/** Código de CNAE real e fixo, presente no catálogo dos dois ambientes. A
- *  sonda tem de bater num endpoint que DISCRIMINA por token — em 20/08/2026
- *  os dois tokens da conta deram 200 em `/v2/codigos_cnae` cada um na sua
- *  base, e 401 nos dois em `/v2/empresas` (permissão da conta, não do
- *  token) — testar por `/v2/empresas` teria recusado tokens corretos. */
+/** Código de CNAE real e fixo, presente no catálogo dos dois ambientes.
+ *
+ *  Ele responde "este token vale NESTA base?" — e só isso. Aceita qualquer
+ *  token válido da conta, inclusive um que a API de Empresas recusa. Era a
+ *  sonda ÚNICA até 27/08/2026, e é por isso que um token errado ficou 35 dias
+ *  aprovado na tela enquanto o cadastro de empresa respondia 401. Em produção
+ *  ele agora é o PRIMEIRO passo, não o único — ver `sondarTokenFocus`. */
 const CODIGO_CNAE_SONDA = '6201501';
 
 /**
@@ -69,8 +78,37 @@ async function sondarTokenFocus(
   ambiente: AmbienteFocus,
   token?: string,
 ): Promise<ResultadoSondaTokenFocus> {
+  const catalogo = await sondarCatalogo(ambiente, token);
+
+  // Homologação para por aqui: `/v2/empresas` não existe em
+  // `homologacao.focusnfe.com.br` (404 `nao_encontrado`, medido em 27/08/2026),
+  // então não há segunda pergunta a fazer nessa base.
+  if (ambiente === 'hom') return catalogo;
+
+  // Produção tem a segunda pergunta — e ela é a que importa para o cadastro de
+  // empresa. Só é feita se o catálogo passou: ver `combinarSondaProducao`.
+  if (catalogo.status !== 'aceito') return catalogo;
+  return combinarSondaProducao(catalogo, await sondarEmpresas(token));
+}
+
+/** "Este token vale nesta base?" */
+async function sondarCatalogo(
+  ambiente: AmbienteFocus,
+  token?: string,
+): Promise<ResultadoSondaTokenFocus> {
   try {
     await focus.consultarCnae(CODIGO_CNAE_SONDA, ambiente, token);
+    return { status: 'aceito' };
+  } catch (e) {
+    return classificarSondaTokenFocus(e);
+  }
+}
+
+/** "E ele é o token PRINCIPAL de produção?" — a única pergunta que separa o
+ *  token que cadastra empresa do que só lê catálogo. */
+async function sondarEmpresas(token?: string): Promise<ResultadoSondaTokenFocus> {
+  try {
+    await focus.listarEmpresas(token);
     return { status: 'aceito' };
   } catch (e) {
     return classificarSondaTokenFocus(e);
@@ -135,13 +173,34 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
   ): s is SondaItem & { sonda: Extract<ResultadoSondaTokenFocus, { status: 'indeterminado' }> } =>
     s.sonda.status === 'indeterminado';
   const indeterminados = sondas.filter(ehIndeterminado);
-  let aviso: string | undefined;
+  const avisos: string[] = [];
   if (indeterminados.length > 0) {
     const partes = indeterminados.map(
       (s) => `${nomeAmbiente(s.ambiente)} (${s.sonda.motivo.slice(0, 100)})`,
     );
-    aviso = `Salvo, mas não foi possível confirmar: ${partes.join('; ')}. Teste a conexão quando puder.`;
+    avisos.push(`não foi possível confirmar: ${partes.join('; ')} — teste a conexão quando puder`);
   }
+
+  // 'nao_principal' AVISA MAS NÃO BLOQUEIA, e as duas metades são decisões.
+  //
+  // Não bloqueia porque o token é válido: ele serve ao catálogo de CNAEs e ao
+  // de municípios, e recusar a gravação deixaria a plataforma sem NENHUM token
+  // — pior que o estado que se quer corrigir.
+  //
+  // Avisa porque o silêncio aqui foi o defeito: entre 23/07 e 27/08/2026 esta
+  // tela disse "aceito" para um token que a API de Empresas recusava, e o
+  // cadastro de empresa ficou 35 dias quebrado sem que nada na interface
+  // apontasse para a causa. O aviso nomeia o endpoint e diz onde pegar o token
+  // certo — quem lê tem o que fazer sem abrir o código.
+  if (sondas.some((s) => s.sonda.status === 'nao_principal')) {
+    avisos.push(
+      'o token de produção é válido, mas NÃO é o token principal — a Focus o recusa em ' +
+      'GET /v2/empresas, que é o que cadastra empresa e habilita a emissão. Pegue o token ' +
+      'principal de produção no painel da Focus, em Serviços > Painel API > Tokens',
+    );
+  }
+
+  const aviso = avisos.length > 0 ? `Salvo, mas ${avisos.join('. Também ')}.` : undefined;
 
   const patch: Record<string, unknown> = {
     atualizado_por: ctx.userId,
@@ -287,6 +346,18 @@ export async function testarConexaoFocusAction(ambiente: AmbienteFocus): Promise
 
   const sonda = await sondarTokenFocus(ambiente);
   if (sonda.status === 'aceito') return { ok: true };
+  if (sonda.status === 'nao_principal') {
+    // Falha, e não sucesso com ressalva: quem clica em "testar" quer saber se
+    // a plataforma consegue trabalhar com este token. Para cadastrar empresa —
+    // o que essa credencial existe para fazer — ela não consegue.
+    return {
+      ok: false,
+      error:
+        'O token de produção é válido, mas NÃO é o token principal: a Focus o recusa em ' +
+        'GET /v2/empresas, o endpoint que cadastra empresa e habilita a emissão. Pegue o ' +
+        'token principal de produção no painel da Focus, em Serviços > Painel API > Tokens.',
+    };
+  }
   if (sonda.status === 'recusado') {
     return {
       ok: false,

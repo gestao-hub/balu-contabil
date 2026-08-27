@@ -218,6 +218,29 @@ export const focus = {
     call<FocusEmpresaCriada>('prod', 'POST', `/v2/empresas`, payload),
 
   /**
+   * GET /v2/empresas — lista as empresas da CONTA. Serve a um propósito só: é a
+   * ÚNICA sonda que distingue o **token principal de produção** de um token
+   * qualquer da conta.
+   *
+   * Por que isso precisa existir (medido em 27/08/2026): o token de produção
+   * que estava configurado responde **200 em `/v2/codigos_cnae`** e **401 em
+   * `/v2/empresas`**, no mesmo host, na mesma requisição. O catálogo aceita
+   * qualquer token válido; a API de Empresas aceita só o principal. Sondar pelo
+   * catálogo — que era o que a tela fazia — aprova o token errado e deixa o
+   * cadastro de empresa quebrado em silêncio.
+   *
+   * O suporte da Focus (Hélio Marques, 27/08/2026) confirmou por escrito: "para
+   * operar nessa API é preciso utilizar, exclusivamente, o token principal de
+   * produção", disponível em Serviços > Painel API > Tokens.
+   *
+   * Só existe em `api.focusnfe.com.br` — em `homologacao.focusnfe.com.br` o
+   * caminho devolve 404 `nao_encontrado` (medido), e é por isso que a sonda de
+   * homologação NÃO usa este endpoint.
+   */
+  listarEmpresas: (tokenOverride?: string) =>
+    call<Array<Record<string, unknown>>>('prod', 'GET', `/v2/empresas`, undefined, tokenOverride),
+
+  /**
    * GET /v2/empresas/:id — consulta empresa por id numérico devolvido no POST.
    * Mesmo motivo de `criarEmpresa`: revenda só existe em `api.focusnfe.com.br`.
    *
