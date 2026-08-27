@@ -1,8 +1,182 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-27 (sessão 34 — **o bloqueio da Focus era nosso**. A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. Medido contra a API real: o MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste. **Pendente: colar o token principal do painel da Focus.**)
+> **Última atualização:** 2026-08-27 (sessão 35 — **o impasse circular da produção**. Mesmo com o token certo, nenhuma empresa de origem `balu` chegaria a produção: `focus_ambiente='prod'` exigia `focus_habilita_nfsen_producao`, que só vem do PUT, que só sai quando o ambiente já é `'prod'`. Ciclo fechado, sem porta de entrada — **quebrado**: o upload do certificado A1 agora libera produção sozinho. A AL PISCINAS emitiu em `producaorestrita.nfse.gov.br` em 09/06 e foi a única a percorrer o fluxo inteiro. **Pendente: o token do painel continua dando 401 em `/v2/empresas`, e o usuário confirmou que não há outro token lá.**)
+>
+> _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
 
+> ## 🆕 SESSÃO 35 (2026-08-27, tarde) — o impasse circular da produção, achado e quebrado
+>
+> ### 🔴 O ACHADO: ninguém chegaria a produção, nem com o token certo
+>
+> A sessão 34 concluiu que faltava o token de revenda. Verdade — e **insuficiente**.
+> Medido nesta sessão: mesmo com o token certo, NENHUMA empresa de origem `balu`
+> chegaria a produção. Havia um ciclo fechado, sem porta de entrada:
+>
+> ```
+>   focus_ambiente = 'prod'
+>     ← só `definirModoFiscalAction` grava, e ela pré-valida com
+>       `decidirCredencial`, que para origem 'balu' exige…
+>   focus_habilita_nfsen_producao = true
+>     ← só `snapshotFocusEmpresa` preenche, lendo da Focus, que só devolve
+>       true depois de receber…
+>   PUT habilita_nfsen_producao: true
+>     ← `decidirFlagsNfse` só monta esse campo quando env === 'prod', e env
+>       sai de… focus_ambiente  ⟲
+> ```
+>
+> Cada elo é defensável isolado. Juntos, travavam tudo. Três fatos que fecham:
+>
+> 1. `focus_ambiente` nasce `'hom'` — `NOT NULL DEFAULT 'hom'` (0096, linha 19).
+> 2. O payload de **criação** (`focus-empresa-payload.ts`) não tem nenhum campo
+>    `habilita_*`. A habilitação só existe no PUT.
+> 3. `definirModoFiscalAction` era o **único** escritor de `focus_ambiente` no
+>    produto — e vive só no painel do contador. Empresa que se cadastra sem
+>    contador não tinha nem o botão manual.
+>
+> Medido no banco: as 5 linhas fiscais em `focus_ambiente = 'hom'`,
+> `focus_habilita_nfsen_producao = null`. Todas.
+>
+> ### 🧾 A RECONSTITUIÇÃO DA AL PISCINAS (09/06/2026) — a prova por medição
+>
+> A única empresa que já percorreu o fluxo automático inteiro. 22 minutos:
+>
+> ```
+> 11:07:46.387  empresa criada
+> 11:07:46.709  empresas_fiscais criada — 322 ms depois, mesmo pós-processamento
+> 11:13:50.478  certificado A1 gravado (válido até 20/03/2027)
+> 11:13:50.997  Focus sincronizada — focus_empresa_id = 216964
+> 11:16:03.143  NFS-e AUTORIZADA — nº 16, RPS 14563118, R$ 2.500,00, CNAE 4120400
+> 11:29:32.112  segunda AL PISCINAS (duplicata) — sincronizou em 443 ms,
+>               MESMO focus_empresa_id 216964 e com token
+> ```
+>
+> **O ambiente está escrito por extenso no callback que ficou guardado em
+> `notas_fiscais.payload_focusnfe`:**
+>
+> ```
+> url:        https://www.producaorestrita.nfse.gov.br/consultapublica/?tpc=1&chave=4113700…
+> url_danfse: https://focusnfe.s3…/arquivos_development/10358425000120_216964/202606/DANFSEs/…
+> ```
+>
+> `producaorestrita` é o ambiente de teste da NFS-e Nacional; `arquivos_development`
+> é o bucket de homologação da Focus. **Nota autorizada, ambiente de teste.**
+>
+> Três consequências que mudam o mapa:
+>
+> - **A arquitetura não é hipótese — já rodou.** Do zero à nota autorizada, sem
+>   gesto de admin, sem contrato do cliente com a Focus. Único trabalho humano: o A1.
+> - **O `POST /v2/empresas` FUNCIONAVA em 09/06.** A conta tinha acesso à API de
+>   Empresas e **perdeu** em algum ponto até o 401 de 23/07. Não é "nunca teve".
+> - **Reenviar o mesmo CNPJ devolve o token.** A duplicata das 11:29 é o
+>   experimento acidental: mesmo `focus_empresa_id`, com token, em 443 ms. Existe
+>   caminho de reconciliação, e ele é o próprio POST.
+>
+> Correção de registro: o bloco da sessão 31 fala em "as duas NFS-e que a AL
+> PISCINAS emitiu em 09/06". Foram **uma** emissão (`origem = 'emissao'`) e **um**
+> lançamento manual (`origem = 'manual'`, sem chave, sem PDF).
+>
+> ⚠️ `empresa_credenciais_focus.token_prod_cifrado` é **null nas duas linhas**.
+> Nunca existiu token de produção no banco — a coluna antiga guardava
+> `token_homologacao ?? token_producao`, um dos dois, sem registrar qual.
+>
+> ### ✅ O CONSERTO: o certificado A1 passa a liberar produção
+>
+> `src/lib/fiscal/promover-producao.ts` (NOVO) — molde do `resolver-credencial.ts`:
+> guarda pura + orquestrador. A ordem é o conserto — **PEDE → RELÊ → JULGA → GRAVA**:
+>
+> 1. `atualizarEmpresaNaFocus(admin, companyId, 'prod')` — PUT com ambiente
+>    explícito. **É o que abre o ciclo:** o valor NÃO sai de `focus_ambiente`, que
+>    é justamente a coluna que ele quer mudar.
+> 2. Relê o snapshot que o PUT já refez.
+> 3. `decidirCredencial` julga o estado REAL com o ambiente pretendido.
+> 4. Só então grava `focus_ambiente = 'prod'`, com `.select()`.
+>
+> **Nenhuma guarda foi afrouxada** — mudou a ORDEM em que são consultadas.
+> Service role por dentro, obrigatório: a 0098 tranca `focus_ambiente` e
+> `focus_habilita_nfsen_producao` contra `authenticated`, e o dono chega ali com
+> o client de sessão dele (viraria no-op silencioso, como o snapshot pré-0099).
+>
+> `decidirPromocao` (pura) recusa cedo em 5 casos — `ja_em_producao`,
+> `origem_propria`, `nao_cadastrada_na_focus`, `sem_token_producao`,
+> `certificado_invalido` — para não pedir à Focus o que a guarda recusaria
+> depois, deixando o estado da Focus à frente do nosso.
+>
+> **Gatilho** em `cert-upload.ts`, logo após o PUT que espelha o A1: é o único
+> gesto do cliente no fluxo automático e o momento em que a empresa reúne pela
+> primeira vez as quatro condições. Motivo real vira aviso na tela, nunca silêncio.
+> `ja_em_producao` não gera aviso.
+>
+> **Também consertado:** `listarTiposEmissaoAction` lia só
+> `focus_habilita_nfsen_homologacao` — uma empresa habilitada em PRODUÇÃO sumiria
+> do seletor. Agora lê as duas flags. (A metade do defeito que afeta origem
+> `'propria'` — colunas `NULL` para sempre porque o snapshot recusa rodar lá —
+> **continua aberta**, é outra decisão.)
+>
+> Commits `2a03422` (levantamento) e `2d2376d` (feature), publicados em
+> `9960a63..2d2376d`.
+>
+> ### ⛔ ONDE PARAMOS: o token continua 401, e não há outro no painel
+>
+> O usuário conferiu o painel da Focus e confirmou: **não há token novo**. O
+> "classic" é o que já temos. Sondado ao vivo no fim da sessão:
+>
+> ```
+> producao JSqPs… (32) · homologacao 33dzT… (32) · diferentes entre si
+> GET /v2/codigos_cnae/6201501  [api.focusnfe.com.br]  200   aceito
+> GET /v2/empresas              [api.focusnfe.com.br]  401   "Access token inválido"
+> GET /v2/empresas/216964       [api.focusnfe.com.br]  401
+> GET /v2/empresas              [homologacao…]         404   endpoint não existe
+> ```
+>
+> `config_focus` no banco continua **vazia** — quem manda é a variável de ambiente.
+>
+> **A pergunta para a Focus, agora objetiva** (a evidência de 09/06 é nova e a
+> resposta anterior não a tinha): *a empresa 216964 (CNPJ 10.358.425/0001-20) foi
+> criada pela nossa conta via `POST /v2/empresas` em 09/06/2026 e emitiu NFS-e em
+> seguida. Hoje o token do painel (primeiros dígitos `JSqPs`) dá 200 em
+> `/v2/codigos_cnae` e 401 em `/v2/empresas`, no mesmo host. (1) Qual token criou
+> a 216964? (2) Por que o token que o painel oferece hoje não abre a mesma API
+> que a conta usou em junho?*
+>
+> ### Estado atual da promoção, por empresa (medido)
+>
+> | Empresa | O que `decidirPromocao` responde hoje |
+> |---|---|
+> | AL PISCINAS ×2 | `sem_token_producao` |
+> | dev.ide ×2 | `nao_cadastrada_na_focus` |
+> | PADARIA MODELO | `nao_cadastrada_na_focus` |
+>
+> Ninguém é promovido hoje. O código dispara sozinho no minuto em que o
+> `POST /v2/empresas` voltar a passar e a Focus devolver o par completo.
+>
+> ### Pendências desta sessão
+>
+> - 🔴 **Voltar à Focus com a pergunta acima.** Rascunho anterior em
+>   `docs/investigations/2026-08-27-focus-token-principal.md` — **ainda não
+>   reescrito** com a evidência da 216964.
+> - 🟡 **Metade do defeito do seletor** (origem `'propria'`) continua aberta.
+> - 🟡 **Segundo gatilho:** o botão "Sincronizar com Focus" promoveria a AL
+>   PISCINAS sem reenviar o certificado. Não implementado.
+> - 🟡 **Sem retry/reconciliação** do `POST /v2/empresas`. Nenhum cron reprocessa;
+>   a única retentativa é o botão em `/configuracoes`.
+> - 🟡 **Custo:** confirmar com a Focus se há cobrança por empresa cadastrada —
+>   cadastrar todo trial no signup viraria custo proporcional a cadastros.
+> - 🟡 **Duas linhas `AL PISCINAS`** e **duas `dev.ide`** em `companies` (a 0098
+>   criou índice único por `empresa_id` vivo em `empresas_fiscais`, mas as
+>   empresas duplicadas seguem lá).
+> - 🟡 PADARIA MODELO com trial expirado em 26/08/2026 — bloqueada pelo gate.
+>
+> ### Levantamentos desta sessão
+>
+> - `docs/investigations/2026-08-27-token-automatico-por-empresa.md`
+> - Telas publicadas: **O Círculo Fechado** (o impasse) e **A Primeira Nota**
+>   (a reconstituição da AL PISCINAS).
+>
+> **Linha de base ao fim da sessão 35:** tsc 0 · **2239 testes** · 36 pulados ·
+> `next build` limpo. (Eram 2215 no início; os 24 novos são 17 da guarda pura
+> `decidirPromocao` + `mensagemPromocao` e 7 do fio do gatilho no upload.)
+>
 > ## 🆕 SESSÃO 34 (2026-08-27) — a Focus respondeu, e a resposta desmontou o diagnóstico
 >
 > ### 🔴 LEIA ISTO ANTES DO BLOCO "O BLOQUEIO QUE NÃO É NOSSO" DA SESSÃO 31
