@@ -178,7 +178,9 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
     const partes = indeterminados.map(
       (s) => `${nomeAmbiente(s.ambiente)} (${s.sonda.motivo.slice(0, 100)})`,
     );
-    avisos.push(`não foi possível confirmar: ${partes.join('; ')} — teste a conexão quando puder`);
+    avisos.push(
+      `Não foi possível confirmar: ${partes.join('; ')} — teste a conexão quando puder.`,
+    );
   }
 
   // 'nao_principal' AVISA MAS NÃO BLOQUEIA, e as duas metades são decisões.
@@ -194,13 +196,17 @@ export async function salvarConfigFocusAction(entrada: unknown): Promise<ActionR
   // certo — quem lê tem o que fazer sem abrir o código.
   if (sondas.some((s) => s.sonda.status === 'nao_principal')) {
     avisos.push(
-      'o token de produção é válido, mas NÃO é o token principal — a Focus o recusa em ' +
+      'O token de produção é válido, mas NÃO é o token principal: a Focus o recusa em ' +
       'GET /v2/empresas, que é o que cadastra empresa e habilita a emissão. Pegue o token ' +
-      'principal de produção no painel da Focus, em Serviços > Painel API > Tokens',
+      'principal de produção no painel da Focus, em Serviços > Painel API > Tokens.',
     );
   }
 
-  const aviso = avisos.length > 0 ? `Salvo, mas ${avisos.join('. Também ')}.` : undefined;
+  // Cada aviso é uma frase inteira, e o prefixo é neutro de propósito: com
+  // "Salvo, mas …" o texto virava "Salvo, mas o token é válido, mas NÃO é o
+  // principal". Este toast é o que a pessoa lê no momento exato de decidir se
+  // precisa voltar ao painel da Focus — não é lugar de tropeço de leitura.
+  const aviso = avisos.length > 0 ? `Salvo. ${avisos.join(' ')}` : undefined;
 
   const patch: Record<string, unknown> = {
     atualizado_por: ctx.userId,
