@@ -22,10 +22,37 @@
 > "Próximo passo imediato", que estavam abertos desde 19/08. O canal já tinha
 > sido provado de ponta a ponta na sessão 33.
 >
-> ⚠️ **Não fecha a dívida de LGPD** — ao contrário. A política de privacidade
-> continua **sem mencionar WhatsApp**, e agora há conversas reais de clientes
-> armazenadas por escritório. Entregar o canal tornou a dívida mais urgente,
-> não menos. Vai junto na revisão jurídica (ver abaixo).
+> ✅ **`whatsapp_atendimentos` esvaziada (29/08).** As **47 linhas** de 12/08 a
+> 25/08 foram apagadas — todo o período em que a instância da plataforma esteve
+> pareada no número PESSOAL, quando tudo que chegava ali virava linha na tabela,
+> inclusive conversa sem relação nenhuma com o Balu (uma delas citando nome de
+> terceiro). Decisão do usuário: apagar **todas**, e não só as de terceiros —
+> inclui as 14 linhas do número com conta e escritório vinculados, que eram do
+> mesmo período de teste.
+>
+> A tabela **não tem `deleted_at`**: foi DELETE de verdade. Backup em
+> `scratchpad/whatsapp_atendimentos-backup.json` (47 linhas × 14 campos,
+> conferido antes de apagar). ⚠️ **Esse arquivo contém dados pessoais de
+> terceiros** — apagar quando não for mais necessário; guardá-lo indefinidamente
+> recria o problema que a limpeza resolveu.
+>
+> ⏭️ **Falta o outro meio do item 1:** desligar o webhook do número pessoal. Sem
+> isso a tabela volta a encher.
+>
+> ✅ **Política de privacidade — seção 7 (WhatsApp) redigida** (`a322842`),
+> pronta para o advogado. Descreve o que o sistema faz, conferido no código:
+> os dois números, as colunas gravadas, o envio do conteúdo da mensagem a um
+> provedor de IA, o escopo por escritório e o encerramento por inatividade (que
+> encerra o atendimento e **não** apaga). `uazapi` e o provedor de IA entraram
+> na tabela de operadores. Seções 8-14 renumeradas e 5 referências cruzadas
+> corrigidas, uma delas nos Termos de Uso.
+>
+> ⚠️ **A nota 3 ao advogado registra uma divergência REAL entre texto e
+> sistema:** a rotina de anonimização da **0040** atinge `profiles`, `companies`
+> e `clientes`, mas **NÃO** `whatsapp_atendimentos`. Quem exclui a conta continua
+> com telefone e mensagens armazenados. A política foi escrita para não prometer
+> o contrário; corrigir isso no código é trabalho pendente, e depende do prazo de
+> retenção que o advogado definir.
 >
 > ### 🔴 O QUE A AUDITORIA VIU, E O QUE O CÓDIGO DISSE
 >
