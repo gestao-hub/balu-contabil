@@ -30,6 +30,20 @@ export default async function DashboardPage() {
   if (ctx?.normalizedRole === 'adminbalu') redirect('/admin');
 
   const companyId = ctx?.currentCompany ?? null;
+
+  // Auditoria 29/08/2026: "o início do Contador mistura linguagem e ação de
+  // empresa". A causa é esta tela ser a home de todo mundo: o contador sem
+  // empresa própria caía no estado vazio abaixo, que manda "criar ou
+  // selecionar uma empresa" — coisa que ele não faz. A home dele é a carteira,
+  // exatamente como a do AdminBalu é /admin.
+  //
+  // A condição olha `companyId`, e não só o papel, de propósito: contador PODE
+  // ser dono de uma empresa (papel e posse são coisas diferentes — `role_types`
+  // não impede o vínculo em `companies`). Nesse caso o painel abaixo é
+  // legítimo e continua aparecendo; redirecionar sempre esconderia dele a
+  // própria empresa.
+  if (!companyId && ctx?.normalizedRole === 'contador') redirect('/contador');
+
   if (!companyId) {
     return (
       <main className="p-6">

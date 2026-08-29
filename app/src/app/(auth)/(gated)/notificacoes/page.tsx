@@ -4,6 +4,8 @@
 
 import { Bell } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
+import { getGateContext } from '@/lib/auth/gate-context';
+import { subtituloPorPapel } from '@/lib/notifications/copy-por-papel';
 import { marcarTodasLidasAction } from './actions';
 import type { Severidade } from '@/lib/notifications/tipos';
 
@@ -41,6 +43,7 @@ export default async function NotificacoesPage(
 ) {
   const { sel } = await searchParams;
   const supabase = await createServerClient();
+  const subtitulo = subtituloPorPapel((await getGateContext())?.normalizedRole ?? null);
 
   // Notificação aberta pelo sino (?sel=<id>): marca como lida antes de listar.
   // A RLS `notifications_update_own` garante que só a própria linha é afetada.
@@ -75,7 +78,12 @@ export default async function NotificacoesPage(
             <Bell className="size-5 text-primary" />
             <h1 className="text-2xl font-semibold text-foreground">Notificações</h1>
           </div>
-          <p className="text-sm text-muted-foreground">Avisos e lembretes de obrigações da sua empresa.</p>
+          {/* BUG-007 (auditoria 29/08/2026): o Admin lia "obrigações da sua
+              empresa" — e ele não tem empresa. A tela é a mesma para os três
+              papéis, então a frase tem de ser do papel, não da Empresa.
+              `getGateContext` é memoizado por request (o layout já o chamou),
+              então ler o papel aqui não custa ida ao banco. */}
+          <p className="text-sm text-muted-foreground">{subtitulo}</p>
         </div>
         {naoLidas > 0 && (
           <form action={marcarTodasWrapper}>

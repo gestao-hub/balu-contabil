@@ -16,6 +16,7 @@ import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
 import { ibgePorCep } from '@/lib/fiscal/ibge-por-cep';
+import { mensagemDeErroDeEmpresa } from '@/lib/empresa/cnpj-unico';
 
 export async function lookupCnpjAction(cnpj: string) {
   return lookupCnpj(cnpj);
@@ -170,7 +171,9 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
     .single();
 
   if (error || !row) {
-    return { ok: false, error: error?.message ?? 'Falha ao criar empresa.' };
+    // A colisão do índice `companies_cnpj_ativo_uniq` (0106) precisa virar a
+    // regra de negócio, e não `duplicate key value violates...`.
+    return { ok: false, error: mensagemDeErroDeEmpresa(error, 'Falha ao criar empresa.') };
   }
 
   // Vem de `/r/[token]` (link reutilizável do escritório): cookie httpOnly com o

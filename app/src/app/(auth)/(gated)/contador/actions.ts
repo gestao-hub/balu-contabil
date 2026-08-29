@@ -13,6 +13,7 @@ import { parseAberturaForm, aberturaFileEntry } from '@/lib/abertura/form';
 import { canonical, dadosHash, sha256File } from '@/lib/abertura/hash';
 import { uploadAberturaDoc } from '@/lib/clients/supabase-storage';
 import { ABERTURA_TEXT_FIELDS, DOC_KEYS, type DocKey } from '@/types/abertura';
+import { mensagemDeErroDeEmpresa } from '@/lib/empresa/cnpj-unico';
 
 // Padrão local ao arquivo (não cross-import de rota) — segue a convenção
 // dominante do repo: cada `actions.ts` declara seu próprio ActionResult
@@ -89,7 +90,10 @@ export async function criarEmpresaClienteAction(input: unknown): Promise<ActionR
       nome: companyFields.nome?.trim() || companyFields.razao_social,
     })
     .select('id').single();
-  if (error || !comp) return { ok: false, error: error?.message ?? 'Falha ao criar empresa.' };
+  // É AQUI que a regra de 29/08 é sentida na prática: o escritório tenta
+  // cadastrar um cliente que já está em outro escritório. A mensagem tem de
+  // dizer o caminho (desligar lá, religar aqui), e não o nome do índice.
+  if (error || !comp) return { ok: false, error: mensagemDeErroDeEmpresa(error, 'Falha ao criar empresa.') };
 
   // empresas_fiscais + Focus + CNAEs — mesmo pós-processamento do fluxo do dono.
   // ownerUserId null: empresa ainda sem dono (ver posProcessarNovaEmpresa).
