@@ -1,9 +1,108 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-27 (sessão 35 — **o impasse circular da produção**. Mesmo com o token certo, nenhuma empresa de origem `balu` chegaria a produção: `focus_ambiente='prod'` exigia `focus_habilita_nfsen_producao`, que só vem do PUT, que só sai quando o ambiente já é `'prod'`. Ciclo fechado, sem porta de entrada — **quebrado**: o upload do certificado A1 agora libera produção sozinho. A AL PISCINAS emitiu em `producaorestrita.nfse.gov.br` em 09/06 e foi a única a percorrer o fluxo inteiro. **Pendente: o token do painel continua dando 401 em `/v2/empresas`, e o usuário confirmou que não há outro token lá.**)
+> **Última atualização:** 2026-08-29 (sessão 36 — **auditoria funcional externa e Onda 1 do fechamento**. 96 checkpoints, 70 aprovados; parecer NÃO APROVADO para piloto. A leitura do repositório inverteu dois achados: o contador não tem superfície de escrita (o banco já nega — era formulário sem saída), e o Fator R não tem erro de cálculo, só de frase. Mas achou um furo maior: `lancarNotaManualAction` era a única das seis actions de escrita fiscal sem `empresaDoDono` — teste de mutação provou que ela **retornava `ok:true` inserindo em empresa alheia**, com a RLS como único freio. **WhatsApp ENTREGUE** (número oficial + escritório), o que fecha os itens 1 e 2 da lista de próximos passos e torna mais urgente a dívida da política de privacidade não mencionar WhatsApp. Onda 1 no branch `onda-1-auditoria-29-08`. **Pendente e seu: revisão jurídica dos documentos e a decisão de publicar 1.1, que joga todos os usuários para /aceite.**)
+>
+> _Anterior — sessão 35: **o impasse circular da produção**. Mesmo com o token certo, nenhuma empresa de origem `balu` chegaria a produção: `focus_ambiente='prod'` exigia `focus_habilita_nfsen_producao`, que só vem do PUT, que só sai quando o ambiente já é `'prod'`. Ciclo fechado, sem porta de entrada — **quebrado**: o upload do certificado A1 agora libera produção sozinho. A AL PISCINAS emitiu em `producaorestrita.nfse.gov.br` em 09/06 e foi a única a percorrer o fluxo inteiro. **Pendente: o token do painel continua dando 401 em `/v2/empresas`, e o usuário confirmou que não há outro token lá.**)
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
+
+> ## 🆕 SESSÃO 36 (2026-08-29) — auditoria funcional externa, e a Onda 1 do fechamento
+>
+> Chegou uma **auditoria funcional de produção** (96 checkpoints, três perfis):
+> 70 aprovados, 7 falhas, 15 bloqueados por credencial/config/terceiro, 4 N/A.
+> Parecer: **não aprovado para piloto**, por dois P1. Levantamento e plano em
+> 4 ondas ficaram numa página à parte; o que importa aqui é o que mudou no
+> código e o que a leitura do repositório corrigiu no diagnóstico dela.
+>
+> ### ✅ WHATSAPP — ENTREGUE
+>
+> Confirmado pelo usuário em 29/08: o número oficial da plataforma e o
+> pareamento de escritório estão feitos. Fecha os itens 1 e 2 da lista de
+> "Próximo passo imediato", que estavam abertos desde 19/08. O canal já tinha
+> sido provado de ponta a ponta na sessão 33.
+>
+> ⚠️ **Não fecha a dívida de LGPD** — ao contrário. A política de privacidade
+> continua **sem mencionar WhatsApp**, e agora há conversas reais de clientes
+> armazenadas por escritório. Entregar o canal tornou a dívida mais urgente,
+> não menos. Vai junto na revisão jurídica (ver abaixo).
+>
+> ### 🔴 O QUE A AUDITORIA VIU, E O QUE O CÓDIGO DISSE
+>
+> Três achados dela mudam de forma depois de ler o repositório:
+>
+> **BUG-002 — "contador tem superfície de escrita fiscal" (P1).** É o
+> **inverso**: o contador é somente leitura por decisão de produto (reconfirmada
+> pelo usuário em 29/08), o banco já garante isso em três camadas — a 0033 ("SÓ
+> SELECT em dados do cliente; zero escrita"), `notas_fiscais_insert` exigindo
+> `user_owns_company`, e `lib/auth/empresa-dono.ts`. O que estava na tela era um
+> **formulário sem saída**: se ele submetesse, a RLS recusava.
+>
+> **MAS havia um furo real embaixo, e maior do que a auditoria pôde ver.**
+> `empresaDoDono` guardava 5 das 6 actions de escrita fiscal. A única de fora
+> era `lancarNotaManualAction` — justamente o formulário encontrado. Teste de
+> mutação (removi a guarda e rodei): **a action retorna `ok: true` e insere na
+> empresa alheia.** Todas as checagens de aplicação passavam — a de posse do
+> cliente rodava contra a empresa ERRADA, e `assertAssinaturaEmpresa` respondia
+> sobre assinatura de outro tenant. O único freio em produção era a policy de
+> RLS, na última linha da função.
+>
+> **BUG-003 — "rota de cadastro de contador acessível" (P2).** Mais sério do que
+> P2. `criarContabilidadeAction` checava sessão e vínculo, nunca **papel**, e
+> grava com `createAdminClient()` — service role, sem RLS por baixo. Não havia
+> rede nenhuma. E não era caminho forjado: `contador/page.tsx` manda quem não
+> tem vínculo para `/contador/cadastro`, e "sem vínculo" incluía Admin e
+> Empresa. Teste de mutação confirmou os três papéis criando escritório.
+>
+> **BUG-005 — "Fator R com 13 competências" (P2).** Falso positivo de risco
+> fiscal. `impostos/folha/page.tsx:18-20` mostra 13 de propósito (a corrente,
+> para preencher, + 12 fechadas) e `lib/fiscal/folha.ts:18-19` soma exatamente
+> a janela `-12..-1`. **A conta está certa; a frase é que está errada.**
+>
+> ### 🆕 ONDA 1 ENTREGUE (branch `onda-1-auditoria-29-08`, commit `333e41c`)
+>
+> - **`empresaDoDono` em `lancarNotaManualAction`** — a sexta das seis. Mais 3
+>   testes no bloco IDOR que já existia, todos validados por mutação.
+> - **Gate de papel do subtree `/contador`** em `contador/layout.tsx`
+>   (`requireContadorPage`), cobrindo as doze rotas de uma vez — regra repetida
+>   doze vezes é regra que falta na décima terceira. **Server Action não passa
+>   por layout**, então `criarContabilidadeAction` leva `requireContadorAction`
+>   própria, com 6 testes.
+> - **`/notas_fiscais` só mostra o botão de nova nota a quem o servidor deixaria
+>   emitir** — critério é `empresaDoDono`, e não papel, para não criar uma
+>   segunda definição de "pode emitir" que um dia divergiria da do banco.
+> - **Documentos legais deixam de sair em markdown cru** (páginas públicas e
+>   `/aceite`). Renderizador próprio em `lib/markdown/legal.ts` para o
+>   subconjunto que esses dois arquivos usam, com 15 testes. **Zero dependência
+>   nova**: `react-markdown` traria ~40 transitivas num projeto com 13 em
+>   runtime, a dias do piloto. Devolve árvore React, não HTML — sem
+>   `dangerouslySetInnerHTML`, e com guarda de `href` contra `javascript:`.
+> - **Copy da tela do cliente** deixa de prometer "modo leitura" sem qualificar,
+>   e nomeia as exceções autorizadas (certificado A1 e cobrança, ver 0085).
+>
+> **Linha de base: tsc 0 · 2263 testes (+21) · build limpo.** As 9 guardas novas
+> foram validadas por mutação, uma a uma — passar não prova nada.
+>
+> ### ⏭️ O QUE FALTA DA ONDA 1, E DEPENDE DE VOCÊ
+>
+> 1. **Revisão jurídica** dos dois documentos: remover o aviso de *"minuta
+>    técnica — pendente de revisão jurídica"* (`docs/legal/*.md`, linhas 5-10) e
+>    **incluir a seção de WhatsApp**. Controlador e encarregado já estão
+>    preenchidos — não há placeholder vazio.
+> 2. **Decidir publicar como versão 1.1.** Publicar dispara
+>    `documentosPendentes()` e joga **todos os usuários ativos** para `/aceite`
+>    no próximo login. É o correto sob a LGPD, mas é evento visível para o
+>    piloto inteiro: merece data escolhida, não acontecer de surpresa.
+>
+> ### 🔎 DUAS DECISÕES QUE TRAVAM CÓDIGO DA ONDA 2
+>
+> - **CNPJ único entre escritórios?** O índice é `companies (user_id, cnpj)`
+>   (0001, linha 299). Empresas criadas pelo contador nascem com `user_id` NULL
+>   (por desenho, `criarEmpresaClienteAction`) e no Postgres **NULL nunca colide
+>   com NULL** — nesse caminho o índice não deduplica nada. A auditoria viu o
+>   mesmo CNPJ ativo em tenants diferentes.
+> - **Um papel por pessoa** — confirmado pelo usuário em 29/08, e é o que a
+>   **0077** já impõe com `UNIQUE(user_id)`. Sem acúmulo, sem UI de troca.
 
 > ## 🆕 SESSÃO 35 (2026-08-27, tarde) — o impasse circular da produção, achado e quebrado
 >
@@ -3958,26 +4057,39 @@ mentindo sobre os blocos 4, 6 e 7.
 
 > ⚠️ Reescrita no fim da **sessão 29 (19/08, noite)**. Se voltar a divergir do
 > topo do arquivo, o topo é que vale.
+>
+> 🕐 **ESTA LISTA ESTÁ DEFASADA — conferida item a item em 29/08 (sessão 36).**
+> Ela é de 19/08 e as sessões 30–35 aconteceram depois. Os itens 1, 2 e 5 já
+> foram entregues e estão marcados abaixo. Antes de usar qualquer item daqui
+> como pendência, confira contra o topo do arquivo ou contra o código — foi
+> exatamente assim que o item 5 sobreviveu obsoleto por dez dias.
 
 **Lançamento: segunda-feira, 24/08.**
 
 ### Para o piloto rodar — dependem de você, não de código
 
-1. 🔴 **Número oficial do Balu** na instância da plataforma. Hoje ela está
-   pareada no número PESSOAL do usuário, e o combinado é desconectá-lo assim que
-   os testes acabarem — junto com **desligar o webhook e limpar de
-   `whatsapp_atendimentos` as conversas de terceiros**.
-2. 🔴 **Um escritório conectar o próprio número** pela tela nova
-   (`/contador/configuracoes/whatsapp`). O caminho está pronto e testado com
-   mock; falta um pareamento real de escritório.
+1. ✅ **Número oficial do Balu** na instância da plataforma — **ENTREGUE**
+   (confirmado pelo usuário em 29/08). O canal foi provado de ponta a ponta na
+   **sessão 33 (25/08)**, com os 5 passos do roteiro passando e três defeitos
+   achados só pelo teste real. ⚠️ Continua valendo a higiene combinada, se ainda
+   não foi feita: **desligar o webhook do número pessoal e limpar de
+   `whatsapp_atendimentos` as conversas de terceiros** (três conversas viraram
+   linha em 12/08). Não é opcional — são dados pessoais de quem nunca foi
+   cliente.
+2. ✅ **Um escritório conectar o próprio número** pela tela nova
+   (`/contador/configuracoes/whatsapp`) — **ENTREGUE** (confirmado pelo usuário
+   em 29/08).
 3. 🟡 **Anexo do Simples da `ideapp`** (ou o `anexo_base` do CNAE 7319002 no
    catálogo `cnae_anexo`). Enquanto faltar, o imposto dela não é recalculado —
    e agora o dono é avisado disso todo mês. **É decisão fiscal: não preenchi.**
 4. 🟡 **Asaas em produção** — nenhuma variável Asaas na Vercel; `ASAAS_ENV`
    ausente significa **sandbox**. É o que falta para a cobrança valer dinheiro.
-5. 🟡 **Emissão fiscal em produção** — `notas_fiscais/actions.ts` segue com
-   `env: FocusEnv = 'hom'` fixo. Depende de contrato Focus + certificado A1 dos
-   pilotos + procuração por CNPJ.
+5. ✅ **`env: FocusEnv = 'hom'` fixo — NÃO EXISTE MAIS.** Corrigido no Bloco 5;
+   `notas_fiscais/actions.ts:307` usa `credencial.ambiente`, decidido por
+   `resolverCredencialEmissao`. O texto abaixo ficou dez dias descrevendo código
+   que já não existia. 🟡 **O que de fato falta** para emissão em produção:
+   contrato Focus + certificado A1 dos pilotos + procuração por CNPJ — e o
+   token do painel, que a sessão 35 deixou dando **401 em `/v2/empresas`**.
 6. 🟡 **Token de revenda da Focus na tela nova** (`/admin/configuracoes/focus`).
    Hoje ele vive só como variável na Vercel, com valor "Sensitive" que ninguém
    consegue ler de fora — inclusive para conferir. Colar na tela e clicar em

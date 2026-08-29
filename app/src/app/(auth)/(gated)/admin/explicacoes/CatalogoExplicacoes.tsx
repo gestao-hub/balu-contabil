@@ -165,14 +165,24 @@ function LinhaExplicacao({ item, temProvedorIa }: { item: ItemCatalogo; temProve
           Salvar rascunho
         </button>
 
+        {/* Auditoria 29/08/2026: "item aprovado ainda oferece ação de aprovar
+            novamente". A condição precisa separar dois casos que o status
+            sozinho não separa — aprovado e INTOCADO (reaprovar é no-op, e
+            oferecer a ação sugere que falta fazer algo) de aprovado e EDITADO,
+            onde reaprovar é justamente o que o aviso logo acima manda fazer. */}
         <button
           type="button"
-          disabled={ocupado || !texto.trim() || intrusos.length > 0}
+          disabled={ocupado || !texto.trim() || intrusos.length > 0 || (item.status === 'aprovado' && !sujo)}
+          title={
+            item.status === 'aprovado' && !sujo
+              ? 'Esta explicação já está aprovada e no ar. Edite o texto para aprovar uma nova versão.'
+              : undefined
+          }
           onClick={() => agir(() => aprovarExplicacaoAction({ chave: item.chave, texto, versao: item.versao }), 'Aprovada. Já aparece para os clientes nesta situação.')}
           className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-opacity disabled:opacity-60"
         >
           <Check className="size-4" />
-          Aprovar
+          {item.status === 'aprovado' && !sujo ? 'Aprovada' : 'Aprovar'}
         </button>
 
         <button

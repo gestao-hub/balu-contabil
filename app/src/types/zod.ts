@@ -1,29 +1,46 @@
 // Auto-gerado — esquemas Zod para os payloads mais usados.
 // Estender conforme as pages forem implementadas.
 import { z } from 'zod';
+import { instalarMensagensPtBr } from '@/lib/validacao/mensagens-zod';
 import { isValidCnpj } from '@/lib/validators/cnpj';
+
+// Instalado AQUI, e não num arquivo de bootstrap: todo consumidor de schema no
+// projeto importa deste módulo, então este é o único ponto que roda antes de
+// qualquer `safeParse` — no servidor e no cliente. Um `instrumentation.ts` só
+// cobriria o servidor, e o formulário valida no navegador (BUG-004).
+instalarMensagensPtBr();
+
+/** Campo OPCIONAL vindo de formulário. O input não preenchido chega como `''`,
+ *  e `.optional()` sozinho aceita ausente mas NÃO vazio — foi essa distinção
+ *  que fez E-mail e UF falharem sem estarem marcados como obrigatórios
+ *  (BUG-004). Também evita gravar `''` no banco onde o certo é `NULL`. */
+const opcionalDeFormulario = (schema: z.ZodTypeAny) =>
+  z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), schema.optional());
 import { normalizarValorBRL } from '@/lib/format/dinheiro';
 import { COMPANY_TYPES } from '@/lib/billing/subconta';
 import { TIPOS_VALOR } from '@/lib/billing/avulso';
 import { PROVEDORES } from '@/lib/ai/provedores';
 import { EMPRESA_TIPOS, REGIMES, SEDE_TIPOS } from '@/types/abertura';
 
+// Todo campo opcional daqui passa por `opcionalDeFormulario`: este schema é
+// validado NO NAVEGADOR, com o objeto do formulário (`ClienteFormDialog`), onde
+// campo não preenchido é `''` e não `undefined`.
 export const ClienteSchema = z.object({
   person_type: z.enum(['PF','PJ']),
   razao_social: z.string().min(2),
   document: z.string().min(11),
-  inscricao_estadual: z.string().optional(),
-  indicador_inscricao_estadual: z.number().int().min(0).max(9).optional(),
-  inscricao_municipal: z.string().optional(),
-  email: z.string().email().optional(),
-  telefone: z.string().optional(),
-  logradouro: z.string().optional(),
-  numero: z.string().optional(),
-  complemento: z.string().optional(),
-  bairro: z.string().optional(),
-  municipio: z.string().optional(),
-  uf: z.string().length(2).optional(),
-  cep: z.string().optional(),
+  inscricao_estadual: opcionalDeFormulario(z.string()),
+  indicador_inscricao_estadual: opcionalDeFormulario(z.number().int().min(0).max(9)),
+  inscricao_municipal: opcionalDeFormulario(z.string()),
+  email: opcionalDeFormulario(z.string().email()),
+  telefone: opcionalDeFormulario(z.string()),
+  logradouro: opcionalDeFormulario(z.string()),
+  numero: opcionalDeFormulario(z.string()),
+  complemento: opcionalDeFormulario(z.string()),
+  bairro: opcionalDeFormulario(z.string()),
+  municipio: opcionalDeFormulario(z.string()),
+  uf: opcionalDeFormulario(z.string().length(2)),
+  cep: opcionalDeFormulario(z.string()),
   pais: z.string().default('Brasil'),
 });
 export type ClienteInput = z.infer<typeof ClienteSchema>;

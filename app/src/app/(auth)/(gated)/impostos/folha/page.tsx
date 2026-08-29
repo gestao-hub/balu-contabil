@@ -57,10 +57,19 @@ export default async function FolhaPage() {
         Voltar
       </Link>
 
+      {/* BUG-005 (auditoria 29/08/2026): o texto dizia "os últimos 12 meses" e a
+          grade mostrava 13 linhas, o que foi lido como risco de cálculo fora da
+          janela. O cálculo está certo — `somarFolha12` soma exatamente de -12 a
+          -1, excluindo a competência corrente, mesma janela do RBT12. A 13ª
+          linha é a competência CORRENTE, que está ali para ser preenchida
+          agora e entrar na janela no mês que vem. Era a frase que estava
+          errada, não a conta; e explicar as duas coisas custa uma linha. */}
       <h1 className="mt-3 text-xl font-semibold">Folha (Fator R)</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        A folha dos últimos 12 meses alimenta o <strong>Fator R</strong>, que decide entre o
-        Anexo III e o Anexo V para CNAEs sujeitos a ele. Meses em branco contam como zero.
+        A folha dos <strong>12 meses fechados</strong> alimenta o <strong>Fator R</strong>, que
+        decide entre o Anexo III e o Anexo V para CNAEs sujeitos a ele. Meses em branco contam
+        como zero. A competência corrente aparece no topo para você já lançar — ela entra no
+        cálculo a partir do mês seguinte.
       </p>
 
       {!companyId ? (
