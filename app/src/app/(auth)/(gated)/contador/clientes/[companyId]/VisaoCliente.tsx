@@ -89,9 +89,19 @@ export default function VisaoCliente({ empresa, tab, notas, guias, declaracoes, 
   return (
     <main className="p-6 max-w-5xl">
       <div className="mb-6 flex items-center gap-2 rounded-lg border border-primary bg-primary/10 px-4 py-3 text-sm text-primary">
+        {/* A frase antiga era "em modo leitura", ponto — e logo abaixo a aba
+            Certificado oferece upload de A1 e a de cobrança emite cobrança. A
+            auditoria de 29/08/2026 leu isso como contradição, e estava certa:
+            as duas são exceções DELIBERADAS (ver `0085_cert_enviado_por.sql`,
+            que grava quem subiu o PFX justamente por ser exceção), mas o texto
+            não dizia. Nomear as exceções é o que torna a promessa verdadeira —
+            e é mais honesto com o cliente, que aceitou o vínculo lendo
+            "somente visualização" no convite. */}
         <Eye className="size-4 shrink-0" />
         <span>
           Você está vendo os dados fiscais de <strong>{nomeExibicao}</strong> em modo leitura.
+          Emitir, lançar e cancelar notas é do titular. As exceções autorizadas por ele são o
+          envio do certificado A1 e a emissão de cobranças.
         </span>
       </div>
 

@@ -1,5 +1,6 @@
 // @custom — bubble-behavior (Day 1 / PR 1.2 — V1 §3.2)
 import { createServerClient } from '@/lib/supabase/server';
+import { empresaDoDono } from '@/lib/auth/empresa-dono';
 import NotasFiscaisList, { type NotaListRow } from './NotasFiscaisList';
 import { calcularLimiteEmissao, type LimiteEmissao } from '@/lib/fiscal/limite-emissao';
 import { getLimitesFiscais } from '@/lib/fiscal/parametros';
@@ -15,6 +16,12 @@ export default async function NotasFiscaisPage() {
 
   let notas: NotaListRow[] = [];
   let limite: LimiteEmissao = { mostrar: false };
+  // A tela mostra o botão de nova nota só para quem o SERVIDOR deixaria emitir.
+  // Critério é posse da empresa (`empresaDoDono`), e não papel: é exatamente a
+  // condição que `notas_fiscais_insert` (`user_owns_company`) e as seis actions
+  // de escrita já exigem. Checar papel aqui daria uma segunda definição de
+  // "pode emitir", que um dia divergiria da do banco.
+  let podeEmitir = false;
   if (user) {
     const { data: profile } = await supabase
       .from('profiles')
@@ -22,6 +29,7 @@ export default async function NotasFiscaisPage() {
       .eq('user_id', user.id)
       .single();
     const companyId = (profile?.current_company ?? null) as string | null;
+    podeEmitir = companyId ? (await empresaDoDono(supabase, user.id, companyId)) !== null : false;
 
     if (companyId) {
       const { data } = await supabase
@@ -84,10 +92,12 @@ export default async function NotasFiscaisPage() {
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Notas fiscais</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Histórico das notas emitidas pela empresa selecionada.
+            {podeEmitir
+              ? 'Histórico das notas emitidas pela empresa selecionada.'
+              : 'Histórico das notas emitidas pela empresa selecionada. Emitir e lançar notas é do titular da empresa.'}
           </p>
         </div>
-        <NovaNotaDropdown />
+        {podeEmitir && <NovaNotaDropdown />}
       </header>
 
       <LimiteEmissaoBanner limite={limite} />

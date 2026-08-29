@@ -1014,8 +1014,28 @@ export async function lancarNotaManualAction(input: NotaManualInput): Promise<La
 
   const { data: profile } = await supabase
     .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  const companyIdBruto = (profile?.current_company ?? null) as string | null;
+  if (!companyIdBruto) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+
+  // ANTI-IDOR: esta era a ÚNICA das seis actions de escrita fiscal sem a guarda
+  // (achado da auditoria de 29/08/2026) — as outras cinco provam o dono desde a
+  // revisão de 20/08. Aqui NÃO há credencial decifrada em jogo, porque o
+  // lançamento manual não chama a Focus; a rede que sobrava era a RLS
+  // (`notas_fiscais_insert` → `user_owns_company`) derrubando o INSERT lá no
+  // fim. Depender só dela custava três coisas, e nenhuma delas é o INSERT:
+  //
+  //   1. a checagem de posse do cliente, logo abaixo, filtrava por um
+  //      `company_id` NÃO PROVADO — validava contra a empresa errada;
+  //   2. `assertAssinaturaEmpresa` respondia sobre a assinatura de empresa
+  //      alheia, o que já é devolver dado de outro tenant;
+  //   3. o membro de escritório (que enxerga a empresa por
+  //      `companies_select_contador`, 0033) recebia o texto CRU da RLS em vez
+  //      de saber que a recusa é regra de papel, não falha do sistema.
+  //
+  // Daqui em diante só o id PROVADO. Ver `empresaDoDono`.
+  const companyId = await empresaDoDono(supabase, user.id, companyIdBruto);
+  if (!companyId) return { ok: false, error: MENSAGEM_NAO_E_DONO };
+
   const assinatura = await assertAssinaturaEmpresa(companyId);
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
 

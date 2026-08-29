@@ -220,7 +220,10 @@ vi.mock('@/lib/fiscal/resolver-credencial', async (importOriginal) => {
 vi.mock('@/lib/security/audit', () => ({ registrarAuditoria: h.registrarAuditoria }));
 vi.mock('@/lib/fiscal/municipio-nfse.server', () => ({ resolveMunicipioNfse: h.resolveMunicipioNfse }));
 
-import { emitirNotaAction, emitirNfeAction, atualizarStatusNotaAction, cancelarNotaAction } from './actions';
+import {
+  emitirNotaAction, emitirNfeAction, atualizarStatusNotaAction, cancelarNotaAction,
+  lancarNotaManualAction,
+} from './actions';
 import { MENSAGEM_RECUSA } from '@/lib/fiscal/resolver-credencial';
 import { MENSAGEM_NAO_E_DONO } from '@/lib/auth/empresa-dono';
 
@@ -276,6 +279,19 @@ const inputNfse = (over: Record<string, unknown> = {}) => ({
   valorReais: 100,
   aliquotaIssPercentual: 5,
   cnae: '6201500',
+  ...over,
+});
+
+const inputNotaManual = (over: Record<string, unknown> = {}) => ({
+  tipo: 'NFSe' as const,
+  clienteId: 'cliente-1',
+  numero: '123',
+  dataEmissao: '2026-08-29',
+  cnae: '6201500',
+  codigoTributacao: '010101',
+  descricao: 'Servico ja emitido fora do Balu',
+  valorReais: 100,
+  aliquotaIssPercentual: 5,
   ...over,
 });
 
@@ -606,5 +622,38 @@ describe('IDOR: current_company apontando para empresa de outro dono', () => {
     expect(h.resolverCredencialEmissao).not.toHaveBeenCalled();
     expect(h.focus.emitirNfe).not.toHaveBeenCalled();
     expect(h.inserts).toHaveLength(0);
+  });
+
+  // Lancamento manual: era a UNICA das seis actions de escrita fiscal sem a
+  // guarda (auditoria 29/08/2026) — e a que a auditoria encontrou exposta na
+  // tela para o membro de escritorio. Nao chama a Focus, entao aqui nao ha
+  // credencial a proteger: o que se protege e o INSERT em empresa alheia e as
+  // duas checagens que rodavam com o id NAO PROVADO.
+  it('lancarNotaManualAction recusa e NAO insere na empresa alheia', async () => {
+    empresaAlheia();
+    const r = await lancarNotaManualAction(inputNotaManual());
+    expect(r).toEqual({ ok: false, error: MENSAGEM_NAO_E_DONO });
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  // A ORDEM e o ponto: a guarda vem ANTES de `assertAssinaturaEmpresa`. Mover a
+  // guarda para depois nao quebra o teste acima (o insert continua barrado),
+  // mas volta a responder sobre a assinatura de uma empresa que nao e do
+  // usuario. Este teste morde essa mutacao.
+  it('lancarNotaManualAction nem consulta a assinatura da empresa alheia', async () => {
+    empresaAlheia();
+    await lancarNotaManualAction(inputNotaManual());
+    expect(h.assertAssinaturaEmpresa).not.toHaveBeenCalled();
+  });
+
+  // Mesma mutacao, do outro lado: a checagem de posse do cliente filtra por
+  // `company_id`. Com o id NAO PROVADO ela validava contra a empresa errada —
+  // deixando de ser barreira e virando decoracao.
+  it('lancarNotaManualAction nem chega a validar o cliente da empresa alheia', async () => {
+    empresaAlheia();
+    h.from.mockClear();
+    await lancarNotaManualAction(inputNotaManual());
+    const tabelas = h.from.mock.calls.map((c) => c[0]);
+    expect(tabelas).not.toContain('clientes');
   });
 });

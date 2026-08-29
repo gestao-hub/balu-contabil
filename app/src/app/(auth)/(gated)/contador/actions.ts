@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getContabilidadeCtx } from '@/lib/contador/guards';
+import { getContabilidadeCtx, requireContadorAction } from '@/lib/contador/guards';
 import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { ContabilidadeSchema, CompanyCreateSchema, ContabilidadeBrandingSchema, AberturaCreateSchema } from '@/types/zod';
@@ -22,6 +22,17 @@ import { ABERTURA_TEXT_FIELDS, DOC_KEYS, type DocKey } from '@/types/abertura';
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
 export async function criarContabilidadeAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  // GUARDA DE PAPEL (auditoria 29/08/2026). Esta action checava só "tem sessão"
+  // e "ainda não é membro de escritório" — e grava com `createAdminClient()`,
+  // que passa por cima da RLS. Qualquer usuário autenticado, de qualquer papel,
+  // criava um escritório e virava membro dele. Não era caminho teórico: o
+  // `redirect` de `contador/page.tsx` levava Admin e Empresa até o formulário.
+  //
+  // O gate do `contador/layout.tsx` não alcança aqui: Server Action não passa
+  // por layout. É por isso que a checagem é repetida, e não delegada.
+  const papel = await requireContadorAction();
+  if ('error' in papel) return { ok: false, error: papel.error };
+
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão inválida.' };

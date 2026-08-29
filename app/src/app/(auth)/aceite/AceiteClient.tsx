@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
+import MarkdownLegal from '@/components/MarkdownLegal';
 import { aceitarDocumentosAction } from './actions';
 
 export type DocumentoPendente = {
@@ -49,9 +50,12 @@ export default function AceiteClient({ documentos }: Props) {
               <p className="text-sm font-semibold text-foreground">{doc.titulo}</p>
               <span className="text-xs text-muted-foreground">versão {doc.versao}</span>
             </div>
-            <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-surface-2 p-3 text-xs leading-relaxed text-muted-foreground-2 font-sans">
-              {doc.conteudoMd}
-            </pre>
+            {/* Mesmo motivo da página pública: quem está ACEITANDO um documento
+                jurídico precisa conseguir lê-lo. O markdown cru era pior aqui
+                do que lá, porque aqui há um botão de concordar embaixo. */}
+            <div className="max-h-64 overflow-y-auto rounded-md border border-border bg-surface-2 p-3">
+              <MarkdownLegal md={doc.conteudoMd} />
+            </div>
           </div>
         ))}
       </div>

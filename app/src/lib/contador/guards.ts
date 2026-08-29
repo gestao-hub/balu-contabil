@@ -1,6 +1,49 @@
 // src/lib/contador/guards.ts
 import 'server-only';
+import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
+
+/**
+ * QUEM É CONTADOR — a checagem de PAPEL, que faltava neste arquivo.
+ *
+ * POR QUE EXISTE (auditoria 29/08/2026). Todo o resto daqui responde "de qual
+ * escritório esta pessoa é membro?", lendo `contabilidade_membros`. Isso
+ * responde por VÍNCULO, nunca por papel — e quem não tem vínculo nenhum não é
+ * recusado, é mandado para `/contador/cadastro` (ver `contador/page.tsx`) para
+ * criar um. Ou seja: o caminho de "não é contador" e o de "é contador e ainda
+ * não tem escritório" eram o MESMO caminho, e Admin e Empresa desciam por ele.
+ *
+ * O papel mora em `role_types.type`, que é fonte única e confiável: a 0104
+ * fechou as policies de escrita da tabela e tirou o fallback para
+ * `user_metadata` (que o próprio dono da sessão grava pelo GoTrue), e a 0077
+ * impõe `UNIQUE(user_id)` — uma pessoa, um papel. Não há acúmulo de papéis a
+ * considerar aqui; se um dia houver, é ESTE ponto que muda, não as telas.
+ *
+ * Par página/action pelo mesmo motivo de `lib/admin/guard.ts`: Server Action
+ * que redireciona de dentro perde a mensagem para o usuário.
+ */
+export async function requireContadorPage() {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+  const { data: role } = await supabase
+    .from('role_types').select('type').eq('user_id', user.id).maybeSingle();
+  // Para a raiz, e não para /login: quem chegou aqui TEM sessão válida — só está
+  // no lugar errado. Mandar para o login faria parecer que a sessão caiu.
+  if (role?.type !== 'Contador') redirect('/');
+  return user;
+}
+
+/** Guard de AÇÃO do Contador. Devolve erro em vez de redirecionar. */
+export async function requireContadorAction(): Promise<{ userId: string } | { error: string }> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Sessão inválida.' };
+  const { data: role } = await supabase
+    .from('role_types').select('type').eq('user_id', user.id).maybeSingle();
+  if (role?.type !== 'Contador') return { error: 'Esta área é do escritório contábil.' };
+  return { userId: user.id };
+}
 
 export type ContabilidadeCtx = {
   userId: string;

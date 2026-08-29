@@ -12,6 +12,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
+import MarkdownLegal from '@/components/MarkdownLegal';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,12 +72,14 @@ export default async function DocumentoPublicoPage(
         {new Date(doc.publicado_em as string).toLocaleDateString('pt-BR')}
       </p>
 
-      {/* Mesmo tratamento de `/aceite`: o projeto não tem renderizador de
-          markdown, e instalar um só para isto não se justifica. O texto é
-          legível como está. */}
-      <pre className="mt-6 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-foreground">
-        {doc.conteudo_md}
-      </pre>
+      {/* Até 29/08/2026 isto era um `<pre>` com o markdown cru, sob a premissa
+          de que "o texto é legível como está". A auditoria mostrou que não é:
+          numa página jurídica PÚBLICA, o leitor via `## 7.` e `**Encarregado:**`
+          com a sintaxe à mostra. O renderizador vive em `lib/markdown/legal.ts`
+          e cobre o subconjunto que estes documentos usam. */}
+      <div className="mt-6">
+        <MarkdownLegal md={doc.conteudo_md as string} />
+      </div>
 
       <p className="mt-10 border-t border-border pt-4 text-xs text-muted-foreground">
         Dúvidas sobre o tratamento dos seus dados? Fale com o encarregado pelo e-mail
