@@ -108,7 +108,7 @@ anonimizada** pelo prazo exigido pela legislação fiscal (cerca de 5 anos),
 porque sua eliminação total violaria obrigação legal de guarda (LGPD art. 16,
 I). Não se trata, portanto, de apagamento total e imediato de todo o
 histórico — é anonimização com retenção do que a lei exige. Detalhes em nossa
-[Política de Privacidade](./politica-de-privacidade-v1.md), seção 7.
+[Política de Privacidade](./politica-de-privacidade-v1.md), seção 8.
 
 ## 11. Limitação de responsabilidade
 

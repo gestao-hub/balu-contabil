@@ -34,6 +34,7 @@ legal e prazo de retenção — está no
 - **Dados de clientes do titular**: CPF/CNPJ, razão social, e-mail, telefone e endereço das pessoas físicas/jurídicas atendidas pelo titular.
 - **Documentos fiscais**: notas fiscais emitidas, guias (DAS), apurações e declarações de imposto.
 - **Dados de cobrança**: honorários entre o titular e o escritório contábil vinculado.
+- **Conversas de WhatsApp**: número de telefone, conteúdo das mensagens enviadas e recebidas, data e hora. Detalhado na seção 7.
 - **Registros de acesso e auditoria**: IP e ação, quando um contador acessa dados de um cliente ou quando ocorrem operações sensíveis.
 - **Consentimento**: registro do aceite desta política e dos Termos de Uso, com versão e IP.
 
@@ -54,7 +55,7 @@ Tratamos seus dados com base em:
 - **Art. 7º, I — execução de contrato**: para prestar o serviço que você contratou (cadastro, emissão fiscal, gestão de clientes, cobrança de honorários).
 - **Art. 7º, II — cumprimento de obrigação legal ou regulatória**: para a guarda de documentos fiscais pelo prazo exigido pela legislação tributária (~5 anos) e para a manutenção de registros de acesso (Marco Civil da Internet, art. 15).
 - **Art. 7º, IX — legítimo interesse**: para segurança da plataforma, prevenção a fraude e trilha de auditoria.
-- **Art. 9º (por analogia/cautela)**: credenciais de emissão fiscal e o certificado digital A1 são tratados com o mesmo cuidado dado a dados sensíveis — cifrados em repouso e nunca expostos em texto puro, mesmo na exportação de dados (seção 8).
+- **Art. 9º (por analogia/cautela)**: credenciais de emissão fiscal e o certificado digital A1 são tratados com o mesmo cuidado dado a dados sensíveis — cifrados em repouso e nunca expostos em texto puro, mesmo na exportação de dados (seção 9).
 
 ## 5. Compartilhamento com operadores
 
@@ -68,6 +69,8 @@ Compartilhamos dados com terceiros que processam informações em nosso nome
 | **Supabase** | Hospedagem do banco de dados, autenticação e armazenamento de arquivos | Todos os dados da plataforma |
 | **Resend** | Envio de e-mails transacionais | E-mail e nome do destinatário |
 | **n8n** (motor fiscal interno) | Orquestração determinística do cálculo e da emissão fiscal, sempre mediante confirmação do usuário | Dados fiscais necessários ao cálculo |
+| **uazapi** | Conectividade com o WhatsApp (envio e recebimento de mensagens) | Número de telefone e conteúdo das mensagens |
+| **Provedor de inteligência artificial** — atualmente **{{PROVEDOR_IA}}** | Geração das respostas do atendimento por WhatsApp | Conteúdo da mensagem recebida e o histórico da conversa em andamento |
 
 Não vendemos seus dados pessoais nem os compartilhamos para fins de
 publicidade de terceiros.
@@ -83,7 +86,45 @@ de um cliente é registrado em nossa trilha de auditoria (data, ator, ação e
 IP), com base no legítimo interesse de segurança (art. 7º, IX) e no
 consentimento do vínculo (art. 7º, I / art. 9º).
 
-## 7. Retenção e exclusão
+## 7. Canal de atendimento por WhatsApp
+
+O Balu oferece atendimento por WhatsApp em **dois números distintos**, com
+tratamentos separados:
+
+- **Número da plataforma**, operado pelo Balu, para dúvidas sobre o produto;
+- **Número do escritório contábil**, quando o escritório ao qual você está
+  vinculado conecta um número próprio. Nesse caso, as conversas ficam
+  restritas àquele escritório e não são visíveis a outros escritórios.
+
+**O que é tratado.** Ao enviar mensagem para qualquer um desses números,
+tratamos: seu **número de telefone**, o **conteúdo das mensagens** enviadas e
+recebidas, o identificador técnico da mensagem, a data e a hora, e — quando o
+número corresponde a uma conta cadastrada — o **vínculo com essa conta**.
+
+**Como a resposta é gerada.** As mensagens recebidas são processadas por um
+**provedor de inteligência artificial** contratado pelo Balu, que recebe o
+conteúdo da mensagem para redigir a resposta. O provedor atua como operador,
+listado na seção 5. A IA não decide nada de efeito fiscal: emissão de nota,
+cálculo e transmissão de guias continuam exigindo confirmação sua dentro do
+aplicativo.
+
+**Quem tem acesso.** As conversas do número do escritório são acessíveis à
+equipe daquele escritório; as do número da plataforma, à equipe do Balu.
+
+**Mensagens de quem não é usuário.** Qualquer pessoa pode escrever para esses
+números, inclusive quem não tem conta no Balu e, portanto, nunca aceitou esta
+política. Nesses casos, tratamos o número de telefone e o conteúdo da mensagem
+com base no **legítimo interesse** de responder a um contato espontâneo
+(LGPD art. 7º, IX), pelo tempo necessário ao atendimento. Se você escreveu para
+nós e quer que sua mensagem e seu número sejam eliminados, basta pedir ao
+Encarregado (seção 13) — não é preciso ter conta.
+
+**Encerramento da conversa.** Uma conversa é encerrada automaticamente após
+alguns minutos de inatividade quando o atendimento termina em agradecimento.
+Encerrar significa que o atendimento acabou — **não** significa que a conversa
+foi apagada. A retenção está descrita na seção 8.
+
+## 8. Retenção e exclusão
 
 - **Dados de conta** (perfil, empresa, clientes): mantidos enquanto sua conta
   estiver ativa.
@@ -101,8 +142,13 @@ consentimento do vínculo (art. 7º, I / art. 9º).
 - **Registros de auditoria e acesso**: mantidos por, no mínimo, 6 meses
   (Marco Civil da Internet, art. 15), podendo ser mantidos por período maior
   por legítimo interesse de segurança.
+- **Conversas de WhatsApp**: mantidas por **{{PRAZO_WHATSAPP}}** a contar da
+  última mensagem, para continuidade do atendimento e prova do que foi
+  orientado. ⚠️ **Ponto aberto — ver nota 3 ao advogado, no fim deste
+  documento:** hoje a exclusão de conta **não** alcança as conversas de
+  WhatsApp, e o prazo acima ainda não está definido nem implementado.
 
-## 8. Seus direitos (LGPD art. 18)
+## 9. Seus direitos (LGPD art. 18)
 
 Você tem direito a confirmação de tratamento, acesso, correção, anonimização,
 portabilidade, eliminação (nos limites da retenção legal acima) e informação
@@ -116,12 +162,12 @@ sobre compartilhamento. Na prática, hoje:
   **/conta**; os demais dados cadastrais são editáveis nas telas de empresa e
   clientes.
 - **Exclusão/anonimização**: também disponível em **/conta**, conforme
-  descrito na seção 7.
+  descrito na seção 8.
 
 Para outras solicitações relacionadas aos seus direitos, use o contato do
-Encarregado na seção 12.
+Encarregado na seção 13.
 
-## 9. Segurança (LGPD art. 46)
+## 10. Segurança (LGPD art. 46)
 
 Adotamos medidas técnicas e administrativas para proteger seus dados,
 incluindo:
@@ -136,9 +182,9 @@ incluindo:
   registrados com data, ator e IP.
 
 Nenhum sistema é 100% imune a incidentes; caso ocorram, seguimos o
-procedimento da seção 10.
+procedimento da seção 11.
 
-## 10. Incidentes de segurança (LGPD art. 48)
+## 11. Incidentes de segurança (LGPD art. 48)
 
 Em caso de incidente de segurança que possa acarretar risco ou dano relevante
 aos titulares, comunicaremos à Autoridade Nacional de Proteção de Dados
@@ -146,20 +192,74 @@ aos titulares, comunicaremos à Autoridade Nacional de Proteção de Dados
 informando a natureza dos dados afetados, as medidas técnicas adotadas e as
 recomendações aos titulares.
 
-## 11. Cookies e sessão
+## 12. Cookies e sessão
 
 Usamos apenas os cookies/mecanismos de sessão necessários para autenticação,
 providos pelo Supabase Auth. Não usamos cookies de rastreamento publicitário
 de terceiros.
 
-## 12. Contato do Encarregado (DPO)
+## 13. Contato do Encarregado (DPO)
 
 Dúvidas, solicitações sobre seus dados pessoais ou exercício dos direitos do
 art. 18 podem ser enviadas para o Encarregado (DPO)
 **Eduardo Henrique Alves Machado**, pelo e-mail **contato@excluvia.com.br**.
 
-## 13. Alterações desta política
+## 14. Alterações desta política
 
 Esta política é versionada. Alterações relevantes exigem um **novo aceite**
 do usuário (fluxo de re-aceite ao entrar no sistema), e a versão vigente e a
 data de publicação ficam registradas internamente. A versão atual é a **1.0**.
+
+---
+
+# Notas ao advogado — não publicar
+
+> **Remover este bloco inteiro antes de publicar.** Ele existe para a revisão e
+> não faz parte da política. A seção 7 (WhatsApp) foi acrescentada em
+> **29/08/2026**, depois que o canal entrou em produção; o restante do documento
+> já existia.
+>
+> Os campos `{{PROVEDOR_IA}}` e `{{PRAZO_WHATSAPP}}` estão propositalmente em
+> branco — dependem das decisões abaixo.
+
+**1. Quem é o provedor de IA, e ele pode ser trocado sem novo aceite?**
+O conteúdo das mensagens de WhatsApp é enviado a um provedor de IA para que a
+resposta seja redigida. O provedor é **configurável pelo administrador** (a
+plataforma suporta Anthropic, Google, OpenAI, OpenRouter, Groq, DeepSeek e
+Mistral, entre outros). Precisamos saber: (a) nomeamos o provedor atual na
+tabela da seção 5, assumindo novo aceite a cada troca, ou (b) descrevemos a
+categoria com uma lista pública mantida à parte? Há também a questão de
+**transferência internacional** (LGPD art. 33), já que esses provedores
+processam fora do Brasil.
+
+**2. Mensagens de quem não é usuário — a base legal escolhida está correta?**
+Qualquer pessoa pode escrever para os números do Balu ou de um escritório, e a
+mensagem e o telefone ficam armazenados. Essa pessoa **nunca aceitou esta
+política** e pode nem ser cliente. Redigimos a seção 7 apoiada em **legítimo
+interesse** (art. 7º, IX) com direito de eliminação a pedido. Pedimos
+confirmação de que essa é a base adequada, e se é necessário um aviso
+automático na primeira resposta informando que a conversa é registrada.
+
+**3. Prazo de retenção das conversas, e a lacuna na exclusão de conta.**
+Dois pontos, e o segundo é uma divergência real entre o texto e o sistema:
+- **Não há prazo definido** para as conversas de WhatsApp. Precisamos de um
+  número para `{{PRAZO_WHATSAPP}}`, considerando que a conversa pode conter
+  orientação contábil que o escritório queira poder comprovar depois.
+- **A exclusão de conta hoje não alcança as conversas.** A rotina de
+  anonimização atinge perfil, empresa e clientes, mas **não** a tabela de
+  atendimentos de WhatsApp. Ou seja: quem exclui a conta continua com telefone
+  e mensagens armazenados. Isso será corrigido no sistema — a nota serve para
+  que a política não prometa hoje algo que o produto ainda não faz.
+
+**4. Conversas anteriores a esta versão.**
+O canal operou antes desta redação, inclusive em um número pessoal usado para
+testes, e há conversas de terceiros armazenadas desde 12/08/2026. Perguntamos
+se a orientação é **eliminar esse histórico** antes da publicação, ou mantê-lo
+sob a base legal da nota 2.
+
+**5. Titularidade das conversas do número do escritório.**
+Quando o escritório conecta o próprio número, ele decide sobre aquele
+atendimento, mas os dados ficam na infraestrutura do Balu. Perguntamos se o
+enquadramento correto é **controladoria conjunta** ou **Balu como operador do
+escritório** — e se isso exige cláusula específica no contrato com os
+escritórios, além desta política.
