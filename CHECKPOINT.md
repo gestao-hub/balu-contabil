@@ -94,15 +94,83 @@
 >    no próximo login. É o correto sob a LGPD, mas é evento visível para o
 >    piloto inteiro: merece data escolhida, não acontecer de surpresa.
 >
-> ### 🔎 DUAS DECISÕES QUE TRAVAM CÓDIGO DA ONDA 2
+> ### ✅ CNPJ ÚNICO — 0106 APLICADA EM PRODUÇÃO (29/08)
 >
-> - **CNPJ único entre escritórios?** O índice é `companies (user_id, cnpj)`
->   (0001, linha 299). Empresas criadas pelo contador nascem com `user_id` NULL
->   (por desenho, `criarEmpresaClienteAction`) e no Postgres **NULL nunca colide
->   com NULL** — nesse caminho o índice não deduplica nada. A auditoria viu o
->   mesmo CNPJ ativo em tenants diferentes.
+> **Regra:** um CNPJ não pode existir em dois escritórios. Numa troca de
+> contador a empresa é DESLIGADA do atual e religada no novo — transferida,
+> nunca duplicada.
+>
+> **O furo por baixo:** `companies_owner_cnpj_uniq` (0001, linha 299) era
+> `(user_id, cnpj)`. Empresa cadastrada pelo escritório nasce com `user_id`
+> NULL e **no Postgres NULL nunca colide com NULL** — no caminho que mais cria
+> empresa no produto, aquele índice não travava absolutamente nada. Substituído
+> por `companies_cnpj_ativo_uniq`, global e parcial
+> (`cnpj is not null and deleted_at is null`). Conferido no `pg_indexes` depois
+> de aplicar: o novo existe, o antigo não.
+>
+> **A única duplicata da base era a AL PISCINAS** (`10358425000120`) — e a
+> primeira rodada da 0106 **abortou** por causa dela, que é o comportamento
+> projetado: a migration não escolhe qual linha sobrevive, porque isso é decisão
+> de negócio.
+>
+> Medido antes de resolver: **a mesma pessoa se cadastrou duas vezes, com duas
+> contas**, em 09/06, com 22 minutos de diferença.
+>
+> | | criada | dono | conteúdo |
+> |---|---|---|---|
+> | A `3f7370a5` | 14:07:46 | `7e584022` | 2 notas · 4 guias · 3 apurações |
+> | B `c070a7ec` | 14:29:32 | `233219e7` | 0 notas · 0 guias · 1 apuração vazia |
+>
+> Ficou A — tem a NFS-e real de 09/06 (nº 16, R$ 2.500,00). Nada de valor
+> existia só em B: o único cliente dela (`Alln`) é o cliente de A
+> (`Allan barros`) com o **mesmo CPF**, redigitado com erro, e a única apuração
+> era `202607` / `calculada` / **R$ 0,00**, gerada pelo cron em 13/08.
+>
+> ⚠️ **O passo que quase faltou:** `profiles.current_company` NÃO olha
+> `deleted_at`. Soft delete sem limpar aquele campo deixaria a conta apontando
+> para linha excluída — e o gate de onboarding (`!currentCompany`) veria o campo
+> PREENCHIDO e não redirecionaria ninguém. A pessoa abriria um painel que não
+> carrega nada, sem explicação. O `current_company` de `233219e7` foi limpo na
+> mesma transação.
+>
+> **Pendência humana:** a conta `233219e7` ficou sem empresa e continua
+> existindo, vazia. O acesso da pessoa é pela `7e584022`. Se ela tentar
+> recadastrar o CNPJ pela conta vazia, agora recebe a mensagem da 0106 — correta,
+> mas só faz sentido se ela souber o motivo. Apagar a conta duplicada é outra
+> decisão (há a 0040 de anonimização).
+>
+> ### 🔎 DECISÕES QUE TRAVAVAM CÓDIGO DA ONDA 2 — TODAS TOMADAS
+>
+> - **CNPJ único** — decidido e **já aplicado** (ver a seção acima).
 > - **Um papel por pessoa** — confirmado pelo usuário em 29/08, e é o que a
 >   **0077** já impõe com `UNIQUE(user_id)`. Sem acúmulo, sem UI de troca.
+> - **Contador é somente leitura** — reconfirmado em 29/08. As duas exceções
+>   (certificado A1 e credencial Focus) seguem valendo.
+>
+> ### ⏭️ ONDAS 2 E 3 TAMBÉM ENTREGUES (commits `b69abac`, `3ac9eee`, `bd398f6`)
+>
+> - **BUG-004** tinha DUAS causas, e só uma era idioma. `email` e `uf` eram
+>   `.optional()`, que aceita AUSENTE mas não VAZIO — e o formulário inicializa
+>   com `''`. A mesma linha produzia "obrigatório sem marcador" e `Invalid
+>   email`. O inglês virou `errorMap` global pt-BR (109 dos 174 usos de `z.` não
+>   tinham `message`), o que também faz schema futuro nascer traduzido.
+> - **BUG-005** — só a frase. Teste novo cobre a **virada de ano**, onde a
+>   aritmética `YYYYMM` erraria e o Fator R quebraria uma vez por ano.
+> - **BUG-007 e o dashboard do contador** eram o mesmo defeito: tela dos três
+>   papéis escrita para um deles. Default do subtítulo agora é NEUTRO.
+> - **BUG-006 — diagnóstico, sem correção.** Suspeito: `skipWaiting` +
+>   `clientsClaim` no `sw.ts` fazem um SW novo assumir ABAS JÁ ABERTAS, servindo
+>   chunks do build novo para documento do build antigo. Explica cada evidência
+>   (ocorrência única, aba limpa não repetiu, sem 4xx/5xx, escopo não isolado);
+>   tema e `localStorage` foram descartados por leitura. Não corrigido porque as
+>   duas saídas custam caro e a escolha é de produto — registrado no `sw.ts`.
+> - **SLA default — decidido NÃO fazer.** `sla_resposta_horas` aparece para o
+>   CLIENTE junto do Suporte: um default faria o app prometer prazo que o
+>   escritório nunca escolheu.
+> - **`scripts/rodar-sql.mjs`** — roda um `.sql` em transação, mesma conexão do
+>   seed. Foi ele que aplicou a 0106.
+>
+> **Linha de base ao fim da sessão 36: tsc 0 · 2290 testes · build limpo.**
 
 > ## 🆕 SESSÃO 35 (2026-08-27, tarde) — o impasse circular da produção, achado e quebrado
 >
