@@ -7,6 +7,36 @@
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
 
+> ## ▶️ RETOMAR AQUI — segunda-feira, 01/09/2026
+>
+> A sessão 36 fechou com **tudo em `main` e em produção**. Nada pendente de
+> código, nada pendente de push. Os quatro itens abertos, na ordem em que
+> destravam:
+>
+> 1. 🔴 **Advogado (com o Michel).** Ele baixa em
+>    `/admin/configuracoes/documentos/privacidade` → "Baixar para Word" (a tela
+>    mostra o **rascunho 1.1**, que é o texto certo) e manda os DOIS documentos.
+>    O advogado responde as 5 notas no fim do arquivo — a nº 3 é divergência
+>    real entre texto e sistema.
+> 2. 🟡 **Publicar a 1.1** — só DEPOIS do item 1. Publicar hoje colocaria no ar
+>    o aviso de minuta e o bloco "Notas ao advogado", e empurraria todo usuário
+>    ativo para `/aceite` para consentir sobre um rascunho.
+> 3. 🟡 **Parear o número oficial do Balu.** Todos os números hoje são de TESTE
+>    (confirmado pelo usuário em 29/08) e os webhooks estão desligados. Parear
+>    recria instância e webhook sozinho — não há passo manual.
+> 4. 🟡 **Onda 4** (regressão dos 3 papéis + smoke fiscal em homologação).
+>    Precisa de **certificado A1** instalado em ao menos uma empresa e de um
+>    **tenant sintético autorizado** para as tentativas destrutivas de RLS.
+>
+> **Dívida de código que nasceu hoje e depende do item 1:** a rotina de
+> anonimização (0040) não alcança `whatsapp_atendimentos` — quem exclui a conta
+> segue com telefone e mensagens guardados. Vira trabalho assim que o advogado
+> definir o prazo de retenção (nota 3).
+>
+> **Antes de mexer em qualquer coisa:** `npx tsc --noEmit && npx vitest run &&
+> npm run build` a partir de `app/`. Linha de base: **tsc 0 · 2317 testes · 36
+> pulados · build limpo**.
+
 > ## 🆕 SESSÃO 36 (2026-08-29) — auditoria funcional externa, e a Onda 1 do fechamento
 >
 > Chegou uma **auditoria funcional de produção** (96 checkpoints, três perfis):
@@ -187,6 +217,36 @@
 > recadastrar o CNPJ pela conta vazia, agora recebe a mensagem da 0106 — correta,
 > mas só faz sentido se ela souber o motivo. Apagar a conta duplicada é outra
 > decisão (há a 0040 de anonimização).
+>
+> ### 🟢 EM PRODUÇÃO — merge em `main` feito em 29/08, fim do dia
+>
+> Os 11 commits estão em `main` e deployados (`c7bda01`). Conferido no ar, não
+> presumido: `/documentos/privacidade` já renderiza `<h2>` e não tem mais
+> `<pre>`, ou seja o build novo subiu.
+>
+> **Rascunho 1.1 gravado no banco de produção** (`carregar-rascunho-legal.mjs`).
+> Estado atual de `documento_versoes`:
+>
+> | tipo | versão | estado | WhatsApp | notas internas |
+> |---|---|---|---|---|
+> | privacidade | 1.0 | **publicada** | não | não |
+> | privacidade | **1.1** | **rascunho** | **sim** | sim |
+> | termos | 1.0 | publicada | — | não |
+> | termos | **1.1** | **rascunho** | — | não |
+>
+> A página PÚBLICA não mudou — conferido: zero ocorrências de "WhatsApp" e de
+> "Notas ao advogado" no HTML servido. Ninguém foi para `/aceite`.
+>
+> ⚠️ **A ARMADILHA QUE ISSO RESOLVEU, e que quase passou.** A seção 7 foi
+> escrita em `docs/legal/*.md`, e eu tratei como entregue. **O app não lê
+> aqueles arquivos — lê `documento_versoes`.** Sem o carregamento, o Michel
+> exportaria ao advogado a política de 22/07, sem a parte que precisa de
+> revisão, e o erro só apareceria com o advogado já respondendo sobre o texto
+> errado. Quem for mexer em documento legal: **editar o arquivo não muda o
+> app.** Só o banco muda o app.
+>
+> Para desfazer o rascunho: `delete from documento_versoes where versao='1.1'
+> and publicado_em is null;`
 >
 > ### 🔎 DECISÕES QUE TRAVAVAM CÓDIGO DA ONDA 2 — TODAS TOMADAS
 >
