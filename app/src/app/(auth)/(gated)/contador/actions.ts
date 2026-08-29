@@ -93,7 +93,7 @@ export async function criarEmpresaClienteAction(input: unknown): Promise<ActionR
   // É AQUI que a regra de 29/08 é sentida na prática: o escritório tenta
   // cadastrar um cliente que já está em outro escritório. A mensagem tem de
   // dizer o caminho (desligar lá, religar aqui), e não o nome do índice.
-  if (error || !comp) return { ok: false, error: mensagemDeErroDeEmpresa(error, 'Falha ao criar empresa.') };
+  if (error || !comp) return { ok: false, error: mensagemDeErroDeEmpresa(error, 'Falha ao criar empresa.', 'escritorio') };
 
   // empresas_fiscais + Focus + CNAEs — mesmo pós-processamento do fluxo do dono.
   // ownerUserId null: empresa ainda sem dono (ver posProcessarNovaEmpresa).

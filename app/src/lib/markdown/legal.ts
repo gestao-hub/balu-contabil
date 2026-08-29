@@ -44,8 +44,14 @@ export type Bloco =
 export function hrefSeguro(href: string): string | null {
   const limpo = href.trim();
   if (/^(https?:|mailto:)/i.test(limpo)) return limpo;
-  // Relativo (começa com / ou #) é seguro e aparece nos documentos internos.
-  if (/^[/#]/.test(limpo)) return limpo;
+  // Relativo (`/rota` ou `#ancora`) é seguro e aparece nos documentos internos.
+  //
+  // O `(?!\/)` NÃO é decoração: `//evil.com` também começa com `/`, e o
+  // navegador o resolve como URL PROTOCOL-RELATIVE — navegação externa, não
+  // caminho local. A primeira versão desta função deixava passar, e o
+  // `MarkdownLegal` ainda por cima só aplica `rel="noopener"` quando o href
+  // começa com `http`, então um `//host` saía sem nenhuma das duas proteções.
+  if (/^(\/(?!\/)|#)/.test(limpo)) return limpo;
   return null;
 }
 

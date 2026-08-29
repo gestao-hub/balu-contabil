@@ -67,6 +67,16 @@ describe('hrefSeguro', () => {
     expect(hrefSeguro('data:text/html,<script>')).toBeNull();
     expect(hrefSeguro('vbscript:msgbox')).toBeNull();
   });
+
+  // `//host` começa com `/` mas NÃO é caminho relativo: o navegador resolve
+  // como protocol-relative, ou seja navegação externa. A primeira versão
+  // aceitava, e o renderizador nem aplicaria `rel="noopener"` (ele só olha
+  // `http`), então o link sairia sem nenhuma das duas proteções.
+  it('recusa URL protocol-relative, que parece caminho mas e externa', () => {
+    expect(hrefSeguro('//evil.com')).toBeNull();
+    expect(hrefSeguro('  //evil.com/x')).toBeNull();
+    expect(hrefSeguro('///evil.com')).toBeNull();
+  });
 });
 
 describe('parseMarkdownLegal — blocos', () => {

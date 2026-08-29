@@ -77,9 +77,23 @@ export async function updateClienteAction(id: string, input: ClienteInput): Prom
   if (!assinatura.ok) return { ok: false, error: assinatura.error };
   const { supabase, userId } = ctx;
 
+  // `undefined` VIRA `null` AQUI, e isso não é detalhe.
+  //
+  // Campo opcional apagado no formulário chega como `''` e o schema o converte
+  // para `undefined` (ver `opcionalDeFormulario` em `types/zod.ts`). No INSERT
+  // isso é o certo — chave ausente vira NULL. No UPDATE é o oposto:
+  // `JSON.stringify` DESCARTA chaves com `undefined`, então a coluna some do
+  // PATCH e o PostgREST simplesmente não a toca. O usuário apagava o e-mail,
+  // salvava, via "Cliente atualizado!" — e o valor antigo continuava no banco,
+  // reaparecendo no próximo carregamento. Falha silenciosa, com toast de
+  // sucesso. Mapeando para `null`, apagar volta a apagar.
+  const paraGravar = Object.fromEntries(
+    Object.entries(parsed.data).map(([k, v]) => [k, v === undefined ? null : v]),
+  );
+
   const { data, error } = await supabase
     .from('clientes')
-    .update({ ...parsed.data, updated_at: new Date().toISOString() })
+    .update({ ...paraGravar, updated_at: new Date().toISOString() })
     .eq('id', id)
     .eq('owner_user_id', userId)
     .select('id');

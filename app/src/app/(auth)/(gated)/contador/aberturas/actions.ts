@@ -10,6 +10,7 @@ import { ETAPA_LABEL } from '@/lib/abertura/etapas';
 import { tipoDocumento, minutaPronta, type MinutaInput } from '@/lib/abertura/minuta';
 import { renderMinuta } from '@/lib/abertura/minuta/templates';
 import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
+import { MENSAGEM_CNPJ_DUPLICADO_ESCRITORIO, mensagemDeErroDeEmpresa } from '@/lib/empresa/cnpj-unico';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -95,6 +96,28 @@ export async function concluirAberturaAction(input: { aberturaId: string; cnpj: 
   const alvo = await aberturaDaCarteira(admin, e.contabilidadeId, input.aberturaId);
   if (!alvo) return { ok: false, error: 'Abertura fora da sua carteira.' };
 
+  // PRÉ-CHECAGEM DE CNPJ ÚNICO — mesma razão da pré-checagem de `titular_cpf`
+  // em `criarAberturaClienteAction`: dar erro claro em vez de estourar a
+  // constraint. Ganhou urgência com a migration 0106 (um CNPJ, uma empresa
+  // ativa), que tornou esta colisão possível pela primeira vez.
+  //
+  // E o motivo de ser ANTES do passo 1, e não um `catch` no passo 2: os três
+  // passos abaixo não estão numa transação. Se o UPDATE do passo 2 falhasse,
+  // o passo 1 JÁ TERIA gravado — a abertura ficaria "concluída, CNPJ emitido"
+  // com a empresa ainda sem CNPJ, e o operador não teria como saber disso pela
+  // tela. Recusar antes de escrever qualquer coisa evita o estado partido.
+  // `.limit(1)` e não `maybeSingle()` puro: aquele ERRA quando vem mais de uma
+  // linha, e o erro cairia num `data` nulo — ou seja, "duas duplicatas" seria
+  // lido como "nenhuma", que é o pior resultado possível desta checagem.
+  const { data: jaExiste } = await admin.from('companies')
+    .select('id')
+    .eq('cnpj', cnpj)
+    .is('deleted_at', null)
+    .neq('id', alvo.companyId)
+    .limit(1)
+    .maybeSingle();
+  if (jaExiste) return { ok: false, error: MENSAGEM_CNPJ_DUPLICADO_ESCRITORIO };
+
   // 1) abertura concluída + CNPJ emitido
   const { error: e1 } = await admin.from('abertura_empresas').update({
     processo_etapa: 'concluido', processo_cnpj_emitido: cnpj, processo_atualizado_por: e.userId,
@@ -105,7 +128,11 @@ export async function concluirAberturaAction(input: { aberturaId: string; cnpj: 
   const { error: e2 } = await admin.from('companies')
     .update({ status: 'active', cnpj })
     .eq('id', alvo.companyId).eq('contabilidade_id', e.contabilidadeId);
-  if (e2) return { ok: false, error: e2.message };
+  // Cinto e suspensório: a pré-checagem acima cobre o caso normal, mas entre
+  // ela e este UPDATE cabe uma corrida (outro escritório concluindo o mesmo
+  // CNPJ). Se acontecer, a mensagem tem de ser a de negócio, e não o nome do
+  // índice — mesmo o estado ficando partido, que é a dívida registrada acima.
+  if (e2) return { ok: false, error: mensagemDeErroDeEmpresa(e2, e2.message, 'escritorio') };
 
   // 3) semeia empresas_fiscais se ainda não existe (regime fica pra aba Regime
   //    tributário, como posProcessarNovaEmpresa já prevê). Best-effort.

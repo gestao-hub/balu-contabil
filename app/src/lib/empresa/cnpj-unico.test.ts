@@ -6,7 +6,10 @@
 // para a violação de qualquer um deles manda a pessoa caçar um problema que
 // não existe.
 import { describe, it, expect } from 'vitest';
-import { ehCnpjDuplicado, mensagemDeErroDeEmpresa, MENSAGEM_CNPJ_DUPLICADO } from './cnpj-unico';
+import {
+  ehCnpjDuplicado, mensagemDeErroDeEmpresa,
+  MENSAGEM_CNPJ_DUPLICADO_TITULAR, MENSAGEM_CNPJ_DUPLICADO_ESCRITORIO,
+} from './cnpj-unico';
 
 const violacaoCnpj = {
   code: '23505',
@@ -42,26 +45,35 @@ describe('ehCnpjDuplicado', () => {
 });
 
 describe('mensagemDeErroDeEmpresa', () => {
-  it('troca a violacao de CNPJ pela regra de negocio', () => {
-    expect(mensagemDeErroDeEmpresa(violacaoCnpj, 'Falha ao criar empresa.'))
-      .toBe(MENSAGEM_CNPJ_DUPLICADO);
+  it('cada publico recebe a SUA saida, e nao a do outro', () => {
+    // O titular que esbarra no proprio CNPJ quase sempre esbarrou na empresa
+    // pre-cadastrada pelo contador dele. Manda-lo "pedir desligamento" seria
+    // manda-lo abrir chamado contra o proprio contador; o caminho e aceitar o
+    // convite. Ja o escritorio colide mesmo com outro escritorio.
+    expect(mensagemDeErroDeEmpresa(violacaoCnpj, 'x', 'titular'))
+      .toBe(MENSAGEM_CNPJ_DUPLICADO_TITULAR);
+    expect(mensagemDeErroDeEmpresa(violacaoCnpj, 'x', 'escritorio'))
+      .toBe(MENSAGEM_CNPJ_DUPLICADO_ESCRITORIO);
+    expect(MENSAGEM_CNPJ_DUPLICADO_TITULAR).not.toBe(MENSAGEM_CNPJ_DUPLICADO_ESCRITORIO);
   });
 
-  it('a mensagem diz o CAMINHO, nao so o problema', () => {
-    // Quem lê precisa saber o que fazer: desligar do escritório atual. Sem
-    // isso a pessoa abre chamado em vez de resolver.
-    expect(MENSAGEM_CNPJ_DUPLICADO).toMatch(/desligamento|desligada/i);
-    expect(MENSAGEM_CNPJ_DUPLICADO).not.toMatch(/constraint|unique|23505/i);
+  it('cada mensagem diz o CAMINHO certo do seu publico', () => {
+    expect(MENSAGEM_CNPJ_DUPLICADO_TITULAR).toMatch(/convite/i);
+    expect(MENSAGEM_CNPJ_DUPLICADO_TITULAR).not.toMatch(/desligamento/i);
+    expect(MENSAGEM_CNPJ_DUPLICADO_ESCRITORIO).toMatch(/desligamento/i);
+    for (const m of [MENSAGEM_CNPJ_DUPLICADO_TITULAR, MENSAGEM_CNPJ_DUPLICADO_ESCRITORIO]) {
+      expect(m).not.toMatch(/constraint|unique|23505/i);
+    }
   });
 
   it('preserva a mensagem original dos outros erros', () => {
     const outro = { code: '23503', message: 'violates foreign key constraint' };
-    expect(mensagemDeErroDeEmpresa(outro, 'Falha ao criar empresa.'))
+    expect(mensagemDeErroDeEmpresa(outro, 'Falha ao criar empresa.', 'titular'))
       .toBe('violates foreign key constraint');
   });
 
   it('usa o fallback quando nao ha erro nenhum (row nula)', () => {
-    expect(mensagemDeErroDeEmpresa(null, 'Falha ao criar empresa.'))
+    expect(mensagemDeErroDeEmpresa(null, 'Falha ao criar empresa.', 'escritorio'))
       .toBe('Falha ao criar empresa.');
   });
 });

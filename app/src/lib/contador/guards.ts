@@ -2,6 +2,7 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
+import { getGateContext } from '@/lib/auth/gate-context';
 
 /**
  * QUEM É CONTADOR — a checagem de PAPEL, que faltava neste arquivo.
@@ -23,18 +24,53 @@ import { createServerClient } from '@/lib/supabase/server';
  * que redireciona de dentro perde a mensagem para o usuário.
  */
 export async function requireContadorPage() {
+  // `getGateContext` e NÃO uma consulta própria: ele é memoizado por request
+  // (React `cache()`) e os dois layouts pais já o chamaram neste mesmo render.
+  // Consultar de novo aqui custaria um round-trip ao Auth server MAIS um SELECT
+  // em `role_types` por página de /contador — que é exatamente o desperdício
+  // que o comentário no topo de `gate-context.ts` registra ter sido eliminado.
+  const ctx = await getGateContext();
+  if (!ctx) redirect('/login');
+  if (ctx.normalizedRole === 'contador') return ctx.user;
+
+  // MEMBRO CONVIDADO — o caminho que a primeira versão deste guard trancava.
+  //
+  // `aceitar_convite` (0043, ramo `tipo = 'membro'`) insere SÓ em
+  // `contabilidade_membros`; nunca escreve `role_types`. E o papel nasce
+  // `'Empresa'` por DEFAULT (0083, linha 27) quando a pessoa não escolhe nada
+  // no cadastro — que é o caso normal de quem chega por convite de equipe.
+  // Exigir `role = 'Contador'` aqui trancava o funcionário convidado fora do
+  // escritório ao qual ele pertence, e teria tirado o acesso de todos os
+  // membros já existentes no momento do deploy.
+  //
+  // A regra correta: **pertencer a um escritório é a credencial desta área**;
+  // o papel é a credencial de CRIAR um escritório, e essa segue exigida em
+  // `criarContabilidadeAction`. São perguntas diferentes, e confundi-las foi o
+  // erro — na direção oposta à do BUG-003, que continua fechado: quem não é
+  // Contador nem membro não passa daqui.
+  //
+  // A consulta só acontece quando o papel NÃO é Contador, então o caminho
+  // comum continua sem ida extra ao banco. A policy `membros_select` (0035)
+  // usa `minha_contabilidade_membro()`, SECURITY DEFINER, então a sessão lê a
+  // própria linha sem precisar de service role.
   const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
-  const { data: role } = await supabase
-    .from('role_types').select('type').eq('user_id', user.id).maybeSingle();
+  const { data: membro } = await supabase
+    .from('contabilidade_membros')
+    .select('contabilidade_id')
+    .eq('user_id', ctx.user.id)
+    .maybeSingle();
   // Para a raiz, e não para /login: quem chegou aqui TEM sessão válida — só está
   // no lugar errado. Mandar para o login faria parecer que a sessão caiu.
-  if (role?.type !== 'Contador') redirect('/');
-  return user;
+  if (!membro) redirect('/');
+  return ctx.user;
 }
 
-/** Guard de AÇÃO do Contador. Devolve erro em vez de redirecionar. */
+/** Guard de AÇÃO do Contador. Devolve erro em vez de redirecionar.
+ *
+ *  Consulta própria, ao contrário da versão de página: Server Action é um
+ *  request separado, então não há `getGateContext` memoizado para reaproveitar
+ *  — e aquele helper leria `profiles.current_company` de graça, que a ação não
+ *  usa. Aqui a consulta direta é a mais barata das duas. */
 export async function requireContadorAction(): Promise<{ userId: string } | { error: string }> {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();

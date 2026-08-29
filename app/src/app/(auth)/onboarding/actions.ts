@@ -173,7 +173,7 @@ export async function createCompanyAction(input: CompanyInput): Promise<ActionRe
   if (error || !row) {
     // A colisão do índice `companies_cnpj_ativo_uniq` (0106) precisa virar a
     // regra de negócio, e não `duplicate key value violates...`.
-    return { ok: false, error: mensagemDeErroDeEmpresa(error, 'Falha ao criar empresa.') };
+    return { ok: false, error: mensagemDeErroDeEmpresa(error, 'Falha ao criar empresa.', 'titular') };
   }
 
   // Vem de `/r/[token]` (link reutilizável do escritório): cookie httpOnly com o

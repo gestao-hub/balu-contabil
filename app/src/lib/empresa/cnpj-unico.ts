@@ -16,9 +16,33 @@ const UNIQUE_VIOLATION = '23505';
 
 const INDICE = 'companies_cnpj_ativo_uniq';
 
-export const MENSAGEM_CNPJ_DUPLICADO =
+/**
+ * DUAS mensagens, porque os dois caminhos colidem por motivos diferentes e a
+ * saída de cada um é outra. Uma frase só mandava metade das pessoas para a
+ * ação errada.
+ *
+ * TITULAR (`createCompanyAction`): quem se cadastra e esbarra num CNPJ que já
+ * existe quase sempre esbarra na PRÓPRIA empresa, pré-cadastrada pelo contador
+ * (`criarEmpresaClienteAction` cria com `user_id` nulo, à espera do convite).
+ * Era exatamente essa a linha que o índice antigo `(user_id, cnpj)` deixava
+ * duplicar. Dizer "peça o desligamento" a essa pessoa é mandá-la abrir chamado
+ * contra o próprio contador; o que ela precisa é aceitar o convite, que
+ * transfere a empresa existente para ela.
+ *
+ * ESCRITÓRIO (`criarEmpresaClienteAction`, `concluirAberturaAction`): aqui a
+ * colisão é mesmo com outro escritório, e aí o desligamento é o caminho.
+ */
+export const MENSAGEM_CNPJ_DUPLICADO_TITULAR =
+  'Este CNPJ já tem uma empresa no Balu. Se o seu contador já cadastrou a empresa para você, ' +
+  'aceite o convite que ele enviou em vez de cadastrá-la de novo — o acesso é transferido para ' +
+  'a sua conta, sem perder o histórico.';
+
+export const MENSAGEM_CNPJ_DUPLICADO_ESCRITORIO =
   'Este CNPJ já tem uma empresa ativa no Balu. Se ela está em outro escritório, ' +
   'peça o desligamento antes de vincular aqui — a empresa é transferida, não duplicada.';
+
+/** Quem está lendo a mensagem. */
+export type PublicoDaMensagem = 'titular' | 'escritorio';
 
 type ErroPostgrest = { code?: string | null; message?: string | null } | null | undefined;
 
@@ -38,8 +62,17 @@ export function ehCnpjDuplicado(error: ErroPostgrest): boolean {
 }
 
 /** Mensagem pronta para devolver da action: a de negócio quando é a colisão de
- *  CNPJ, o texto original nos demais casos. */
-export function mensagemDeErroDeEmpresa(error: ErroPostgrest, fallback: string): string {
-  if (ehCnpjDuplicado(error)) return MENSAGEM_CNPJ_DUPLICADO;
+ *  CNPJ — na versão do público que vai lê-la —, o texto original nos demais
+ *  casos. */
+export function mensagemDeErroDeEmpresa(
+  error: ErroPostgrest,
+  fallback: string,
+  publico: PublicoDaMensagem,
+): string {
+  if (ehCnpjDuplicado(error)) {
+    return publico === 'titular'
+      ? MENSAGEM_CNPJ_DUPLICADO_TITULAR
+      : MENSAGEM_CNPJ_DUPLICADO_ESCRITORIO;
+  }
   return error?.message ?? fallback;
 }

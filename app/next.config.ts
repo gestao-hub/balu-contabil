@@ -5,21 +5,18 @@ const config: NextConfig = {
   reactStrictMode: true,
   experimental: {
     serverActions: {
-      // 100mb desde 29/08/2026 (era 20mb). O caso que forçou: o envio do
-      // documento legal revisado pelo advogado, em
-      // `/admin/configuracoes/documentos/[tipo]`. O texto vai ao banco por
-      // Server Action, então este número — e não a coluna — era o teto real.
+      // 20mb. Subi para 100mb em 29/08/2026 e REVERTI no mesmo dia, porque o
+      // número não destrava nada: **o teto real está acima do Next.js**. Esta
+      // app roda na Vercel, que rejeita bodies acima de ~4,5 MB com 413 ANTES
+      // do handler — fato que `api/contador/logo/route.ts:15` já registrava e
+      // que eu não tinha lido. Qualquer valor daqui para cima é teatro: não
+      // aumenta o que passa, e afrouxa o limite de TODA Server Action do app,
+      // cujo corpo é bufferizado em memória.
       //
-      // A coluna `documento_versoes.conteudo_md` é `text` SEM limite, ou seja
-      // ~1 GB por valor no Postgres. NÃO subi para 1 GB de propósito: isto aqui
-      // é global, vale para TODA Server Action do app (certificado A1, docs de
-      // abertura), e o corpo é bufferizado em memória antes de chegar ao
-      // código. Um teto de 1 GB seria superfície de exaustão de memória em
-      // troca de nada — nenhuma peça jurídica chega perto de 100 MB.
-      //
-      // ⚠️ `LIMITE_MB` em `documentos/[tipo]/DocumentoEditor.tsx` espelha este
-      // valor. Os dois mudam juntos.
-      bodySizeLimit: '100mb',
+      // Este número também é citado por `lib/billing/comprovante-liberacao.ts`
+      // (linhas 18 e 82) para dimensionar o upload de comprovante — mudá-lo sem
+      // mexer lá deixaria aqueles cálculos errados.
+      bodySizeLimit: '20mb',
     },
   },
 };

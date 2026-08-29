@@ -10,12 +10,26 @@ import { isValidCnpj } from '@/lib/validators/cnpj';
 // cobriria o servidor, e o formulário valida no navegador (BUG-004).
 instalarMensagensPtBr();
 
-/** Campo OPCIONAL vindo de formulário. O input não preenchido chega como `''`,
- *  e `.optional()` sozinho aceita ausente mas NÃO vazio — foi essa distinção
- *  que fez E-mail e UF falharem sem estarem marcados como obrigatórios
- *  (BUG-004). Também evita gravar `''` no banco onde o certo é `NULL`. */
-const opcionalDeFormulario = (schema: z.ZodTypeAny) =>
-  z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), schema.optional());
+/**
+ * Campo OPCIONAL vindo de formulário. O input não preenchido chega como `''`,
+ * e `.optional()` sozinho aceita ausente mas NÃO vazio — foi essa distinção
+ * que fez E-mail e UF falharem sem estarem marcados como obrigatórios
+ * (BUG-004). Também evita gravar `''` no banco onde o certo é `NULL`.
+ *
+ * GENÉRICO, e isso NÃO é detalhe de estilo. A primeira versão recebia
+ * `schema: z.ZodTypeAny`, e com isso `z.preprocess` inferia a saída como
+ * `any` — os doze campos daqui viravam `any` em `ClienteInput`, calados, e
+ * `useState<ClienteInput>` / `createClienteAction` paravam de checar
+ * qualquer coisa. O `tsc` seguia verde porque `any` não reclama de nada; foi
+ * preciso sondar o tipo para ver. `<T extends z.ZodTypeAny>` preserva o
+ * schema recebido e a saída volta a ser `T['_output'] | undefined`.
+ */
+function opcionalDeFormulario<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    schema.optional(),
+  );
+}
 import { normalizarValorBRL } from '@/lib/format/dinheiro';
 import { COMPANY_TYPES } from '@/lib/billing/subconta';
 import { TIPOS_VALOR } from '@/lib/billing/avulso';

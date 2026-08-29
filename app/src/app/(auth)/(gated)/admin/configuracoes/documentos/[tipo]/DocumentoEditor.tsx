@@ -24,26 +24,38 @@ import { htmlParaImpressao, htmlParaWord, nomeArquivo, type MetaExport } from '@
 
 const RÓTULO_TIPO = { termos: 'Termos de Uso', privacidade: 'Política de Privacidade' } as const;
 
-/** Extensões que viram texto direto. `.docx` NÃO está aqui de propósito: é um
- *  ZIP de XML, e “ler” sem biblioteca devolveria lixo binário como se fosse o
- *  documento — o modo mais silencioso de destruir uma peça jurídica. Ver o
- *  aviso em `importarArquivo`. */
-const EXTENSOES_TEXTO = ['.md', '.markdown', '.txt', '.html', '.htm'];
+/**
+ * Extensões que viram texto direto.
+ *
+ * `.docx` fora de propósito: é um ZIP de XML, e “ler” sem biblioteca devolveria
+ * lixo binário como se fosse o documento — o modo mais silencioso de destruir
+ * uma peça jurídica. Ver o aviso em `importarArquivo`.
+ *
+ * `.html`/`.htm` também fora, e essa eu tinha aceitado por engano. O conteúdo
+ * é gravado como MARKDOWN; não existe conversão HTML→markdown em lugar nenhum.
+ * E o caminho para cair nisso era curto: "Baixar para Word" produz HTML, o
+ * advogado salva de volta como `.htm` (um clique no Word), e o `<!DOCTYPE
+ * html><style>…` inteiro iria para `conteudo_md`. `MarkdownLegal` renderiza
+ * isso como texto literal — a página pública passaria a exibir código-fonte no
+ * lugar da política de privacidade.
+ */
+const EXTENSOES_TEXTO = ['.md', '.markdown', '.txt'];
 
 /**
- * Teto do arquivo enviado (29/08/2026).
+ * Teto do arquivo enviado.
  *
- * ESPELHA `serverActions.bodySizeLimit` do `next.config.ts` — os dois mudam
- * juntos. Ler o arquivo é tudo no navegador e funcionaria com qualquer
- * tamanho; quem recusa é o SALVAMENTO, porque o texto chega ao banco por
- * Server Action. Aceitar aqui mais do que o salvamento aguenta faria a recusa
- * chegar depois da revisão, que é o pior momento.
+ * 4 MB, e não os 100 MB que este arquivo anunciou por algumas horas em
+ * 29/08/2026. O teto real NÃO é o banco (`conteudo_md` é `text`, ~1 GB) nem o
+ * `bodySizeLimit` do Next: é a **Vercel**, que rejeita bodies acima de ~4,5 MB
+ * com 413 antes mesmo de o handler rodar — o mesmo motivo pelo qual
+ * `api/contador/logo/route.ts` limita em 4 MB.
  *
- * O banco não é o gargalo: `documento_versoes.conteudo_md` é `text` sem
- * limite (~1 GB no Postgres). Ver a nota no `next.config.ts` sobre por que o
- * teto global não foi para lá.
+ * Anunciar 100 MB não aumentava nada: só movia a recusa para DEPOIS da
+ * revisão, como um 413 opaco que nem passa por este código — exatamente o que
+ * o limite existe para evitar. Como referência, a política de privacidade tem
+ * ~14 KB: 4 MB é quase 300 vezes o tamanho real.
  */
-const LIMITE_MB = 100;
+const LIMITE_MB = 4;
 
 /** Acima disto o arquivo é aceito, mas com AVISO. Uma peça jurídica tem alguns
  *  KB; um arquivo de vários MB quase sempre é o `.docx` renomeado, um PDF, ou
@@ -200,8 +212,13 @@ export default function DocumentoEditor({ tipo, atual, aceitesAtual, historico }
     document.body.appendChild(a);
     a.click();
     a.remove();
-    // Revogar já, e não em timeout: o clique síncrono acima já leu a URL.
-    URL.revokeObjectURL(url);
+    // Revogar DEPOIS, e não na mesma volta do event loop. Revogar invalida a
+    // URL na hora; `click()` apenas INICIA o download, e não há garantia de que
+    // o navegador já leu o blob quando a chamada retorna. Revogar em seguida é
+    // uma corrida — que alguns navegadores perdem, cancelando o download sem
+    // erro visível. O timeout tira a corrida do caminho; o custo é manter
+    // alguns KB vivos por um minuto.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   /** Impressão via iframe oculto, e não `window.open`: janela nova é barrada
