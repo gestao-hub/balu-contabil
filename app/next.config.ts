@@ -5,7 +5,21 @@ const config: NextConfig = {
   reactStrictMode: true,
   experimental: {
     serverActions: {
-      bodySizeLimit: '20mb',
+      // 100mb desde 29/08/2026 (era 20mb). O caso que forçou: o envio do
+      // documento legal revisado pelo advogado, em
+      // `/admin/configuracoes/documentos/[tipo]`. O texto vai ao banco por
+      // Server Action, então este número — e não a coluna — era o teto real.
+      //
+      // A coluna `documento_versoes.conteudo_md` é `text` SEM limite, ou seja
+      // ~1 GB por valor no Postgres. NÃO subi para 1 GB de propósito: isto aqui
+      // é global, vale para TODA Server Action do app (certificado A1, docs de
+      // abertura), e o corpo é bufferizado em memória antes de chegar ao
+      // código. Um teto de 1 GB seria superfície de exaustão de memória em
+      // troca de nada — nenhuma peça jurídica chega perto de 100 MB.
+      //
+      // ⚠️ `LIMITE_MB` em `documentos/[tipo]/DocumentoEditor.tsx` espelha este
+      // valor. Os dois mudam juntos.
+      bodySizeLimit: '100mb',
     },
   },
 };

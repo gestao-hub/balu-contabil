@@ -13,13 +13,52 @@
 // Não há renderizador de markdown no projeto (nem `react-markdown`, nem
 // `marked` — conferido em `package.json`); o mesmo `<pre>` que `/aceite`
 // já usa para exibir o texto.
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, PenLine, Save, SendHorizontal, X } from 'lucide-react';
+import { FileDown, Loader2, PenLine, Printer, Save, SendHorizontal, Upload, X } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import PopupConfirm from '@/components/PopupConfirm';
 import { salvarDocumentoAction, salvarNovaVersaoDocumentoAction, publicarDocumentoAction } from '../actions';
 import { sugerirProximaVersao } from '../versao';
+import { htmlParaImpressao, htmlParaWord, nomeArquivo, type MetaExport } from '@/lib/markdown/exportar';
+
+const RÓTULO_TIPO = { termos: 'Termos de Uso', privacidade: 'Política de Privacidade' } as const;
+
+/** Extensões que viram texto direto. `.docx` NÃO está aqui de propósito: é um
+ *  ZIP de XML, e “ler” sem biblioteca devolveria lixo binário como se fosse o
+ *  documento — o modo mais silencioso de destruir uma peça jurídica. Ver o
+ *  aviso em `importarArquivo`. */
+const EXTENSOES_TEXTO = ['.md', '.markdown', '.txt', '.html', '.htm'];
+
+/**
+ * Teto do arquivo enviado (29/08/2026).
+ *
+ * ESPELHA `serverActions.bodySizeLimit` do `next.config.ts` — os dois mudam
+ * juntos. Ler o arquivo é tudo no navegador e funcionaria com qualquer
+ * tamanho; quem recusa é o SALVAMENTO, porque o texto chega ao banco por
+ * Server Action. Aceitar aqui mais do que o salvamento aguenta faria a recusa
+ * chegar depois da revisão, que é o pior momento.
+ *
+ * O banco não é o gargalo: `documento_versoes.conteudo_md` é `text` sem
+ * limite (~1 GB no Postgres). Ver a nota no `next.config.ts` sobre por que o
+ * teto global não foi para lá.
+ */
+const LIMITE_MB = 100;
+
+/** Acima disto o arquivo é aceito, mas com AVISO. Uma peça jurídica tem alguns
+ *  KB; um arquivo de vários MB quase sempre é o `.docx` renomeado, um PDF, ou
+ *  o texto colado junto com um anexo. Aceitar calado deixaria a pessoa
+ *  esperando um editor que travou. */
+const AVISO_MB = 2;
+
+
+const MB = 1024 * 1024;
+
+/** "1,4 MB" / "820 KB" — na notação que a pessoa lê no explorador de arquivos. */
+function tamanhoLegivel(bytes: number): string {
+  if (bytes >= MB) return `${(bytes / MB).toFixed(1).replace('.', ',')} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
 
 export type LinhaHistorico = {
   id: string;
@@ -130,6 +169,127 @@ export default function DocumentoEditor({ tipo, atual, aceitesAtual, historico }
 
   const ehRascunho = atual ? !atual.publicadoEm : false;
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Exportar e importar (29/08/2026). O documento precisa sair daqui para ser
+  // revisado por advogado e voltar depois. Antes, a única saída era selecionar
+  // o `<pre>` e copiar — o que entrega markdown cru, com `##` e `**`, a quem
+  // não tem por que saber o que isso significa.
+  // ─────────────────────────────────────────────────────────────────────────
+  const inputArquivo = useRef<HTMLInputElement>(null);
+
+  /** Exporta o texto EM EXIBIÇÃO — inclusive as edições ainda não salvas,
+   *  quando o editor está aberto. Mandar ao advogado a versão do banco
+   *  enquanto a tela mostra outra coisa seria a pior falha possível aqui. */
+  function conteudoParaExportar(): string {
+    return editando ? texto : (atual?.conteudoMd ?? '');
+  }
+
+  function meta(): MetaExport {
+    return {
+      titulo: RÓTULO_TIPO[tipo],
+      versao: atual?.versao ?? '—',
+      publicadoEm: atual?.publicadoEm ?? null,
+    };
+  }
+
+  function baixar(conteudo: string, nome: string, mime: string) {
+    const url = URL.createObjectURL(new Blob(['﻿' + conteudo], { type: mime }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nome;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revogar já, e não em timeout: o clique síncrono acima já leu a URL.
+    URL.revokeObjectURL(url);
+  }
+
+  /** Impressão via iframe oculto, e não `window.open`: janela nova é barrada
+   *  por bloqueador de pop-up mesmo vinda de um clique, e imprimir a própria
+   *  página levaria junto a sidebar e os botões. */
+  function imprimir() {
+    const conteudo = conteudoParaExportar();
+    if (!conteudo.trim()) { toast('error', 'Não há texto para imprimir.'); return; }
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (!doc) { iframe.remove(); toast('error', 'Não foi possível abrir a impressão.'); return; }
+    doc.open();
+    doc.write(htmlParaImpressao(conteudo, meta()));
+    doc.close();
+    const janela = iframe.contentWindow!;
+    // `onafterprint` cobre imprimir e cancelar; o timeout é a rede para os
+    // navegadores que não disparam o evento.
+    janela.onafterprint = () => iframe.remove();
+    setTimeout(() => { if (document.body.contains(iframe)) iframe.remove(); }, 60_000);
+    janela.focus();
+    janela.print();
+  }
+
+  function baixarWord() {
+    const conteudo = conteudoParaExportar();
+    if (!conteudo.trim()) { toast('error', 'Não há texto para exportar.'); return; }
+    baixar(
+      htmlParaWord(conteudo, meta()),
+      nomeArquivo(RÓTULO_TIPO[tipo], atual?.versao ?? '0', 'doc'),
+      'application/msword',
+    );
+    toast('success', 'Arquivo do Word baixado. Abre no Word e no Google Docs para revisão.');
+  }
+
+  async function importarArquivo(e: React.ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = ''; // permite reescolher o MESMO arquivo depois
+    if (!arquivo) return;
+
+    const nome = arquivo.name.toLowerCase();
+    if (nome.endsWith('.docx') || nome.endsWith('.doc')) {
+      // Recusa explícita, com o caminho. Aceitar e ler como texto devolveria
+      // o binário do ZIP dentro do editor.
+      toast(
+        'error',
+        'Arquivo do Word não pode ser lido direto. No Word: Arquivo → Salvar como → '
+        + 'Texto sem formatação (.txt), e envie o .txt aqui. Ou cole o texto revisado no editor.',
+      );
+      return;
+    }
+    if (!EXTENSOES_TEXTO.some((ext) => nome.endsWith(ext))) {
+      toast('error', `Formato não aceito. Use ${EXTENSOES_TEXTO.join(', ')}.`);
+      return;
+    }
+
+    // Tamanho ANTES de ler: `arquivo.text()` carrega o conteúdo inteiro na
+    // memória da aba, então checar depois já seria tarde.
+    if (arquivo.size > LIMITE_MB * MB) {
+      toast('error', `O arquivo tem ${tamanhoLegivel(arquivo.size)} e o limite é ${LIMITE_MB} MB.`);
+      return;
+    }
+    if (arquivo.size > AVISO_MB * MB) {
+      toast(
+        'warning',
+        `O arquivo tem ${tamanhoLegivel(arquivo.size)} — bem acima do normal para um documento `
+        + 'jurídico. Confira se não é um PDF ou um .docx renomeado. O editor pode ficar lento.',
+      );
+    }
+
+    const bruto = await arquivo.text();
+    if (!bruto.trim()) { toast('error', 'O arquivo está vazio.'); return; }
+
+    // O documento volta para o EDITOR, nunca direto para o banco: o admin lê o
+    // que chegou e decide entre "salvar" e "salvar como nova versão". Escrever
+    // direto pularia o versionamento e a trilha de aceites.
+    setTexto(bruto);
+    setVersaoNova(atual ? sugerirProximaVersao(atual.versao) : '1.0');
+    setMostrarNovaVersao(true);
+    setEditando(true);
+    toast(
+      'success',
+      `“${arquivo.name}” carregado no editor. Confira o texto e salve como nova versão.`,
+    );
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-md border border-border bg-surface p-4">
@@ -151,7 +311,7 @@ export default function DocumentoEditor({ tipo, atual, aceitesAtual, historico }
           </div>
 
           {!editando && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {ehRascunho && atual && (
                 <button
                   type="button"
@@ -169,6 +329,57 @@ export default function DocumentoEditor({ tipo, atual, aceitesAtual, historico }
               </button>
             </div>
           )}
+        </div>
+
+        {/* Levar ao advogado e trazer de volta. Fora do bloco `!editando` de
+            propósito: exportar continua valendo com o editor aberto, e é aí
+            que se exporta o texto que está sendo escrito. */}
+        <div className="mb-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Revisão jurídica
+          </span>
+          <button
+            type="button"
+            onClick={imprimir}
+            disabled={pendente}
+            className={botaoSecundario}
+            title="Abre o diálogo de impressão. Escolha “Salvar como PDF” para gerar o arquivo."
+          >
+            <Printer className="size-4" />
+            Imprimir / PDF
+          </button>
+          <button
+            type="button"
+            onClick={baixarWord}
+            disabled={pendente}
+            className={botaoSecundario}
+            title="Baixa um arquivo que abre no Word e no Google Docs, editável e com controle de alterações."
+          >
+            <FileDown className="size-4" />
+            Baixar para Word
+          </button>
+          <button
+            type="button"
+            onClick={() => inputArquivo.current?.click()}
+            disabled={pendente}
+            className={botaoSecundario}
+            title="Carrega um arquivo revisado no editor. Nada é salvo até você confirmar."
+          >
+            <Upload className="size-4" />
+            Enviar revisado
+          </button>
+          <input
+            ref={inputArquivo}
+            type="file"
+            accept=".md,.markdown,.txt,.html,.htm,text/plain,text/markdown,text/html"
+            onChange={importarArquivo}
+            className="hidden"
+          />
+          <span className="basis-full text-xs text-muted-foreground">
+            O arquivo enviado abre no editor para você conferir — nada é gravado sem confirmação.
+            Aceita {EXTENSOES_TEXTO.join(', ')} até {LIMITE_MB} MB. Se o advogado devolver{' '}
+            <code>.docx</code>, salve antes como <strong>texto sem formatação</strong> no Word.
+          </span>
         </div>
 
         {!editando ? (
