@@ -15,10 +15,10 @@
 > 4 ondas ficaram numa página à parte; o que importa aqui é o que mudou no
 > código e o que a leitura do repositório corrigiu no diagnóstico dela.
 >
-> ### ✅ WHATSAPP — ENTREGUE
+> ### ⚠️ WHATSAPP — VER A CORREÇÃO ABAIXO
 >
-> Confirmado pelo usuário em 29/08: o número oficial da plataforma e o
-> pareamento de escritório estão feitos. Fecha os itens 1 e 2 da lista de
+> Registrado em 29/08 como "entregue", sobre a palavra do usuário. **Os dados
+> não sustentam** — ver a correção no fim desta seção. Fecha os itens 1 e 2 da lista de
 > "Próximo passo imediato", que estavam abertos desde 19/08. O canal já tinha
 > sido provado de ponta a ponta na sessão 33.
 >
@@ -36,8 +36,30 @@
 > terceiros** — apagar quando não for mais necessário; guardá-lo indefinidamente
 > recria o problema que a limpeza resolveu.
 >
-> ⏭️ **Falta o outro meio do item 1:** desligar o webhook do número pessoal. Sem
-> isso a tabela volta a encher.
+> ✅ **Webhooks desligados (29/08).** `enabled=false, url=""` nas DUAS instâncias
+> — plataforma (`r0b09d5bc15dcd5`) e "Escritório Teste Balu"
+> (`r42092cbc8ff21d`) —, conferido consultando a uazapi depois, e não pelo
+> HTTP 200 da chamada. Fecha a entrada que enchia `whatsapp_atendimentos`.
+> Script: `app/scripts/desligar-webhooks-uazapi.mjs` (prévia por padrão,
+> `--aplicar` para valer). Desconectar NÃO servia: o teste de
+> `desconectarPlataformaAction` registra que "a instancia NAO e apagada: token
+> e webhook continuam valendo", e `configurarWebhookUrl` só sabe mandar
+> `enabled: true`.
+>
+> **Reversível sem passo manual** — confirmado no código, não assumido: parear
+> um número recria instância e webhook sozinho, tanto na plataforma
+> (`apontarWebhookDaPlataforma` em `admin/.../whatsapp/actions.ts:110` e `:125`)
+> quanto no escritório (`configurarWebhook` em `contador/.../whatsapp/actions.ts:96`,
+> `:128`, `:216`).
+>
+> ⚠️ **CORREÇÃO do que registrei acima como "WhatsApp ENTREGUE".** Anotei aquilo
+> em 29/08 sobre a palavra do usuário, e os dados não sustentam. O banco mostra
+> as duas instâncias em `status='conectando'` com `conectado_em` NULL — nenhuma
+> em `conectado`. E o usuário esclareceu depois: **todos os números hoje na
+> plataforma são de TESTE**, nenhum de empresa ou contador real. O canal foi
+> provado de ponta a ponta na sessão 33, isso segue valendo; o que NÃO está
+> feito é o pareamento do número oficial do Balu com um número real. O item 1
+> da lista de pendências continua aberto nessa parte.
 >
 > ✅ **Política de privacidade — seção 7 (WhatsApp) redigida** (`a322842`),
 > pronta para o advogado. Descreve o que o sistema faz, conferido no código:
