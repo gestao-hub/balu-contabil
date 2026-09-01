@@ -46,3 +46,4 @@ supabase/.temp
 
 # ── Logs ─────────────────────────────────────────────────────
 *.log
+security-evidence/
