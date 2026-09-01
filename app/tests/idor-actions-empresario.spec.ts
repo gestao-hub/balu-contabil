@@ -1,7 +1,11 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'node:fs';
-import { ambienteDestrutivo, MOTIVO_SKIP } from './guarda-ambiente';
+import { ambienteDestrutivo, MOTIVO_SKIP, exigirVitimaSintetica } from './guarda-ambiente';
+import {
+  criarEmpresario, criarCliente, criarGuiaEmAberto, criarNotaAtiva, criarNotificacao,
+  limparSemeado, SENHA_SINTETICA, type Empresario, type Semeado,
+} from './tenant-sintetico';
 
 /**
  * IDOR entre EMPRESÁRIOS — nas Server Actions.
@@ -20,25 +24,25 @@ import { ambienteDestrutivo, MOTIVO_SKIP } from './guarda-ambiente';
  * gravavam auditoria e diziam ok:true.
  *
  * ─── CONFIGURAÇÃO (nada de segredo aqui — o repo é público) ─────────────────
- *   E2E_EMPRESARIO_EMAIL / E2E_EMPRESARIO_SENHA
  *   E2E_SUPABASE_URL / E2E_SUPABASE_ANON_KEY / E2E_SUPABASE_SERVICE_ROLE_KEY
  *
- * ⚠️ O banco tem de ser de DESENVOLVIMENTO — ver `guarda-ambiente.ts`.
+ * Não há mais conta de teste a configurar: ATACANTE E VÍTIMA são semeados aqui
+ * (ver `tenant-sintetico.ts`). Antes, o atacante vinha de
+ * E2E_EMPRESARIO_EMAIL/SENHA e a vítima era "a primeira linha de outro dono" —
+ * o que, contra produção, faria de um cliente real o alvo de operações que
+ * cancelam nota fiscal e apagam cliente. Os alvos agora nascem e morrem com o
+ * teste, e cada um é conferido por `exigirVitimaSintetica` antes do ataque.
  *
- * Os ALVOS são descobertos em tempo de execução (guia, nota, notificação e
- * cliente de OUTRO dono). Cada caso se declara skipped se não houver alvo —
- * nunca passa vazio.
+ * Efeito colateral bem-vindo: sumiram os `test.skip('não há guia de outro
+ * dono')`. Todo caso tem alvo, sempre.
  *
  * ─── COMO RODAR ─────────────────────────────────────────────────────────────
  *   export E2E_SUPABASE_URL=... E2E_SUPABASE_ANON_KEY=... E2E_SUPABASE_SERVICE_ROLE_KEY=...
- *   export E2E_EMPRESARIO_EMAIL=... E2E_EMPRESARIO_SENHA=...
  *   npm run build && PORT=3100 npm run start
  *   E2E_BASE_URL=http://localhost:3100 npx playwright test tests/idor-actions-empresario.spec.ts
  */
 
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
-const EMAIL = process.env.E2E_EMPRESARIO_EMAIL ?? '';
-const SENHA = process.env.E2E_EMPRESARIO_SENHA ?? '';
 // TRAVA DE AMBIENTE: este teste invoca acoes REAIS contra dados REAIS. Desde
 // 14/08/2026 o banco da aplicacao e producao e so producao, entao o alvo tem de
 // vir de E2E_SUPABASE_URL. Ver tests/guarda-ambiente.ts.
@@ -72,10 +76,10 @@ function urlDaRota(rota: string): string {
 }
 
 type Alvos = {
-  guiaAlheia?: string;
-  notaAlheia?: string;
-  notificacaoAlheia?: string;
-  clienteAlheio?: string;
+  guiaAlheia: string;
+  notaAlheia: string;
+  notificacaoAlheia: string;
+  clienteAlheio: string;
   minhaEmpresa: string;
 };
 
@@ -85,49 +89,45 @@ test.describe('IDOR entre empresários — Server Actions', () => {
   let ctx: Awaited<ReturnType<typeof pwRequest.newContext>>;
   let IDS: Record<string, Acao>;
   let alvos: Alvos;
+  let admin: ReturnType<typeof createClient>;
+  // Preenchido pelos criadores, um id por vez — ver tenant-sintetico.ts.
+  const semeado: Semeado = {};
+  let atacante: Empresario;
+  let vitima: Empresario;
 
   test.beforeAll(async ({ browser }) => {
-    test.skip(
-      !AMBIENTE || !EMAIL || !SENHA,
-      !AMBIENTE ? MOTIVO_SKIP : 'faltam E2E_EMPRESARIO_EMAIL / E2E_EMPRESARIO_SENHA',
-    );
+    test.skip(!AMBIENTE, MOTIVO_SKIP);
     IDS = idsDoManifest();
 
-    const admin = createClient(SB_URL, SERVICE, { auth: { persistSession: false } });
-    const { data: users } = await admin.auth.admin.listUsers();
-    const meuId = users.users.find((u) => u.email === EMAIL)?.id;
-    expect(meuId, `usuário ${EMAIL} não existe`).toBeTruthy();
+    admin = createClient(SB_URL, SERVICE, { auth: { persistSession: false } });
 
-    const { data: prof } = await admin.from('profiles')
-      .select('current_company').eq('user_id', meuId!).maybeSingle();
-    const minhaEmpresa = prof?.current_company as string | undefined;
-    expect(minhaEmpresa, `${EMAIL} não tem current_company — o gate de onboarding barraria`).toBeTruthy();
+    // Os DOIS lados nascem aqui. O atacante é quem loga; a vítima é dona de
+    // tudo que ele vai tentar alcançar. Ver o cabeçalho de tenant-sintetico.ts
+    // para por que a vítima não pode ser uma linha que já estava no banco.
+    atacante = await criarEmpresario(admin, 'idor-emp-atacante', semeado);
+    vitima = await criarEmpresario(admin, 'idor-emp-vitima', semeado);
 
-    // Alvos: tudo que pertence a OUTRO dono.
-    const { data: outrasEmp } = await admin.from('companies')
-      .select('id, user_id').is('deleted_at', null).neq('id', minhaEmpresa!);
-    const idsOutras = (outrasEmp ?? []).map((e) => e.id);
+    const clienteAlheio = await criarCliente(admin, vitima, semeado);
+    const guiaAlheia = await criarGuiaEmAberto(admin, vitima.companyId, semeado);
+    const notaAlheia = await criarNotaAtiva(admin, vitima.companyId, semeado);
+    const notificacaoAlheia = await criarNotificacao(admin, vitima.userId, semeado);
 
-    const { data: guia } = await admin.from('guias_fiscais')
-      .select('id').in('company_id', idsOutras).is('data_pagamento', null).limit(1).maybeSingle();
-    const { data: nota } = await admin.from('notas_fiscais')
-      .select('id').in('company_id', idsOutras).neq('status', 'cancelada').limit(1).maybeSingle();
-    const { data: notif } = await admin.from('notifications')
-      .select('id').neq('owner_user_id', meuId!).limit(1).maybeSingle();
-    const { data: cli } = await admin.from('clientes')
-      .select('id').neq('owner_user_id', meuId!).is('deleted_at', null).limit(1).maybeSingle();
+    // A conferência que vale: a vítima é sintética, e é ela que vai sofrer o
+    // ataque. Lança em vez de pular — chegar aqui com alvo real significa que a
+    // semeadura mudou e ninguém viu.
+    exigirVitimaSintetica('empresa alvo do IDOR entre empresários', vitima.nomeEmpresa);
+    exigirVitimaSintetica('dono dos alvos do IDOR entre empresários', vitima.email);
 
     alvos = {
-      minhaEmpresa: minhaEmpresa!,
-      guiaAlheia: guia?.id, notaAlheia: nota?.id,
-      notificacaoAlheia: notif?.id, clienteAlheio: cli?.id,
+      minhaEmpresa: atacante.companyId,
+      guiaAlheia, notaAlheia, notificacaoAlheia, clienteAlheio,
     };
 
     // Login pela tela — é o fluxo que gera os cookies do @supabase/ssr.
     const page = await browser.newPage({ baseURL: BASE });
     await page.goto('/login');
-    await page.getByLabel(/e-?mail/i).fill(EMAIL);
-    await page.getByLabel(/senha/i).fill(SENHA);
+    await page.getByLabel(/e-?mail/i).fill(atacante.email);
+    await page.getByLabel(/senha/i).fill(SENHA_SINTETICA);
     await page.getByRole('button', { name: /entrar|login|acessar/i }).click();
     await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000 });
 
@@ -141,7 +141,10 @@ test.describe('IDOR entre empresários — Server Actions', () => {
     await page.close();
   });
 
-  test.afterAll(async () => { await ctx?.dispose(); });
+  test.afterAll(async () => {
+    await ctx?.dispose();
+    if (admin) await limparSemeado(admin, semeado, 'idor-empresario');
+  });
 
   async function chamar(nome: string, args: unknown[]) {
     const acao = IDS[nome];
@@ -156,7 +159,6 @@ test.describe('IDOR entre empresários — Server Actions', () => {
   const devolveuOk = (corpo: string) => /"ok"\s*:\s*true|\\"ok\\":true/.test(corpo);
 
   test('marcarGuiaPagaAction NÃO quita guia de outro dono', async () => {
-    test.skip(!alvos.guiaAlheia, 'não há guia em aberto de outro dono');
     const r = await chamar('marcarGuiaPagaAction', [alvos.guiaAlheia]);
     expect(devolveuOk(r.corpo), `quitou guia alheia. corpo=${r.corpo.slice(0, 300)}`).toBe(false);
   });
@@ -165,25 +167,21 @@ test.describe('IDOR entre empresários — Server Actions', () => {
     // O mais grave da lista: nota fiscal é documento com efeito externo.
     // A action lê a nota com `.eq('company_id')` ANTES de falar com a Focus,
     // então a recusa acontece sem nenhuma chamada ao provedor.
-    test.skip(!alvos.notaAlheia, 'não há nota de outro dono');
     const r = await chamar('cancelarNotaAction', [alvos.notaAlheia, 'Justificativa de teste automatizado de seguranca']);
     expect(devolveuOk(r.corpo), `cancelou nota alheia. corpo=${r.corpo.slice(0, 300)}`).toBe(false);
   });
 
   test('marcarNotificacaoLidaAction NÃO marca notificação de outro dono', async () => {
-    test.skip(!alvos.notificacaoAlheia, 'não há notificação de outro dono');
     const r = await chamar('marcarNotificacaoLidaAction', [alvos.notificacaoAlheia]);
     expect(devolveuOk(r.corpo), `marcou notificação alheia. corpo=${r.corpo.slice(0, 300)}`).toBe(false);
   });
 
   test('softDeleteClienteAction NÃO apaga cliente de outro dono', async () => {
-    test.skip(!alvos.clienteAlheio, 'não há cliente de outro dono');
     const r = await chamar('softDeleteClienteAction', [alvos.clienteAlheio]);
     expect(devolveuOk(r.corpo), `apagou cliente alheio. corpo=${r.corpo.slice(0, 300)}`).toBe(false);
   });
 
   test('updateClienteAction NÃO edita cliente de outro dono', async () => {
-    test.skip(!alvos.clienteAlheio, 'não há cliente de outro dono');
     const r = await chamar('updateClienteAction', [alvos.clienteAlheio, {
       person_type: 'PJ', razao_social: 'INVADIDO', document: '11222333000181', status: 'active',
     }]);

@@ -1,7 +1,11 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'node:fs';
-import { ambienteDestrutivo, MOTIVO_SKIP } from './guarda-ambiente';
+import { ambienteDestrutivo, MOTIVO_SKIP, exigirVitimaSintetica } from './guarda-ambiente';
+import {
+  criarEmpresario, criarEscritorio, vincularNaCarteira, criarHonorario,
+  limparSemeado, SENHA_SINTETICA, type Semeado,
+} from './tenant-sintetico';
 
 /**
  * IDOR entre escritórios — nas SERVER ACTIONS, não só na RLS.
@@ -31,21 +35,21 @@ import { ambienteDestrutivo, MOTIVO_SKIP } from './guarda-ambiente';
  *
  * ─── CONFIGURAÇÃO (nada de segredo neste arquivo — o repo é público) ────────
  * Exige, no ambiente:
- *   E2E_CONTADOR_EMAIL   e-mail de um contador de teste, membro de um escritório aprovado
- *   E2E_CONTADOR_SENHA   senha dele
  *   E2E_SUPABASE_URL / E2E_SUPABASE_ANON_KEY / E2E_SUPABASE_SERVICE_ROLE_KEY
  *
- * ⚠️ O banco tem de ser de DESENVOLVIMENTO. A trava de `guarda-ambiente.ts`
- * recusa rodar se `E2E_SUPABASE_URL` for o mesmo que a aplicação usa.
+ * DOIS ESCRITÓRIOS INTEIROS SÃO SEMEADOS AQUI — o do atacante e o alvo, cada um
+ * com contador, cliente na carteira e honorário. Ver `tenant-sintetico.ts`.
  *
- * O escritório-ALVO e os ids dele são DESCOBERTOS em tempo de execução (o
- * primeiro escritório aprovado do qual este contador não é membro). Sem um
- * segundo escritório na base, o teste se declara skipped em vez de passar
- * vazio — teste que passa por falta de dado é pior que teste nenhum.
+ * Antes, o alvo era "o primeiro escritório aprovado do qual este contador não é
+ * membro". Isso trocava duas coisas por conveniência. A primeira: contra
+ * produção, esse escritório é REAL, e os casos abaixo apagam honorário e emitem
+ * cobrança — dano de verdade no dia em que uma defesa cair, que é justamente o
+ * dia para o qual o teste existe. A segunda: o `test.skip` por falta de segundo
+ * escritório era silencioso, e o banco de produção tem UM escritório — a suíte
+ * teria passado sem atacar nada.
  *
  * ─── COMO RODAR ─────────────────────────────────────────────────────────────
  *   export E2E_SUPABASE_URL=... E2E_SUPABASE_ANON_KEY=... E2E_SUPABASE_SERVICE_ROLE_KEY=...
- *   export E2E_CONTADOR_EMAIL=... E2E_CONTADOR_SENHA=...
  *   npm run build && PORT=3100 npm run start
  *   E2E_BASE_URL=http://localhost:3100 npx playwright test tests/idor-actions-contador.spec.ts
  *
@@ -53,8 +57,6 @@ import { ambienteDestrutivo, MOTIVO_SKIP } from './guarda-ambiente';
  */
 
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
-const EMAIL = process.env.E2E_CONTADOR_EMAIL ?? '';
-const SENHA = process.env.E2E_CONTADOR_SENHA ?? '';
 // TRAVA DE AMBIENTE: este teste invoca acoes REAIS contra dados REAIS. Desde
 // 14/08/2026 o banco da aplicacao e producao e so producao, entao o alvo tem de
 // vir de E2E_SUPABASE_URL. Ver tests/guarda-ambiente.ts.
@@ -104,45 +106,48 @@ test.describe('IDOR entre escritórios — Server Actions do contador', () => {
   let alvo: { contabilidadeId: string; companyId: string; honorarioId: string; nome: string };
   /** Um pedaço do nome do próprio cliente, para o controle positivo. */
   let minhaCarteira: string;
+  let admin: ReturnType<typeof createClient>;
+  // Preenchido pelos criadores, um id por vez — ver tenant-sintetico.ts.
+  const semeado: Semeado = {};
 
   test.beforeAll(async ({ browser }) => {
     // Skip fica AQUI e não no escopo do describe: `test.skip(cond, motivo)` só
-    // vale dentro de um hook ou teste. Sem credencial no ambiente, o arquivo se
-    // declara pulado — nunca "passa" por não ter o que fazer.
-    test.skip(
-      !AMBIENTE || !EMAIL || !SENHA,
-      !AMBIENTE ? MOTIVO_SKIP : 'faltam E2E_CONTADOR_EMAIL / E2E_CONTADOR_SENHA',
-    );
+    // vale dentro de um hook ou teste.
+    test.skip(!AMBIENTE, MOTIVO_SKIP);
     IDS = idsDoManifest();
 
-    const admin = createClient(SB_URL, SERVICE, { auth: { persistSession: false } });
-    const { data: eu } = await admin.from('contabilidade_membros')
-      .select('contabilidade_id, user_id, contabilidades(nome)')
-      .limit(200);
-    const { data: users } = await admin.auth.admin.listUsers();
-    const meuId = users.users.find((u) => u.email === EMAIL)?.id;
-    expect(meuId, `usuário ${EMAIL} não existe no Supabase`).toBeTruthy();
+    admin = createClient(SB_URL, SERVICE, { auth: { persistSession: false } });
 
-    const minha = (eu ?? []).find((m) => m.user_id === meuId)?.contabilidade_id;
-    expect(minha, `${EMAIL} não é membro de nenhum escritório`).toBeTruthy();
+    // ── O ATACANTE: escritório A, com um cliente na carteira ────────────────
+    // O cliente próprio não é enfeite: o controle positivo no fim do arquivo
+    // confere que a sessão ALCANÇA a própria carteira. Sem ele, "não alcançou o
+    // alvo" poderia ser só uma sessão morta.
+    const escritorioA = await criarEscritorio(admin, 'idor-ct-atacante', semeado);
+    const clienteA = await criarEmpresario(admin, 'idor-ct-cliente-a', semeado);
+    await vincularNaCarteira(admin, clienteA.companyId, escritorioA.contabilidadeId);
 
-    // O ALVO: outro escritório aprovado, com cliente e honorário próprios.
-    const { data: outros } = await admin.from('contabilidades')
-      .select('id, nome').eq('status', 'aprovada').neq('id', minha!);
-    let achado: typeof alvo | null = null;
-    for (const o of outros ?? []) {
-      const { data: emp } = await admin.from('companies')
-        .select('id').eq('contabilidade_id', o.id).is('deleted_at', null).limit(1).maybeSingle();
-      const { data: hon } = await admin.from('honorarios')
-        .select('id').eq('contabilidade_id', o.id).limit(1).maybeSingle();
-      if (emp && hon) { achado = { contabilidadeId: o.id, companyId: emp.id, honorarioId: hon.id, nome: o.nome }; break; }
-    }
-    test.skip(!achado, 'não há um segundo escritório aprovado com cliente e honorário — nada a atacar');
-    alvo = achado!;
+    // ── A VÍTIMA: escritório B, completo, e alheio ao contador de A ─────────
+    const escritorioB = await criarEscritorio(admin, 'idor-ct-vitima', semeado);
+    const clienteB = await criarEmpresario(admin, 'idor-ct-cliente-b', semeado);
+    await vincularNaCarteira(admin, clienteB.companyId, escritorioB.contabilidadeId);
+    const honorarioB = await criarHonorario(admin, {
+      contabilidadeId: escritorioB.contabilidadeId,
+      companyId: clienteB.companyId,
+      empresaClienteId: clienteB.companyId,
+    }, semeado);
 
-    const { data: meuCliente } = await admin.from('companies')
-      .select('nome').eq('contabilidade_id', minha!).is('deleted_at', null).limit(1).maybeSingle();
-    minhaCarteira = (meuCliente?.nome ?? '').slice(0, 12);
+    alvo = {
+      contabilidadeId: escritorioB.contabilidadeId,
+      companyId: clienteB.companyId,
+      honorarioId: honorarioB,
+      nome: escritorioB.nome,
+    };
+    exigirVitimaSintetica('escritório alvo do IDOR entre contadores', alvo.nome);
+    exigirVitimaSintetica('cliente do escritório alvo', clienteB.nomeEmpresa);
+
+    minhaCarteira = clienteA.nomeEmpresa.slice(0, 12);
+    const EMAIL = escritorioA.contadorEmail;
+    const SENHA = SENHA_SINTETICA;
 
     // Login pela TELA, não por atalho: é o fluxo que gera os cookies do
     // @supabase/ssr que as actions vão ler. Atalho aqui inventaria uma sessão
@@ -164,7 +169,10 @@ test.describe('IDOR entre escritórios — Server Actions do contador', () => {
     await page.close();
   });
 
-  test.afterAll(async () => { await ctx?.dispose(); });
+  test.afterAll(async () => {
+    await ctx?.dispose();
+    if (admin) await limparSemeado(admin, semeado, 'idor-contador');
+  });
 
   async function chamar(nome: string, args: unknown[], subs: Record<string, string> = {}) {
     const acao = IDS[nome];

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { ambienteDestrutivo, MOTIVO_SKIP, URL_INERTE, CHAVE_INERTE } from './guarda-ambiente';
+import { ambienteDestrutivo, MOTIVO_SKIP, URL_INERTE, CHAVE_INERTE, MARCA_SINTETICA } from './guarda-ambiente';
 import { createClient } from '@supabase/supabase-js';
 
 // Prova de RLS: provisiona um 2º tenant (B) via service_role, e confirma que B,
@@ -21,8 +21,24 @@ const SERVICE = AMBIENTE?.service ?? CHAVE_INERTE;
 test.skip(() => !AMBIENTE, MOTIVO_SKIP);
 
 
-const A_EMAIL = 'allanvalle@outlook.com';
-const A_PASS = 'teste123';
+// TENANT A TAMBÉM É SINTÉTICO (01/09/2026).
+//
+// Até aqui, A era a conta real `allanvalle@outlook.com` com a senha 'teste123'.
+// Isso trazia dois problemas, um chato e um sério.
+//
+// O chato: a senha não confere há meses, então o teste falhava no login de A e
+// era anotado no CHECKPOINT como "falha pré-existente" — uma linha vermelha
+// permanente, que é o mesmo que uma linha que ninguém lê.
+//
+// O sério: com o banco da aplicação sendo produção, "tenant A" passou a ser um
+// CLIENTE DE VERDADE. O passo 6 tenta INSERIR uma linha na empresa de A; o
+// passo 4 lê o que A tem. Enquanto a RLS funciona, nada acontece — mas o teste
+// existe justamente para o dia em que ela não funcionar, e nesse dia o insere
+// cai na empresa de alguém.
+//
+// Agora os dois lados nascem aqui e morrem no finally. O teste passou a provar
+// mais, não menos: A tem um cliente semeado, então o passo 5 tem o que vazar.
+const PASS_A = 'senha-teste-A-123';
 
 // Tabelas escopadas por company_id (testadas no loop). empresas_fiscais (empresa_id)
 // e arquivos_auxiliares (company_id, FK) são testadas à parte logo abaixo.
@@ -36,31 +52,49 @@ test('RLS isola tenants: B não acessa dados de A', async () => {
 
   const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
 
-  // 1) Provisiona tenant B (confirmado) + uma company de B
-  const bEmail = `rls-b-${Date.now()}@balu-test.local`;
-  const bPass = 'senha-teste-B-123';
-  const { data: created, error: cErr } = await admin.auth.admin.createUser({
-    email: bEmail, password: bPass, email_confirm: true,
-  });
-  expect(cErr, `createUser falhou: ${cErr?.message}`).toBeNull();
-  const bUserId = created.user!.id;
+  const stamp = Date.now();
 
-  const { error: bcErr } = await admin
-    .from('companies').insert({ user_id: bUserId, nome: 'B Teste LTDA' });
-  expect(bcErr, `insert company B falhou: ${bcErr?.message}`).toBeNull();
+  // 1) Provisiona os DOIS tenants. Ordem: A (a vítima) e B (o intruso).
+  const criar = async (papel: 'a' | 'b') => {
+    const email = `rls-${papel}-${stamp}-${MARCA_SINTETICA}@balu-test.local`;
+    const { data, error } = await admin.auth.admin.createUser({
+      email, password: PASS_A, email_confirm: true,
+    });
+    expect(error, `createUser ${papel} falhou: ${error?.message}`).toBeNull();
+    const userId = data.user!.id;
+    const { data: emp, error: eErr } = await admin.from('companies')
+      .insert({ user_id: userId, nome: `Tenant ${papel.toUpperCase()} ${MARCA_SINTETICA} ${stamp}` })
+      .select('id').single();
+    expect(eErr, `insert company ${papel} falhou: ${eErr?.message}`).toBeNull();
+    return { email, userId, companyId: emp!.id as string };
+  };
+
+  const A = await criar('a');
+  const B = await criar('b');
+
+  // A ganha um cliente: sem uma linha filha, o passo 5 conferiria "B não vê
+  // nada" num lugar onde não havia nada para ver — verde que não prova nada.
+  const { data: cliA, error: cliErr } = await admin.from('clientes')
+    .insert({ company_id: A.companyId, owner_user_id: A.userId,
+              razao_social: `Cliente de A ${MARCA_SINTETICA}`, person_type: 'PJ' })
+    .select('id').single();
+  expect(cliErr, `insert cliente de A falhou: ${cliErr?.message}`).toBeNull();
+  const clienteAId = cliA!.id as string;
+  const bUserId = B.userId;
 
   try {
     // 2) Sessão A (anon + login)
     const aClient = createClient(URL, ANON, { auth: { persistSession: false } });
-    const { error: aErr } = await aClient.auth.signInWithPassword({ email: A_EMAIL, password: A_PASS });
+    const { error: aErr } = await aClient.auth.signInWithPassword({ email: A.email, password: PASS_A });
     expect(aErr, `login A falhou: ${aErr?.message}`).toBeNull();
     const { data: aCompanies } = await aClient.from('companies').select('id');
     expect(aCompanies?.length ?? 0, 'A precisa ter ao menos 1 empresa').toBeGreaterThan(0);
-    const aCompanyId = aCompanies![0].id as string;
+    const aCompanyId = A.companyId;
+    expect(aCompanies!.map((c) => c.id), 'A não enxerga a própria empresa').toContain(aCompanyId);
 
     // 3) Sessão B (anon + login)
     const bClient = createClient(URL, ANON, { auth: { persistSession: false } });
-    const { error: bErr } = await bClient.auth.signInWithPassword({ email: bEmail, password: bPass });
+    const { error: bErr } = await bClient.auth.signInWithPassword({ email: B.email, password: PASS_A });
     expect(bErr, `login B falhou: ${bErr?.message}`).toBeNull();
 
     // 4) B não enxerga a company de A
@@ -92,8 +126,12 @@ test('RLS isola tenants: B não acessa dados de A', async () => {
     const { data: aSelf } = await aClient.from('companies').select('id').eq('id', aCompanyId);
     expect(aSelf ?? [], 'A não enxerga a própria company (policy quebrou o dono)').toHaveLength(1);
   } finally {
-    // Teardown: apaga company e user de B
-    await admin.from('companies').delete().eq('user_id', bUserId);
+    // Teardown: filhas antes das mães, e cada ator apagado pelo id que ESTE
+    // teste criou — nunca por predicado largo.
+    await admin.from('clientes').delete().eq('id', clienteAId);
+    await admin.from('companies').delete().eq('id', A.companyId);
+    await admin.from('companies').delete().eq('id', B.companyId);
+    await admin.auth.admin.deleteUser(A.userId);
     await admin.auth.admin.deleteUser(bUserId);
   }
 });
