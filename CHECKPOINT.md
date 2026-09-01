@@ -1,7 +1,9 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-09-01 (sessão 37 — **a suíte destrutiva volta a rodar**. As 9 specs desligadas desde 14/08 voltaram, com tenant sintético em produção e uma segunda trava que exige que a VÍTIMA do IDOR também seja sintética. **73/73, a primeira vez desde 14/08**, e a regressão dos 3 papéis entregue. Seis defeitos achados na primeira execução, dois deles reais na tela (WCAG 2.5.8 em `/login`). Dois achados fora do escopo, os dois contrariando o checkpoint anterior: **a 1.1 já estava publicada desde 29/08 19:48** — com aviso de minuta e bloco "Notas ao advogado" no ar — e **o certificado A1 não era o que travava o smoke fiscal**: a MCB tem certificado válido até 17/11, mas o cadastro dela na Focus dá 401, o mesmo das sessões 34/35.)
+> **Última atualização:** 2026-09-01 (sessão 37 — **a Focus destravou, a suíte destrutiva voltou a rodar, e o BUG-006 foi resolvido**. O token principal da Focus entrou e o 401 de 40 dias acabou: a causa era que o "token da plataforma" configurado era o token DA EMPRESA MCB MARKETING. MCB e AL PISCINAS vinculadas e **emitindo em homologação** — primeira vez que uma empresa passa por `decidirCredencial` sem recusa. O BUG-006 não era service worker: era `toLocaleDateString` com o fuso de quem renderiza (UTC no servidor, BRT no navegador), reproduzido e corrigido em 22 arquivos. A auditoria de 29/08 foi cruzada item a item: 6 dos 7 BUGs fechados, e a exportação LGPD — o único "pode ser bug" — provada boa. Base: tsc 0 · 2346 testes · Playwright 74/74.)
+>
+> _Anterior — sessão 37 parte 1: **a suíte destrutiva volta a rodar**. As 9 specs desligadas desde 14/08 voltaram, com tenant sintético em produção e uma segunda trava que exige que a VÍTIMA do IDOR também seja sintética. **73/73, a primeira vez desde 14/08**, e a regressão dos 3 papéis entregue. Seis defeitos achados na primeira execução, dois deles reais na tela (WCAG 2.5.8 em `/login`). Dois achados fora do escopo, os dois contrariando o checkpoint anterior: **a 1.1 já estava publicada desde 29/08 19:48** — com aviso de minuta e bloco "Notas ao advogado" no ar — e **o certificado A1 não era o que travava o smoke fiscal**: a MCB tem certificado válido até 17/11, mas o cadastro dela na Focus dá 401, o mesmo das sessões 34/35.)
 >
 > _Anterior — sessão 36 (2026-08-29 — **auditoria funcional externa e Onda 1 do fechamento**. 96 checkpoints, 70 aprovados; parecer NÃO APROVADO para piloto. A leitura do repositório inverteu dois achados: o contador não tem superfície de escrita (o banco já nega — era formulário sem saída), e o Fator R não tem erro de cálculo, só de frase. Mas achou um furo maior: `lancarNotaManualAction` era a única das seis actions de escrita fiscal sem `empresaDoDono` — teste de mutação provou que ela **retornava `ok:true` inserindo em empresa alheia**, com a RLS como único freio. **WhatsApp ENTREGUE** (número oficial + escritório), o que fecha os itens 1 e 2 da lista de próximos passos e torna mais urgente a dívida da política de privacidade não mencionar WhatsApp. Onda 1 no branch `onda-1-auditoria-29-08`. **Pendente e seu: revisão jurídica dos documentos e a decisão de publicar 1.1, que joga todos os usuários para /aceite.**)
 >
@@ -11,34 +13,108 @@
 
 > ## ▶️ RETOMAR AQUI — depois de 01/09/2026 (sessão 37)
 >
-> ⚠️ **A lista da sessão 36 dizia que a 1.1 estava por publicar. NÃO ESTÁ —
-> ela foi publicada em 29/08 às 19:48, na própria sessão que escreveu "publicar
-> só depois do advogado".** Ver "o que a sessão 37 achou" logo abaixo. Os itens
-> foram reescritos com esse fato.
+> A auditoria funcional de 29/08 foi cruzada item a item com o código e o banco
+> nesta sessão. **Dos 7 BUGs, 6 estão fechados**; os 4 "parciais" não numerados,
+> fechados ou decididos; e os três itens que a auditoria deixou como *não
+> verificados* (negação server-side do Contador, IDOR/RLS destrutivo,
+> exportação LGPD) foram **medidos e passam**.
 >
-> 1. 🔴 **Os documentos legais no ar carregam aviso de minuta.** As QUATRO
->    versões em `documento_versoes` contêm "⚠️ Minuta técnica — pendente de
->    revisão jurídica... Antes de publicação, precisa de revisão por profissional
->    habilitado" — inclusive a `privacidade 1.0`, publicada desde 13/08. A
->    `privacidade 1.1`, publicada em 29/08, tem ainda o bloco **"Notas ao
->    advogado"** e o corpo abre dizendo `**Versão:** 1.0`. É o texto que todo
->    usuário ativo precisa aceitar em `/aceite` para continuar usando o produto.
->    **Decisão sua**, e ela é de duas partes: (a) o que fazer com o que já está
->    no ar; (b) mandar os dois documentos ao advogado (as 5 notas seguem no fim
->    do arquivo, a nº 3 é divergência real entre texto e sistema).
-> 2. 🟡 **Parear o número oficial do Balu.** Todos os números são de TESTE e os
->    webhooks estão desligados. Parear recria instância e webhook sozinho.
-> 3. 🟡 **Smoke fiscal em homologação** — a metade da Onda 4 que continua
->    travada, e NÃO é por falta de certificado. Ver abaixo.
+> 1. 🟠 **BUG-001 — documentos legais** (único P1 restante). As QUATRO versões
+>    publicadas carregam "⚠️ Minuta técnica — pendente de revisão jurídica"; a
+>    `privacidade 1.1` tem ainda o bloco "Notas ao advogado", e o corpo abre
+>    dizendo `**Versão:** 1.0`. **Você decidiu em 01/09 que NÃO é crítico** — a
+>    plataforma não foi publicada para o público geral. Fica como pendência
+>    jurídica, não como bloqueio de piloto.
+> 2. 🟡 **Vercel** — trocar `FOCUS_NFE_TOKEN_PRODUCAO` pelo principal e
+>    **apagar** `FOCUS_NFE_HOMOLOGACAO`. A CLI daqui responde `Not authorized`;
+>    `! npx vercel login` destrava. Conferir também se existe um
+>    `FOCUS_NFE_TOKEN` genérico lá — ele atende produção quando o específico falta.
+> 3. 🟡 **Smoke fiscal em homologação** — agora possível: MCB MARKETING e AL
+>    PISCINAS passam por `decidirCredencial` com token próprio. É o que falta da
+>    Onda 4.
+> 4. 🟡 **Parear o número oficial do WhatsApp** (todos são de teste) · **Asaas
+>    em produção** · **e-mail de ponta a ponta** · **`ia.smoke.test.ts`**, que
+>    nunca foi executado.
 >
-> **Dívida de código herdada da sessão 36:** a anonimização (0040) não alcança
-> `whatsapp_atendimentos`. Depende do prazo de retenção que o advogado definir.
-> 🟢 A dívida "a política não menciona WhatsApp" está **coberta no texto**: a
-> `privacidade 1.1` menciona.
+> **Abertos por decisão, não por esquecimento:** SLA default (0 de 1 escritório
+> configurado — um default faria o app prometer prazo que ninguém escolheu) e a
+> anonimização (0040) não alcançar `whatsapp_atendimentos`, que espera o prazo de
+> retenção do advogado.
 >
 > **Antes de mexer em qualquer coisa:** `npx tsc --noEmit && npx vitest run &&
-> npm run build` a partir de `app/`. Linha de base: **tsc 0 · 2317 testes · 36
-> pulados · build limpo · Playwright 73/73**.
+> npm run build` a partir de `app/`. Linha de base: **tsc 0 · 2346 testes · 36
+> pulados · build limpo · Playwright 74/74**.
+>
+> Para rodar o Playwright inteiro (as 9 specs destrutivas exigem opt-in):
+> `E2E_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL` + as duas chaves +
+> `E2E_TENANT_SINTETICO='sim-eu-autorizo-tenant-sintetico-em-producao'`.
+
+> ## 🆕 SESSÃO 37 — PARTE 2 (01/09) — a Focus destravou, e o BUG-006 era fuso
+>
+> ### O token da Focus: a causa raiz de 40 dias
+>
+> Você colou o **token principal de produção** em `/admin/configuracoes/focus` e
+> `GET /v2/empresas` voltou a responder **200**. A causa do 401 que travava tudo
+> desde 23/07 apareceu junto, e é desconfortável: **o que estava configurado
+> como token DA PLATAFORMA era o token DA EMPRESA MCB MARKETING**. Os três pares
+> da conta são distintos, e `JSqPsO`/`33dzTh` do `.env.local` são exatamente os
+> dela. Por isso passava em `/v2/codigos_cnae` (qualquer token válido passa) e
+> era recusado em `/v2/empresas` (só o principal passa). O suporte da Focus
+> estava certo desde 27/08.
+>
+> **Três defeitos que nunca chegaram a rodar** apareceram com o caminho reaberto:
+> o sync só sabia CRIAR (empresa já cadastrada no painel travaria em CNPJ
+> duplicado — MCB e AL PISCINAS estavam assim); o POST **não pedia NFS-e**, então
+> toda empresa criada pelo Balu nascia com ela desligada; e quem decidia se dava
+> para ligar NFS-e sozinho era um `Map` escrito à mão **com um município**,
+> enquanto `municipios_nfse` tem 5.571 linhas sincronizadas da própria Focus e
+> **2.402 são 'Nacional*'** — Florianópolis entre elas.
+>
+> ✅ **MCB MARKETING e AL PISCINAS vinculadas** (nenhuma empresa nova criada na
+> Focus — as duas já estavam lá). MCB: id 246797, dois tokens cifrados, PUT ligou
+> `habilita_nfsen_homologacao`. AL PISCINAS: `focus_empresa_id` corrigido de
+> **216964 → 214761** — apontava para a empresa da CONTA ANTIGA. **As duas
+> passam por `decidirCredencial` sem recusa**, a primeira vez que isso acontece.
+>
+> ### BUG-006: era fuso horário, não service worker
+>
+> O diagnóstico que este arquivo carregava desde 29/08 apontava
+> `skipWaiting`+`clientsClaim` e concluía que as duas saídas custavam caro
+> demais. **Falso dilema: a hipótese nunca tinha sido medida.**
+>
+> ```
+> new Date('2026-09-01T02:00:00Z').toLocaleDateString('pt-BR')
+>   servidor (Node, TZ=UTC como na Vercel)  -> "01/09/2026"
+>   cliente  (Chromium, America/Sao_Paulo)  -> "31/08/2026"
+> ```
+>
+> Client component renderiza nos dois lados. Só data diverge em 12,5% dos
+> horários; **com hora diverge sempre**. Corrigido com `lib/format/data-brt.ts`
+> (fuso fixo), 28 chamadas em 22 arquivos, e travado por um teste que **varre o
+> fonte** — o defeito não aparece em teste de unidade, só quando servidor e
+> cliente estão em fusos diferentes, que é produção e nunca a máquina de quem
+> escreve.
+>
+> ⚠️ **Achado de quebra, e este era dado errado:** `mesLabel` dos honorários fazia
+> `new Date(ano, mes-1)` — meia-noite LOCAL. No servidor UTC, o mês do honorário
+> apareceria como o ANTERIOR. Competência é rótulo de calendário, não instante.
+>
+> ### Exportação LGPD: o único "pode ser bug" da auditoria não era bug
+>
+> Testada de ponta a ponta com tenant sintético: download acontece, JSON válido,
+> com os dados do usuário. O que provavelmente enganou o auditor é que o botão
+> não está em `/conta`, e sim na aba **Segurança** (`?tab=seguranca`). O teste
+> ainda cobra a promessa da tela — nove marcadores de segredo procurados no
+> arquivo baixado, o prefixo de cifra `enc:v1:` inclusive.
+>
+> ### Higiene das variáveis
+>
+> `.env.local`: `FOCUS_NFE_TOKEN_PRODUCAO` trocado pelo principal;
+> `FOCUS_NFE_HOMOLOGACAO` **removida** — conferido um a um que nenhum caminho lê
+> `obterTokenFocus('hom')`. O `.env.example` estava ensinando errado: documentava
+> `FOCUS_NFE_TOKEN` como "token de SANDBOX" quando o código o usa como fallback
+> genérico para QUALQUER ambiente, e documentava `FOCUS_NFE_ENV`, que nenhum
+> código lê. Backup em `.env.local.bak-antes-higiene-focus-01-09`.
 
 > ## 🆕 SESSÃO 37 (2026-09-01) — a suíte destrutiva volta a rodar, e a 1.1 já estava no ar
 >
