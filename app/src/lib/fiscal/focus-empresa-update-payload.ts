@@ -5,14 +5,16 @@
 // O PUT é idempotente: pode reenviar o mesmo payload sem efeito colateral.
 //
 // **Decisão da flag NFS-e** (28-mai):
-//   - Município aderente NFSe Nacional + env=hom → `habilita_nfsen_homologacao: true`
-//   - Município aderente NFSe Nacional + env=prod → `habilita_nfsen_producao: true`
+//   - Município nacional + env=hom  → `habilita_nfsen_homologacao: true`
+//   - Município nacional + env=prod → `habilita_nfsen_producao: true`
 //   - Município legado → `habilita_nfse: true` + `login_responsavel` + `senha_responsavel`
-// A escolha sai de `isAderenteNfsenNacional(codigoIbge)`.
+//   - Município sem provedor → nenhuma flag (a Focus não atende NFS-e ali)
+// A escolha sai de `modoNfseDoMunicipio(codigoIbge)`, que le o provedor que a
+// Focus reportou em `municipios_nfse` — nao de lista escrita a mao.
 
 import type { FocusEnv } from '../clients/focus-nfe';
 import type { RegimeCode } from './regime';
-import { isAderenteNfsenNacional } from './municipios-nfsen-nacional';
+import type { ModoNfse } from './municipio-nfse-modo';
 import { regimeCodeToFocus, type FocusEmpresaCompany } from './focus-empresa-payload';
 
 /**
@@ -75,21 +77,30 @@ function optString(v: string | null | undefined): string | undefined {
 }
 
 /**
- * Decide qual flag de habilitação NFS-e setar.
- * - aderente NFSe Nacional → flag `nfsen_*` do ambiente
- * - senão → flag legada `nfse`
+ * Decide qual flag de habilitação NFS-e setar, a partir do MODO do município
+ * (ver `municipio-nfse-modo.ts`, que é quem lê o provedor no banco).
+ *
+ * - `nacional`     → flag `nfsen_*` do ambiente. É o caso em que o Balu liga
+ *                    sozinho, sem pedir nada ao dono da empresa.
+ * - `legado`       → flag `nfse`. A Focus vai exigir login/senha da prefeitura
+ *                    para valer; a flag sozinha não basta, e é por isso que
+ *                    `withCredenciaisPrefeitura` existe.
+ * - `indisponivel` → NENHUMA flag. Antes daqui, todo município que não estivesse
+ *                    na lista escrita à mão levava `habilita_nfse: true` — o que
+ *                    inclui os 2.202 municípios onde a Focus não atende NFS-e.
+ *                    Mandar a flag ali não habilitava nada e ainda dava ao
+ *                    snapshot um "sim" que a emissão depois desmentia.
  *
  * `empresaAtivada` controla o valor — se a empresa fiscal estiver desativada
  * localmente, mandamos `false` (Focus desabilita emissão sem deletar config).
  */
 export function decidirFlagsNfse(
-  codigoIbge: string | null | undefined,
+  modo: ModoNfse,
   env: FocusEnv,
   empresaAtivada: boolean,
-  now: Date = new Date(),
 ): Pick<FocusEmpresaUpdatePayload, 'habilita_nfse' | 'habilita_nfsen_producao' | 'habilita_nfsen_homologacao'> {
-  const aderente = isAderenteNfsenNacional(codigoIbge, now);
-  if (aderente) {
+  if (modo === 'indisponivel') return {};
+  if (modo === 'nacional') {
     return env === 'prod'
       ? { habilita_nfsen_producao: empresaAtivada }
       : { habilita_nfsen_homologacao: empresaAtivada };
@@ -107,6 +118,7 @@ export function decidirFlagsNfse(
  *   - codigoIbge:     código do município (vem de `companies.codigo_municipio`
  *                     ou do snapshot Focus `empresas_fiscais.focus_codigo_municipio`)
  *   - env:            ambiente alvo das emissões ('hom' ou 'prod')
+ *   - modo:           como o município atende NFS-e — ver `municipio-nfse-modo.ts`
  *   - now:            injeção pra teste de data
  */
 export function buildFocusEmpresaUpdatePayload(
@@ -114,6 +126,7 @@ export function buildFocusEmpresaUpdatePayload(
   empresaFiscal: FocusEmpresaFiscalForUpdate,
   codigoIbge: string | null,
   env: FocusEnv,
+  modo: ModoNfse,
   now: Date = new Date(),
 ): FocusEmpresaUpdatePayload {
   const cnpj = digits(company.cnpj);
@@ -147,7 +160,7 @@ export function buildFocusEmpresaUpdatePayload(
 
   // Empresa ativada por default; se explicitamente false, desabilita.
   const ativada = empresaFiscal.empresa_fiscal_ativada !== false;
-  const flagsNfse = decidirFlagsNfse(codigoIbge, env, ativada, now);
+  const flagsNfse = decidirFlagsNfse(modo, env, ativada);
 
   const payload: FocusEmpresaUpdatePayload = {
     nome,

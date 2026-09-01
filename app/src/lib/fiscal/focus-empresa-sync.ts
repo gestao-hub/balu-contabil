@@ -10,6 +10,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { focus, type FocusEnv } from '@/lib/clients/focus-nfe';
 import { buildFocusEmpresaPayload } from './focus-empresa-payload';
+import { modoNfseDoMunicipio } from './municipio-nfse-modo';
 import {
   buildFocusEmpresaUpdatePayload,
   withCertificado,
@@ -89,7 +90,10 @@ export async function syncEmpresaNaFocus(
     return { ok: false, error: msg };
   }
 
-  // 3) Monta payload + POST
+  // 3) Descobre como o município atende NFS-e, monta payload, VINCULA ou cria.
+  const codigoIbgeNovo = (company.codigo_municipio as string | null) ?? null;
+  const modo = await modoNfseDoMunicipio(supabase, codigoIbgeNovo);
+
   try {
     const payload = buildFocusEmpresaPayload(
       {
@@ -110,10 +114,28 @@ export async function syncEmpresaNaFocus(
         inscricao_municipal: company.inscricao_municipal,
       },
       regimeCode,
+      modo,
     );
 
-    const resp = await focus.criarEmpresa(payload, 'hom');
+    // ─── VINCULAR ANTES DE CRIAR ──────────────────────────────────────────
+    //
+    // A empresa pode JÁ existir na conta da Focus: alguém cadastrou pelo painel
+    // (foi o caso da MCB MARKETING e da AL PISCINAS), ou um POST anterior
+    // venceu e a resposta se perdeu. Um POST cego ali bate em CNPJ duplicado e
+    // deixa travada para sempre uma empresa que estava pronta para emitir.
+    //
+    // Vincular é melhor que criar mesmo quando os dois funcionariam: o registro
+    // existente pode já ter certificado e habilitações, e recriar jogaria isso
+    // fora. O que precisamos dele são o `id` e o par de tokens — os dois vêm no
+    // GET.
+    const jaNaFocus = await focus.buscarEmpresaPorCnpj(payload.cnpj);
+    const vinculou = jaNaFocus != null;
+    const resp = vinculou ? jaNaFocus : await focus.criarEmpresa(payload, 'hom');
     const focusEmpresaId = typeof resp.id === 'number' ? resp.id : null;
+
+    // Vinculada, ainda falta ligar NFS-e: quem foi cadastrada pelo painel
+    // costuma vir sem. O PUT roda depois da gravação dos tokens, no fim desta
+    // função, para que uma falha dele não custe o vínculo — que é a parte cara.
 
     // Bloco 5: os DOIS tokens vao, cada um na sua coluna, para
     // `empresa_credenciais_focus` — cifrados e fora do alcance de
@@ -167,6 +189,28 @@ export async function syncEmpresaNaFocus(
     // Falha aqui NÃO desfaz o POST — log e seguimos.
     if (focusEmpresaId != null) {
       await snapshotFocusEmpresa(supabase, companyId, focusEmpresaId, now);
+    }
+
+    // ─── LIGAR NFS-e DA EMPRESA VINCULADA ─────────────────────────────────
+    //
+    // Só faz sentido para quem foi VINCULADA: a criada por nós já nasceu com a
+    // flag no POST. Quem foi cadastrada pelo painel da Focus costuma vir sem —
+    // a MCB MARKETING está assim (`habilita_nfse:false`, `nfsen_hom:false`),
+    // com certificado válido e nenhuma NFS-e ligada.
+    //
+    // Depois do snapshot porque o PUT precisa do `focus_empresa_id` gravado, e
+    // best-effort porque o vínculo (com os tokens) é a parte cara: perder o PUT
+    // custa um clique em "Sincronizar com Focus"; perder o vínculo custa tudo.
+    if (vinculou && modo === 'nacional' && focusEmpresaId != null) {
+      const jaLigada =
+        jaNaFocus?.habilita_nfsen_homologacao === true ||
+        jaNaFocus?.habilita_nfsen_producao === true;
+      if (!jaLigada) {
+        const put = await atualizarEmpresaNaFocus(supabase, companyId);
+        if (!put.ok) {
+          console.warn('[syncEmpresaNaFocus] vinculada, mas o PUT de NFS-e falhou:', put.error);
+        }
+      }
     }
 
     // O token em claro nunca sai desta função: quem precisa dele pra emitir lê
@@ -340,6 +384,11 @@ export async function atualizarEmpresaNaFocus(
     (company.codigo_municipio as string | null) ||
     null;
 
+  // Quem decide a flag de NFS-e é o PROVEDOR que a Focus reportou para o
+  // município (`municipios_nfse`, sincronizada pelo cron), não uma lista escrita
+  // à mão — ver `municipio-nfse-modo.ts`.
+  const modo = await modoNfseDoMunicipio(supabase, codigoIbge);
+
   try {
     let payload = buildFocusEmpresaUpdatePayload(
       {
@@ -365,6 +414,7 @@ export async function atualizarEmpresaNaFocus(
       },
       codigoIbge,
       ambiente,
+      modo,
     );
 
     // Acopla extras quando o caller passou (upload de cert / save de credenciais).

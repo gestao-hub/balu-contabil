@@ -10,6 +10,7 @@
 //   4. serpro:         "Token SERPRO ativo?"
 //   5. focus_cadastro: "Empresa PRONTA pra emitir na Focus?" (agregado)
 import { isAderenteNfsenNacional } from './municipios-nfsen-nacional';
+import { classificarModoNfse } from './municipio-nfse-modo';
 
 export type CheckStatus = 'ok' | 'pendente' | 'erro';
 export type CheckActionKey = 'sync_focus' | 'upload_cert' | 'reauth_serpro' | 'editar_endereco' | null;
@@ -285,10 +286,19 @@ function cidadeNfseCheck(state: SaudeState, now: Date): CheckResult {
     };
   }
 
-  // (b) Município é aderente ao NFSe Nacional → Focus atende automaticamente
-  // (via endpoint /v2/nfsen). Cobre cidades migradas em 2026 (Londrina/PR etc)
-  // sem depender da tabela legacy `municipios_nfse`.
-  if (isAderenteNfsenNacional(state.codigoMunicipio, now)) {
+  // (b) Município atendido pelo padrão NACIONAL → a Focus resolve sozinha (via
+  // `/v2/nfsen`), sem login e senha de prefeitura.
+  //
+  // Quem responde isso é o `provedor_nfse` que a Focus reportou — a mesma
+  // `municipios_nfse` que este arquivo chamava de "legacy" e evitava. Ela não é
+  // legada: o cron `sync-municipios` a mantém, e são 2.402 municípios
+  // 'Nacional*' contra UM na lista escrita à mão. Era a lista que estava
+  // desatualizada, e ela dizia "não" para Florianópolis.
+  //
+  // A lista continua entrando, mas só como SIM adicional — município que aderiu
+  // depois da última sincronização aparece nela primeiro.
+  if (classificarModoNfse(state.municipioInfo) === 'nacional'
+      || isAderenteNfsenNacional(state.codigoMunicipio, now)) {
     return {
       key: 'cidade_nfse', label,
       status: 'ok',

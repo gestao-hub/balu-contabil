@@ -17,14 +17,28 @@
 // inteiro.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
-type CriarEmpresaResp = { id: number; token_homologacao?: string; token_producao?: string };
+type CriarEmpresaResp = {
+  id: number;
+  token_homologacao?: string;
+  token_producao?: string;
+  // Vêm no GET de uma empresa que JÁ existe na conta — é por eles que o sync
+  // decide se ainda precisa do PUT que liga NFS-e.
+  habilita_nfse?: boolean;
+  habilita_nfsen_homologacao?: boolean;
+  habilita_nfsen_producao?: boolean;
+};
 
 const h = vi.hoisted(() => ({
-  criarEmpresa: vi.fn(async (): Promise<CriarEmpresaResp> => ({ id: 1, token_homologacao: 'tok-hom' })),
+  // `...args: unknown[]` pelo mesmo motivo de `atualizarEmpresa`: sem eles o TS
+  // infere aridade zero e `mock.calls[0][0]` (o payload do POST) não compila.
+  criarEmpresa: vi.fn(async (..._args: unknown[]): Promise<CriarEmpresaResp> => ({ id: 1, token_homologacao: 'tok-hom' })),
   // `...args: unknown[]` não é enfeite: sem eles o TS infere aridade zero e
   // `mock.calls[0][2]` (o ambiente do PUT) nem compila.
   atualizarEmpresa: vi.fn(async (..._args: unknown[]) => ({})),
   consultarEmpresa: vi.fn(async () => ({})),
+  // Por default a empresa NÃO existe na Focus — é o caminho de criação, que é
+  // o que estes casos medem. Quem testa o VÍNCULO devolve um registro aqui.
+  buscarEmpresaPorCnpj: vi.fn(async (): Promise<CriarEmpresaResp | null> => null),
 }));
 
 vi.mock('@/lib/clients/focus-nfe', () => ({
@@ -32,6 +46,7 @@ vi.mock('@/lib/clients/focus-nfe', () => ({
     criarEmpresa: h.criarEmpresa,
     atualizarEmpresa: h.atualizarEmpresa,
     consultarEmpresa: h.consultarEmpresa,
+    buscarEmpresaPorCnpj: h.buscarEmpresaPorCnpj,
   },
 }));
 
@@ -428,5 +443,189 @@ describe('syncEmpresaNaFocus — Task 20.1: tokens vão para empresa_credenciais
     expect(updsCompanies.every((c) => c.payload.focus_status !== 'ok')).toBe(true);
     // E o erro fica registrado (focus_status='erro' + focus_last_error).
     expect(updsCompanies.some((c) => c.payload.focus_status === 'erro')).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 01/09/2026 — VINCULAR ANTES DE CRIAR, E NASCER COM NFS-e
+//
+// Os dois defeitos que só apareceram quando o `POST /v2/empresas` voltou a
+// funcionar (até 27/08 o token configurado era de EMPRESA, não o principal da
+// conta, e a API de Empresas recusava tudo com 401 — nenhum destes caminhos
+// chegava a rodar):
+//
+//   1. A empresa podia JÁ estar na conta da Focus, cadastrada pelo painel. Foi
+//      o caso da MCB MARKETING e da AL PISCINAS. Um POST cego ali bate em CNPJ
+//      duplicado e trava para sempre uma empresa que estava pronta.
+//   2. O POST não mandava flag de NFS-e nenhuma, então toda empresa criada pelo
+//      Balu nascia na Focus com NFS-e desligada — e a primeira emissão de
+//      serviço falhava, depois de o cadastro já ter dito que deu certo.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('syncEmpresaNaFocus — vínculo e habilitação de NFS-e', () => {
+  const COMPANY_ID = 'empresa-floripa';
+  const CNPJ = '53015033000171';
+  const FLORIPA = '4205407';
+
+  const COMPANY_ROW = {
+    id: COMPANY_ID,
+    cnpj: CNPJ,
+    razao_social: 'MCB Marketing Ltda',
+    nome: 'MCB',
+    logradouro: 'Rodovia Armando Calil Bulos',
+    numero: '6110',
+    sem_numero: false,
+    complemento: null,
+    bairro: 'Ingleses do Rio Vermelho',
+    municipio: 'Florianópolis',
+    uf: 'SC',
+    cep: '88058001',
+    email: null,
+    telefone: null,
+    inscricao_estadual: null,
+    inscricao_municipal: null,
+    codigo_municipio: FLORIPA,
+  };
+
+  /** Stub que conhece `municipios_nfse` — o provedor decide a flag de NFS-e. */
+  function makeSupabase(provedor: string | null = 'Nacional') {
+    const chamadas: Array<{ tabela: string; payload: Record<string, unknown> }> = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api: any = {
+      chamadas,
+      from: (tabela: string) => {
+        if (tabela === 'municipios_nfse') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { provedor_nfse: provedor, nfse_habilitada: provedor != null },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (tabela === 'empresas_fiscais') {
+          return {
+            select: (cols: string) => ({
+              eq: () => ({
+                // O `.is('deleted_at', null)` entra no caminho de ATUALIZAÇÃO
+                // (o PUT), que lê colunas diferentes das do cadastro — daí os
+                // dois ramos responderem coisas distintas para o mesmo select.
+                is: () => ({
+                  maybeSingle: async () => {
+                    if (cols.includes('Code_regime_tributario')) {
+                      return {
+                        data: {
+                          Code_regime_tributario: '1',
+                          empresa_fiscal_ativada: true,
+                          // Gravado pelo snapshot logo depois do vínculo; sem
+                          // ele o PUT desiste com "focus_empresa_id ausente".
+                          focus_empresa_id: 246797,
+                          focus_codigo_municipio: FLORIPA,
+                        },
+                        error: null,
+                      };
+                    }
+                    return { data: { focus_origem: 'balu', focus_ambiente: 'hom' }, error: null };
+                  },
+                }),
+                maybeSingle: async () => {
+                  if (cols.includes('focus_origem')) return { data: { focus_origem: 'balu' }, error: null };
+                  if (cols.includes('Code_regime_tributario')) return { data: { Code_regime_tributario: '1' }, error: null };
+                  return { data: null, error: null };
+                },
+              }),
+            }),
+            update: (payload: Record<string, unknown>) => {
+              chamadas.push({ tabela: 'empresas_fiscais', payload });
+              return { eq: async () => ({ data: null, error: null }) };
+            },
+          };
+        }
+        if (tabela === 'companies') {
+          return {
+            select: () => ({ eq: () => ({ single: async () => ({ data: { ...COMPANY_ROW }, error: null }) }) }),
+            update: (payload: Record<string, unknown>) => {
+              chamadas.push({ tabela: 'companies', payload });
+              return { eq: async () => ({ data: null, error: null }) };
+            },
+          };
+        }
+        throw new Error(`tabela inesperada no teste: ${tabela}`);
+      },
+    };
+    return api;
+  }
+
+  beforeEach(() => {
+    hAdmin.upsertCalls.length = 0;
+    hAdmin.upsertError = null;
+    h.criarEmpresa.mockClear();
+    h.atualizarEmpresa.mockClear();
+    h.buscarEmpresaPorCnpj.mockReset();
+    h.buscarEmpresaPorCnpj.mockResolvedValue(null);
+  });
+
+  it('município nacional: o POST já pede NFS-e de homologação', async () => {
+    h.criarEmpresa.mockResolvedValueOnce({ id: 900, token_homologacao: 'tok-hom', token_producao: 'tok-prod' });
+    await syncEmpresaNaFocus(makeSupabase('Nacional'), COMPANY_ID);
+
+    const payload = h.criarEmpresa.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.habilita_nfsen_homologacao).toBe(true);
+    // Produção NUNCA no cadastro: emissão real exige certificado A1, que neste
+    // instante não existe. Quem promove é `promoverParaProducao`.
+    expect(payload.habilita_nfsen_producao).toBeUndefined();
+  });
+
+  it('município legado: NENHUMA flag no POST — sem login/senha da prefeitura ela não valeria', async () => {
+    h.criarEmpresa.mockResolvedValueOnce({ id: 901, token_homologacao: 'tok-hom' });
+    await syncEmpresaNaFocus(makeSupabase('Fiorilli'), COMPANY_ID);
+
+    const payload = h.criarEmpresa.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.habilita_nfse).toBeUndefined();
+    expect(payload.habilita_nfsen_homologacao).toBeUndefined();
+  });
+
+  it('empresa JÁ na Focus é VINCULADA, não recriada — e os tokens dela são os guardados', async () => {
+    h.buscarEmpresaPorCnpj.mockResolvedValue({
+      id: 246797,
+      token_homologacao: 'tok-da-empresa-hom',
+      token_producao: 'tok-da-empresa-prod',
+      habilita_nfsen_homologacao: true,
+    });
+
+    const r = await syncEmpresaNaFocus(makeSupabase('Nacional'), COMPANY_ID);
+    expect(r.ok).toBe(true);
+    expect(h.criarEmpresa).not.toHaveBeenCalled();
+
+    const cred = hAdmin.upsertCalls.find((c) => c.tabela === 'empresa_credenciais_focus');
+    expect(cred, 'os tokens da empresa existente têm de ser guardados').toBeTruthy();
+    expect(lerTokenEmpresa(cred!.payload.token_hom_cifrado as string)).toBe('tok-da-empresa-hom');
+    expect(lerTokenEmpresa(cred!.payload.token_prod_cifrado as string)).toBe('tok-da-empresa-prod');
+  });
+
+  it('vinculada SEM NFS-e em município nacional → dispara o PUT que liga', async () => {
+    // O estado real da MCB MARKETING em 01/09/2026: certificado válido, NFS-e
+    // desligada, porque quem a cadastrou foi o painel da Focus e não o Balu.
+    h.buscarEmpresaPorCnpj.mockResolvedValue({
+      id: 246797,
+      token_homologacao: 'tok-hom',
+      token_producao: 'tok-prod',
+      habilita_nfse: false,
+      habilita_nfsen_homologacao: false,
+      habilita_nfsen_producao: false,
+    });
+
+    await syncEmpresaNaFocus(makeSupabase('Nacional'), COMPANY_ID);
+    expect(h.atualizarEmpresa).toHaveBeenCalled();
+  });
+
+  it('vinculada que JÁ tem NFS-e ligada não leva PUT à toa', async () => {
+    h.buscarEmpresaPorCnpj.mockResolvedValue({
+      id: 246797, token_homologacao: 'tok-hom', habilita_nfsen_homologacao: true,
+    });
+    await syncEmpresaNaFocus(makeSupabase('Nacional'), COMPANY_ID);
+    expect(h.atualizarEmpresa).not.toHaveBeenCalled();
   });
 });

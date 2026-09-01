@@ -8,7 +8,7 @@ import { assertAceitesEmDia } from '@/lib/lgpd/pendencia-aceite';
 import { CompanySchema, type CompanyInput, EmpresaFiscalSchema, type EmpresaFiscalInput } from '@/types/zod';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 import { syncEmpresaNaFocus, atualizarEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
-import { isAderenteNfsenNacional } from '@/lib/fiscal/municipios-nfsen-nacional';
+import { modoNfseDoMunicipio } from '@/lib/fiscal/municipio-nfse-modo';
 import { validateCertificadoUpload } from '@/lib/fiscal/certificado';
 import { processarUploadCertificado } from '@/lib/fiscal/cert-upload';
 import { cifrarCampo } from '@/lib/crypto/envelope';
@@ -196,7 +196,11 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
         (ctx?.focus_codigo_municipio as string | null) ||
         (companyRow?.codigo_municipio as string | null) ||
         null;
-      if (!isAderenteNfsenNacional(codigoIbge)) {
+      // Credencial de prefeitura só faz sentido no município LEGADO: no
+      // nacional a Focus não usa login/senha, e no indisponível não há NFS-e.
+      // Quem responde isso é `municipios_nfse` (sincronizada da Focus), não a
+      // lista escrita à mão que ficou meses com um município só.
+      if ((await modoNfseDoMunicipio(supabase, codigoIbge)) === 'legado') {
         // Sem ambiente literal: quem decide é `empresas_fiscais.focus_ambiente`.
         const r = await atualizarEmpresaNaFocus(supabase, companyId, undefined, {
           credenciaisPrefeitura: { login: loginRaw, senha: senhaRaw },

@@ -241,6 +241,26 @@ export const focus = {
     call<Array<Record<string, unknown>>>('prod', 'GET', `/v2/empresas`, undefined, tokenOverride),
 
   /**
+   * GET /v2/empresas?cnpj=… — a empresa deste CNPJ na conta, se já existir.
+   *
+   * Existe para o caso que o cadastro automático ignorava: a empresa JÁ ESTAR
+   * na Focus. Acontece de dois jeitos — alguém cadastrou pelo painel (foi assim
+   * com a MCB MARKETING e a AL PISCINAS), ou um POST anterior venceu e o Balu
+   * perdeu a resposta. Nos dois, um POST novo bate em CNPJ duplicado, e o
+   * cadastro fica travado para sempre numa empresa que estava pronta.
+   *
+   * A resposta é uma LISTA, mesmo filtrando por CNPJ; devolvemos o primeiro (ou
+   * null). Os campos `token_producao`/`token_homologacao` vêm no registro — é o
+   * que permite vincular sem recriar nada.
+   */
+  buscarEmpresaPorCnpj: async (cnpj: string, tokenOverride?: string) => {
+    const lista = await call<Array<FocusEmpresaCriada & Record<string, unknown>>>(
+      'prod', 'GET', `/v2/empresas?cnpj=${encodeURIComponent(cnpj)}`, undefined, tokenOverride,
+    );
+    return Array.isArray(lista) && lista.length ? lista[0] : null;
+  },
+
+  /**
    * GET /v2/empresas/:id — consulta empresa por id numérico devolvido no POST.
    * Mesmo motivo de `criarEmpresa`: revenda só existe em `api.focusnfe.com.br`.
    *

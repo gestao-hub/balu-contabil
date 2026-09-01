@@ -37,43 +37,46 @@ const CURITIBA = '4106902';
 const NOW_HOJE = new Date('2026-05-28T12:00:00Z');
 
 describe('decidirFlagsNfse', () => {
-  it('aderente NFSe Nacional + hom → habilita_nfsen_homologacao', () => {
-    expect(decidirFlagsNfse(LONDRINA, 'hom', true, NOW_HOJE)).toEqual({
+  it('nacional + hom → habilita_nfsen_homologacao', () => {
+    expect(decidirFlagsNfse('nacional', 'hom', true)).toEqual({
       habilita_nfsen_homologacao: true,
     });
   });
 
-  it('aderente NFSe Nacional + prod → habilita_nfsen_producao', () => {
-    expect(decidirFlagsNfse(LONDRINA, 'prod', true, NOW_HOJE)).toEqual({
+  it('nacional + prod → habilita_nfsen_producao', () => {
+    expect(decidirFlagsNfse('nacional', 'prod', true)).toEqual({
       habilita_nfsen_producao: true,
     });
   });
 
-  it('cidade legada → habilita_nfse', () => {
-    expect(decidirFlagsNfse(CURITIBA, 'hom', true, NOW_HOJE)).toEqual({
+  it('legado → habilita_nfse', () => {
+    expect(decidirFlagsNfse('legado', 'hom', true)).toEqual({
       habilita_nfse: true,
     });
   });
 
   it('empresa desativada → flag = false (não some)', () => {
-    expect(decidirFlagsNfse(LONDRINA, 'hom', false, NOW_HOJE)).toEqual({
+    expect(decidirFlagsNfse('nacional', 'hom', false)).toEqual({
       habilita_nfsen_homologacao: false,
     });
-    expect(decidirFlagsNfse(CURITIBA, 'hom', false, NOW_HOJE)).toEqual({
+    expect(decidirFlagsNfse('legado', 'hom', false)).toEqual({
       habilita_nfse: false,
     });
   });
 
-  it('codigoIbge null → cidade tratada como legada', () => {
-    expect(decidirFlagsNfse(null, 'hom', true, NOW_HOJE)).toEqual({
-      habilita_nfse: true,
-    });
+  // A REGRESSÃO QUE ESTE CASO TRAVA: até 01/09/2026 todo município fora da
+  // lista escrita à mão levava `habilita_nfse: true` — os 2.202 onde a Focus
+  // NÃO atende NFS-e inclusive. A flag não habilitava nada e ainda deixava no
+  // snapshot um "sim" que a primeira emissão desmentia.
+  it('indisponível → NENHUMA flag (a Focus não atende NFS-e ali)', () => {
+    expect(decidirFlagsNfse('indisponivel', 'hom', true)).toEqual({});
+    expect(decidirFlagsNfse('indisponivel', 'prod', true)).toEqual({});
   });
 });
 
 describe('buildFocusEmpresaUpdatePayload', () => {
   it('Londrina (aderente) hom → habilita_nfsen_homologacao, sem login_responsavel', () => {
-    const p = buildFocusEmpresaUpdatePayload(COMPANY, FISCAL, LONDRINA, 'hom', NOW_HOJE);
+    const p = buildFocusEmpresaUpdatePayload(COMPANY, FISCAL, LONDRINA, 'hom', 'nacional', NOW_HOJE);
     expect(p.habilita_nfsen_homologacao).toBe(true);
     expect(p.habilita_nfse).toBeUndefined();
     expect(p.habilita_nfsen_producao).toBeUndefined();
@@ -86,20 +89,20 @@ describe('buildFocusEmpresaUpdatePayload', () => {
     // Por design (Focus 2.2): credenciais saem no upsertEmpresaFiscalAction via
     // withCredenciaisPrefeitura, não no payload base. O tipo
     // FocusEmpresaFiscalForUpdate inclusive não aceita mais esses campos.
-    const p = buildFocusEmpresaUpdatePayload(COMPANY, FISCAL, CURITIBA, 'hom', NOW_HOJE);
+    const p = buildFocusEmpresaUpdatePayload(COMPANY, FISCAL, CURITIBA, 'hom', 'legado', NOW_HOJE);
     expect(p.habilita_nfse).toBe(true);
     expect(p.login_responsavel).toBeUndefined();
     expect(p.senha_responsavel).toBeUndefined();
   });
 
   it('payload BASE nunca inclui cert/senha_certificado', () => {
-    const p = buildFocusEmpresaUpdatePayload(COMPANY, FISCAL, CURITIBA, 'hom', NOW_HOJE);
+    const p = buildFocusEmpresaUpdatePayload(COMPANY, FISCAL, CURITIBA, 'hom', 'legado', NOW_HOJE);
     expect(p.arquivo_certificado_base64).toBeUndefined();
     expect(p.senha_certificado).toBeUndefined();
   });
 
   it('endereço, IE, IM, telefone, email, regime — preenchidos vão no payload', () => {
-    const p = buildFocusEmpresaUpdatePayload(COMPANY, FISCAL, CURITIBA, 'hom', NOW_HOJE);
+    const p = buildFocusEmpresaUpdatePayload(COMPANY, FISCAL, CURITIBA, 'hom', 'legado', NOW_HOJE);
     expect(p.nome).toBe('Acme Ltda');
     expect(p.nome_fantasia).toBe('Acme');
     expect(p.cnpj).toBe('12345678000123');
@@ -119,7 +122,7 @@ describe('buildFocusEmpresaUpdatePayload', () => {
 
   it('sem_numero=true → numero="SN"', () => {
     const sn: FocusEmpresaCompany = { ...COMPANY, sem_numero: true, numero: null };
-    const p = buildFocusEmpresaUpdatePayload(sn, FISCAL, CURITIBA, 'hom', NOW_HOJE);
+    const p = buildFocusEmpresaUpdatePayload(sn, FISCAL, CURITIBA, 'hom', 'legado', NOW_HOJE);
     expect(p.numero).toBe('SN');
   });
 
@@ -130,7 +133,7 @@ describe('buildFocusEmpresaUpdatePayload', () => {
       cep: '80210-000',
       telefone: '(41) 3322-1100',
     };
-    const p = buildFocusEmpresaUpdatePayload(masked, FISCAL, CURITIBA, 'hom', NOW_HOJE);
+    const p = buildFocusEmpresaUpdatePayload(masked, FISCAL, CURITIBA, 'hom', 'legado', NOW_HOJE);
     expect(p.cnpj).toBe('12345678000123');
     expect(p.cep).toBe('80210000');
     expect(p.telefone).toBe('4133221100');
@@ -138,30 +141,30 @@ describe('buildFocusEmpresaUpdatePayload', () => {
 
   it('nome_fantasia=razao_social → omite nome_fantasia', () => {
     const igual: FocusEmpresaCompany = { ...COMPANY, nome: 'Acme Ltda' };
-    const p = buildFocusEmpresaUpdatePayload(igual, FISCAL, CURITIBA, 'hom', NOW_HOJE);
+    const p = buildFocusEmpresaUpdatePayload(igual, FISCAL, CURITIBA, 'hom', 'legado', NOW_HOJE);
     expect(p.nome_fantasia).toBeUndefined();
   });
 
   it('regime ausente → lança', () => {
     const sem: FocusEmpresaFiscalForUpdate = { ...FISCAL, Code_regime_tributario: null };
-    expect(() => buildFocusEmpresaUpdatePayload(COMPANY, sem, CURITIBA, 'hom', NOW_HOJE)).toThrow(/Regime/);
+    expect(() => buildFocusEmpresaUpdatePayload(COMPANY, sem, CURITIBA, 'hom', 'legado', NOW_HOJE)).toThrow(/Regime/);
   });
 
   it('CNPJ inválido → lança', () => {
     const ruim: FocusEmpresaCompany = { ...COMPANY, cnpj: '123' };
-    expect(() => buildFocusEmpresaUpdatePayload(ruim, FISCAL, CURITIBA, 'hom', NOW_HOJE)).toThrow(/CNPJ/);
+    expect(() => buildFocusEmpresaUpdatePayload(ruim, FISCAL, CURITIBA, 'hom', 'legado', NOW_HOJE)).toThrow(/CNPJ/);
   });
 
   it('empresa_fiscal_ativada=false → flag vira false', () => {
     const desativada: FocusEmpresaFiscalForUpdate = { ...FISCAL, empresa_fiscal_ativada: false };
-    const p = buildFocusEmpresaUpdatePayload(COMPANY, desativada, LONDRINA, 'hom', NOW_HOJE);
+    const p = buildFocusEmpresaUpdatePayload(COMPANY, desativada, LONDRINA, 'hom', 'nacional', NOW_HOJE);
     expect(p.habilita_nfsen_homologacao).toBe(false);
   });
 });
 
 describe('withCertificado', () => {
   const BASE: FocusEmpresaUpdatePayload = buildFocusEmpresaUpdatePayload(
-    COMPANY, FISCAL, CURITIBA, 'hom', NOW_HOJE,
+    COMPANY, FISCAL, CURITIBA, 'hom', 'legado', NOW_HOJE,
   );
 
   it('compõe arquivo_certificado_base64 + senha_certificado', () => {
@@ -192,7 +195,7 @@ describe('withCertificado', () => {
 
 describe('withCredenciaisPrefeitura', () => {
   const BASE: FocusEmpresaUpdatePayload = buildFocusEmpresaUpdatePayload(
-    COMPANY, FISCAL, CURITIBA, 'hom', NOW_HOJE,
+    COMPANY, FISCAL, CURITIBA, 'hom', 'legado', NOW_HOJE,
   );
 
   it('compõe login_responsavel + senha_responsavel quando ambos presentes', () => {

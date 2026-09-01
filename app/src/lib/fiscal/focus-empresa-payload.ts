@@ -9,6 +9,7 @@
 //   complemento, email, inscricao_estadual, inscricao_municipal, telefone
 
 import type { RegimeCode } from './regime';
+import type { ModoNfse } from './municipio-nfse-modo';
 
 /** Subset de `companies` necessário pra montar o payload Focus. */
 export type FocusEmpresaCompany = {
@@ -45,6 +46,9 @@ export type FocusEmpresaPayload = {
   inscricao_estadual?: string;
   inscricao_municipal?: string;
   telefone?: string;
+  // Habilitação de NFS-e JÁ NO CADASTRO — ver `buildFocusEmpresaPayload`.
+  habilita_nfse?: boolean;
+  habilita_nfsen_homologacao?: boolean;
 };
 
 /** Mapeia código do regime ('1'..'4') → integer da Focus. */
@@ -77,6 +81,7 @@ function optString(v: string | null | undefined): string | undefined {
 export function buildFocusEmpresaPayload(
   company: FocusEmpresaCompany,
   regimeCode: RegimeCode | string,
+  modo: ModoNfse = 'indisponivel',
 ): FocusEmpresaPayload {
   const cnpj = digits(company.cnpj);
   if (cnpj.length !== 14) throw new Error('CNPJ deve ter 14 dígitos.');
@@ -126,6 +131,25 @@ export function buildFocusEmpresaPayload(
 
   const email = optString(company.email);
   if (email) payload.email = email;
+
+  // ─── NFS-e LIGADA NO NASCIMENTO ──────────────────────────────────────────
+  //
+  // Até 01/09/2026 o POST não mandava flag nenhuma, e toda empresa criada pelo
+  // Balu nascia na Focus com NFS-e DESLIGADA. Ninguém percebia porque desde
+  // 23/07 nenhum POST chegava a acontecer (o token configurado era de empresa,
+  // não o principal da conta, e a API de Empresas recusava com 401). Destravado
+  // o token, o defeito apareceria em cada cadastro novo: empresa criada, token
+  // gravado, e a primeira emissão de serviço falhando na Focus.
+  //
+  // `homologacao` e não `producao`: emissão real exige certificado A1 válido, e
+  // no instante do cadastro ele ainda não existe. Quem promove para produção é
+  // `promoverParaProducao`, no upload do certificado (sessão 35).
+  //
+  // Município legado NÃO recebe flag aqui de propósito: `habilita_nfse` sozinho
+  // não habilita nada sem login e senha da prefeitura, que o dono da empresa
+  // ainda não forneceu neste ponto do cadastro. Mandar assim mesmo deixaria no
+  // snapshot um "sim" que a emissão desmentiria depois.
+  if (modo === 'nacional') payload.habilita_nfsen_homologacao = true;
 
   const ie = optString(company.inscricao_estadual);
   if (ie) payload.inscricao_estadual = ie;
