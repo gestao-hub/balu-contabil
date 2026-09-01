@@ -32,6 +32,7 @@ import {
 import { uploadToBucket, removeFromBucket, signedUrlDownload } from '@/lib/clients/supabase-storage';
 import { registrarAuditoria } from '@/lib/security/audit';
 import type { DeclaracaoAnualTipo } from '@/lib/fiscal/declaracoes-anuais/tipos';
+import { empresaAtivaDoDono, mensagemDeRecusaDeEmpresa } from '@/lib/auth/empresa-dono';
 
 export type GuiaActionResult = { ok: true } | { ok: false; error: string };
 
@@ -49,13 +50,12 @@ export async function marcarGuiaPagaAction(id: string): Promise<GuiaActionResult
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('current_company')
-    .eq('user_id', user.id)
-    .single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
 
   // YYYY-MM-DD no fuso de Brasília.
   const today = new Date();
@@ -120,13 +120,12 @@ export async function iniciarApuracaoAction(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Não autenticado.' };
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('current_company')
-    .eq('user_id', user.id)
-    .single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
@@ -204,10 +203,12 @@ export async function gerarDasMeiAction(competencia: string): Promise<GerarDasRe
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Não autenticado.' };
 
-  const { data: profile } = await supabase
-    .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
@@ -284,10 +285,12 @@ export async function consultarDeclaracoesAction(ano?: number): Promise<Consulta
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Não autenticado.' };
 
-  const { data: profile } = await supabase
-    .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
@@ -537,10 +540,12 @@ export async function consultarDasnSimeiAction(ano?: number): Promise<ConsultaDa
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Não autenticado.' };
 
-  const { data: profile } = await supabase
-    .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
@@ -595,10 +600,12 @@ export async function gerarDasSimplesAction(competencia: string): Promise<GerarD
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Não autenticado.' };
 
-  const { data: profile } = await supabase
-    .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
 
   const { data: fiscal } = await supabase
     .from('empresas_fiscais')
@@ -687,10 +694,12 @@ export async function salvarFolhaAction(rows: FolhaInput[]): Promise<SalvarFolha
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Não autenticado.' };
 
-  const { data: profile } = await supabase
-    .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
 
   const now = new Date().toISOString();
   const payload = rows.map((r) => ({
@@ -723,10 +732,12 @@ export async function previewDeclaracaoAction(competencia: string): Promise<Prev
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Não autenticado.' };
-  const { data: profile } = await supabase
-    .from('profiles').select('current_company').eq('user_id', user.id).single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa ativa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
   const { data: fiscal } = await supabase
     .from('empresas_fiscais').select('Code_regime_tributario')
     .eq('empresa_id', companyId).is('deleted_at', null).maybeSingle();
@@ -753,13 +764,12 @@ export async function marcarSincronizacaoInicialAction(): Promise<MarcarSincroni
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('current_company')
-    .eq('user_id', user.id)
-    .single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
 
   const { error } = await supabase
     .from('empresas_fiscais')

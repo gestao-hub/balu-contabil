@@ -136,7 +136,7 @@ export async function rodarApuracaoAutomatica(
   if (!fichas?.length) return vazio;
 
   const ids = fichas.map((f) => f.empresa_id as string);
-  const [{ data: companies }, { data: existentesRaw }] = await Promise.all([
+  const [rCompanies, rExistentes] = await Promise.all([
     admin.from('companies').select('id, user_id').in('id', ids).is('deleted_at', null),
     admin.from('apuracoes_fiscais')
       .select('company_id, status, updated_at')
@@ -144,6 +144,34 @@ export async function rodarApuracaoAutomatica(
       .eq('competencia_referencia', competencia)
       .is('deleted_at', null),
   ]);
+
+  // ─── OS DOIS ERROS SÃO CONFERIDOS, E O SEGUNDO É O QUE IMPORTA ───────────
+  //
+  // A leitura de `empresas_fiscais` logo acima já abortava no erro dela; estas
+  // duas descartavam o `error` e ficavam com `data: null`. Para `companies` isso
+  // é ruim; para `apuracoes_fiscais` é destrutivo.
+  //
+  // O motivo é `podeApurar(undefined) === true`: com o mapa vazio, TODA empresa
+  // parece nunca apurada, e o upsert seguinte reescreve `status: 'calculada'`
+  // por cima de competências já `transmitida`/`declarada` — exatamente o que
+  // `STATUS_INTOCAVEIS` existe para impedir, porque recalcular uma competência
+  // já declarada apaga a base do que foi transmitido à Receita.
+  //
+  // Uma falha de leitura tem de PARAR o cron, não fazê-lo trabalhar sobre um
+  // mundo vazio. Ele roda de novo na próxima janela.
+  if (rCompanies.error) {
+    console.error('[apuracao-cron] leitura de companies falhou', rCompanies.error.message);
+    return { ...vazio, erros: 1 };
+  }
+  if (rExistentes.error) {
+    console.error(
+      '[apuracao-cron] leitura de apuracoes_fiscais falhou — ABORTANDO para não reescrever ' +
+      'competência já declarada', rExistentes.error.message,
+    );
+    return { ...vazio, erros: 1 };
+  }
+  const companies = rCompanies.data;
+  const existentesRaw = rExistentes.data;
 
   const donoDe = new Map((companies ?? []).map((c) => [c.id as string, (c.user_id ?? null) as string | null]));
   const existentes = new Map<string, ApuracaoExistente>(

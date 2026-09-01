@@ -8,7 +8,7 @@ import { getContabilidadeCtx, requireContadorAction } from '@/lib/contador/guard
 import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { ContabilidadeSchema, CompanyCreateSchema, ContabilidadeBrandingSchema, AberturaCreateSchema } from '@/types/zod';
-import { posProcessarNovaEmpresa, resolverCodigoMunicipio } from '@/app/(auth)/onboarding/actions';
+import { posProcessarNovaEmpresa, resolverCodigoMunicipio } from '@/lib/empresa/pos-processar';
 import { parseAberturaForm, aberturaFileEntry } from '@/lib/abertura/form';
 import { canonical, dadosHash, sha256File } from '@/lib/abertura/hash';
 import { uploadAberturaDoc } from '@/lib/clients/supabase-storage';

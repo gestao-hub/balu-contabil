@@ -286,11 +286,11 @@ export async function rodarBilling(): Promise<ResumoBilling> {
 
   // ──────────────────────────────────────── 2. faixa do escritorio
   const { data: planosEsc } = await sb
-    .from('planos').select('id, clientes_min, clientes_max, ativo')
+    .from('planos').select('id, nome, valor_centavos, clientes_min, clientes_max, ativo')
     .eq('publico', 'escritorio');
 
   const { data: assEsc } = await sb
-    .from('assinaturas').select('id, contabilidade_id, plano_id')
+    .from('assinaturas').select('id, contabilidade_id, plano_id, asaas_subscription_id')
     .not('contabilidade_id', 'is', null).in('status', ['trial', 'ativa', 'inadimplente']);
 
   /** Piso da faixa de um plano — serve para comparar "quem cobre mais". */
@@ -324,6 +324,38 @@ export async function rodarBilling(): Promise<ResumoBilling> {
       (pisoDaFaixa !== null && pisoAtual < pisoDaFaixa);
 
     if (precisaSubir && r.planoId !== a.plano_id) {
+      // ─── O ASAAS PRIMEIRO. LOCAL DEPOIS. ─────────────────────────────────
+      //
+      // Este bloco escrevia SÓ no banco. O caminho manual da mesma troca
+      // (`conta/assinatura/actions.ts`) sempre chamou `atualizarAssinatura`
+      // antes — e a divergência entre os dois é dinheiro: o escritório subia de
+      // R$199 para R$799 aqui, `lib/admin/metricas.ts` passava a contar R$799 de
+      // MRR, e o Asaas continuava cobrando R$199 para sempre. Receita
+      // registrada e nunca cobrada, com o painel que denunciaria o problema
+      // sendo justamente o que reportava o número errado.
+      //
+      // Falha do Asaas NÃO grava local: melhor a faixa ficar defasada por um dia
+      // (o cron tenta de novo) do que os dois lados discordarem em silêncio.
+      const plano = (planosEsc ?? []).find((p) => p.id === r.planoId);
+      const assinaturaAsaas = a.asaas_subscription_id as string | null;
+
+      if (assinaturaAsaas && plano) {
+        try {
+          await asaas.atualizarAssinatura(assinaturaAsaas, {
+            value: (plano.valor_centavos as number) / 100,
+            description: `Balu — ${plano.nome as string}`,
+          });
+        } catch (err) {
+          resumo.erros++;
+          console.error('[cron billing] faixa NAO atualizada: Asaas recusou', a.id, err);
+          continue;
+        }
+      } else if (!assinaturaAsaas) {
+        // Sem assinatura no Asaas não há o que cobrar: é o caso de trial e de
+        // ambiente sandbox sem subconta. A faixa local pode subir sozinha.
+        console.info('[cron billing] faixa local sem assinatura Asaas', a.id);
+      }
+
       await sb.from('assinaturas')
         .update({ plano_id: r.planoId, updated_at: new Date().toISOString() }).eq('id', a.id);
       resumo.faixasAtualizadas++;

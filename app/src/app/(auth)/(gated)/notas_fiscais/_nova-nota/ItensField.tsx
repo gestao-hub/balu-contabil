@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Trash2, Plus } from 'lucide-react';
 import { criarProdutoAction, type ProdutoOption } from '../actions';
 import type { NfeItem } from '@/lib/fiscal/nfe-payload';
+import { normalizarValorBRL } from '@/lib/format/dinheiro';
 
 export type LinhaItem = NfeItem & { _key: string };
 
@@ -47,7 +48,10 @@ export default function ItensField({
     setErro(null); setSalvando(true);
     const r = await criarProdutoAction({
       descricao: d, ncm, cfop, unidade: un,
-      valorUnitario: Number(vlr.replace(',', '.')), tipoNf,
+      // `normalizarValorBRL` e não `replace(',', '.')`: o replace ingênuo
+      // transforma "1.200,50" em "1.200.50", que é NaN. Mesmo defeito que o
+      // `parseDecimal` do EmissaoForm carregava.
+      valorUnitario: Number(normalizarValorBRL(vlr)), tipoNf,
     });
     setSalvando(false);
     if (!r.ok) { setErro(r.error); return; }

@@ -2,6 +2,7 @@
 import { useState, useTransition } from 'react';
 import { CreditCard, Users, Pencil, Power } from 'lucide-react';
 import { salvarPlanoAction, desativarPlanoAction, type PlanoInput } from './actions';
+import { normalizarValorBRL } from '@/lib/format/dinheiro';
 
 const reais = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -24,9 +25,16 @@ export default function PlanosAdmin({
     setMsg(null);
   }
 
-  /** Aceita "1.234,56" e "1234.56". Devolve null quando não é número. */
+  /**
+   * Aceita "1.234,56" e "1234.56". Devolve null quando não é número.
+   *
+   * ⚠️ O comentário acima já esteve mentindo. A implementação anterior apagava
+   * TODOS os pontos antes de trocar a vírgula, então "1234.56" virava "123456"
+   * e o preço do plano era gravado como R$ 123.456,00 — cem vezes o digitado.
+   * `normalizarValorBRL` distingue milhar de decimal pelo número de casas.
+   */
   function paraCentavos(txt: string): number | null {
-    const limpo = txt.trim().replace(/\./g, '').replace(',', '.');
+    const limpo = normalizarValorBRL(txt);
     if (!limpo || !/^\d+(\.\d{1,2})?$/.test(limpo)) return null;
     return Math.round(parseFloat(limpo) * 100);
   }

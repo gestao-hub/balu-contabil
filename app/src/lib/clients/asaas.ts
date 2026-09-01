@@ -149,10 +149,20 @@ export const asaas = {
   criarCliente: (d: { name: string; cpfCnpj: string; email?: string }) =>
     call<AsaasCliente>('POST', '/v3/customers', d),
 
+  /**
+   * ⚠️ `semRetry`: mesma razão de `transferir` e `criarSubconta`. Um 504 que
+   * chega DEPOIS de o Asaas ter criado a assinatura faz o retry criar a
+   * segunda — e a segunda cobra R$199 a R$799 por mês sem que nada no app
+   * aponte para ela. A idempotência de `emitir-cobranca.ts` não alcança este
+   * caso: ela é consultada ANTES da chamada, e o retry acontece abaixo dela.
+   *
+   * O custo de não repetir é o usuário clicar de novo depois de um erro
+   * transitório. O de repetir é uma assinatura fantasma cobrando todo mês.
+   */
   criarAssinatura: (d: {
     customer: string; billingType: 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED';
     value: number; nextDueDate: string; cycle: 'MONTHLY' | 'YEARLY'; description?: string;
-  }) => call<AsaasAssinatura>('POST', '/v3/subscriptions', d),
+  }) => call<AsaasAssinatura>('POST', '/v3/subscriptions', d, undefined, { semRetry: true }),
 
   atualizarAssinatura: (id: string, d: { value?: number; description?: string }) =>
     call<AsaasAssinatura>('POST', `/v3/subscriptions/${id}`, d),
@@ -286,10 +296,15 @@ export function asaasSub(token: string) {
         'GET', `/v3/customers?cpfCnpj=${encodeURIComponent(cpfCnpj)}&limit=10`, undefined, token,
       ),
 
+    /**
+     * ⚠️ `semRetry`: um 504 posterior à criação faz o retry emitir um SEGUNDO
+     * boleto real, com a mesma dívida, para o mesmo cliente. Ver
+     * `criarAssinatura` acima — e `transferir`, que já carregava esta decisão.
+     */
     criarCobranca: (d: {
       customer: string; billingType: 'BOLETO' | 'PIX' | 'UNDEFINED';
       value: number; dueDate: string; description?: string; externalReference?: string;
-    }) => call<AsaasCobranca>('POST', '/v3/payments', d, token),
+    }) => call<AsaasCobranca>('POST', '/v3/payments', d, token, { semRetry: true }),
 
     consultarCobranca: (id: string) =>
       call<AsaasCobranca>('GET', `/v3/payments/${id}`, undefined, token),

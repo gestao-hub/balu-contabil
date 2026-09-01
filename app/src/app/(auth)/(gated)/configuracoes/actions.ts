@@ -16,6 +16,7 @@ import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
 import { camposOficiaisDaReceita } from '@/lib/fiscal/campos-empresa';
 import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 import { ibgePorCep } from '@/lib/fiscal/ibge-por-cep';
+import { empresaAtivaDoDono, mensagemDeRecusaDeEmpresa } from '@/lib/auth/empresa-dono';
 
 type ActionResult = { ok: true; warning?: string } | { ok: false; error: string };
 
@@ -130,13 +131,12 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
   const gate = await assertAceitesEmDia(user.id);
   if (!gate.ok) return { ok: false, error: gate.error };
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('current_company')
-    .eq('user_id', user.id)
-    .single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
 
   const { data: existing } = await supabase
     .from('empresas_fiscais')
@@ -219,25 +219,38 @@ export async function upsertEmpresaFiscalAction(patch: Partial<EmpresaFiscalInpu
 export async function uploadCertificadoAction(
   formData: FormData,
 ): Promise<{ ok: true; warning?: string; info?: string } | { ok: false; error: string }> {
+  // ─── A ORDEM AQUI É A DEFESA, E ELA VEM ANTES DO ARQUIVO ─────────────────
+  //
+  // Sessão, aceite e POSSE primeiro; validação do PFX depois. Invertido — que
+  // era o estado até 01/09/2026 — a action respondia sobre nome, tamanho e
+  // senha do certificado ANTES de saber de quem é a empresa, entregando um
+  // oráculo de validação sobre CNPJ alheio a qualquer membro de escritório.
+  //
+  // E o que estava atrás desse oráculo não era leitura: `processarUploadCertificado`
+  // grava em `${companyId}/certificado.enc` com o client de SERVICE ROLE e
+  // `upsert: true` — a chave privada A1 cifrada do cliente, sobrescrita por
+  // cima da RLS. O contador TEM caminho legítimo para isso
+  // (`contador/clientes/[companyId]/cert-actions.ts`, migration 0085), com
+  // prova de carteira, declaração de autorização do titular e trilha em
+  // `cert_enviado_por`. Por esta porta não havia nenhuma das três.
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada.' };
+  const gate = await assertAceitesEmDia(user.id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
+
   const file = formData.get('file');
   const senha = String(formData.get('senha') ?? '');
   if (!(file instanceof File)) return { ok: false, error: 'Selecione o arquivo do certificado.' };
 
   const v = validateCertificadoUpload({ name: file.name, size: file.size, senha });
   if (!v.ok) return v;
-
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: 'Sessão expirada.' };
-  const gate = await assertAceitesEmDia(user.id);
-  if (!gate.ok) return { ok: false, error: gate.error };
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('current_company')
-    .eq('user_id', user.id)
-    .single();
-  const companyId = (profile?.current_company ?? null) as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
 
   // O núcleo (abrir PFX, conferir CNPJ, cifrar, subir, gravar, token+Focus) mora
   // em lib/fiscal/cert-upload.ts porque o contador sobe o certificado do cliente
@@ -271,13 +284,12 @@ export async function syncFocusEmpresaAction(): Promise<{ ok: true } | { ok: fal
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sessão expirada.' };
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('current_company')
-    .eq('user_id', user.id)
-    .single();
-  const companyId = profile?.current_company as string | null;
-  if (!companyId) return { ok: false, error: 'Nenhuma empresa selecionada.' };
+  // ANTI-IDOR: `current_company` NÃO é prova de posse desde a migration 0100 —
+  // ela aceita também empresa da carteira do escritório, e delega esta
+  // separação à aplicação. Ver `empresaAtivaDoDono`.
+  const ativa = await empresaAtivaDoDono(supabase, user.id);
+  if (!ativa.ok) return { ok: false, error: mensagemDeRecusaDeEmpresa(ativa.motivo) };
+  const companyId = ativa.companyId;
 
   // Bloco 5: o sinal de "ja cadastrada na Focus" e o focus_empresa_id, nao o
   // token. O token saiu de `companies` na Task 2/0097, e gatear nele fazia o

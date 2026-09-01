@@ -11,11 +11,9 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { CompanyCreateSchema, type CompanyInput } from '@/types/zod';
-import { syncEmpresaNaFocus } from '@/lib/fiscal/focus-empresa-sync';
-import { sincronizarCnaesEmpresa } from '@/lib/fiscal/cnae-sync';
 import { normalizeRegimePatch } from '@/lib/fiscal/regime';
 import { lookupCnpj } from '@/lib/fiscal/cnpj-lookup';
-import { ibgePorCep } from '@/lib/fiscal/ibge-por-cep';
+import { posProcessarNovaEmpresa, resolverCodigoMunicipio } from '@/lib/empresa/pos-processar';
 import { mensagemDeErroDeEmpresa } from '@/lib/empresa/cnpj-unico';
 
 export async function lookupCnpjAction(cnpj: string) {
@@ -73,73 +71,6 @@ export async function lookupCepAction(cep: string): Promise<ActionResult<{ data:
 // CEP (ViaCEP) quando vier vazio. Best-effort: se não resolver, mantém string vazia
 // (mesmo comportamento de antes). Compartilhado pelo cadastro do dono (aqui) e pelo
 // cadastro de cliente pelo contador (contador/actions.ts) — mesma regra nos dois.
-export async function resolverCodigoMunicipio(
-  codigoMunicipioAtual: string | undefined,
-  cep: string | undefined,
-): Promise<string> {
-  let codigoMunicipio = codigoMunicipioAtual?.trim() || '';
-  if (!codigoMunicipio && cep) {
-    codigoMunicipio = (await ibgePorCep(cep)) ?? '';
-  }
-  return codigoMunicipio;
-}
-
-// Pós-processamento comum a qualquer criação de empresa (dono cadastrando a própria
-// empresa OU contador cadastrando um cliente): empresas_fiscais + Focus + CNAEs.
-// Tudo aqui é best-effort — nunca lança, nunca derruba o cadastro da empresa.
-// Usa SEMPRE o admin client: no fluxo do contador a empresa nasce sem dono
-// (companies.user_id = null), então a RLS de empresas_fiscais/company_cnaes
-// (`user_owns_company`) rejeitaria o insert com o client de sessão; no fluxo do
-// dono isso não muda o resultado (ele já tem acesso via RLS de qualquer forma).
-//
-// `ownerUserId` é null no cadastro pelo contador (empresa ainda sem dono):
-//  - empresas_fiscais.owner_user_id aceita NULL → grava normalmente.
-//  - company_cnaes.owner_user_id é NOT NULL (FK p/ auth.users) → sem dono ainda
-//    não dá pra popular; pulamos com log. Fica pendente até o cliente aceitar o
-//    convite (aceitar_convite RPC) e a empresa ganhar um dono.
-export async function posProcessarNovaEmpresa(
-  companyId: string,
-  dados: CompanyInput,
-  ownerUserId: string | null,
-): Promise<void> {
-  const admin = createAdminClient();
-
-  // empresas_fiscais: insere com regime + owner (pode ser null). Falha aqui não
-  // rejeita a empresa (usuário pode reconfigurar depois na aba Regime tributário).
-  const fiscalPatch = normalizeRegimePatch({ Code_regime_tributario: dados.Code_regime_tributario });
-  const { error: fiscalErr } = await admin.from('empresas_fiscais').insert({
-    empresa_id: companyId,
-    owner_user_id: ownerUserId,
-    cnpj: dados.cnpj,
-    cnae_principal: dados.cnae_principal ?? null,
-    ...fiscalPatch,
-  });
-  if (fiscalErr) {
-    // Loga e segue — não bloqueia o cadastro.
-    console.warn('[posProcessarNovaEmpresa] empresas_fiscais insert falhou:', fiscalErr.message);
-  }
-
-  // POST best-effort na Focus. Falha NÃO bloqueia o cadastro: resultado fica
-  // em companies.focus_status + focus_last_error, exibido no painel "Saúde da
-  // empresa" (Focus 3) com botão de retry.
-  const sync = await syncEmpresaNaFocus(admin, companyId);
-  if (!sync.ok) {
-    console.warn('[posProcessarNovaEmpresa] Focus POST falhou:', sync.error);
-  }
-
-  // Popula company_cnaes (principal + secundários) — best-effort, não derruba o cadastro.
-  // Exige um dono (FK NOT NULL); sem ele, fica pendente até o convite ser aceito.
-  if (ownerUserId) {
-    await sincronizarCnaesEmpresa(admin, {
-      companyId,
-      ownerUserId,
-      cnpj: dados.cnpj ?? '',
-      cnaePrincipalFallback: dados.cnae_principal ?? null,
-    });
-  } else {
-    console.warn('[posProcessarNovaEmpresa] sem owner_user_id — CNAEs não sincronizados (empresa ainda sem dono).');
-  }
-}
 
 export async function createCompanyAction(input: CompanyInput): Promise<ActionResult<{ id: string }>> {
   const parsed = CompanyCreateSchema.safeParse({ ...input, cnpj: normCnpj(input?.cnpj ?? '') });

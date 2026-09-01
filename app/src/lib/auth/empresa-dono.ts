@@ -62,3 +62,52 @@ export async function empresaDoDono(
   if (!c || c.user_id !== userId) return null;
   return c.id;
 }
+
+/**
+ * A EMPRESA ATIVA, JÁ PROVADA. Leitura de `profiles.current_company` + prova de
+ * posse num passo só.
+ *
+ * ─── POR QUE ISTO EXISTE, E NÃO SÓ `empresaDoDono` ──────────────────────────
+ * O par "lê `current_company` → chama `empresaDoDono`" é fácil de aplicar pela
+ * metade, e foi. Em 01/09/2026 um code review encontrou **12 actions** em
+ * `impostos/actions.ts` e `configuracoes/actions.ts` fazendo só a primeira
+ * metade — enquanto `notas_fiscais/actions.ts` fazia as duas em 14 pontos.
+ *
+ * A causa é uma invariante que envelheceu: quando essas actions foram escritas,
+ * `current_company` só podia apontar para empresa do próprio usuário. A
+ * migration 0100 (24/08/2026) passou a aceitar TAMBÉM empresa da carteira do
+ * escritório — e o cabeçalho dela delega a separação explicitamente: "quem
+ * separa 'vê a empresa' de 'opera documento fiscal dela' é `empresaDoDono`, na
+ * aplicação". Só um dos três arquivos recebeu o recado.
+ *
+ * Uma função que faz as duas metades não tem como ser aplicada pela metade. É a
+ * única diferença que importa aqui.
+ *
+ * Devolve o id PROVADO, ou `null` — que o caller traduz em
+ * `MENSAGEM_NAO_E_DONO` quando havia empresa ativa, e em "nenhuma empresa
+ * selecionada" quando não havia. `motivo` separa os dois casos sem obrigar o
+ * caller a consultar de novo.
+ */
+export async function empresaAtivaDoDono(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, 'public', any>,
+  userId: string,
+): Promise<{ ok: true; companyId: string } | { ok: false; motivo: 'sem_empresa' | 'nao_e_dono' }> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('current_company')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const bruto = (profile?.current_company ?? null) as string | null;
+  if (!bruto) return { ok: false, motivo: 'sem_empresa' };
+
+  const provado = await empresaDoDono(supabase, userId, bruto);
+  if (!provado) return { ok: false, motivo: 'nao_e_dono' };
+  return { ok: true, companyId: provado };
+}
+
+/** A mensagem certa para cada motivo — para o caller não inventar duas versões. */
+export function mensagemDeRecusaDeEmpresa(motivo: 'sem_empresa' | 'nao_e_dono'): string {
+  return motivo === 'sem_empresa' ? 'Nenhuma empresa selecionada.' : MENSAGEM_NAO_E_DONO;
+}

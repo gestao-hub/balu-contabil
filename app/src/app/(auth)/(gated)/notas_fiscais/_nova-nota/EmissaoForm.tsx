@@ -15,6 +15,7 @@ import {
 import SugestaoCodigoBox from './SugestaoCodigoBox';
 import { emitirNotaAction, lancarNotaManualAction, type CnaeOption } from '../actions';
 import type { PreviewImposto } from '@/lib/fiscal/apuracao-types';
+import { normalizarValorBRL } from '@/lib/format/dinheiro';
 
 const Schema = z.object({
   clienteId: z.string().uuid({ message: 'Selecione um cliente.' }),
@@ -308,12 +309,25 @@ function maskMoney(raw: string): string {
   return cleaned;
 }
 
-/** Parse pt-BR ("1.234,56") ou en ("1234.56") em number. */
+/**
+ * Parse pt-BR de valor monetário. Delega para `normalizarValorBRL`, que é o
+ * parser do projeto — usado por todo o resto dos campos de dinheiro.
+ *
+ * ⚠️ ESTA FUNÇÃO JÁ FOI UMA REIMPLEMENTAÇÃO, E ELA ERRAVA POR 1000×.
+ * A versão anterior tratava só o caso com vírgula:
+ *
+ *     '1.500'      → Number('1.500')  = 1.5      (o certo é 1500)
+ *     '1.200.000'  → Number(...)      = NaN      (o certo é 1200000)
+ *
+ * `maskMoney` deixa o ponto passar de propósito, então "1.500" é entrada
+ * NATURAL de quem digita mil e quinhentos reais. O schema aceitava, porque 1.5
+ * é `.positive()`, e a NFS-e saía emitida por R$ 1,50 — documento fiscal real,
+ * sem erro em lugar nenhum.
+ *
+ * `normalizarValorBRL` já resolvia isso: quando a parte após o ponto tem mais de
+ * dois dígitos, o ponto é separador de milhar. Não reimplemente aqui.
+ */
 function parseDecimal(s: string): number {
   if (!s) return NaN;
-  // Se tem vírgula, é decimal pt-BR; ponto vira separador de milhar.
-  if (s.includes(',')) {
-    return Number(s.replace(/\./g, '').replace(',', '.'));
-  }
-  return Number(s);
+  return Number(normalizarValorBRL(s));
 }

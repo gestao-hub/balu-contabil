@@ -6,7 +6,7 @@ import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Wallet, Loader2, Save, ArrowUpRight, RefreshCw } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
-import { formatBRL } from '@/lib/format/dinheiro';
+import { formatBRL, normalizarValorBRL } from '@/lib/format/dinheiro';
 import { consultarSaldoAction, salvarContaDestinoAction, sacarAction } from './saque-actions';
 import { dataHoraBrt } from '@/lib/format/data-brt';
 
@@ -103,7 +103,10 @@ export default function SaldoSaque({ ehDono, contaResumo, historico }: Props) {
   }
 
   function sacar() {
-    const centavos = Math.round(Number(valor.replace(',', '.')) * 100);
+    // `normalizarValorBRL` e não `replace(',', '.')`: este é o valor de um SAQUE.
+    // Com o replace ingênuo, "1.500" vira 1.5 e o escritório saca R$ 1,50 em vez
+    // de R$ 1.500,00; "1.200,50" vira NaN e o botão só reclama sem dizer por quê.
+    const centavos = Math.round(Number(normalizarValorBRL(valor)) * 100);
     if (!Number.isFinite(centavos) || centavos <= 0) { toast('error', 'Informe o valor do saque.'); return; }
     if (saldo !== null && centavos > saldo) { toast('error', 'Valor maior que o saldo disponível.'); return; }
     if (!contaResumo) { toast('error', 'Cadastre a conta de destino antes.'); return; }

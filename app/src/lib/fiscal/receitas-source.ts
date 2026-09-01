@@ -4,6 +4,60 @@ import type { NotaReceita } from './declaracoes-anuais/tipos';
 import { competenciaAddMonths, competenciaReferenciaBrt } from './guia';
 
 /**
+ * TAMANHO DA PÁGINA. Abaixo do `max-rows` do PostgREST (1000 no padrão do
+ * Supabase) de propósito: assim é ESTE código que decide onde a página termina,
+ * e não o servidor. Se o teto do servidor fosse o menor, ele cortaria primeiro e
+ * a paginação nunca perceberia.
+ */
+const PAGINA = 500;
+
+/**
+ * Teto de páginas — 250 mil notas na janela. Não é limite de negócio, é
+ * disjuntor: se for atingido, alguma condição do filtro quebrou e o laço estaria
+ * varrendo a tabela inteira. Estourar em voz alta é melhor que devolver base de
+ * cálculo pela metade.
+ */
+const MAX_PAGINAS = 500;
+
+/**
+ * Lê TODAS as linhas de uma consulta de notas, em páginas.
+ *
+ * ─── POR QUE ISTO EXISTE ────────────────────────────────────────────────────
+ * As duas leituras deste arquivo não tinham `.limit()` nem paginação. O
+ * PostgREST corta em `max-rows` e devolve `error: null` — uma página curta é
+ * indistinguível da base inteira, fato que `pagamentos-serpro-cron.ts` já
+ * registra por escrito e é a razão dos tetos explícitos DE LÁ.
+ *
+ * Aqui o silêncio custava mais caro: são as duas fontes canônicas de RECEITA. Um
+ * comerciante com mais de mil notas em 13 meses teria `receitaMes` e `rbt12`
+ * calculados sobre um recorte arbitrário — faixa menor, alíquota menor, imposto
+ * menor. E o mesmo array alimenta `serpro-pgdasd.ts`, então o valor subestimado
+ * ia transmitido à Receita, sem erro em lugar nenhum.
+ *
+ * `.order('id')` não é enfeite: sem ordem estável o `range` pode repetir e pular
+ * linhas entre páginas.
+ */
+async function lerTodasAsPaginas(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  montarConsulta: () => any,
+  rotulo: string,
+): Promise<Record<string, unknown>[]> {
+  const todas: Record<string, unknown>[] = [];
+  for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
+    const de = pagina * PAGINA;
+    const { data, error } = await montarConsulta().order('id', { ascending: true }).range(de, de + PAGINA - 1);
+    if (error) throw new Error(`${rotulo}: ${error.message}`);
+    const linhas = (data ?? []) as Record<string, unknown>[];
+    todas.push(...linhas);
+    if (linhas.length < PAGINA) return todas;
+  }
+  throw new Error(
+    `${rotulo}: mais de ${MAX_PAGINAS * PAGINA} notas na janela — filtro provavelmente quebrado. ` +
+    'Base de cálculo NÃO devolvida pela metade de propósito.',
+  );
+}
+
+/**
  * Lê as receitas necessárias para apurar `ateCompetencia` (a própria + 12 meses anteriores).
  *
  * DECISÃO FINAL (2026-05-31): OPÇÃO (b) — fonte canônica de receita é `notas_fiscais`.
@@ -18,19 +72,20 @@ export async function lerReceitasParaApuracao(
   const inicio = competenciaAddMonths(ateCompetencia, -12); // janela de 13 meses (incl. a atual)
   const inicioIso = `${inicio.slice(0, 4)}-${inicio.slice(4, 6)}-01T00:00:00-03:00`;
 
-  const { data, error } = await supabase
-    .from('notas_fiscais')
-    .select('data_emissao, valor_total, status, tipo_documento, cnae')
-    .eq('company_id', companyId)
-    // 'ativa' = emissão real autorizada; 'lancada' = lançamento manual (NF emitida fora).
-    // Ambas são receita válida → entram na base de imposto.
-    .in('status', ['ativa', 'lancada'])
-    .in('tipo_documento', ['NFSe', 'NFe', 'NFCe'])
-    .gte('data_emissao', inicioIso);
+  const data = await lerTodasAsPaginas(
+    () => supabase
+      .from('notas_fiscais')
+      .select('id, data_emissao, valor_total, status, tipo_documento, cnae')
+      .eq('company_id', companyId)
+      // 'ativa' = emissão real autorizada; 'lancada' = lançamento manual (NF emitida fora).
+      // Ambas são receita válida → entram na base de imposto.
+      .in('status', ['ativa', 'lancada'])
+      .in('tipo_documento', ['NFSe', 'NFe', 'NFCe'])
+      .gte('data_emissao', inicioIso),
+    'Falha ao ler notas para apuração',
+  );
 
-  if (error) throw new Error(`Falha ao ler notas para apuração: ${error.message}`);
-
-  return (data ?? [])
+  return data
     .filter((n) => n.data_emissao != null && n.valor_total != null)
     .map((n) => {
       const competencia = competenciaReferenciaBrt(new Date(n.data_emissao as string));
@@ -53,18 +108,19 @@ export async function lerNotasAnoCalendario(
   const inicio = `${ano - 1}-12-31T00:00:00Z`;
   const fim = `${ano + 1}-01-02T00:00:00Z`;
 
-  const { data, error } = await supabase
-    .from('notas_fiscais')
-    .select('data_emissao, valor_total, tipo_documento')
-    .eq('company_id', companyId)
-    .in('status', ['ativa', 'lancada'])
-    .in('tipo_documento', ['NFSe', 'NFe', 'NFCe'])
-    .gte('data_emissao', inicio)
-    .lt('data_emissao', fim);
+  const data = await lerTodasAsPaginas(
+    () => supabase
+      .from('notas_fiscais')
+      .select('id, data_emissao, valor_total, tipo_documento')
+      .eq('company_id', companyId)
+      .in('status', ['ativa', 'lancada'])
+      .in('tipo_documento', ['NFSe', 'NFe', 'NFCe'])
+      .gte('data_emissao', inicio)
+      .lt('data_emissao', fim),
+    `Falha ao ler notas do ano ${ano}`,
+  );
 
-  if (error) throw new Error(`Falha ao ler notas do ano ${ano}: ${error.message}`);
-
-  return (data ?? [])
+  return data
     .filter((n) => n.data_emissao != null && n.valor_total != null)
     .map((n) => ({
       dataEmissao: n.data_emissao as string,

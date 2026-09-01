@@ -82,3 +82,49 @@ describe('nenhuma data formatada pelo fuso de quem renderiza', () => {
     expect(tsx, 'a varredura não encontrou componentes — o caminho mudou?').toBeGreaterThan(50);
   });
 });
+
+/**
+ * TRAVA IRMÃ: ninguém reimplementa o parser de dinheiro.
+ *
+ * `EmissaoForm.tsx` carregava um `parseDecimal` próprio que errava por 1000×:
+ * `'1.500'` virava `1.5`, e a NFS-e saía emitida por R$ 1,50 — documento fiscal
+ * real, sem erro em lugar nenhum, porque `1.5` passa no `.positive()` do schema.
+ * `ItensField.tsx` tinha a variante `Number(v.replace(',', '.'))`, que
+ * transforma `"1.200,50"` em `NaN`.
+ *
+ * O parser certo (`normalizarValorBRL`) já existia e já era testado. O defeito
+ * foi duplicá-lo, não escrevê-lo.
+ */
+describe('nenhum parser de dinheiro reimplementado em componente', () => {
+  const REIMPLEMENTACOES = [
+    // Number(x.replace(',', '.')) — perde o separador de milhar
+    /Number\s*\([^)]*\.replace\s*\(\s*['"],['"]\s*,\s*['"]\.['"]\s*\)/,
+    // .replace(/\./g, '').replace(',', '.') fora de lib/format
+    /replace\s*\(\s*\/\\.\/g\s*,\s*['"]{2}\s*\)\s*\.replace\s*\(\s*['"],['"]/,
+  ];
+
+  it('componentes usam normalizarValorBRL, não conversão manual', () => {
+    const achados = varrer(join(RAIZ, 'app'), []).length ? [] : [];
+    // `varrer` acima é da data; aqui a varredura é própria porque o padrão é outro.
+    const encontrados: string[] = [];
+    const percorrer = (dir: string) => {
+      for (const nome of readdirSync(dir)) {
+        const caminho = join(dir, nome);
+        if (statSync(caminho).isDirectory()) { percorrer(caminho); continue; }
+        if (!nome.endsWith('.tsx') || nome.endsWith('.test.tsx')) continue;
+        readFileSync(caminho, 'utf8').split('\n').forEach((linha, i) => {
+          if (REIMPLEMENTACOES.some((rx) => rx.test(linha))) {
+            encontrados.push(`${caminho.slice(RAIZ.length + 1)}:${i + 1}  ${linha.trim().slice(0, 100)}`);
+          }
+        });
+      }
+    };
+    percorrer(join(RAIZ, 'app'));
+    expect(
+      encontrados,
+      'Conversão de dinheiro feita à mão. "1.500" vira 1.5 e "1.200,50" vira NaN. ' +
+      'Use normalizarValorBRL de @/lib/format/dinheiro.\n  ' + encontrados.join('\n  '),
+    ).toEqual([]);
+    expect(achados).toEqual([]);
+  });
+});

@@ -7,6 +7,7 @@ import HonorarioFormDialog, { type ClienteOption, type HonorarioRow } from './Ho
 import PopupConfirm from '@/components/PopupConfirm';
 import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import { mesAnoCompetencia } from '@/lib/format/data-brt';
+import { primeiroDiaMesISO, ultimoDiaMesISO } from '@/lib/format/mes-vigente';
 
 export type { HonorarioRow };
 
@@ -32,16 +33,12 @@ function dataBR(d: string | null) {
   return `${(day ?? '').padStart(2, '0')}/${(m ?? '').padStart(2, '0')}/${y ?? ''}`;
 }
 
-function primeiroDiaMesISO(): string {
-  const brt = new Date(Date.now() - 3 * 60 * 60 * 1000);
-  return `${brt.getFullYear()}-${String(brt.getMonth() + 1).padStart(2, '0')}-01`;
-}
-
-function ultimoDiaMesISO(): string {
-  const brt = new Date(Date.now() - 3 * 60 * 60 * 1000);
-  const last = new Date(brt.getFullYear(), brt.getMonth() + 1, 0).getDate();
-  return `${brt.getFullYear()}-${String(brt.getMonth() + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
-}
+// As duas moravam aqui, copiadas de `lib/format/mes-vigente`, e carregavam o
+// mesmo defeito: `Date.now() - 3h` lido com getters de hora LOCAL só dá BRT
+// quando o processo roda em UTC. No navegador brasileiro subtrai 3h duas vezes,
+// e nas primeiras 3 horas de todo mês esta lista abria no mês ANTERIOR — além
+// de gerar string diferente da do servidor, que é o erro de hidratação #418.
+// Agora vêm do módulo compartilhado, com fuso fixo.
 
 /** Escapa campo CSV: envolve em aspas se contém `"`, `;`, `,`, quebra de linha. */
 function esc(v: unknown): string {

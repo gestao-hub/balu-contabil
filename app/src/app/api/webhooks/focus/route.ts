@@ -85,12 +85,55 @@ export async function POST(req: Request) {
     const { chaveAcesso: chave, protocolo, numero, serie, pdf, xml } =
       extrairCamposNota(body);
 
-    // Lê a nota antes pra preservar o `request` no payload_focusnfe.
-    const { data: notaAtual } = await sb
+    // ─── A NOTA É RESOLVIDA POR id, NUNCA POR `referencia` SOLTA ────────────
+    //
+    // `referencia` NÃO é única no banco: o índice é
+    // `idx_notas_fiscais_company_id_referencia`, ou seja, único POR EMPRESA.
+    // Duas empresas podem legitimamente carregar a mesma string.
+    //
+    // O que isso armava, com este handler rodando em service_role: um membro de
+    // escritório LÊ a `referencia` de uma nota do cliente (a policy
+    // `notas_fiscais_select_contador` permite), INSERE uma nota na PRÓPRIA
+    // empresa com essa mesma `referencia` (a policy de insert só exige
+    // `user_owns_company`, não diz nada sobre o valor), e espera. O callback
+    // seguinte do cliente escrevia `status`, `chave_acesso`, `protocolo`,
+    // `pdf_url`, `xml_url` e o payload inteiro nas DUAS linhas — e a segunda é
+    // dele, então `/notas_fiscais/[id]/download` passa a servir o documento
+    // fiscal do cliente.
+    //
+    // A leitura anterior usava `.maybeSingle()` no mesmo filtro, o que com duas
+    // linhas devolve erro PGRST116 — e o erro era descartado, então nem sinal
+    // ficava.
+    //
+    // QUAL LINHA É A LEGÍTIMA, quando há mais de uma: a MAIS ANTIGA. A
+    // `referencia` é um UUID gerado em `generateRef` no instante da emissão; para
+    // plantar uma cópia é preciso primeiro LER a original, o que só é possível
+    // depois que ela existe. A ordenação por `created_at` é, portanto, a ordem
+    // entre original e cópia — e não uma heurística.
+    const { data: candidatas, error: leituraErr } = await sb
       .from('notas_fiscais')
-      .select('id, payload_focusnfe')
+      .select('id, company_id, payload_focusnfe, created_at')
       .eq('referencia', ref)
-      .maybeSingle();
+      .order('created_at', { ascending: true })
+      .limit(5);
+
+    if (leituraErr) {
+      console.error('[webhook focus] erro lendo notas_fiscais', { ref, error: leituraErr.message });
+      return NextResponse.json({ ok: true });
+    }
+    if (!candidatas || candidatas.length === 0) {
+      console.warn('[webhook focus] callback sem nota correspondente', { ref });
+      return NextResponse.json({ ok: true });
+    }
+    if (candidatas.length > 1) {
+      // Não é ruído: a única forma de duas empresas terem o mesmo UUID de
+      // referência é alguém ter copiado. Grita com os ids para a investigação.
+      console.error('[webhook focus] REFERENCIA DUPLICADA ENTRE EMPRESAS — possível cópia deliberada', {
+        ref,
+        linhas: candidatas.map((c) => ({ id: c.id, company_id: c.company_id, created_at: c.created_at })),
+      });
+    }
+    const notaAtual = candidatas[0];
 
     const requestAnterior = (notaAtual?.payload_focusnfe as { request?: unknown } | null)?.request ?? null;
 
@@ -110,8 +153,8 @@ export async function POST(req: Request) {
     if (numero) update.numero_nf = numero;
     if (serie) update.serie = serie;
 
-    // Bug pré-existente fixado: a coluna é `referencia`, não `ref`.
-    const { error } = await sb.from('notas_fiscais').update(update).eq('referencia', ref);
+    // Por `id`, e não por `referencia`: ver o bloco acima.
+    const { error } = await sb.from('notas_fiscais').update(update).eq('id', notaAtual.id);
     if (error) {
       console.error('[webhook focus] erro update notas_fiscais', { ref, error: error.message });
     }

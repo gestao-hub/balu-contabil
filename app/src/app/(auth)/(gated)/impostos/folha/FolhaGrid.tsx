@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { salvarFolhaAction, type FolhaInput } from '../actions';
+import { normalizarValorBRL } from '@/lib/format/dinheiro';
 
 export type FolhaRow = {
   competencia: string; // YYYYMM
@@ -20,9 +21,13 @@ function rotulo(competencia: string): string {
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-// Aceita "1000.5" e "1000,5"; vazio/sem número → 0.
+// Aceita "1000.5", "1000,5" e "1.000,50"; vazio/sem número → 0.
+//
+// ⚠️ ESTES VALORES SÃO A BASE DO FATOR R, que decide entre o Anexo III e o V do
+// Simples. O `replace(',', '.')` anterior lia "1.500" como 1,5 — mil vezes menos
+// folha — e o anexo escolhido a partir daí é o que define a alíquota do imposto.
 function num(s: string): number {
-  const v = Number(s.replace(',', '.'));
+  const v = Number(normalizarValorBRL(s));
   return Number.isFinite(v) ? v : 0;
 }
 
