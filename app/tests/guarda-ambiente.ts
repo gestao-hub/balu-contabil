@@ -30,6 +30,14 @@
  *     configurou de propósito e configurou errado. Pular seria esconder
  *     exatamente o acidente que esta trava existe para impedir.
  *
+ *   - ...A MENOS que `E2E_TENANT_SINTETICO` traga o opt-in por extenso. Aí a
+ *     suíte roda em produção criando e apagando só os PRÓPRIOS atores
+ *     (decisão do usuário em 01/09/2026 — sem segundo banco, era isso ou
+ *     manter 9 specs desligadas por tempo indeterminado). Esse opt-in libera a
+ *     ESCRITA em produção, e nada além disso: quem o teste ATACA continua
+ *     tendo de ser sintético, e é `exigirVitimaSintetica` no fim deste arquivo
+ *     que cobra isso.
+ *
  * ─── QUANDO HOUVER UM BANCO DE DEV ──────────────────────────────────────────
  *   export E2E_SUPABASE_URL=https://<ref-dev>.supabase.co
  *   export E2E_SUPABASE_ANON_KEY=... E2E_SUPABASE_SERVICE_ROLE_KEY=...
@@ -37,7 +45,33 @@
  * `app/scratchpad/fixture-escritorio-b.json` para ser recriada lá.
  */
 
-export type AmbienteE2E = { url: string; anon: string; service: string };
+export type AmbienteE2E = {
+  url: string;
+  anon: string;
+  service: string;
+  /**
+   * `true` quando o alvo É o banco da aplicação (produção), liberado pelo
+   * opt-in de tenant sintético. Quem cria VÍTIMA precisa olhar isto — ver
+   * `exigirVitimaSintetica()`.
+   */
+  emProducao: boolean;
+};
+
+/**
+ * Opt-in para rodar o tenant sintético DENTRO de produção.
+ *
+ * Decisão do usuário em 01/09/2026, revertendo em parte a de 14/08: não haverá
+ * segundo banco, e a regressão dos 3 papéis não pode ficar mais 18 dias
+ * desligada. O que ela autoriza é ESTREITO: as specs podem criar e apagar os
+ * PRÓPRIOS atores em produção.
+ *
+ * O que ela NÃO autoriza é o teste escolher como vítima uma linha que já
+ * estava lá. Ver `exigirVitimaSintetica()`.
+ *
+ * O valor é uma frase inteira, e não `1`/`true`, para que ninguém a ligue por
+ * reflexo nem a herde de outro projeto sem ler o que está ligando.
+ */
+const OPT_IN = 'sim-eu-autorizo-tenant-sintetico-em-producao';
 
 /**
  * Valores INERTES para quando o arquivo vai ser pulado.
@@ -71,11 +105,13 @@ export function ambienteDestrutivo(): AmbienteE2E | null {
 
   if (!alvo) return null;
 
-  if (producao && alvo === producao) {
+  const emProducao = Boolean(producao) && alvo === producao;
+  if (emProducao && process.env.E2E_TENANT_SINTETICO !== OPT_IN) {
     throw new Error(
       'RECUSADO: E2E_SUPABASE_URL aponta para o MESMO banco da aplicação — ' +
       'que é produção. Estes testes criam e apagam usuários, empresas e ' +
-      'contabilidades via service_role. Aponte para um banco de desenvolvimento ' +
+      'contabilidades via service_role. Aponte para um banco de desenvolvimento, ' +
+      `ou, para rodar o tenant sintético em produção, defina E2E_TENANT_SINTETICO='${OPT_IN}' ` +
       '(ver tests/guarda-ambiente.ts).',
     );
   }
@@ -90,10 +126,66 @@ export function ambienteDestrutivo(): AmbienteE2E | null {
       'acidente que esta trava impede.',
     );
   }
-  return { url: alvo, anon, service };
+  return { url: alvo, anon, service, emProducao };
 }
 
 /** Motivo legível para o `test.skip`, quando não há ambiente configurado. */
 export const MOTIVO_SKIP =
   'teste destrutivo: defina E2E_SUPABASE_URL apontando para um banco de ' +
   'desenvolvimento (nunca o de produção) — ver tests/guarda-ambiente.ts';
+
+// ─── A SEGUNDA TRAVA: A VÍTIMA ──────────────────────────────────────────────
+//
+// A trava de cima decide ONDE o teste escreve. Esta decide EM QUEM ele bate.
+//
+// As specs de IDOR e de isolamento precisam de duas partes: um atacante e uma
+// vítima. Historicamente a vítima era descoberta como "a primeira linha de
+// OUTRO dono" (`.neq('owner_user_id', meuId)`) — o que, num banco de
+// desenvolvimento, é inofensivo, e em produção é o primeiro cliente real que
+// aparecer.
+//
+// O detalhe que torna isso grave: estes testes existem para ENCONTRAR defesa
+// quebrada. Enquanto tudo funciona, nada acontece — a action recusa. No dia em
+// que uma defesa cair, que é o dia em que o teste finalmente serve para algo, o
+// efeito é real: `cancelarNotaAction` cancela uma nota fiscal que existe na
+// prefeitura, `deleteHonorarioV2Action` apaga o honorário de um escritório de
+// verdade, `cobrarClienteAction` emite cobrança contra um cliente de verdade.
+//
+// Por isso a vítima também é semeada pelo teste. `MARCA_SINTETICA` é o que
+// prova isso na hora do ataque, e não só na hora da criação.
+
+/**
+ * Marca que TODA linha criada por teste destrutivo carrega — no e-mail do
+ * usuário e no nome de empresa/escritório.
+ *
+ * Serve a dois donos: identifica o lixo de execução interrompida, e é o que
+ * `exigirVitimaSintetica` confere antes de deixar um ataque acontecer.
+ */
+export const MARCA_SINTETICA = 'e2e-sintetico';
+
+/** `true` se o valor carrega a marca — e-mail, nome de empresa ou de escritório. */
+export function ehSintetico(valor: string | null | undefined): boolean {
+  return (valor ?? '').toLowerCase().includes(MARCA_SINTETICA);
+}
+
+/**
+ * Recusa seguir se a vítima escolhida não for sintética.
+ *
+ * Chamar DEPOIS de escolher o alvo e ANTES do primeiro ataque. Lança em vez de
+ * pular: chegar aqui com alvo real significa que a descoberta do alvo mudou e
+ * ninguém percebeu — pular esconderia justamente isso.
+ *
+ * @param rotulo  o que é o alvo, para a mensagem ("nota", "honorário")
+ * @param marca   o campo que carrega (ou deveria carregar) `MARCA_SINTETICA`
+ *                — o e-mail do dono, ou o nome da empresa/escritório
+ */
+export function exigirVitimaSintetica(rotulo: string, marca: string | null | undefined): void {
+  if (ehSintetico(marca)) return;
+  throw new Error(
+    `RECUSADO: a vítima escolhida para "${rotulo}" não é sintética (marca lida: ` +
+    `${JSON.stringify(marca ?? null)}). Estes testes tentam operações destrutivas ` +
+    `de verdade; se uma defesa estiver quebrada, o dano acontece em quem for o ` +
+    `alvo. O alvo tem de ser semeado pelo próprio teste e carregar ` +
+    `'${MARCA_SINTETICA}' — ver tests/guarda-ambiente.ts.`,
+  );
+}

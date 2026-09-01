@@ -1,5 +1,6 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { ambienteDestrutivo, MOTIVO_SKIP, URL_INERTE, CHAVE_INERTE } from './guarda-ambiente';
+import { aceitarLgpd } from './aceite-lgpd';
 import { createClient } from '@supabase/supabase-js';
 
 // E2E da jornada completa do contador (Task 21, Bloco A): cadastro do escritório →
@@ -116,6 +117,9 @@ test.describe('Balu — jornada completa do contador (Bloco A)', () => {
         user_metadata: { full_name: fullName, ...(roleType ? { type: roleType } : {}) },
       });
       expect(error, `createUser ${email} falhou: ${error?.message}`).toBeNull();
+      // Sem o aceite dos documentos vigentes, o gated manda os dois atores para
+      // /aceite e a jornada inteira mede aquela tela — ver tests/aceite-lgpd.ts.
+      await aceitarLgpd(admin, data.user!.id);
       return data.user!.id;
     };
     contadorId = await mk(contadorEmail, 'Contador E2E', 'Contador');
@@ -137,6 +141,8 @@ test.describe('Balu — jornada completa do contador (Bloco A)', () => {
     if (companyId) await safe(() => admin.from('companies').delete().eq('id', companyId));
     if (contabilidadeId) await safe(() => admin.from('contabilidade_membros').delete().eq('contabilidade_id', contabilidadeId));
     if (contabilidadeId) await safe(() => admin.from('contabilidades').delete().eq('id', contabilidadeId));
+    const atores = [contadorId, clienteId].filter(Boolean);
+    if (atores.length) await safe(() => admin.from('aceites').delete().in('user_id', atores));
     if (contadorId) await safe(() => admin.from('profiles').delete().eq('user_id', contadorId));
     if (clienteId) await safe(() => admin.from('profiles').delete().eq('user_id', clienteId));
     if (contadorId) await safe(() => admin.auth.admin.deleteUser(contadorId));

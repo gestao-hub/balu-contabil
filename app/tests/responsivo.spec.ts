@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { ambienteDestrutivo, MOTIVO_SKIP, URL_INERTE, CHAVE_INERTE } from './guarda-ambiente';
+import { aceitarLgpd } from './aceite-lgpd';
 import { createClient } from '@supabase/supabase-js';
 
 // PR 4.2 — passe de UX responsiva: 390×844 (iPhone 12/13/14, o corte que o card
@@ -126,6 +127,32 @@ async function medirAlvosPequenos(page: Page) {
       // Só vale para checkbox/radio. Um LINK dentro de um label é alvo próprio
       // — clicar nele navega, não alterna a caixa —, e medi-lo pelo label
       // esconderia justamente o link fininho que queremos achar.
+      // EXCEÇÃO INLINE DA WCAG 2.5.8: o critério isenta "o alvo que está numa
+      // frase, ou cujo tamanho é limitado pelo line-height do texto que não é
+      // alvo". Um link no meio de um parágrafo é exatamente isso — e não há
+      // conserto possível para ele: inflar sua altura para 24px descolaria a
+      // linha do resto da frase, deixando o texto pior para todo mundo em nome
+      // de um critério que já o isenta.
+      //
+      // Sem isto, o teste acusava `EscritorioConfigForm` ("Configurar o canal
+      // de atendimento", 185×15px), que é um link no fim de uma frase — e
+      // acusaria todo link inline que o produto ganhasse daqui para frente. Um
+      // teste que aponta o que não tem conserto ensina a ignorar o teste.
+      //
+      // COMO A FRASE É RECONHECIDA: o pai precisa ter TEXTO SOLTO (nó de
+      // texto), não elementos irmãos. É o que separa os dois casos reais:
+      //   - <span>{texto} <a>link</a></span>       → nó de texto no pai: isento
+      //   - <nav><span>x</span> · <a>link</a></nav> → só elementos: NÃO isento,
+      //     porque isso é navegação, e navegação em rodapé é o caso que a 2.5.8
+      //     existe para pegar (foi o que ela pegou em /login).
+      const estilo = getComputedStyle(el);
+      if (estilo.display === 'inline') {
+        const paiTemTextoSolto = Array.from(el.parentElement?.childNodes ?? []).some(
+          (n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim() !== '',
+        );
+        if (paiTemTextoSolto) continue;
+      }
+
       const ehCaixa = el.matches('input[type="checkbox"], input[type="radio"]');
       const id = el.getAttribute('id');
       const rotulado = ehCaixa
@@ -274,35 +301,8 @@ test.describe('UX responsiva — 390×844', () => {
     const { data: papel } = await admin
       .from('role_types').select('type').eq('user_id', id).maybeSingle();
     expect(papel?.type, `papel de ${mail} deveria ser ${tipo}`).toBe(tipo);
-    await aceitarLgpd(id);
+    await aceitarLgpd(admin, id);
     return id;
-  }
-
-  /**
-   * Registra o aceite dos documentos LGPD vigentes.
-   *
-   * SEM ISTO A VARREDURA NÃO MEDE NADA: `(gated)/layout.tsx` manda para
-   * /aceite quando há qualquer documento publicado sem aceite na versão
-   * vigente — e /aceite é uma tela curta que passa nas duas checagens. Não é
-   * hipótese: com o banco atual, TODAS as 34 rotas autenticadas caíam lá.
-   *
-   * Mesma regra de `lib/lgpd/pendencia-aceite.ts`: vigente = a publicação mais
-   * recente de cada tipo.
-   */
-  async function aceitarLgpd(uid: string) {
-    const { data: docs } = await admin
-      .from('documento_versoes')
-      .select('tipo, versao, publicado_em')
-      .not('publicado_em', 'is', null)
-      .order('publicado_em', { ascending: false });
-
-    const vigentes = new Map<string, string>();
-    for (const d of docs ?? []) if (!vigentes.has(d.tipo)) vigentes.set(d.tipo, d.versao as string);
-    if (vigentes.size === 0) return;
-
-    const linhas = [...vigentes].map(([tipo, versao]) => ({ user_id: uid, tipo, versao, ip: '127.0.0.1' }));
-    const { error } = await admin.from('aceites').insert(linhas);
-    expect(error, `insert aceites falhou: ${error?.message}`).toBeNull();
   }
 
   test.beforeAll(async () => {

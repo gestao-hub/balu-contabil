@@ -335,10 +335,17 @@ test.describe('RLS: fronteira do contador (Bloco A)', () => {
     expect(badErr, 'aceitar_convite com token inválido deveria retornar erro').not.toBeNull();
     expect(badErr?.message ?? '').toContain('CONVITE_INVALIDO');
 
-    // convite tipo 'membro' para CT1, criado via admin
+    // convite tipo 'membro' para CT1, criado via admin.
+    //
+    // O `email` NÃO é decoração: desde a migration 0043 (23/07/2026) a RPC
+    // recusa com EMAIL_NAO_CONFERE o convite cujo e-mail não bate com o da
+    // conta que aceita — correção de uma falha real, em que o contador abria o
+    // link do convite do próprio cliente e assumia a empresa dele. Sem o campo
+    // aqui, `v.email` é NULL, a comparação dá DISTINCT e este teste morre na 1ª
+    // aceitação sem nunca chegar a medir idempotência.
     const token = `convite-membro-${STAMP}`;
     const { data: conviteData, error: conviteErr } = await admin.from('convites')
-      .insert({ contabilidade_id: ct1Id, tipo: 'membro', token })
+      .insert({ contabilidade_id: ct1Id, tipo: 'membro', token, email: c4Email })
       .select('id').single();
     expect(conviteErr, `insert convite falhou: ${conviteErr?.message}`).toBeNull();
     conviteMembroTokenId = conviteData!.id;

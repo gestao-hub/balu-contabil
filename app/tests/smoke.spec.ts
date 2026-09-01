@@ -22,8 +22,12 @@ test.describe('Balu — smoke público', () => {
       const resp = await page.goto(route, { waitUntil: 'networkidle' });
       expect(resp?.status(), `status de ${route}`).toBeLessThan(400);
       await page.screenshot({ path: path.join(SHOTS, `public${route.replace(/\//g, '_')}.png`), fullPage: true });
-      // Smoke: deve aparecer a marca "Balu"
-      await expect(page.getByText('Balu')).toBeVisible();
+      // Smoke: deve aparecer a marca "Balu".
+      // `exact` não é preciosismo: desde 20/08/2026 o rodapé público diz
+      // "Balu Contábil", e sem ele o locator casa com dois elementos e o
+      // Playwright falha por strict mode — o teste ficou vermelho por causa de
+      // um rodapé novo, não de uma marca ausente.
+      await expect(page.getByText('Balu', { exact: true })).toBeVisible();
       // Sem erros JS críticos
       const critical = errors.filter((e) =>
         !e.includes('favicon') && !e.includes('source map') && !e.includes('DevTools')
