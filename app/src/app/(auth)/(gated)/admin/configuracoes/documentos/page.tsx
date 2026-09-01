@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, ArrowRight, FileText, PenLine, Scale } from 'lucide-react';
 import { requireAdminBaluPage } from '@/lib/admin/guard';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { dataBrt } from '@/lib/format/data-brt';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,9 +24,7 @@ const DESCRICAO: Record<(typeof TIPOS)[number], string> = {
 
 function formatarData(iso: string | null) {
   if (!iso) return null;
-  return new Date(iso).toLocaleDateString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-  });
+  return dataBrt(iso);
 }
 
 export default async function DocumentosPage() {

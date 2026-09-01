@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import MarkdownLegal from '@/components/MarkdownLegal';
+import { dataBrt } from '@/lib/format/data-brt';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +70,7 @@ export default async function DocumentoPublicoPage(
       <h1 className="mt-6 text-2xl font-semibold text-foreground">{TITULOS[tipo]}</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Versão {doc.versao} · em vigor desde{' '}
-        {new Date(doc.publicado_em as string).toLocaleDateString('pt-BR')}
+        {dataBrt(doc.publicado_em as string)}
       </p>
 
       {/* Até 29/08/2026 isto era um `<pre>` com o markdown cru, sob a premissa

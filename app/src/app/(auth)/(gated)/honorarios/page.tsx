@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { statusHonorario, type StatusHonorario } from '@/lib/fiscal/status-honorario';
 import { formatBRL, valorToCentavos } from '@/lib/format/dinheiro';
+import { mesAnoCompetencia } from '@/lib/format/data-brt';
 
 const STATUS_LABEL: Record<StatusHonorario, string> = { pago: 'Pago', atrasado: 'Atrasado', aberto: 'Aberto' };
 const STATUS_BADGE: Record<StatusHonorario, string> = {
@@ -14,9 +15,7 @@ const STATUS_BADGE: Record<StatusHonorario, string> = {
 };
 
 function mesLabel(d: string) {
-  if (!d) return '—';
-  const [y, m] = d.split('-');
-  return new Date(Number(y), Number(m) - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return mesAnoCompetencia(d);
 }
 
 function dataBR(d: string | null) {

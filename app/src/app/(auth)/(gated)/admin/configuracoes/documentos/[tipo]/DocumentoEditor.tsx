@@ -21,6 +21,7 @@ import PopupConfirm from '@/components/PopupConfirm';
 import { salvarDocumentoAction, salvarNovaVersaoDocumentoAction, publicarDocumentoAction } from '../actions';
 import { sugerirProximaVersao } from '../versao';
 import { htmlParaImpressao, htmlParaWord, nomeArquivo, type MetaExport } from '@/lib/markdown/exportar';
+import { dataHoraBrt } from '@/lib/format/data-brt';
 
 const RÓTULO_TIPO = { termos: 'Termos de Uso', privacidade: 'Política de Privacidade' } as const;
 
@@ -96,9 +97,7 @@ type Props = {
 
 function formatarData(iso: string | null) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
+  return dataHoraBrt(iso);
 }
 
 const botaoPrimario = 'inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50';

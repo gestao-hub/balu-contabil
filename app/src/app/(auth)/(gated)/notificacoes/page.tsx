@@ -8,6 +8,7 @@ import { getGateContext } from '@/lib/auth/gate-context';
 import { subtituloPorPapel } from '@/lib/notifications/copy-por-papel';
 import { marcarTodasLidasAction } from './actions';
 import type { Severidade } from '@/lib/notifications/tipos';
+import { dataHoraBrt } from '@/lib/format/data-brt';
 
 type Notificacao = {
   id: string;
@@ -28,7 +29,7 @@ const SEVERIDADE_DOT: Record<Severidade, string> = {
 };
 
 function dataHoraBR(iso: string): string {
-  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return dataHoraBrt(iso);
 }
 
 // Wrapper de retorno void — <form action> exige (formData) => void | Promise<void>,

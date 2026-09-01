@@ -6,6 +6,7 @@ import { Loader2, Upload, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import PopupConfirm from '@/components/PopupConfirm';
 import { uploadCertificadoAction } from './actions';
+import { dataBrt, dataHoraBrt } from '@/lib/format/data-brt';
 
 export default function CertificadoForm(
   { enviadoEm, validoAte, peloEscritorio = false }:
@@ -61,8 +62,8 @@ export default function CertificadoForm(
         <ShieldCheck className={`size-5 ${enviadoEm ? 'text-success' : 'text-muted-foreground'}`} />
         <span className="text-muted-foreground-2">
           {enviadoEm
-            ? `Certificado enviado em ${new Date(enviadoEm).toLocaleString('pt-BR')}.${
-                validoAte ? ` Válido até ${new Date(validoAte).toLocaleDateString('pt-BR')}.` : ''
+            ? `Certificado enviado em ${dataHoraBrt(enviadoEm)}.${
+                validoAte ? ` Válido até ${dataBrt(validoAte)}.` : ''
               }`
             : 'Nenhum certificado enviado.'}
         </span>

@@ -6,6 +6,7 @@ import { marcarPagoAction, deleteHonorarioAction } from './actions';
 import HonorarioFormDialog, { type ClienteOption, type HonorarioRow } from './HonorarioFormDialog';
 import PopupConfirm from '@/components/PopupConfirm';
 import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
+import { mesAnoCompetencia } from '@/lib/format/data-brt';
 
 export type { HonorarioRow };
 
@@ -22,9 +23,7 @@ function brl(v: number) {
 }
 
 function mesLabel(d: string) {
-  if (!d) return '—';
-  const [y, m] = d.split('-');
-  return new Date(Number(y), Number(m) - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return mesAnoCompetencia(d);
 }
 
 function dataBR(d: string | null) {

@@ -29,6 +29,7 @@ import type { StatusSubconta } from '@/lib/billing/status-subconta';
 import {
   criarSubcontaAction, sincronizarStatusSubcontaAction, reconfigurarWebhookSubcontaAction,
 } from './actions';
+import { dataBrt } from '@/lib/format/data-brt';
 
 type Props = {
   nomeSugerido: string;
@@ -212,7 +213,7 @@ export default function SubcontaForm({
           {criadaEm && (
             <div className="flex gap-1">
               <dt>Criada em:</dt>
-              <dd>{new Date(criadaEm).toLocaleDateString('pt-BR')}</dd>
+              <dd>{dataBrt(criadaEm)}</dd>
             </div>
           )}
         </dl>

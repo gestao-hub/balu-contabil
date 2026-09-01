@@ -9,6 +9,7 @@ import PopupConfirm from '@/components/PopupConfirm';
 import { useToast } from '@/components/Toaster';
 import { removerMembroAction } from '../actions';
 import { convidarMembroAction } from '../convites-actions';
+import { dataBrt } from '@/lib/format/data-brt';
 
 export type MembroRow = {
   user_id: string;
@@ -148,7 +149,7 @@ export default function EquipeClient({ membros, convites, currentUserId }: Props
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {m.email && m.nome?.trim() ? `${m.email} · ` : ''}
-                    Membro desde {new Date(m.created_at).toLocaleDateString('pt-BR')}
+                    Membro desde {dataBrt(m.created_at)}
                   </div>
                 </div>
                 <button
@@ -186,7 +187,7 @@ export default function EquipeClient({ membros, convites, currentUserId }: Props
                   <div className="text-sm text-foreground">{c.email}</div>
                   <div className="text-xs text-muted-foreground">
                     {c.expira_em
-                      ? `Expira em ${new Date(c.expira_em).toLocaleDateString('pt-BR')} · `
+                      ? `Expira em ${dataBrt(c.expira_em)} · `
                       : ''}
                     aguardando aceite
                   </div>

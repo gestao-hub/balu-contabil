@@ -8,6 +8,7 @@ import { Wallet, Loader2, Save, ArrowUpRight, RefreshCw } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { formatBRL } from '@/lib/format/dinheiro';
 import { consultarSaldoAction, salvarContaDestinoAction, sacarAction } from './saque-actions';
+import { dataHoraBrt } from '@/lib/format/data-brt';
 
 export type SaqueHistorico = {
   id: string;
@@ -78,7 +79,7 @@ export default function SaldoSaque({ ehDono, contaResumo, historico }: Props) {
               <li key={s.id} className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium text-foreground">{formatBRL(s.valorCentavos)}</span>
                 <span className="text-muted-foreground">
-                  {new Date(s.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  {dataHoraBrt(s.criadoEm)}
                 </span>
                 <span className={s.status === 'falhou' ? 'text-destructive' : s.status === 'confirmado' ? 'text-primary' : 'text-alert'}>
                   {ROTULO[s.status]}
@@ -246,7 +247,7 @@ export default function SaldoSaque({ ehDono, contaResumo, historico }: Props) {
               <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 last:border-0">
                 <span className="font-medium text-foreground">{formatBRL(s.valorCentavos)}</span>
                 <span className="text-muted-foreground">
-                  {new Date(s.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  {dataHoraBrt(s.criadoEm)}
                 </span>
                 <span className={s.status === 'falhou' ? 'text-destructive' : s.status === 'confirmado' ? 'text-primary' : 'text-alert'}>
                   {ROTULO[s.status]}

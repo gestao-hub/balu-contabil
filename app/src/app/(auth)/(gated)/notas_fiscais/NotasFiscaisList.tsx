@@ -13,6 +13,7 @@ import FilterPeriodo, { type PeriodoRange } from '@/components/FilterPeriodo';
 import { useToast } from '@/components/Toaster';
 import { exportNotasCsvAction } from './actions';
 import AtualizarStatusIcon from './AtualizarStatusIcon';
+import { dataBrt } from '@/lib/format/data-brt';
 
 // Tabela real `notas_fiscais` é minimalista: o nome do cliente é derivado de
 // payload_focusnfe.destinatario (não há FK cliente_id). `referencia` é o identificador.
@@ -41,7 +42,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
 };
 
 function fmtData(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+  return iso ? dataBrt(iso) : '—';
 }
 
 export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }) {

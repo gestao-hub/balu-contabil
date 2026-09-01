@@ -8,6 +8,7 @@ import { formatCnpj } from '@/lib/format/masks';
 import { useToast } from '@/components/Toaster';
 import { decidirContabilidadeAction } from './actions';
 import type { Contabilidade } from './page';
+import { dataBrt } from '@/lib/format/data-brt';
 
 const STATUS_LABEL: Record<string, string> = {
   pendente: 'Pendente',
@@ -22,7 +23,7 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+  return iso ? dataBrt(iso) : '—';
 }
 
 export default function AprovacaoList({ initial }: { initial: Contabilidade[] }) {

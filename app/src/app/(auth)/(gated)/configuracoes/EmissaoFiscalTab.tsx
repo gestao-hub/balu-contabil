@@ -5,6 +5,7 @@
 import { ShieldCheck, Building2, KeyRound } from 'lucide-react';
 import CertificadoForm from './CertificadoForm';
 import NfseForm, { type MunicipioInfo } from './NfseForm';
+import { dataBrt } from '@/lib/format/data-brt';
 
 type Props = {
   companyId: string;
@@ -47,7 +48,7 @@ export default function EmissaoFiscalTab(props: Props) {
           <p className="text-xs text-muted-foreground-2">
             A credencial fiscal desta empresa foi cadastrada pelo seu escritório de
             contabilidade em{' '}
-            {new Date(props.credencialFocusCadastradaEm).toLocaleDateString('pt-BR')}.
+            {dataBrt(props.credencialFocusCadastradaEm)}.
           </p>
         </div>
       )}

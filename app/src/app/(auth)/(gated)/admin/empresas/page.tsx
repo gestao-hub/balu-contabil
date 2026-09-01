@@ -3,11 +3,12 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdminBaluPage } from '@/lib/admin/guard';
 import { listarUsuariosPlataforma } from '@/lib/admin/users';
+import { dataBrt } from '@/lib/format/data-brt';
 
 export const dynamic = 'force-dynamic';
 
 function fmtData(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+  return iso ? dataBrt(iso) : '—';
 }
 
 export default async function AdminEmpresasPage() {

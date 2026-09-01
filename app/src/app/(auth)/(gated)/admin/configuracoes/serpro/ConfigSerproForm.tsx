@@ -17,6 +17,7 @@ import {
   enviarCertContratanteAction,
   testarConexaoSerproAction,
 } from './actions';
+import { dataBrt } from '@/lib/format/data-brt';
 
 const rotuloCampo = 'text-xs font-medium text-muted-foreground-2';
 const campo = 'rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm';
@@ -237,7 +238,7 @@ export default function ConfigSerproForm({ inicial }: Props) {
               <dt className={rotuloCampo}>Válido até</dt>
               <dd className="text-foreground">
                 {inicial.cert.notAfter
-                  ? new Date(inicial.cert.notAfter).toLocaleDateString('pt-BR')
+                  ? dataBrt(inicial.cert.notAfter)
                   : '—'}
               </dd>
             </div>

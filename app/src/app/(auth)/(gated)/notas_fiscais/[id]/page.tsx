@@ -12,6 +12,7 @@ import { resolveMunicipioNfse } from '@/lib/fiscal/municipio-nfse.server';
 import { cancelamentoSoPortal } from '@/lib/fiscal/notas-tipo';
 import CancelarButton from './CancelarButton';
 import BackButton from './BackButton';
+import { dataHoraBrt } from '@/lib/format/data-brt';
 
 const STATUS_LABEL: Record<string, { txt: string; cls: string }> = {
   ativa: { txt: 'Ativa', cls: 'bg-success/10 text-success' },
@@ -95,7 +96,7 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
             {nota.tipo_documento} · {nota.referencia}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Emitida em {nota.data_emissao ? new Date(nota.data_emissao as string).toLocaleString('pt-BR') : '—'}
+            Emitida em {nota.data_emissao ? dataHoraBrt(nota.data_emissao as string) : '—'}
           </p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.cls}`}>{badge.txt}</span>
@@ -125,7 +126,7 @@ export default async function NotaDetalhePage({ params }: { params: Promise<{ id
       {status === 'cancelada' && (
         <div className="mt-4 rounded-lg border border-border bg-surface-2 p-4 text-sm">
           <p className="font-medium text-muted-foreground-2">Nota cancelada</p>
-          {nota.cancelled_at && <p className="text-muted-foreground-2">Em {new Date(nota.cancelled_at as string).toLocaleString('pt-BR')}</p>}
+          {nota.cancelled_at && <p className="text-muted-foreground-2">Em {dataHoraBrt(nota.cancelled_at as string)}</p>}
           {nota.cancellation_reason && <p className="mt-1 text-muted-foreground-2">Motivo: {nota.cancellation_reason as string}</p>}
         </div>
       )}

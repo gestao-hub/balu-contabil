@@ -9,6 +9,7 @@ import { useToast } from '@/components/Toaster';
 import { ETAPAS, ETAPA_LABEL, etapaLabel } from '@/lib/abertura/etapas';
 import { estadoDoc, type DocRevisao } from '@/lib/abertura/checklist';
 import { avancarProcessoAction, concluirAberturaAction, decidirAlteracaoAction, revisarDocumentoAction, gerarMinutaAction } from '../actions';
+import { dataBrt } from '@/lib/format/data-brt';
 
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   aprovado: { label: 'Aprovado', cls: 'bg-success/10 text-success border-success/40' },
@@ -207,7 +208,7 @@ export default function DetalheAbertura({ detalhe, docs, alteracoes, revisao }: 
             {pendentes.map((a) => (
               <div key={a.id} className="rounded-lg border border-warning/40 bg-warning/5 p-3">
                 <p className="text-xs text-muted-foreground">
-                  Solicitada em {a.created_at ? new Date(a.created_at).toLocaleDateString('pt-BR') : '—'}
+                  Solicitada em {a.created_at ? dataBrt(a.created_at) : '—'}
                 </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <Campo label="Razão social" valor={a.dados.empresa_razao_social_1} />

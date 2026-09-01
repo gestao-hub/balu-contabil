@@ -11,6 +11,7 @@ import { useToast } from '@/components/Toaster';
 import PopupConfirm from '@/components/PopupConfirm';
 import { formatCnpj } from '@/lib/format/masks';
 import { uploadCertificadoClienteAction } from './cert-actions';
+import { dataBrt, dataHoraBrt } from '@/lib/format/data-brt';
 
 export type CertInfo = {
   presente: boolean;
@@ -96,8 +97,8 @@ export default function CertificadoCliente({ companyId, cert }: { companyId: str
                 <p>
                   {cert.validoAte
                     ? dias != null && dias < 0
-                      ? `Certificado VENCIDO em ${new Date(cert.validoAte).toLocaleDateString('pt-BR')}. A emissão de notas e a geração de DAS param até a troca.`
-                      : `Certificado válido até ${new Date(cert.validoAte).toLocaleDateString('pt-BR')}${dias != null ? ` (${dias} dia${dias === 1 ? '' : 's'})` : ''}.`
+                      ? `Certificado VENCIDO em ${dataBrt(cert.validoAte)}. A emissão de notas e a geração de DAS param até a troca.`
+                      : `Certificado válido até ${dataBrt(cert.validoAte)}${dias != null ? ` (${dias} dia${dias === 1 ? '' : 's'})` : ''}.`
                     : 'Certificado enviado (validade não detectada).'}
                 </p>
                 <p className="text-xs">
@@ -107,7 +108,7 @@ export default function CertificadoCliente({ companyId, cert }: { companyId: str
                     : cert.origem === 'cliente'
                       ? 'Enviado pelo próprio cliente'
                       : 'Origem não registrada (envio anterior ao registro de quem enviou)'}
-                  {cert.enviadoEm ? ` em ${new Date(cert.enviadoEm).toLocaleString('pt-BR')}.` : '.'}
+                  {cert.enviadoEm ? ` em ${dataHoraBrt(cert.enviadoEm)}.` : '.'}
                 </p>
               </>
             ) : (

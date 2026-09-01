@@ -6,12 +6,13 @@ import { getGateContext } from '@/lib/auth/gate-context';
 import DashboardCard from '@/components/DashboardCard';
 import PendingActionsList from '@/components/PendingActionsList';
 import { getDashboardMetrics, getPendingActions } from '@/lib/dashboard/queries';
+import { dataBrt } from '@/lib/format/data-brt';
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 function fmtData(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('pt-BR');
+  return dataBrt(iso);
 }
 
 function diasAteVenc(dateOnly: string | null): number | null {

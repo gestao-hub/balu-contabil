@@ -14,6 +14,7 @@ import PopupConfirm from '@/components/PopupConfirm';
 import { statusHonorario, type StatusHonorario } from '@/lib/fiscal/status-honorario';
 import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 import { formatBRL, valorToCentavos } from '@/lib/format/dinheiro';
+import { mesAnoCompetencia } from '@/lib/format/data-brt';
 
 export type { HonorarioV2Row };
 
@@ -35,9 +36,7 @@ const FORMAS_PAGAMENTO = [
 ] as const;
 
 function mesLabel(d: string) {
-  if (!d) return '—';
-  const [y, m] = d.split('-');
-  return new Date(Number(y), Number(m) - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return mesAnoCompetencia(d);
 }
 
 /** YYYY-MM-DD → YYYY-MM (comparação com o filtro de competência) */

@@ -18,6 +18,7 @@
 // Duplicar isto em duas telas era garantir que uma das duas ficasse para trás
 // no dia em que o contrato da uazapi mudasse.
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { dataBrt } from '@/lib/format/data-brt';
 
 export type EstadoCanal = { status: string; numero: string | null; qrcode: string | null };
 type Resultado<T> = { ok: true; dados: T } | { ok: false; error: string };
@@ -151,7 +152,7 @@ export default function ConexaoWhatsapp(props: ConexaoWhatsappProps) {
           </div>
           <p className="text-sm text-muted-foreground">
             Número <strong className="text-foreground">{formatarNumero(numero)}</strong>
-            {conectadoEm ? ` desde ${new Date(conectadoEm).toLocaleDateString('pt-BR')}` : ''}.
+            {conectadoEm ? ` desde ${dataBrt(conectadoEm)}` : ''}.
             {' '}{textoConectado}
           </p>
         </div>
