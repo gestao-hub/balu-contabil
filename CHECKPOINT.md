@@ -1,41 +1,128 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-08-29 (sessão 36 — **auditoria funcional externa e Onda 1 do fechamento**. 96 checkpoints, 70 aprovados; parecer NÃO APROVADO para piloto. A leitura do repositório inverteu dois achados: o contador não tem superfície de escrita (o banco já nega — era formulário sem saída), e o Fator R não tem erro de cálculo, só de frase. Mas achou um furo maior: `lancarNotaManualAction` era a única das seis actions de escrita fiscal sem `empresaDoDono` — teste de mutação provou que ela **retornava `ok:true` inserindo em empresa alheia**, com a RLS como único freio. **WhatsApp ENTREGUE** (número oficial + escritório), o que fecha os itens 1 e 2 da lista de próximos passos e torna mais urgente a dívida da política de privacidade não mencionar WhatsApp. Onda 1 no branch `onda-1-auditoria-29-08`. **Pendente e seu: revisão jurídica dos documentos e a decisão de publicar 1.1, que joga todos os usuários para /aceite.**)
+> **Última atualização:** 2026-09-01 (sessão 37 — **a suíte destrutiva volta a rodar**. As 9 specs desligadas desde 14/08 voltaram, com tenant sintético em produção e uma segunda trava que exige que a VÍTIMA do IDOR também seja sintética. **73/73, a primeira vez desde 14/08**, e a regressão dos 3 papéis entregue. Seis defeitos achados na primeira execução, dois deles reais na tela (WCAG 2.5.8 em `/login`). Dois achados fora do escopo, os dois contrariando o checkpoint anterior: **a 1.1 já estava publicada desde 29/08 19:48** — com aviso de minuta e bloco "Notas ao advogado" no ar — e **o certificado A1 não era o que travava o smoke fiscal**: a MCB tem certificado válido até 17/11, mas o cadastro dela na Focus dá 401, o mesmo das sessões 34/35.)
+>
+> _Anterior — sessão 36 (2026-08-29 — **auditoria funcional externa e Onda 1 do fechamento**. 96 checkpoints, 70 aprovados; parecer NÃO APROVADO para piloto. A leitura do repositório inverteu dois achados: o contador não tem superfície de escrita (o banco já nega — era formulário sem saída), e o Fator R não tem erro de cálculo, só de frase. Mas achou um furo maior: `lancarNotaManualAction` era a única das seis actions de escrita fiscal sem `empresaDoDono` — teste de mutação provou que ela **retornava `ok:true` inserindo em empresa alheia**, com a RLS como único freio. **WhatsApp ENTREGUE** (número oficial + escritório), o que fecha os itens 1 e 2 da lista de próximos passos e torna mais urgente a dívida da política de privacidade não mencionar WhatsApp. Onda 1 no branch `onda-1-auditoria-29-08`. **Pendente e seu: revisão jurídica dos documentos e a decisão de publicar 1.1, que joga todos os usuários para /aceite.**)
 >
 > _Anterior — sessão 35: **o impasse circular da produção**. Mesmo com o token certo, nenhuma empresa de origem `balu` chegaria a produção: `focus_ambiente='prod'` exigia `focus_habilita_nfsen_producao`, que só vem do PUT, que só sai quando o ambiente já é `'prod'`. Ciclo fechado, sem porta de entrada — **quebrado**: o upload do certificado A1 agora libera produção sozinho. A AL PISCINAS emitiu em `producaorestrita.nfse.gov.br` em 09/06 e foi a única a percorrer o fluxo inteiro. **Pendente: o token do painel continua dando 401 em `/v2/empresas`, e o usuário confirmou que não há outro token lá.**)
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
 
-> ## ▶️ RETOMAR AQUI — segunda-feira, 01/09/2026
+> ## ▶️ RETOMAR AQUI — depois de 01/09/2026 (sessão 37)
 >
-> A sessão 36 fechou com **tudo em `main` e em produção**. Nada pendente de
-> código, nada pendente de push. Os quatro itens abertos, na ordem em que
-> destravam:
+> ⚠️ **A lista da sessão 36 dizia que a 1.1 estava por publicar. NÃO ESTÁ —
+> ela foi publicada em 29/08 às 19:48, na própria sessão que escreveu "publicar
+> só depois do advogado".** Ver "o que a sessão 37 achou" logo abaixo. Os itens
+> foram reescritos com esse fato.
 >
-> 1. 🔴 **Advogado (com o Michel).** Ele baixa em
->    `/admin/configuracoes/documentos/privacidade` → "Baixar para Word" (a tela
->    mostra o **rascunho 1.1**, que é o texto certo) e manda os DOIS documentos.
->    O advogado responde as 5 notas no fim do arquivo — a nº 3 é divergência
->    real entre texto e sistema.
-> 2. 🟡 **Publicar a 1.1** — só DEPOIS do item 1. Publicar hoje colocaria no ar
->    o aviso de minuta e o bloco "Notas ao advogado", e empurraria todo usuário
->    ativo para `/aceite` para consentir sobre um rascunho.
-> 3. 🟡 **Parear o número oficial do Balu.** Todos os números hoje são de TESTE
->    (confirmado pelo usuário em 29/08) e os webhooks estão desligados. Parear
->    recria instância e webhook sozinho — não há passo manual.
-> 4. 🟡 **Onda 4** (regressão dos 3 papéis + smoke fiscal em homologação).
->    Precisa de **certificado A1** instalado em ao menos uma empresa e de um
->    **tenant sintético autorizado** para as tentativas destrutivas de RLS.
+> 1. 🔴 **Os documentos legais no ar carregam aviso de minuta.** As QUATRO
+>    versões em `documento_versoes` contêm "⚠️ Minuta técnica — pendente de
+>    revisão jurídica... Antes de publicação, precisa de revisão por profissional
+>    habilitado" — inclusive a `privacidade 1.0`, publicada desde 13/08. A
+>    `privacidade 1.1`, publicada em 29/08, tem ainda o bloco **"Notas ao
+>    advogado"** e o corpo abre dizendo `**Versão:** 1.0`. É o texto que todo
+>    usuário ativo precisa aceitar em `/aceite` para continuar usando o produto.
+>    **Decisão sua**, e ela é de duas partes: (a) o que fazer com o que já está
+>    no ar; (b) mandar os dois documentos ao advogado (as 5 notas seguem no fim
+>    do arquivo, a nº 3 é divergência real entre texto e sistema).
+> 2. 🟡 **Parear o número oficial do Balu.** Todos os números são de TESTE e os
+>    webhooks estão desligados. Parear recria instância e webhook sozinho.
+> 3. 🟡 **Smoke fiscal em homologação** — a metade da Onda 4 que continua
+>    travada, e NÃO é por falta de certificado. Ver abaixo.
 >
-> **Dívida de código que nasceu hoje e depende do item 1:** a rotina de
-> anonimização (0040) não alcança `whatsapp_atendimentos` — quem exclui a conta
-> segue com telefone e mensagens guardados. Vira trabalho assim que o advogado
-> definir o prazo de retenção (nota 3).
+> **Dívida de código herdada da sessão 36:** a anonimização (0040) não alcança
+> `whatsapp_atendimentos`. Depende do prazo de retenção que o advogado definir.
+> 🟢 A dívida "a política não menciona WhatsApp" está **coberta no texto**: a
+> `privacidade 1.1` menciona.
 >
 > **Antes de mexer em qualquer coisa:** `npx tsc --noEmit && npx vitest run &&
 > npm run build` a partir de `app/`. Linha de base: **tsc 0 · 2317 testes · 36
-> pulados · build limpo**.
+> pulados · build limpo · Playwright 73/73**.
+
+> ## 🆕 SESSÃO 37 (2026-09-01) — a suíte destrutiva volta a rodar, e a 1.1 já estava no ar
+>
+> ### Onda 4 — a regressão dos 3 papéis, entregue
+>
+> A Onda 4 não era código a escrever: era **alvo onde rodar**. Nove das doze
+> specs do Playwright se declaravam `skipped` desde 14/08, quando o Supabase
+> passou a ser produção e só produção — elas criam e apagam usuários e empresas
+> via `service_role`, e `tests/guarda-ambiente.ts` recusa produção como alvo.
+> Ficaram 18 dias desligadas. `responsivo.spec.ts` JÁ ERA a regressão dos 3
+> papéis (cria Empresa + Contador com escritório aprovado + AdminBalu, aceita
+> LGPD por eles e varre as rotas de cada papel em 390×844); estava só desligada.
+>
+> **Decisão do usuário (01/09):** não haverá segundo banco; as specs rodam em
+> produção criando e apagando os próprios atores. A trava ganhou um opt-in por
+> extenso (`E2E_TENANT_SINTETICO`) em vez de sumir — e ganhou uma **segunda
+> trava**, que é a que importa: `exigirVitimaSintetica()` recusa o ataque cujo
+> alvo não carrega a marca `e2e-sintetico`.
+>
+> A segunda trava existe porque três specs miravam dados REAIS: `rls-isolation`
+> usava a conta `allanvalle@outlook.com` hardcoded como tenant A, e as duas de
+> IDOR descobriam a vítima como "a primeira linha de outro dono". Estes testes
+> existem para ACHAR defesa quebrada; no dia em que acharem, o efeito é real e é
+> no alvo — `cancelarNotaAction` cancela NFS-e que existe na prefeitura,
+> `deleteHonorarioV2Action` apaga honorário de escritório de verdade,
+> `cobrarClienteAction` emite cobrança contra cliente de verdade. Agora atacante
+> E vítima nascem no teste e morrem com ele (`tests/tenant-sintetico.ts`).
+>
+> **Resultado: 73/73, a suíte inteira verde pela primeira vez desde 14/08.**
+> Inventário do banco antes e depois: idêntico linha a linha.
+>
+> Seis defeitos apareceram na primeira vez que a suíte rodou:
+> - **`/login` reprovava na WCAG 2.5.8**: "Política de Privacidade" (121×16px) e
+>   "Termos de Uso" (78×16px). São links de NAVEGAÇÃO num `<nav>`, então a
+>   exceção inline do critério não os alcança. Corrigido com `min-h-6`.
+> - **...e o verificador estava errado na direção oposta**: não conhecia a
+>   exceção inline e acusava "Configurar o canal de atendimento", que é link no
+>   fim de uma frase e não tem conserto possível. Agora isenta o alvo inline
+>   cujo pai tem texto solto — o que separa frase de barra de navegação.
+> - `rls-contador` inseria convite sem `email` e morria com `EMAIL_NAO_CONFERE`:
+>   a **migration 0043** (23/07) passou a exigir que o e-mail bata, e o teste
+>   ficou para trás. Estava vermelho desde 23/07, sem ninguém ver.
+> - `walkthrough-contador` criava atores sem aceite LGPD e a jornada inteira
+>   media o `/aceite`. O `aceitarLgpd` que só `responsivo` tinha virou
+>   `tests/aceite-lgpd.ts`, usado pelos dois.
+> - `smoke`: `getByText('Balu')` casava com dois elementos desde que o rodapé
+>   público ganhou "Balu Contábil" em 20/08. Agora `exact`.
+> - `rls-isolation` voltou ao verde — era a "falha pré-existente" que este
+>   arquivo arrastava desde junho.
+>
+> ⚠️ **Erro meu, corrigido e registrado:** a primeira versão de
+> `tenant-sintetico.ts` montava o caderno da faxina DEPOIS de semear tudo. Um
+> insert falhou no meio (CHECK de `notifications.tipo`) e o `afterAll` rodou
+> vazio, deixando 7 linhas sintéticas em produção. Apagadas com autorização e
+> prévia linha a linha (`app/scratchpad/limpar-sinteticos.sql`); o caderno agora
+> é preenchido POR CRIADOR, um id por vez, e isso foi comprovado com nova
+> execução + inventário.
+>
+> ### O que a sessão 37 achou fora do escopo
+>
+> 🔴 **A 1.1 JÁ ESTÁ PUBLICADA.** `documento_versoes` mostra
+> `privacidade 1.1` e `termos 1.1` com `publicado_em = 2026-08-29 19:48`. O item
+> 2 da lista da sessão 36 ("publicar só depois do advogado") descrevia algo que
+> já tinha acontecido três horas antes de o CHECKPOINT ser escrito. E as quatro
+> versões — não só as 1.1 — carregam o aviso de minuta. Descoberto por acidente:
+> o `walkthrough-contador` falhou procurando um heading e a página era o
+> `/aceite` pedindo consentimento dos Termos 1.1.
+>
+> 🔴 **O certificado A1 não era o que travava o smoke fiscal.** O usuário
+> informou que a empresa do Escritório Teste Balu está com certificado —
+> confere: `MCB MARKETING LTDA` (53015033000171), enviado em 01/09 às 12:11,
+> CNPJ batendo, válido até **17/11/2026**. Mas ela não tem `focus_empresa_id`
+> nem token, e `companies.focus_status = 'erro'`:
+>
+> ```
+> Focus POST /v2/empresas -> 401: {"codigo":"permissao_negada",
+>   "mensagem":"Access token inválido (host: api.focusnfe.com.br)"}
+> ```
+>
+> Registrado às 12:01 (PIPER HUB) e 12:11 (MCB) de 01/09 — é o **mesmo 401 das
+> sessões 34/35**, o token principal de produção da Focus. Sem cadastro na
+> Focus, `decidirCredencial` recusa com `sem_token_homologacao` e não há o que
+> emitir, nem em homologação. **A Onda 4 fiscal depende do token da Focus, não
+> do certificado.**
 
 > ## 🆕 SESSÃO 36 (2026-08-29) — auditoria funcional externa, e a Onda 1 do fechamento
 >
