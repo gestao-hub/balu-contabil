@@ -1,7 +1,9 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-09-01 (sessão 37 — **a Focus destravou, a suíte destrutiva voltou a rodar, e o BUG-006 foi resolvido**. O token principal da Focus entrou e o 401 de 40 dias acabou: a causa era que o "token da plataforma" configurado era o token DA EMPRESA MCB MARKETING. MCB e AL PISCINAS vinculadas e **emitindo em homologação** — primeira vez que uma empresa passa por `decidirCredencial` sem recusa. O BUG-006 não era service worker: era `toLocaleDateString` com o fuso de quem renderiza (UTC no servidor, BRT no navegador), reproduzido e corrigido em 22 arquivos. A auditoria de 29/08 foi cruzada item a item: 6 dos 7 BUGs fechados, e a exportação LGPD — o único "pode ser bug" — provada boa. Base: tsc 0 · 2346 testes · Playwright 74/74.)
+> **Última atualização:** 2026-09-01 (sessão 37, partes 1–3 — **a Focus destravou, a suíte destrutiva voltou, o BUG-006 foi resolvido, e veio o parecer de lançamento: NÃO está pronto**. O código está no melhor estado da história do projeto; o que impede é que NENHUM dos sete blocos completou seu ciclo com cliente real — todo o dado fiscal de produção é seed de um único dia. Rodados /code-review (15 achados, 9 corrigidos com teste, incluindo 12 Server Actions sem prova de posse), /systematic-debugging e /security-system-app (veredito COBERTURA INSUFICIENTE: 89 de 156 controles não exercidados). **O CHECKPOINT estava errado sobre o Asaas**: as credenciais de produção existem e funcionam — conta com R$ 1.000 e 29 clientes, compartilhada com outros dois produtos. Parou no acesso à Vercel, não em código.)
+>
+> _Anterior — sessão 37 partes 1 e 2: **a Focus destravou, a suíte destrutiva voltou a rodar, e o BUG-006 foi resolvido**. O token principal da Focus entrou e o 401 de 40 dias acabou: a causa era que o "token da plataforma" configurado era o token DA EMPRESA MCB MARKETING. MCB e AL PISCINAS vinculadas e **emitindo em homologação** — primeira vez que uma empresa passa por `decidirCredencial` sem recusa. O BUG-006 não era service worker: era `toLocaleDateString` com o fuso de quem renderiza (UTC no servidor, BRT no navegador), reproduzido e corrigido em 22 arquivos. A auditoria de 29/08 foi cruzada item a item: 6 dos 7 BUGs fechados, e a exportação LGPD — o único "pode ser bug" — provada boa. Base: tsc 0 · 2346 testes · Playwright 74/74.)
 >
 > _Anterior — sessão 37 parte 1: **a suíte destrutiva volta a rodar**. As 9 specs desligadas desde 14/08 voltaram, com tenant sintético em produção e uma segunda trava que exige que a VÍTIMA do IDOR também seja sintética. **73/73, a primeira vez desde 14/08**, e a regressão dos 3 papéis entregue. Seis defeitos achados na primeira execução, dois deles reais na tela (WCAG 2.5.8 em `/login`). Dois achados fora do escopo, os dois contrariando o checkpoint anterior: **a 1.1 já estava publicada desde 29/08 19:48** — com aviso de minuta e bloco "Notas ao advogado" no ar — e **o certificado A1 não era o que travava o smoke fiscal**: a MCB tem certificado válido até 17/11, mas o cadastro dela na Focus dá 401, o mesmo das sessões 34/35.)
 >
@@ -11,43 +13,162 @@
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
 
-> ## ▶️ RETOMAR AQUI — depois de 01/09/2026 (sessão 37)
+> ## ▶️ RETOMAR AQUI — depois de 01/09/2026 (sessão 37, parte 3)
 >
-> A auditoria funcional de 29/08 foi cruzada item a item com o código e o banco
-> nesta sessão. **Dos 7 BUGs, 6 estão fechados**; os 4 "parciais" não numerados,
-> fechados ou decididos; e os três itens que a auditoria deixou como *não
-> verificados* (negação server-side do Contador, IDOR/RLS destrutivo,
-> exportação LGPD) foram **medidos e passam**.
+> **Parada em cima de um bloqueio de acesso, não de código.** Tudo commitado e
+> empurrado (`35eec8f`). Base: **tsc 0 · 2367 testes · Playwright 76/76**.
 >
-> 1. 🟠 **BUG-001 — documentos legais** (único P1 restante). As QUATRO versões
->    publicadas carregam "⚠️ Minuta técnica — pendente de revisão jurídica"; a
->    `privacidade 1.1` tem ainda o bloco "Notas ao advogado", e o corpo abre
->    dizendo `**Versão:** 1.0`. **Você decidiu em 01/09 que NÃO é crítico** — a
->    plataforma não foi publicada para o público geral. Fica como pendência
->    jurídica, não como bloqueio de piloto.
-> 2. 🟡 **Vercel** — trocar `FOCUS_NFE_TOKEN_PRODUCAO` pelo principal e
->    **apagar** `FOCUS_NFE_HOMOLOGACAO`. A CLI daqui responde `Not authorized`;
->    `! npx vercel login` destrava. Conferir também se existe um
->    `FOCUS_NFE_TOKEN` genérico lá — ele atende produção quando o específico falta.
-> 3. 🟡 **Smoke fiscal em homologação** — agora possível: MCB MARKETING e AL
->    PISCINAS passam por `decidirCredencial` com token próprio. É o que falta da
->    Onda 4.
-> 4. 🟡 **Parear o número oficial do WhatsApp** (todos são de teste) · **Asaas
->    em produção** · **e-mail de ponta a ponta** · **`ia.smoke.test.ts`**, que
->    nunca foi executado.
+> ### O passo exato onde paramos
 >
-> **Abertos por decisão, não por esquecimento:** SLA default (0 de 1 escritório
-> configurado — um default faria o app prometer prazo que ninguém escolheu) e a
-> anonimização (0040) não alcançar `whatsapp_atendimentos`, que espera o prazo de
-> retenção do advogado.
+> Colocá-lo o **Asaas em produção**. Falta:
+>
+> 1. 🔴 **Entrar na Vercel com a conta certa.** A CLI está logada como
+>    `contato.easydropshipping@gmail.com` (time `easy-drop`), que **NÃO enxerga**
+>    o `balu-contabil` (time `team_UERmEwgxRUaDvbvd22K1Iqde` — a API responde
+>    `forbidden`). O usuário indicou a conta `contatogrupoideapp`.
+>
+>    ⚠️ **O `vercel login` reautoriza a conta que já está no NAVEGADOR, e diz
+>    "Congratulations! You are now signed in" mesmo quando é a errada.** Isso
+>    enganou duas vezes em 01/09; só a consulta à API revelou. Use janela anônima,
+>    ou — melhor — um **token** de `vercel.com/account/tokens` criado pela conta
+>    certa.
+>
+>    ⚠️ **As credenciais antigas desta máquina foram perdidas**: o login das 16:05
+>    sobrescreveu o único `auth.json`
+>    (`~/AppData/Roaming/xdg.data/com.vercel.cli/auth.json`) e não há segundo
+>    armazenamento. Efeito colateral do próprio login de 01/09.
+>
+> 2. 🟡 **Registrar o webhook do Balu na conta de produção do Asaas.** Script
+>    pronto e prévia já conferida:
+>    `app/scratchpad/registrar-webhook-asaas.mjs` (idempotente — reescreve se já
+>    existir; `--previa` não envia nada). O `POST` foi barrado pelo classificador
+>    e precisa ser rodado pelo usuário com `! node ...`.
+>
+> 3. 🟡 **Três variáveis na Vercel** (projeto `balu-contabil`, Production):
+>    `ASAAS_ENV=prod` · `TOKEN_ASAAS_PRODUCAO` (o `$aact_prod…` de 166 chars do
+>    `.env.local`) · `ASAAS_WEBHOOK_SECRET` **idêntico** ao local (64 chars).
+>
+>    ⚠️ **A terceira é a que engana.** Se a Vercel tiver um segredo DIFERENTE, o
+>    webhook responde `unauthorized` a cada entrega e o Asaas parece saudável
+>    enquanto nenhum pagamento concilia. Comparar os dois é o motivo de ter
+>    conectado a CLI (`vercel env pull`).
+>
+> 4. 🟡 **Zerar a subconta de SANDBOX do `Escritório Teste Balu`**
+>    (`asaas_subconta_id = dbd05c4a-5b4f-4bf3-b445-16da1e219e17`, gravada como
+>    `aprovada`, com API key cifrada). Assim que `ASAAS_ENV=prod`, o app decifra
+>    essa chave de sandbox e a usa contra `api.asaas.com` → **401 em toda
+>    operação, com a tela dizendo "aprovada"**. É uma linha no banco.
+>
+> ### Aproveitar a mesma janela da Vercel
+>
+> 5. 🟡 Trocar `FOCUS_NFE_TOKEN_PRODUCAO` pelo **principal** (`8I0Gb…`) e
+>    **apagar** `FOCUS_NFE_HOMOLOGACAO` (morta — nenhum caminho lê
+>    `obterTokenFocus('hom')`). Conferir se existe um `FOCUS_NFE_TOKEN` genérico
+>    lá: ele atende produção quando o específico falta.
+> 6. 🟡 `CRON_SECRET` é `dev-cron-secr…` — placeholder de desenvolvimento. Se
+>    for o mesmo na Vercel, os endpoints de cron estão com segredo adivinhável.
+>
+> ### Aberto, sem depender da Vercel
+>
+> - 🔴 **Smoke fiscal em homologação com a MCB MARKETING** — emitir, cancelar,
+>   apurar e transmitir uma vez cada. É o único item que pode revelar um problema
+>   grande que ninguém viu; os outros são trabalho conhecido. **Faça este primeiro.**
+> - 🔴 **Advogado nos dois documentos legais**, e republicar sem o aviso de
+>   minuta (as QUATRO versões publicadas o carregam).
+> - 🟡 **Rotacionar 16 dos 17 segredos** que estavam nos backups apagados.
+>   🚨 **`CERT_ENC_KEY` é a exceção**: ela cifra os certificados A1 em repouso, e
+>   trocá-la torna todo `enc:v1:` indecifrável. Exige migration de recifragem.
+> - 🟡 **Parear o número oficial do WhatsApp** (todos são de teste).
 >
 > **Antes de mexer em qualquer coisa:** `npx tsc --noEmit && npx vitest run &&
-> npm run build` a partir de `app/`. Linha de base: **tsc 0 · 2346 testes · 36
-> pulados · build limpo · Playwright 74/74**.
->
-> Para rodar o Playwright inteiro (as 9 specs destrutivas exigem opt-in):
-> `E2E_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL` + as duas chaves +
+> npm run build` a partir de `app/`. Para o Playwright inteiro, as 9 specs
+> destrutivas exigem `E2E_SUPABASE_URL` + as duas chaves +
 > `E2E_TENANT_SINTETICO='sim-eu-autorizo-tenant-sintetico-em-producao'`.
+
+> ## 🆕 SESSÃO 37 — PARTE 3 (01/09) — auditoria de lançamento, e o Asaas
+>
+> ### O parecer: NÃO está pronto para lançar — e o motivo não é o código
+>
+> Depois de hoje o código está no melhor estado da história do projeto. O que
+> impede o lançamento apareceu quando parei de ler código e fui **contar linhas no
+> banco**:
+>
+> | Bloco | O que já aconteceu de verdade em produção |
+> |---|---|
+> | Notas fiscais | 2 no total — ambas de **09/06**, e **0 em produção** |
+> | Guias, apurações, declarações | **todas de 09/06**, todas da AL PISCINAS |
+> | Abertura de empresa (Bloco 2) | **0** |
+> | Folha / Fator R | **0** |
+> | Assinaturas cobrando dinheiro | **0** |
+> | WhatsApp | **0** |
+>
+> Todo o dado fiscal de produção nasceu num único dia, do
+> `_seed-fiscal-al-piscinas.mjs`. **As quatro PGDAS-D marcadas `transmitida`
+> nunca foram transmitidas.** Sete blocos construídos e testados; nenhum completou
+> seu ciclo com um cliente real.
+>
+> **O que TEM vida própria** (e contraria o pessimismo acima): o **motor de
+> notificações** — 44 notificações de 24/07 até hoje, 8 tipos, 29 e-mails
+> entregues — e o **cron de apuração**, rodando sobre 4 empresas.
+>
+> ### O achado de código desta análise
+>
+> Os módulos que **fazem** a conta do imposto sempre tiveram teste (`simples` 12,
+> `guia` 21, `das-mei` 13, `fator-r`, `rbt12`, `anexo-resolver`). O que decide
+> **quais números entram** na conta tinha zero: `receitas-source`, com SEIS
+> consumidores. Erro de cálculo dá número errado e alguém questiona; erro ali dá
+> um número **plausível** sobre base incompleta, e ninguém questiona. Escritos 9
+> testes (`35eec8f`), verificados por mutação. **Ainda sem cobertura:**
+> `segregacao`, `parametros`, `emitido-ano`.
+>
+> ### Asaas: o CHECKPOINT estava errado
+>
+> Este arquivo dizia, desde julho, que "credenciais Asaas de produção (não
+> existem)". **As duas são reais e funcionam** — medido com `GET`:
+>
+> ```
+> PRODUÇÃO   conta MCB MARKETING LTDA · saldo R$ 1.000,00 · 29 clientes (1º de 07/08)
+> SANDBOX    mesma empresa · saldo R$ 437,52 · 3 clientes
+> ```
+>
+> ⚠️ **ARMADILHA que custou um diagnóstico errado:** o `.env.local` guarda os
+> tokens Asaas com barra invertida antes do `$` (`\$aact_…`), para o
+> `set -a; . ./.env.local` não interpolar. Um parser ingênuo manda a barra junto e
+> leva **401** — e o 401 parece credencial inválida. O valor real começa em `$`.
+>
+> 🔴 **A conta de produção NÃO é só do Balu Contábil.** Ela já tem dois webhooks
+> ativos, e nenhum é deste app:
+>
+> ```
+> ATIVO  Entre em Campo - pagamentos -> https://lp.baluhub.com.br/api/webhooks/asaas
+> ATIVO  Balu CRM -> https://envsirumquqpmkcayncr.supabase.co/functions/v1/asaas-webhook
+> ```
+>
+> O segundo aponta para **outro projeto Supabase** (`envsirumquqpmkcayncr`, não o
+> `llykzqnugdpojwnlontj` do Balu Contábil). **Decisão do usuário em 01/09: o Balu
+> Contábil entra na MESMA conta.** Risco aceito: os webhooks dos outros dois
+> passam a receber eventos das cobranças do Balu. Do lado DESTE app o inverso é
+> inofensivo — a rota trata cobrança alheia como `cobranca_desconhecida` e
+> responde 200 sem tocar em nada.
+>
+> ⚠️ **O sandbox tem ZERO webhooks** — a conciliação por webhook nunca funcionou
+> nem lá. Explica o "sem transação real" da auditoria.
+>
+> ⚠️ **Webhook tem de ser registrado pela API, nunca pelo painel.** O Asaas GERA
+> um `authToken` sozinho quando o cadastro vai sem um, e **nunca devolve o valor
+> na leitura** — um webhook cadastrado à mão parece saudável e morre em
+> `unauthorized`. Está escrito no cabeçalho de
+> `src/app/api/webhooks/asaas/route.ts`.
+>
+> ✅ Registrar o webhook ANTES de virar o `ASAAS_ENV` é seguro: em sandbox, os
+> eventos que chegarem caem em `cobranca_desconhecida` e são ignorados com 200.
+>
+> ### Estado do banco, favorável à migração
+>
+> `assinaturas` (6) e `honorarios` (7) têm **zero** vínculo com Asaas — nada a
+> migrar. Há 8 linhas amarradas a ids de sandbox (`cobrancas` 4 ·
+> `cobrancas_escritorio` 4), e a subconta do Escritório Teste Balu (item 4 da
+> retomada).
 
 > ## 🆕 SESSÃO 37 — PARTE 2 (01/09) — a Focus destravou, e o BUG-006 era fuso
 >
