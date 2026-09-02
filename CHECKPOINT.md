@@ -1,7 +1,9 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-09-01 (sessão 37, partes 1–3 — **a Focus destravou, a suíte destrutiva voltou, o BUG-006 foi resolvido, e veio o parecer de lançamento: NÃO está pronto**. O código está no melhor estado da história do projeto; o que impede é que NENHUM dos sete blocos completou seu ciclo com cliente real — todo o dado fiscal de produção é seed de um único dia. Rodados /code-review (15 achados, 9 corrigidos com teste, incluindo 12 Server Actions sem prova de posse), /systematic-debugging e /security-system-app (veredito COBERTURA INSUFICIENTE: 89 de 156 controles não exercidados). **O CHECKPOINT estava errado sobre o Asaas**: as credenciais de produção existem e funcionam — conta com R$ 1.000 e 29 clientes, compartilhada com outros dois produtos. Parou no acesso à Vercel, não em código.)
+> **Última atualização:** 2026-09-02 (sessão 38 — **o smoke fiscal saiu e achou um defeito que corrompe número que o cliente vê**. A MCB MARKETING emitiu, foi autorizada, sincronizou e cancelou uma NFS-e em homologação, cada passo pelas funções da tela — o primeiro ciclo de nota fechado desde 09/06. O `transmitirPgdasd` percorreu a cadeia inteira em dry-run e o SERPRO respondeu "Requisição efetuada com sucesso" (R$ 344,33, `transmitida: false`). **O achado: `lerReceitasParaApuracao` não filtra `ambiente`** — 100% da receita do banco de produção é de homologação, e a apuração devolveu R$ 112,50 de imposto sobre ela sem sinalizar nada. Aberto também: a apuração diz R$ 112,50 e o SERPRO diz R$ 344,33 para a mesma competência. **A Vercel continua travada, e a causa foi isolada:** quem escolhe a conta é a sessão do navegador PADRÃO do Windows; quatro tentativas caíram em `easy-drop`, e `vercel login <email>` está descontinuado na CLI 58.)
+>
+> _Anterior — sessão 37, partes 1–3: **a Focus destravou, a suíte destrutiva voltou, o BUG-006 foi resolvido, e veio o parecer de lançamento: NÃO está pronto**. O código está no melhor estado da história do projeto; o que impede é que NENHUM dos sete blocos completou seu ciclo com cliente real — todo o dado fiscal de produção é seed de um único dia. Rodados /code-review (15 achados, 9 corrigidos com teste, incluindo 12 Server Actions sem prova de posse), /systematic-debugging e /security-system-app (veredito COBERTURA INSUFICIENTE: 89 de 156 controles não exercidados). **O CHECKPOINT estava errado sobre o Asaas**: as credenciais de produção existem e funcionam — conta com R$ 1.000 e 29 clientes, compartilhada com outros dois produtos. Parou no acesso à Vercel, não em código.)
 >
 > _Anterior — sessão 37 partes 1 e 2: **a Focus destravou, a suíte destrutiva voltou a rodar, e o BUG-006 foi resolvido**. O token principal da Focus entrou e o 401 de 40 dias acabou: a causa era que o "token da plataforma" configurado era o token DA EMPRESA MCB MARKETING. MCB e AL PISCINAS vinculadas e **emitindo em homologação** — primeira vez que uma empresa passa por `decidirCredencial` sem recusa. O BUG-006 não era service worker: era `toLocaleDateString` com o fuso de quem renderiza (UTC no servidor, BRT no navegador), reproduzido e corrigido em 22 arquivos. A auditoria de 29/08 foi cruzada item a item: 6 dos 7 BUGs fechados, e a exportação LGPD — o único "pode ser bug" — provada boa. Base: tsc 0 · 2346 testes · Playwright 74/74.)
 >
@@ -13,77 +15,176 @@
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
 
-> ## ▶️ RETOMAR AQUI — depois de 01/09/2026 (sessão 37, parte 3)
+> ## ▶️ RETOMAR AQUI — depois de 02/09/2026 (sessão 38)
 >
-> **Parada em cima de um bloqueio de acesso, não de código.** Tudo commitado e
-> empurrado (`35eec8f`). Base: **tsc 0 · 2367 testes · Playwright 76/76**.
+> **Base: tsc 0 · 2367 testes · 187 arquivos.** O smoke fiscal saiu, e ele
+> achou o que se esperava que achasse.
 >
-> ### O passo exato onde paramos
+> ### 🔴 O achado da sessão — receita de HOMOLOGAÇÃO entra na base de imposto
 >
-> Colocá-lo o **Asaas em produção**. Falta:
+> `lerReceitasParaApuracao` (`src/lib/fiscal/receitas-source.ts`) filtra por
+> `status` e `tipo_documento` e **não filtra `ambiente`**. Nenhum arquivo da
+> cadeia fiscal — `receitas-source`, `apuracao`, `guia`, `rbt12`,
+> `serpro-pgdasd`, `emitido-ano`, `segregacao` — sequer menciona a coluna.
 >
-> 1. 🔴 **Entrar na Vercel com a conta certa.** A CLI está logada como
->    `contato.easydropshipping@gmail.com` (time `easy-drop`), que **NÃO enxerga**
->    o `balu-contabil` (time `team_UERmEwgxRUaDvbvd22K1Iqde` — a API responde
->    `forbidden`). O usuário indicou a conta `contatogrupoideapp`.
+> Medido no banco de produção, não deduzido:
 >
->    ⚠️ **O `vercel login` reautoriza a conta que já está no NAVEGADOR, e diz
->    "Congratulations! You are now signed in" mesmo quando é a errada.** Isso
->    enganou duas vezes em 01/09; só a consulta à API revelou. Use janela anônima,
->    ou — melhor — um **token** de `vercel.com/account/tokens` criado pela conta
->    certa.
+> ```
+> AL PISCINAS · ambiente=hom · ativa     1 nota  R$ 2.500,00
+> AL PISCINAS · ambiente=hom · lancada   1 nota  R$ 2.500,00
+> ```
 >
->    ⚠️ **As credenciais antigas desta máquina foram perdidas**: o login das 16:05
->    sobrescreveu o único `auth.json`
->    (`~/AppData/Roaming/xdg.data/com.vercel.cli/auth.json`) e não há segundo
->    armazenamento. Efeito colateral do próprio login de 01/09.
+> **100% da receita que existe no banco é de homologação**, e a apuração
+> rodada pelo caminho de produção devolveu **R$ 112,50 de imposto** sobre ela,
+> sem um sinal de que a base é teste. O produto oferece emissão em homologação
+> de propósito (`emitir_nota_homol_antes_producao`), então este é um caminho que
+> cliente real percorre: ele testa, e o teste vira imposto.
 >
-> 2. 🟡 **Registrar o webhook do Balu na conta de produção do Asaas.** Script
->    pronto e prévia já conferida:
->    `app/scratchpad/registrar-webhook-asaas.mjs` (idempotente — reescreve se já
->    existir; `--previa` não envia nada). O `POST` foi barrado pelo classificador
->    e precisa ser rodado pelo usuário com `! node ...`.
+> **Conserto provável:** `.neq('ambiente', 'hom')` nas duas leituras de
+> `receitas-source`, com teste. Cuidado: `lancada` (lançamento manual de nota
+> emitida fora) nasce com o DEFAULT `'hom'` da coluna — filtrar por ambiente sem
+> olhar isso apagaria receita legítima. **Decidir o que `lancada` deve carregar
+> em `ambiente` é parte do conserto, não um detalhe.**
 >
-> 3. 🟡 **Três variáveis na Vercel** (projeto `balu-contabil`, Production):
->    `ASAAS_ENV=prod` · `TOKEN_ASAAS_PRODUCAO` (o `$aact_prod…` de 166 chars do
->    `.env.local`) · `ASAAS_WEBHOOK_SECRET` **idêntico** ao local (64 chars).
+> ### 🟡 Divergência de valor, ainda sem veredito
 >
->    ⚠️ **A terceira é a que engana.** Se a Vercel tiver um segredo DIFERENTE, o
->    webhook responde `unauthorized` a cada entrega e o Asaas parece saudável
->    enquanto nenhum pagamento concilia. Comparar os dois é o motivo de ter
->    conectado a CLI (`vercel env pull`).
+> Para AL PISCINAS / 202606, no mesmo dia e mesma competência:
 >
-> 4. 🟡 **Zerar a subconta de SANDBOX do `Escritório Teste Balu`**
->    (`asaas_subconta_id = dbd05c4a-5b4f-4bf3-b445-16da1e219e17`, gravada como
->    `aprovada`, com API key cifrada). Assim que `ASAAS_ENV=prod`, o app decifra
->    essa chave de sandbox e a usa contra `api.asaas.com` → **401 em toda
->    operação, com a tela dizendo "aprovada"**. É uma linha no banco.
+> | Quem calcula | Valor |
+> |---|---|
+> | `calcularApuracao` (o que a tela mostra) | **R$ 112,50** |
+> | SERPRO `/Declarar` dry-run (o que a Receita cobra) | **R$ 344,33** |
 >
-> ### Aproveitar a mesma janela da Vercel
+> Não chamei de bug porque `montarDeclaracaoPgdasd` monta a declaração por conta
+> própria e pode estar somando as duas notas (R$ 5.000) onde a apuração soma uma
+> (R$ 2.500) — 344,33 é 6,89% de 5.000. **Mas se a tela promete 112,50 e a guia
+> vier 344,33, o usuário descobre no vencimento.** Vale reconciliar as duas
+> fontes antes de qualquer cliente real.
 >
-> 5. 🟡 Trocar `FOCUS_NFE_TOKEN_PRODUCAO` pelo **principal** (`8I0Gb…`) e
->    **apagar** `FOCUS_NFE_HOMOLOGACAO` (morta — nenhum caminho lê
->    `obterTokenFocus('hom')`). Conferir se existe um `FOCUS_NFE_TOKEN` genérico
->    lá: ele atende produção quando o específico falta.
-> 6. 🟡 `CRON_SECRET` é `dev-cron-secr…` — placeholder de desenvolvimento. Se
->    for o mesmo na Vercel, os endpoints de cron estão com segredo adivinhável.
+> ### O passo exato onde paramos — Vercel, ainda travada no navegador
 >
-> ### Aberto, sem depender da Vercel
+> 🔴 **Conectar a CLI da Vercel ao `balu-contabil` continua pendente**, e a causa
+> foi isolada: **quem decide a conta é a sessão do vercel.com no NAVEGADOR
+> PADRÃO do Windows**. Quatro tentativas em 02/09, todas caindo em `easy-drop`,
+> a última já depois de o usuário deslogar (o logout foi em outro navegador).
+> Medido pela API, não pela CLI: `contato.easydropshipping@gmail.com`,
+> id `8OFkNzl4S2sR9wRsvnxqCkHT`, projeto `balu-contabil` → **403 forbidden**.
 >
-> - 🔴 **Smoke fiscal em homologação com a MCB MARKETING** — emitir, cancelar,
->   apurar e transmitir uma vez cada. É o único item que pode revelar um problema
->   grande que ninguém viu; os outros são trabalho conhecido. **Faça este primeiro.**
-> - 🔴 **Advogado nos dois documentos legais**, e republicar sem o aviso de
->   minuta (as QUATRO versões publicadas o carregam).
-> - 🟡 **Rotacionar 16 dos 17 segredos** que estavam nos backups apagados.
->   🚨 **`CERT_ENC_KEY` é a exceção**: ela cifra os certificados A1 em repouso, e
->   trocá-la torna todo `enc:v1:` indecifrável. Exige migration de recifragem.
-> - 🟡 **Parear o número oficial do WhatsApp** (todos são de teste).
+> O que NÃO funciona, já testado — não repita:
+> - `vercel login` → device flow, abre o navegador sozinho e ele auto-aprova em ~1s
+> - `BROWSER=none` → não impede a abertura
+> - `vercel login <email>` → **descontinuado** na CLI 58 (`--help` ainda mente), vira device flow
+> - `CI=1` → suprime a saída inteira: nenhum código impresso, nada a aprovar
+>
+> **O que destrava:** logout do vercel.com **no navegador padrão do Windows**, ou
+> criar token em janela anônima (`vercel.com/account/tokens`, escopo
+> `gestao-9664s-projects`) e pôr `VERCEL_TOKEN=` em `app/.env.local`.
+>
+> ✅ **Ferramentas prontas para o momento em que a conta entrar:**
+> - `app/scratchpad/vercel-conferir-acesso.mjs` — confere conta, times, projeto e
+>   os 8 últimos deploys com autor. Valida contra o `user_id
+>   F8YnCuMKWDqZni3mH0QRofSw`, a conta que **provadamente** tinha acesso em
+>   12/08 (extraído dos claims do `VERCEL_OIDC_TOKEN` de `balu/.env.local`).
+> - `app/scratchpad/vercel-quem-sou.mjs` — pergunta à API quem é um `auth.json`.
+> - Use **sempre** `--global-config ~/.vercel-balu`: isola o `auth.json` e evita
+>   repetir o acidente de 01/09, que apagou as credenciais da máquina.
+>
+> ⚠️ `balu/.env.local` tem UMA variável, `VERCEL_OIDC_TOKEN`, escrita em
+> **12/08** e **expirada desde 13/08** (validade de 12h). Os 403 dela são
+> validade, não permissão. Não serve para gestão; já extraímos o que valia.
+>
+> ### Fila, na ordem
+>
+> 1. 🔴 **Filtrar `ambiente` em `receitas-source`** + decidir o `ambiente` de
+>    `lancada`, com teste. É o único achado que corrompe número que o cliente vê.
+> 2. 🟡 **Reconciliar `calcularApuracao` × SERPRO** (112,50 × 344,33).
+> 3. 🔴 **Vercel** (acima) → e então os 4 itens do Asaas da sessão 37 parte 3,
+>    que continuam válidos e intocados: webhook, 3 variáveis, subconta sandbox.
+> 4. 🔴 **Advogado nos dois documentos legais**, e republicar sem o aviso de
+>    minuta (as QUATRO versões publicadas o carregam).
+> 5. 🟡 **Rotacionar 16 dos 17 segredos** dos backups apagados.
+>    🚨 **`CERT_ENC_KEY` é a exceção**: cifra os certificados A1 em repouso;
+>    trocá-la torna todo `enc:v1:` indecifrável. Exige migration de recifragem.
+> 6. 🟡 **Parear o número oficial do WhatsApp** (todos são de teste).
+> 7. 🟡 **MCB sem `anexo_simples`** — a apuração dela recusa com
+>    `ConfiguracaoIncompletaError`. Comportamento correto do produto, cadastro
+>    incompleto da empresa.
 >
 > **Antes de mexer em qualquer coisa:** `npx tsc --noEmit && npx vitest run &&
 > npm run build` a partir de `app/`. Para o Playwright inteiro, as 9 specs
 > destrutivas exigem `E2E_SUPABASE_URL` + as duas chaves +
 > `E2E_TENANT_SINTETICO='sim-eu-autorizo-tenant-sintetico-em-producao'`.
+
+> ## 🆕 SESSÃO 38 (02/09) — o smoke fiscal saiu, e achou o que devia
+>
+> ### O ciclo da nota, fechado pela primeira vez desde 09/06
+>
+> A MCB MARKETING emitiu, foi autorizada, sincronizou e cancelou — **cada passo
+> pelas funções que a tela usa**, não por um caminho paralelo:
+>
+> | Passo | Chamou | Resultado |
+> |---|---|---|
+> | guarda | `resolverCredencialEmissao` | ✅ `ambiente=hom` — sem recusa |
+> | payload | `buildNfsePayload` | ✅ DPS Nacional montado |
+> | emitir | `focus.emitirNfse` | ✅ `processando_autorizacao` |
+> | autorizar | (Focus, assíncrono) | ✅ **`autorizado`, NFS-e nº 1** |
+> | sincronizar | `extrairCamposNota` + `mapStatusFocus` | ✅ `pendente → ativa` |
+> | cancelar | `focus.cancelarNfse` | ✅ `cancelado` → local `cancelada` |
+>
+> Chave `42054072253015033000171000000000000126091660942420`, com DANFSE e XML
+> na `producaorestrita.nfse.gov.br`. **É a primeira NFS-e da MCB e a primeira
+> nota de qualquer empresa desde 09/06.**
+>
+> ⚠️ **O webhook da Focus não foi exercitado** — ele não alcança esta máquina. O
+> `pendente → ativa` veio do caminho de polling (`atualizarStatusNotaAction`),
+> que é redundância, não o caminho primário. **Em produção, quem completa a nota
+> é o webhook, e ele continua sem prova de funcionamento.**
+>
+> ### PGDAS-D: a cadeia inteira responde
+>
+> `transmitirPgdasd` com `indicadorTransmissao: false` (dry-run) percorreu
+> auth contratante → token de procurador → `montarDeclaracaoPgdasd` →
+> SERPRO `/Declarar` e voltou **"Requisição efetuada com sucesso"**, com
+> `transmitida: false`, `valorTotalDevido: 344.33` e o detalhamento por tributo
+> (IRPJ 68,72 · CSLL 70,19 · COFINS 66,09 · PIS 14,33 · ISS 125,00).
+> Evidência em `app/scratchpad/evidencia-transmitir-dryrun.txt`.
+>
+> **Não transmiti de verdade, e o script não tem flag para isso.** Entregar
+> PGDAS-D é irreversível e tem efeito legal, e a base de cálculo hoje é nota de
+> homologação (o achado acima) — transmitir declararia à Receita receita que não
+> existiu.
+>
+> ### Como rodar
+>
+> ```
+> cd app
+> npx tsx --tsconfig scripts/tsconfig.smoke.json --env-file=.env.local \
+>   scripts/smoke-fiscal-mcb.ts [previa|emitir|status|sincronizar|apurar|cancelar|transmitir] [--aplicar]
+> ```
+>
+> Sem `--aplicar` nada sai para a Focus nem é gravado. `apurar` e `transmitir`
+> são **sempre** somente-leitura/dry-run. `apurar` aceita `--empresa=<uuid>` e
+> `--competencia=YYYYMM`.
+>
+> ⚠️ **`scripts/tsconfig.smoke.json` não é opcional.** 75 arquivos de `src`
+> importam `server-only`, e o pacote **não está em `node_modules`** — o `next
+> build` e o `tsc` resolvem por outro caminho, o Node puro não. O vitest já
+> contornava isso com um alias; este tsconfig aponta o mesmo stub
+> (`src/__mocks__/server-only.ts`) pelo mecanismo que o `tsx` entende. Sem ele,
+> qualquer script que importe de `src/lib` morre em `MODULE_NOT_FOUND`. **Isso
+> vale para os smokes antigos também** (`pr2.1-emit-smoke.ts` e os `focus*`), que
+> hoje não rodam sem esta flag.
+>
+> ### Dois falsos achados meus, registrados para não voltarem
+>
+> - **"Florianópolis não está em `municipios_nfse`"** — errado. Eu pedi a coluna
+>   `nome`, que não existe (é `nome_municipio`); o PostgREST devolveu erro, eu
+>   engoli o erro e li `data: null` como "sem linha". A linha existe e está
+>   `ativo`, provedor Nacional, com homologação e cancelamento. O script agora
+>   propaga o erro em vez de engolir.
+> - **"`vercel login <email>` resolve o impasse da conta"** — errado. O `--help`
+>   da CLI 58 ainda anuncia `[email or team id]`, mas o argumento é
+>   **descontinuado** e o comando cai no mesmo device flow.
 
 > ## 🆕 SESSÃO 37 — PARTE 3 (01/09) — auditoria de lançamento, e o Asaas
 >

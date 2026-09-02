@@ -1,0 +1,20 @@
+// tsconfig só para rodar scripts de smoke com tsx.
+//
+// POR QUE. 75 arquivos de src importam `server-only`, mas o pacote não está em
+// node_modules (o `next build` e o `tsc` resolvem por outro caminho; o Node
+// puro não). O vitest já contorna isso com um alias para
+// `src/__mocks__/server-only.ts` — aqui é o MESMO stub, pelo mecanismo que o
+// tsx entende (paths do tsconfig), para o smoke não precisar de um segundo
+// jeito de fazer a mesma coisa.
+//
+// Uso: npx tsx --tsconfig scripts/tsconfig.smoke.json --env-file=.env.local <script>
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["./src/*"],
+      "server-only": ["./src/__mocks__/server-only.ts"]
+    }
+  }
+}
