@@ -57,7 +57,9 @@
  * 401. Foi o que aconteceu na primeira execução; ver o comentário longo em
  * `process.env.ASAAS_ENV = AMBIENTE`.
  */
-import nextEnv from '@next/env';
+// Import NOMEADO de proposito: sob `tsx` este arquivo vira CJS, e o default
+// de um modulo CommonJS chega `undefined` (medido: TypeError em 02/09).
+import { loadEnvConfig } from '@next/env';
 import type { AsaasWebhook } from '@/lib/clients/asaas';
 import { asaasSub } from '@/lib/clients/asaas';
 import {
@@ -120,7 +122,7 @@ process.env.ASAAS_ENV = AMBIENTE;
 for (const n of ['TOKEN_ASAAS_PRODUCAO', 'TOKEN_ASAAS_SANDBOX', 'ASAAS_WEBHOOK_SECRET', 'ASAAS_WEBHOOK_EMAIL']) {
   delete process.env[n];
 }
-nextEnv.loadEnvConfig(process.cwd(), true, { info: () => {}, error: () => {} });
+loadEnvConfig(process.cwd(), true, { info: () => {}, error: () => {} });
 /** Domínio de produção verificado no projeto `balu-contabil` da Vercel.
  *  Trocável por `--base=` — a sonda abaixo é quem diz se está certo. */
 const BASE = (arg('base') ?? 'https://balucontabil.com.br').replace(/\/+$/, '');
