@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-09-02 (sessão 39 — **o achado da sessão 38 foi corrigido, e ele tinha três braços, não um**. `lerReceitasParaApuracao` não filtrava `ambiente` — mas `somarEmitidoNoAno` (teto anual) e o card de receita do mês do dashboard também não, e o comentário de um deles já dizia "mesma família de filtro". Os três agora filtram `ambiente = 'prod'`, com teste que morde a remoção da linha em cada um. **A decisão sobre `lancada`: lançamento manual passa a nascer com `ambiente: 'prod'` explícito** — ele registra NF já emitida no mundo real, e o DEFAULT `'hom'` da coluna a apagaria da base de imposto. **Provado contra o banco**: a mesma apuração que devolvia R$ 112,50 sobre nota de teste agora lê 0 receitas e devolve R$ 0,00. O PGDAS-D usa a mesma função (`serpro-pgdasd.ts:42`), então a correção alcança o que vai à Receita. Base: tsc 0 · 2379 testes · 189 arquivos · build limpo.)
+> **Última atualização:** 2026-09-02 (sessão 39 — **o achado da sessão 38 foi corrigido, e ele tinha três braços, não um**. `lerReceitasParaApuracao` não filtrava `ambiente` — mas `somarEmitidoNoAno` (teto anual) e o card de receita do mês do dashboard também não, e o comentário de um deles já dizia "mesma família de filtro". Os três agora filtram `ambiente = 'prod'`, com teste que morde a remoção da linha em cada um. **A decisão sobre `lancada`: lançamento manual passa a nascer com `ambiente: 'prod'` explícito** — ele registra NF já emitida no mundo real, e o DEFAULT `'hom'` da coluna a apagaria da base de imposto. **Provado contra o banco**: a mesma apuração que devolvia R$ 112,50 sobre nota de teste agora lê 0 receitas e devolve R$ 0,00. E o dry-run do PGDAS-D, que na 38 voltava "Requisição efetuada com sucesso" com R$ 344,33, agora para antes do SERPRO com "Sem receita na competência para declarar" — a correção alcança o que vai à Receita, medido e não deduzido. Base: tsc 0 · 2379 testes · 189 arquivos · build limpo.)
 >
 > _Anterior — sessão 38: **o smoke fiscal saiu e achou um defeito que corrompe número que o cliente vê**. A MCB MARKETING emitiu, foi autorizada, sincronizou e cancelou uma NFS-e em homologação, cada passo pelas funções da tela — o primeiro ciclo de nota fechado desde 09/06. O `transmitirPgdasd` percorreu a cadeia inteira em dry-run e o SERPRO respondeu "Requisição efetuada com sucesso" (R$ 344,33, `transmitida: false`). **O achado: `lerReceitasParaApuracao` não filtra `ambiente`** — 100% da receita do banco de produção é de homologação, e a apuração devolveu R$ 112,50 de imposto sobre ela sem sinalizar nada. Aberto também: a apuração diz R$ 112,50 e o SERPRO diz R$ 344,33 para a mesma competência. **A Vercel continua travada, e a causa foi isolada:** quem escolhe a conta é a sessão do navegador PADRÃO do Windows; quatro tentativas caíram em `easy-drop`, e `vercel login <email>` está descontinuado na CLI 58.)_
 >
@@ -56,9 +56,20 @@
 >        ambiente=hom  2 nota(s)  R$ 5000.00  ⚠ HOMOLOGAÇÃO — nota de teste dentro da base
 > ```
 >
-> **E alcança o que vai à Receita:** `serpro-pgdasd.ts:42` chama a MESMA
-> `lerReceitasParaApuracao` — não monta receita por conta própria. O PGDAS-D
-> deixou de poder declarar nota de teste pela mesma linha.
+> **E alcança o que vai à Receita — EXECUTADO, não só lido no código.** O mesmo
+> dry-run que na sessão 38 voltou `"Requisição efetuada com sucesso"` com
+> R$ 344,33 e o detalhamento por tributo agora para ANTES do SERPRO:
+>
+> ```
+> ANTES   "Requisição efetuada com sucesso" · valorTotalDevido 344.33 · transmitida: false
+> DEPOIS  ok: false · "Sem receita na competência para declarar."
+> ```
+>
+> `transmitirPgdasd` chama a MESMA `lerReceitasParaApuracao` (`serpro-pgdasd.ts:42`)
+> — não monta receita por conta própria. Com a base vazia ele nem chega a montar
+> a declaração: **declarar nota de teste à Receita deixou de ser alcançável pelo
+> caminho inteiro**, não só na tela. (Rodado pelo usuário em 02/09, porque o
+> classificador barra o comando para mim.)
 >
 > **Testes que mordem a mutação** (todos verificados removendo a linha do código
 > e vendo o vermelho; nenhum passa nos dois estados):
@@ -171,10 +182,9 @@
 >
 > ### O que NÃO foi feito, e por quê
 >
-> - **Dry-run do PGDAS-D depois da correção** — o classificador barrou o comando
->   (`smoke-fiscal-mcb.ts transmitir`, que chama o SERPRO). A prova de que a
->   correção alcança a transmissão é de código, não de execução:
->   `serpro-pgdasd.ts:42` chama `lerReceitasParaApuracao`. Para rodar:
+> - **Dry-run do PGDAS-D** — o classificador barra `smoke-fiscal-mcb.ts
+>   transmitir` para mim (chama o SERPRO); **o usuário rodou** e o resultado está
+>   acima. Padrão que funciona: deixar o comando pronto e pedir o `!`. Comando:
 >   `! cd app && npx tsx --tsconfig scripts/tsconfig.smoke.json --env-file=.env.local scripts/smoke-fiscal-mcb.ts transmitir --empresa=3f7370a5-bfdc-4d3b-b59d-9165967d28c8 --competencia=202606`
 >   (sempre dry-run, `indicadorTransmissao: false`, sem flag para transmitir).
 > - **Teste do chip "Teste"** — sem infraestrutura de teste de componente no
