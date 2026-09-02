@@ -96,6 +96,21 @@
 > assim que houver receita de produção**, antes de qualquer cliente real — se a
 > tela promete um número e a guia vier outro, o usuário descobre no vencimento.
 >
+> ### 💰 O mínimo do Asaas (medido em 02/09/2026)
+>
+> `billingType: 'UNDEFINED'` ("Pergunte ao Cliente", que o app usa para o cliente
+> escolher boleto/Pix/cartão na fatura) tem **mínimo de R$ 5,00**. A frase é do
+> Asaas, literal, e apareceu ao pôr o `empresario_mensal` em R$ 1,00 para um
+> teste barato: o `criarCliente` passou e a `criarAssinatura` foi recusada.
+>
+> **O número é DELES, não nosso** — baixar `VALOR_MINIMO_ASSINATURA_CENTAVOS`
+> não faz o Asaas aceitar menos, só devolve a recusa para o clique do titular.
+> E ele está amarrado ao `billingType`: trocar para 'PIX' muda o mínimo, e a
+> constante tem de ser **remedida**.
+>
+> `salvarPlanoAction` agora barra na origem, então nenhum admin cria de novo um
+> plano que o Asaas vai recusar.
+>
 > ### Fila, na ordem
 >
 > 1. 🔴 **Advogado nos dois documentos legais**, e republicar sem o aviso de
@@ -110,8 +125,14 @@
 > 4. 🟡 **Webhook da FOCUS continua sem prova** — não confundir com o do Asaas,
 >    que foi resolvido. O `pendente → ativa` do smoke veio do polling, que é
 >    redundância; em produção quem completa a nota é o webhook.
-> 5. 🟡 **Primeiro pagamento real pelo Asaas ainda não aconteceu.** Tudo está
->    cadastrado e a sonda provou url + segredo, mas "ok" é leitura.
+> 5. ✅ ~~Primeiro pagamento real pelo Asaas~~ — **ACONTECEU em 02/09, 21:02.**
+>    `sub_rzoirp3l8k391cl0` R$ 5,00 MONTHLY **ACTIVE** e `pay_rsxiy0aae2n9gfqa`
+>    **RECEIVED** no Asaas de produção; a assinatura local virou `ativa` e a
+>    cobrança `RECEIVED`. O ciclo do billing fechou de ponta a ponta.
+>    ⚠️ **O que isso NÃO prova:** que foi o *webhook*. A assinatura foi promovida
+>    36s ANTES de a cobrança virar RECEIVED, e o webhook faz o inverso (grava a
+>    cobrança, depois promove) — mais compatível com o polling da tela
+>    (`useVerificarPagamento`). O webhook do Asaas segue sem prova isolada.
 > 6. 🟡 **Reconciliar `calcularApuracao` × SERPRO** (112,50 × 344,33) quando
 >    houver receita de PRODUÇÃO — hipótese na seção da parte 1.
 > 7. 🟡 **Parear o número oficial do WhatsApp** (todos são de teste).
