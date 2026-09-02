@@ -27,11 +27,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const h = vi.hoisted(() => {
   const upserts: Array<Record<string, unknown>> = [];
   const auditorias: Array<{ acao: string; alvoId?: string | null; meta?: Record<string, unknown> }> = [];
-  const atualizacoesAsaas: Array<{ id: string; value: number; description: string }> = [];
+  const atualizacoesAsaas: Array<{ id: string; value: number; description: string; cycle?: string }> = [];
 
   const estado = {
     // Preço ATUAL no banco. Os testes mudam para simular "mudou"/"não mudou".
     precoAtual: 19900 as number | null,
+    cicloAtual: 'MONTHLY' as string,
+    nomeAtual: 'Escritório 50' as string,
     assinaturas: [] as Array<Record<string, unknown>>,
     /** ids de assinatura do Asaas que devem FALHAR na atualização. */
     falharEm: [] as string[],
@@ -71,7 +73,14 @@ const h = vi.hoisted(() => {
     q.maybeSingle = async () => {
       if (tabela === 'planos') {
         if (estado.erroLeituraPlano) return { data: null, error: estado.erroLeituraPlano };
-        return { data: estado.precoAtual == null ? null : { valor_centavos: estado.precoAtual }, error: null };
+        return {
+          data: estado.precoAtual == null ? null : {
+            valor_centavos: estado.precoAtual,
+            ciclo: estado.cicloAtual,
+            nome: estado.nomeAtual,
+          },
+          error: null,
+        };
       }
       return { data: null, error: null };
     };
@@ -106,9 +115,11 @@ vi.mock('@/lib/security/audit', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
 vi.mock('@/lib/clients/asaas', () => ({
   asaas: {
-    atualizarAssinatura: async (id: string, d: { value: number; description: string }) => {
+    atualizarAssinatura: async (
+      id: string, d: { value: number; description: string; cycle?: string },
+    ) => {
       if (h.estado.falharEm.includes(id)) throw new Error('Asaas fora do ar');
-      h.atualizacoesAsaas.push({ id, value: d.value, description: d.description });
+      h.atualizacoesAsaas.push({ id, value: d.value, description: d.description, cycle: d.cycle });
       return {};
     },
   },
@@ -133,6 +144,8 @@ beforeEach(() => {
   h.auditorias.length = 0;
   h.atualizacoesAsaas.length = 0;
   h.estado.precoAtual = 19900;
+  h.estado.cicloAtual = 'MONTHLY';
+  h.estado.nomeAtual = 'Escritório 50';
   h.estado.assinaturas = [];
   h.estado.falharEm = [];
   h.estado.upsertError = null;
@@ -154,7 +167,9 @@ describe('salvarPlanoAction — o reajuste tem de alcançar o Asaas', () => {
     expect(r).toEqual({ ok: true });
     expect(h.atualizacoesAsaas).toHaveLength(2);
     // Centavos no banco, REAIS no Asaas — a conversão é onde se erra por 100x.
-    expect(h.atualizacoesAsaas[0]).toEqual({ id: 'sub_1', value: 249, description: 'Balu — Escritório 50' });
+    expect(h.atualizacoesAsaas[0]).toEqual({
+      id: 'sub_1', value: 249, description: 'Balu — Escritório 50', cycle: 'MONTHLY',
+    });
     expect(h.atualizacoesAsaas[1]!.value).toBe(249);
   });
 
@@ -195,7 +210,9 @@ describe('salvarPlanoAction — o reajuste tem de alcançar o Asaas', () => {
     h.estado.precoAtual = PLANO.valor_centavos; // mesmo valor
     h.estado.assinaturas = [{ id: 'a1', plano_id: PLANO.id, status: 'ativa', asaas_subscription_id: 'sub_1' }];
 
-    const r = await salvarPlanoAction({ ...PLANO, nome: 'Escritório 50 (novo nome)' });
+    // nome e ciclo IGUAIS de propósito: o gate agora olha os três, e mudar o
+    // nome aqui faria o teste medir outra coisa.
+    const r = await salvarPlanoAction(PLANO);
 
     expect(r).toEqual({ ok: true });
     expect(h.atualizacoesAsaas).toHaveLength(0);
@@ -239,20 +256,61 @@ describe('salvarPlanoAction — o reajuste tem de alcançar o Asaas', () => {
     expect(h.atualizacoesAsaas).toHaveLength(0);
   });
 
-  // O PostgREST corta em `max-rows` e devolve `error: null`: uma pagina curta e
-  // indistinguivel da lista inteira. Sem o disjuntor, mais de mil assinantes
-  // num plano dariam reajuste nos primeiros mil, silencio no resto e `ok:true`.
-  it('mais assinaturas que o teto → RECUSA em voz alta, sem reajustar ninguém', async () => {
+  // ⚠️ MUDANÇA DE COMPORTAMENTO (02/09/2026), e não teste dobrado para passar.
+  //
+  // Até esta data o excedente fazia a action RECUSAR. Isso protegia contra o
+  // corte silencioso do PostgREST, mas criava um problema pior: o seed tem UM
+  // plano de empresa, então todo assinante cai no mesmo `plano_id` e, passados
+  // 50, o admin perdia até a capacidade de BAIXAR um preço errado.
+  //
+  // Agora o lote imediato é processado e o resto tem dono: `alinharPrecoComPlano`
+  // (lib/billing/cron.ts) compara cada assinatura com o Asaas de verdade e
+  // converge. O pior caso deixou de ser "não dá para mexer" e passou a ser
+  // "leva até um dia" — o mesmo trade-off que `cron.ts` já aceitou para a faixa.
+  //
+  // O que NÃO pode acontecer é o admin sair achando que 100% já mudou: por isso
+  // o retorno carrega o aviso.
+  it('acima do teto: reajusta o lote, salva, e AVISA que o resto ficou para o cron', async () => {
     h.estado.assinaturas = Array.from({ length: 51 }, (_, i) => ({
       id: `a${i}`, plano_id: PLANO.id, status: 'ativa', asaas_subscription_id: `sub_${i}`,
     }));
 
     const r = await salvarPlanoAction(PLANO);
 
-    expect(r.ok).toBe(false);
-    expect(r).toMatchObject({ error: expect.stringContaining('50') });
-    expect(h.upserts).toHaveLength(0);
-    expect(h.atualizacoesAsaas).toHaveLength(0);
+    expect(r.ok).toBe(true);
+    expect(h.atualizacoesAsaas).toHaveLength(50); // o TETO, não os 51
+    expect(h.upserts).toHaveLength(1);
+    expect((r as { data?: { aviso?: string } }).data?.aviso).toContain('1 assinatura');
+  });
+
+  // ─── ciclo e nome também precisam alcançar o Asaas ───────────────────────
+
+  // MUTAÇÃO: gatear só por preço. `ciclo` é pior que preço: ao ver YEARLY,
+  // `metricas.ts` divide o valor por 12 — o MRR some enquanto o Asaas cobra
+  // todo mês.
+  it('CICLO mudou, preço não → propaga assim mesmo', async () => {
+    h.estado.precoAtual = PLANO.valor_centavos; // preço igual
+    h.estado.cicloAtual = 'YEARLY';
+    h.estado.assinaturas = [{ id: 'a1', plano_id: PLANO.id, status: 'ativa', asaas_subscription_id: 'sub_1' }];
+
+    const r = await salvarPlanoAction(PLANO); // PLANO.ciclo = 'MONTHLY'
+
+    expect(r.ok).toBe(true);
+    expect(h.atualizacoesAsaas).toHaveLength(1);
+    expect(h.atualizacoesAsaas[0]!.cycle).toBe('MONTHLY');
+  });
+
+  // MUTAÇÃO: idem. A `description` é o texto que o cliente LÊ na fatura —
+  // renomear o plano e não propagar deixa o nome antigo lá para sempre.
+  it('NOME mudou, preço não → atualiza a description da fatura', async () => {
+    h.estado.precoAtual = PLANO.valor_centavos;
+    h.estado.nomeAtual = 'Nome Antigo';
+    h.estado.assinaturas = [{ id: 'a1', plano_id: PLANO.id, status: 'ativa', asaas_subscription_id: 'sub_1' }];
+
+    const r = await salvarPlanoAction(PLANO);
+
+    expect(r.ok).toBe(true);
+    expect(h.atualizacoesAsaas[0]!.description).toBe('Balu — Escritório 50');
   });
 
   // ─── ACHADO 4: os filtros agora sao exercitados de verdade ───────────────

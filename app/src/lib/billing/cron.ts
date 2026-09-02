@@ -32,6 +32,10 @@ import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 export type ResumoBilling = {
   reconciliadas: number;
   faixasAtualizadas: number;
+  /** Assinaturas cujo valor/ciclo estava fora do plano e foi alinhado com o
+   *  Asaas. Rede de seguranca do reajuste em lote do AdminBalu, e tambem de
+   *  edicao feita direto no painel do Asaas. Ver `alinharPrecoComPlano`. */
+  precoAlinhado: number;
   avisos: number;
   erros: number;
   hoje: string;
@@ -248,11 +252,97 @@ async function sincronizarUmEscritorio(
   return { atualizadas, truncado: true, orfaos };
 }
 
+/**
+ * ALINHA O VALOR E O CICLO DE CADA ASSINATURA COM O PLANO DELA.
+ *
+ * ─── POR QUE EXISTE ─────────────────────────────────────────────────────────
+ * `salvarPlanoAction` propaga o reajuste na hora, mas em lote limitado: sao
+ * chamadas HTTP sequenciais numa Server Action, e passar de ~50 estoura o
+ * `maxDuration`. Antes de 02/09/2026 o excedente fazia a action RECUSAR — o que
+ * travava o reajuste de um plano bem-sucedido, inclusive para BAIXAR preco.
+ * Esta funcao e o que permitiu parar de recusar.
+ *
+ * ─── POR QUE COMPARA COM O ASAAS, E NAO COM UM CAMPO LOCAL ──────────────────
+ * A alternativa barata seria uma coluna "ultimo valor enviado". Ela responde
+ * mais rapido e mente quando alguem edita a assinatura pelo PAINEL do Asaas —
+ * exatamente o caso em que a divergencia importa e ninguem esta olhando. Ler a
+ * fonte custa uma chamada por assinatura e vale: e a mesma regra que o
+ * CHECKPOINT ja registra para escrita externa ("conferir DEPOIS, contra a
+ * fonte, e nao pelo codigo de retorno").
+ *
+ * ─── TETO ───────────────────────────────────────────────────────────────────
+ * O cron inteiro roda sob `maxDuration = 60` e ja faz outras duas etapas. Aqui
+ * o teto e por EXECUCAO, nao por assinatura: o que sobrar converge amanha.
+ * Preferir "leva mais um dia" a "morre no meio e nao registra nada" e a mesma
+ * escolha que `api/cron/obrigacoes` ja fez.
+ */
+export async function alinharPrecoComPlano(
+  sb: ReturnType<typeof createAdminClient>,
+  teto = 25,
+): Promise<{ conferidas: number; corrigidas: number; erros: number; restantes: number }> {
+  const r = { conferidas: 0, corrigidas: 0, erros: 0, restantes: 0 };
+
+  const { data: assinaturas, error } = await sb
+    .from('assinaturas')
+    .select('id, plano_id, asaas_subscription_id')
+    .not('asaas_subscription_id', 'is', null)
+    .not('plano_id', 'is', null)
+    .in('status', ['trial', 'ativa', 'inadimplente'])
+    .limit(teto + 1);
+  if (error) {
+    console.error('[cron billing] alinhar preco: leitura falhou', error.message);
+    return { ...r, erros: 1 };
+  }
+
+  const todas = assinaturas ?? [];
+  r.restantes = Math.max(0, todas.length - teto);
+  const lote = todas.slice(0, teto);
+  if (lote.length === 0) return r;
+
+  const ids = Array.from(new Set(lote.map((a) => a.plano_id as string)));
+  const { data: planos } = await sb
+    .from('planos').select('id, nome, valor_centavos, ciclo').in('id', ids);
+  const porId = new Map((planos ?? []).map((p) => [p.id as string, p]));
+
+  for (const a of lote) {
+    const plano = porId.get(a.plano_id as string);
+    if (!plano) continue; // plano sumiu: nao e trabalho desta funcao
+    try {
+      const remota = await asaas.consultarAssinatura(a.asaas_subscription_id as string);
+      r.conferidas++;
+
+      const valorEsperado = Number(plano.valor_centavos) / 100;
+      // O Asaas devolve reais com centavos; comparar em CENTAVOS INTEIROS evita
+      // o 199.99999 do ponto flutuante disparar correcao todo dia, para sempre.
+      const valorRemoto = Math.round(Number(remota.value ?? 0) * 100);
+      const cicloRemoto = String(remota.cycle ?? '');
+      const precisa =
+        valorRemoto !== Number(plano.valor_centavos) || cicloRemoto !== String(plano.ciclo);
+      if (!precisa) continue;
+
+      await asaas.atualizarAssinatura(a.asaas_subscription_id as string, {
+        value: valorEsperado,
+        description: `Balu — ${plano.nome as string}`,
+        cycle: plano.ciclo as 'MONTHLY' | 'YEARLY',
+      });
+      r.corrigidas++;
+      console.warn(
+        '[cron billing] assinatura estava fora do plano e foi alinhada',
+        a.id, `${valorRemoto} -> ${plano.valor_centavos}`, `${cicloRemoto} -> ${plano.ciclo}`,
+      );
+    } catch (err) {
+      r.erros++;
+      console.error('[cron billing] alinhar preco falhou', a.id, err);
+    }
+  }
+  return r;
+}
+
 export async function rodarBilling(): Promise<ResumoBilling> {
   const sb = createAdminClient();
   const hoje = ymdBrt();
   const resumo: ResumoBilling = {
-    reconciliadas: 0, faixasAtualizadas: 0, avisos: 0, erros: 0, hoje,
+    reconciliadas: 0, faixasAtualizadas: 0, precoAlinhado: 0, avisos: 0, erros: 0, hoje,
     escritorio: { escritorios: 0, atualizadas: 0, erros: 0, truncados: 0, orfaos: 0 },
   };
 
@@ -282,6 +372,24 @@ export async function rodarBilling(): Promise<ResumoBilling> {
       resumo.erros++;
       console.error('[cron billing] reconciliacao falhou', a.id, err);
     }
+  }
+
+  // ────────────────────────────── 1.5 preco/ciclo alinhados com o plano
+  //
+  // Rede de seguranca do reajuste feito em `admin/assinaturas/actions.ts`: o
+  // que passou do lote imediato de la converge aqui, e qualquer edicao feita
+  // direto no painel do Asaas tambem volta para o plano.
+  try {
+    const alinhamento = await alinharPrecoComPlano(sb);
+    resumo.precoAlinhado = alinhamento.corrigidas;
+    resumo.erros += alinhamento.erros;
+    if (alinhamento.restantes > 0) {
+      console.warn('[cron billing] alinhamento de preco truncado; resto no proximo dia',
+        alinhamento.restantes);
+    }
+  } catch (err) {
+    resumo.erros++;
+    console.error('[cron billing] alinhamento de preco falhou', err);
   }
 
   // ──────────────────────────────────────── 2. faixa do escritorio

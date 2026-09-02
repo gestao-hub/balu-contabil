@@ -48,7 +48,17 @@ export default function PlanosAdmin({
     setMsg(null);
     start(async () => {
       const r = await salvarPlanoAction({ ...p, valor_centavos: centavos });
-      setMsg(r.ok ? { tipo: 'ok', texto: 'Salvo.' } : { tipo: 'erro', texto: r.error });
+      // O 'Salvo.' fixo engolia o aviso do excedente (achado ao revisar a
+      // propria implementacao, 02/09/2026). Quando o plano tem mais assinaturas
+      // que o lote imediato, parte do reajuste fica para a conferencia diaria —
+      // e o admin PRECISA saber disso, senao sai daqui achando que 100% ja
+      // mudou. Devolver o aviso e nao mostra-lo e o mesmo que nao te-lo.
+      const aviso = r.ok ? (r.data as { aviso?: string } | undefined)?.aviso : undefined;
+      setMsg(
+        r.ok
+          ? { tipo: 'ok', texto: aviso ? `Salvo. ${aviso}` : 'Salvo.' }
+          : { tipo: 'erro', texto: r.error },
+      );
       if (r.ok) setEdit(null);
     });
   }

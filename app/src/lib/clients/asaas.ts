@@ -164,8 +164,23 @@ export const asaas = {
     value: number; nextDueDate: string; cycle: 'MONTHLY' | 'YEARLY'; description?: string;
   }) => call<AsaasAssinatura>('POST', '/v3/subscriptions', d, undefined, { semRetry: true }),
 
-  atualizarAssinatura: (id: string, d: { value?: number; description?: string }) =>
-    call<AsaasAssinatura>('POST', `/v3/subscriptions/${id}`, d),
+  /**
+   * Atualiza a assinatura. Mesmo endpoint e mesma forma do `criarAssinatura` —
+   * o Asaas usa `POST /v3/subscriptions/{id}` para os dois.
+   *
+   * `cycle` entrou em 02/09/2026: o plano tem `ciclo` (MONTHLY/YEARLY) e o
+   * AdminBalu podia troca-lo em `planos` sem que o Asaas soubesse. O efeito era
+   * pior que o do preco: `metricas.ts` divide o valor por 12 ao ver YEARLY, e o
+   * Asaas seguia cobrando todo mes. Se o campo nao for enviado, o Asaas mantem
+   * o ciclo atual — por isso ele e opcional aqui.
+   *
+   * IDEMPOTENTE: reenviar os mesmos valores nao cria cobranca nem altera o
+   * vencimento; e o que permite ao cron de reconciliacao insistir sem medo.
+   */
+  atualizarAssinatura: (
+    id: string,
+    d: { value?: number; description?: string; cycle?: 'MONTHLY' | 'YEARLY' },
+  ) => call<AsaasAssinatura>('POST', `/v3/subscriptions/${id}`, d),
 
   cancelarAssinatura: (id: string) =>
     call<{ deleted: boolean; id: string }>('DELETE', `/v3/subscriptions/${id}`),

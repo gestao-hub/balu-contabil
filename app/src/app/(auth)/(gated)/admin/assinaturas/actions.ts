@@ -82,7 +82,7 @@ export async function salvarPlanoAction(input: PlanoInput): Promise<ActionResult
   // Ou seja: a leitura falha e o resultado e exatamente a divergencia silenciosa
   // que este bloco existe para impedir.
   const { data: planoAtual, error: erroLeitura } = await admin
-    .from('planos').select('valor_centavos').eq('id', input.id).maybeSingle();
+    .from('planos').select('valor_centavos, ciclo, nome').eq('id', input.id).maybeSingle();
   if (erroLeitura) {
     return {
       ok: false,
@@ -90,10 +90,22 @@ export async function salvarPlanoAction(input: PlanoInput): Promise<ActionResult
         + 'Nada foi alterado — tente de novo.',
     };
   }
-  const precoMudou =
-    planoAtual != null && Number(planoAtual.valor_centavos) !== input.valor_centavos;
+  // O QUE CONTA COMO "PRECISA ALCANCAR O ASAAS" (02/09/2026).
+  //
+  // A primeira versao olhava so o preco. Duas lacunas, ambas achadas no review:
+  //  · `ciclo` era gravado local e NUNCA propagado. Pior que o preco: ao ver
+  //    YEARLY, `metricas.ts` divide o valor por 12 -- entao o MRR cai pela
+  //    metade do ano enquanto o Asaas segue cobrando todo mes.
+  //  · renomear o plano nao atualizava a `description`, que e o texto que o
+  //    cliente LE na fatura. Ele continuaria vendo o nome antigo para sempre.
+  const antes = planoAtual as { valor_centavos: number; ciclo: string; nome: string } | null;
+  const precoMudou = antes != null && Number(antes.valor_centavos) !== input.valor_centavos;
+  const cicloMudou = antes != null && String(antes.ciclo) !== input.ciclo;
+  const nomeMudou = antes != null && String(antes.nome) !== input.nome;
+  const precisaPropagar = precoMudou || cicloMudou || nomeMudou;
 
-  if (precoMudou) {
+  let excedenteGlobal = 0;
+  if (precisaPropagar) {
     // `VIVOS` exclui 'cortesia' e 'cancelada': cortesia nao tem cobranca real, e
     // cancelada nao pode ser ressuscitada por um reajuste de tabela.
     // ⚠️ LIMITE EXPLICITO + DISJUNTOR. O PostgREST corta em `max-rows` (1000 no
@@ -104,19 +116,22 @@ export async function salvarPlanoAction(input: PlanoInput): Promise<ActionResult
     // primeiros mil seriam reajustados, o resto ficaria no preco antigo PARA
     // SEMPRE, e a action devolveria `ok: true`.
     //
-    // Pedimos TETO+1 de proposito: se vier mais que o teto, sabemos que ha mais
-    // e recusamos em voz alta, em vez de reajustar um recorte arbitrario.
     // TETO baixo DE PROPOSITO: sao N chamadas HTTP SEQUENCIAIS dentro de uma
-    // Server Action. O proprio repo ja mediu isso em outro lugar --
+    // Server Action. O proprio repo ja mediu isso --
     // `api/cron/obrigacoes/route.test.ts:512`: "200 envios sequenciais passam
-    // dos 60s de maxDuration sozinhos". Estourar o tempo aqui e pior que
-    // recusar: a funcao MORRE no meio do laco, entao nao roda o tratamento de
-    // falha parcial, nao grava auditoria e nao devolve mensagem -- alguns
-    // assinantes reajustados, nenhum registro, e a tela sem dizer nada.
+    // dos 60s de maxDuration sozinhos". Estourar aqui e pior que parar: a
+    // funcao MORRE no meio do laco, sem auditoria e sem mensagem.
     //
-    // 50 x ~500ms ~ 25s, dentro do `maxDuration = 60` declarado na page. Acima
-    // disso o reajuste precisa de job em segundo plano, e recusar e a resposta
-    // honesta ate ele existir.
+    // 50 x ~500ms ~ 25s, dentro do `maxDuration = 60` declarado na page.
+    //
+    // ⚠️ ACIMA DO TETO NAO RECUSA MAIS (02/09/2026, achado do review). Recusar
+    // travava o reajuste de um plano bem-sucedido: o seed tem UM plano de
+    // empresa, entao todo assinante cai no mesmo `plano_id` e o admin perderia
+    // ate a capacidade de BAIXAR um preco. Agora o excedente fica para
+    // `reconciliarAssinaturas` (lib/billing/cron.ts), que compara cada
+    // assinatura com o Asaas DE VERDADE e converge. O pior caso deixou de ser
+    // "nao da para mexer" e passou a ser "leva ate um dia", que e o mesmo
+    // trade-off que `cron.ts` ja aceitou para a troca de faixa.
     const TETO = 50;
     const { data: afetadas, error: erroAssin } = await admin
       .from('assinaturas')
@@ -132,21 +147,19 @@ export async function salvarPlanoAction(input: PlanoInput): Promise<ActionResult
         error: 'Não foi possível listar as assinaturas afetadas. Nada foi alterado.',
       };
     }
-    if ((afetadas ?? []).length > TETO) {
-      return {
-        ok: false,
-        error: `Este plano tem mais de ${TETO} assinaturas ativas. O reajuste em lote `
-          + 'precisa rodar em segundo plano — fale com o time antes de mudar o preço, '
-          + 'para que ninguém fique cobrado no valor antigo.',
-      };
-    }
+    // Pedimos TETO+1 para SABER que ha excedente; processamos so o TETO.
+    const todas = afetadas ?? [];
+    const excedente = Math.max(0, todas.length - TETO);
+    excedenteGlobal = excedente;
+    const lote = todas.slice(0, TETO);
 
     const falhas: string[] = [];
-    for (const a of afetadas ?? []) {
+    for (const a of lote) {
       try {
         await asaas.atualizarAssinatura(a.asaas_subscription_id as string, {
           value: input.valor_centavos / 100,
           description: `Balu — ${input.nome}`,
+          cycle: input.ciclo,
         });
       } catch (err) {
         console.error('[plano] falha ao propagar preco no Asaas', a.id, err);
@@ -170,7 +183,8 @@ export async function salvarPlanoAction(input: PlanoInput): Promise<ActionResult
         meta: {
           plano_id: input.id,
           valor_centavos: input.valor_centavos,
-          total: (afetadas ?? []).length,
+          total: lote.length,
+          excedente,
           // "nao confirmadas", nao "falharam": `call()` faz retry de 502/503/504
           // e pode lancar DEPOIS de o Asaas ter aplicado. Chamar de falha manda
           // quem for reconciliar a mao procurar o oposto do que aconteceu.
@@ -179,7 +193,7 @@ export async function salvarPlanoAction(input: PlanoInput): Promise<ActionResult
       });
       return {
         ok: false,
-        error: `O Asaas não confirmou o reajuste de ${falhas.length} de ${(afetadas ?? []).length} `
+        error: `O Asaas não confirmou o reajuste de ${falhas.length} de ${lote.length} `
           + 'assinatura(s), então o preço NÃO foi salvo — os dois lados ficariam divergentes. '
           + 'Salve de novo em alguns minutos: reenviar o mesmo valor é inofensivo para as '
           + 'que já foram reajustadas.',
@@ -234,10 +248,23 @@ export async function salvarPlanoAction(input: PlanoInput): Promise<ActionResult
       // Preco e ato com consequencia financeira: o rastro tem de dizer se o
       // reajuste alcancou o Asaas, e nao so que alguem clicou em salvar.
       preco_mudou: precoMudou,
+      ciclo_mudou: cicloMudou,
+      nome_mudou: nomeMudou,
     },
   });
 
   revalidatePath('/admin/assinaturas');
+  if (excedenteGlobal > 0) {
+    // `ok: true` porque o plano FOI salvo e o excedente tem dono (o cron). O
+    // que nao pode acontecer e o admin sair achando que 100% ja mudou.
+    return {
+      ok: true,
+      data: {
+        aviso: `${excedenteGlobal} assinatura(s) além do lote imediato ficaram para a `
+          + 'conferência automática, que roda diariamente e alinha cada uma com o Asaas.',
+      },
+    };
+  }
   return { ok: true };
 }
 
