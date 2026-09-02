@@ -18,6 +18,11 @@ export async function somarEmitidoNoAno(
     .eq('company_id', companyId)
     // 'ativa' (emissão) + 'lancada' (lançamento manual) = receita real → conta no limite.
     .in('status', ['ativa', 'lancada'])
+    // AMBIENTE: nota de homologação é teste. Sem isto, emitir em homologação
+    // consumia o teto do Simples/MEI do cliente e disparava o alerta de
+    // sublimite sobre faturamento que não existiu (achado de 02/09/2026 —
+    // mesma causa de `receitas-source.ts`, que documenta a decisão).
+    .eq('ambiente', 'prod')
     .in('tipo_documento', TIPOS)
     .gte('data_emissao', inicio)
     .lt('data_emissao', fim);

@@ -25,6 +25,11 @@ export type NotaListRow = {
   valor_total: number;
   status: string;
   origem: string;
+  /** 'hom' | 'prod'. Nota de homologação é TESTE: desde 02/09/2026 ela não
+   *  entra em receita, imposto, teto anual nem declaração — e por isso precisa
+   *  ser distinguível aqui, senão o cliente vê a nota na lista e R$ 0,00 em
+   *  todo lugar que conta dinheiro, sem nada explicando a diferença. */
+  ambiente: string;
   cliente_nome: string | null;
 };
 
@@ -262,6 +267,14 @@ export default function NotasFiscaisList({ initial }: { initial: NotaListRow[] }
                         >
                           {st?.label ?? n.status ?? '—'}
                         </span>
+                        {n.ambiente === 'hom' && (
+                          <span
+                            className="inline-flex rounded-full bg-alert/10 px-2 py-0.5 text-xs font-medium text-alert"
+                            title="Nota emitida em homologação: serve para testar o fluxo. Não entra na receita, no imposto nem no limite anual."
+                          >
+                            Teste
+                          </span>
+                        )}
                         {n.origem === 'manual' && (
                           <span className="inline-flex rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-muted-foreground">
                             Manual

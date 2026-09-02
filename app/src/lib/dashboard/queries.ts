@@ -51,6 +51,11 @@ export async function getDashboardMetrics(sb: SB, companyId: string): Promise<Da
       .select('valor_total')
       .eq('company_id', companyId)
       .eq('status', 'ativa')
+      // AMBIENTE: só produção. O card de receita do mês e a apuração precisam
+      // contar a MESMA coisa — se o dashboard soma nota de homologação e a
+      // apuração não, o cliente vê dois números para o mesmo mês e nenhum dos
+      // dois explica o outro. Ver `lib/fiscal/receitas-source.ts` (02/09/2026).
+      .eq('ambiente', 'prod')
       .gte('data_emissao', start)
       .lt('data_emissao', next),
     // Última nota emitida (qualquer status), mais recente por data_emissao.

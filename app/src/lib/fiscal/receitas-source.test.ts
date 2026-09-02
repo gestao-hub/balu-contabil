@@ -33,9 +33,16 @@ type Linha = Record<string, unknown>;
  */
 function supabaseCom(linhas: Linha[]) {
   const chamadas: Array<[number, number]> = [];
+  // Os filtros de CADA consulta montada, na ordem: ['eq', 'ambiente', 'prod'].
+  // Sem isto o stub engole `.eq()` e um teste de filtro passaria com ou sem a
+  // linha — exatamente o buraco que deixou `ambiente` de fora por três meses.
+  const filtros: unknown[][] = [];
   const consulta = () => {
     const q: Record<string, unknown> = {};
-    for (const m of ['select', 'eq', 'in', 'gte', 'lt', 'order']) q[m] = () => q;
+    for (const m of ['eq', 'in', 'gte', 'lt']) {
+      q[m] = (...args: unknown[]) => { filtros.push([m, ...args]); return q; };
+    }
+    for (const m of ['select', 'order']) q[m] = () => q;
     q.range = async (de: number, ate: number) => {
       chamadas.push([de, ate]);
       return { data: linhas.slice(de, ate + 1), error: null };
@@ -43,7 +50,7 @@ function supabaseCom(linhas: Linha[]) {
     return q;
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { sb: { from: () => consulta() } as any, chamadas };
+  return { sb: { from: () => consulta() } as any, chamadas, filtros };
 }
 
 function nota(iso: string, valor: number, i: number): Linha {
@@ -113,6 +120,33 @@ describe('lerReceitasParaApuracao', () => {
     await expect(lerReceitasParaApuracao(sb, 'empresa-1', '202608')).rejects.toThrow(/timeout/);
   });
 
+  /**
+   * O DEFEITO DE 02/09/2026, medido no banco antes de ser corrigido.
+   *
+   * Esta leitura não filtrava `ambiente`. Como o produto oferece emissão em
+   * homologação antes da produção, o cliente testa — e o teste entrava na base
+   * de imposto: 100% da receita do banco era de homologação e a apuração
+   * devolveu R$ 112,50 sobre ela, sem sinal nenhum. O mesmo array alimenta o
+   * PGDAS-D, então a nota de teste ia declarada à Receita.
+   *
+   * O stub não aplica filtros (ele devolve as linhas que recebeu), então quem
+   * morde a mutação é a asserção sobre a consulta MONTADA. Tirar a linha
+   * `.eq('ambiente', 'prod')` do código faz este teste falhar; nenhum outro.
+   */
+  it('pede ao banco SÓ nota de produção — homologação é teste, não receita', async () => {
+    const { sb, filtros } = supabaseCom([nota('2026-08-15T12:00:00Z', 100, 1)]);
+    await lerReceitasParaApuracao(sb, 'empresa-1', '202608');
+    expect(filtros).toContainEqual(['eq', 'ambiente', 'prod']);
+  });
+
+  // Filtro POSITIVO, não negativo: `!= 'hom'` deixaria passar qualquer valor
+  // novo de ambiente direto para a base de cálculo do imposto.
+  it('filtra por igualdade a prod, nunca por diferença de hom', async () => {
+    const { sb, filtros } = supabaseCom([nota('2026-08-15T12:00:00Z', 100, 1)]);
+    await lerReceitasParaApuracao(sb, 'empresa-1', '202608');
+    expect(filtros.some((f) => f[0] === 'neq')).toBe(false);
+  });
+
   // A competência sai de `competenciaReferenciaBrt`: uma nota emitida às 22h do
   // dia 31 é do mês que acaba, não do seguinte.
   it('competência é a de Brasília, não a de UTC', async () => {
@@ -131,6 +165,16 @@ describe('lerNotasAnoCalendario', () => {
     const r = await lerNotasAnoCalendario(sb, 'empresa-1', 2026);
     expect(r).toHaveLength(700);
     expect(chamadas).toEqual([[0, 499], [500, 999]]);
+  });
+
+  // Mesma regra da apuração: a declaração anual (DASN/DEFIS) não declara nota
+  // de teste. As duas leituras deste arquivo tinham o mesmo furo.
+  it('também pede só nota de produção', async () => {
+    const { sb, filtros } = supabaseCom([
+      { id: 'n1', data_emissao: '2026-05-10T12:00:00Z', valor_total: 5, tipo_documento: 'NFSe' },
+    ]);
+    await lerNotasAnoCalendario(sb, 'empresa-1', 2026);
+    expect(filtros).toContainEqual(['eq', 'ambiente', 'prod']);
   });
 
   it('devolve dataEmissao crua — o recorte do ano em BRT é de quem consome', async () => {

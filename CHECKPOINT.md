@@ -1,7 +1,9 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-09-02 (sessão 38 — **o smoke fiscal saiu e achou um defeito que corrompe número que o cliente vê**. A MCB MARKETING emitiu, foi autorizada, sincronizou e cancelou uma NFS-e em homologação, cada passo pelas funções da tela — o primeiro ciclo de nota fechado desde 09/06. O `transmitirPgdasd` percorreu a cadeia inteira em dry-run e o SERPRO respondeu "Requisição efetuada com sucesso" (R$ 344,33, `transmitida: false`). **O achado: `lerReceitasParaApuracao` não filtra `ambiente`** — 100% da receita do banco de produção é de homologação, e a apuração devolveu R$ 112,50 de imposto sobre ela sem sinalizar nada. Aberto também: a apuração diz R$ 112,50 e o SERPRO diz R$ 344,33 para a mesma competência. **A Vercel continua travada, e a causa foi isolada:** quem escolhe a conta é a sessão do navegador PADRÃO do Windows; quatro tentativas caíram em `easy-drop`, e `vercel login <email>` está descontinuado na CLI 58.)
+> **Última atualização:** 2026-09-02 (sessão 39 — **o achado da sessão 38 foi corrigido, e ele tinha três braços, não um**. `lerReceitasParaApuracao` não filtrava `ambiente` — mas `somarEmitidoNoAno` (teto anual) e o card de receita do mês do dashboard também não, e o comentário de um deles já dizia "mesma família de filtro". Os três agora filtram `ambiente = 'prod'`, com teste que morde a remoção da linha em cada um. **A decisão sobre `lancada`: lançamento manual passa a nascer com `ambiente: 'prod'` explícito** — ele registra NF já emitida no mundo real, e o DEFAULT `'hom'` da coluna a apagaria da base de imposto. **Provado contra o banco**: a mesma apuração que devolvia R$ 112,50 sobre nota de teste agora lê 0 receitas e devolve R$ 0,00. O PGDAS-D usa a mesma função (`serpro-pgdasd.ts:42`), então a correção alcança o que vai à Receita. Base: tsc 0 · 2379 testes · 189 arquivos · build limpo.)
+>
+> _Anterior — sessão 38: **o smoke fiscal saiu e achou um defeito que corrompe número que o cliente vê**. A MCB MARKETING emitiu, foi autorizada, sincronizou e cancelou uma NFS-e em homologação, cada passo pelas funções da tela — o primeiro ciclo de nota fechado desde 09/06. O `transmitirPgdasd` percorreu a cadeia inteira em dry-run e o SERPRO respondeu "Requisição efetuada com sucesso" (R$ 344,33, `transmitida: false`). **O achado: `lerReceitasParaApuracao` não filtra `ambiente`** — 100% da receita do banco de produção é de homologação, e a apuração devolveu R$ 112,50 de imposto sobre ela sem sinalizar nada. Aberto também: a apuração diz R$ 112,50 e o SERPRO diz R$ 344,33 para a mesma competência. **A Vercel continua travada, e a causa foi isolada:** quem escolhe a conta é a sessão do navegador PADRÃO do Windows; quatro tentativas caíram em `easy-drop`, e `vercel login <email>` está descontinuado na CLI 58.)_
 >
 > _Anterior — sessão 37, partes 1–3: **a Focus destravou, a suíte destrutiva voltou, o BUG-006 foi resolvido, e veio o parecer de lançamento: NÃO está pronto**. O código está no melhor estado da história do projeto; o que impede é que NENHUM dos sete blocos completou seu ciclo com cliente real — todo o dado fiscal de produção é seed de um único dia. Rodados /code-review (15 achados, 9 corrigidos com teste, incluindo 12 Server Actions sem prova de posse), /systematic-debugging e /security-system-app (veredito COBERTURA INSUFICIENTE: 89 de 156 controles não exercidados). **O CHECKPOINT estava errado sobre o Asaas**: as credenciais de produção existem e funcionam — conta com R$ 1.000 e 29 clientes, compartilhada com outros dois produtos. Parou no acesso à Vercel, não em código.)
 >
@@ -15,93 +17,92 @@
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
 
-> ## ▶️ RETOMAR AQUI — depois de 02/09/2026 (sessão 38)
+> ## ▶️ RETOMAR AQUI — depois de 02/09/2026 (sessão 39)
 >
-> **Base: tsc 0 · 2367 testes · 187 arquivos.** O smoke fiscal saiu, e ele
-> achou o que se esperava que achasse.
+> **Base: tsc 0 · 2379 testes · 189 arquivos · build limpo.** O achado 🔴 da
+> sessão 38 está fechado, e ele tinha **três braços**, não um.
 >
-> ### 🔴 O achado da sessão — receita de HOMOLOGAÇÃO entra na base de imposto
+> ### ✅ Fechado — receita de homologação não entra mais em número nenhum
 >
-> `lerReceitasParaApuracao` (`src/lib/fiscal/receitas-source.ts`) filtra por
-> `status` e `tipo_documento` e **não filtra `ambiente`**. Nenhum arquivo da
-> cadeia fiscal — `receitas-source`, `apuracao`, `guia`, `rbt12`,
-> `serpro-pgdasd`, `emitido-ano`, `segregacao` — sequer menciona a coluna.
+> `lerReceitasParaApuracao` era o braço conhecido. Os outros dois estavam a
+> poucas linhas dali, com o mesmo furo — e o comentário de um deles já dizia,
+> por escrito, "mesma família de filtro de `receitas-source.ts`":
 >
-> Medido no banco de produção, não deduzido:
+> | Onde | O que contaminava | Corrigido |
+> |---|---|---|
+> | `fiscal/receitas-source.ts` (2 leituras) | base de imposto **e** declaração anual (DASN/DEFIS) | `.eq('ambiente','prod')` |
+> | `fiscal/emitido-ano.ts` | teto anual do Simples/MEI — teste consumia o limite do cliente | `.eq('ambiente','prod')` |
+> | `dashboard/queries.ts` | card de receita do mês, a primeira coisa que o cliente vê | `.eq('ambiente','prod')` |
+>
+> O filtro é **positivo** (`= 'prod'`), não negativo (`!= 'hom'`): um terceiro
+> valor de ambiente que apareça um dia fica FORA da base até alguém decidir o
+> contrário. Errar para fora da declaração é recuperável; declarar receita que
+> não existiu, não.
+>
+> **A decisão sobre `lancada`, que a sessão 38 deixou aberta:** lançamento
+> manual passa a nascer com `ambiente: 'prod'` **explícito** em
+> `lancarNotaManualAction`. Ele registra NF **já emitida no mundo real**, fora
+> do Balu — é receita de verdade, e o DEFAULT `'hom'` da coluna a apagaria da
+> apuração assim que o filtro entrasse. Não depende do ambiente da empresa: o
+> cliente pode estar testando emissão em homologação por aqui e ter nota de
+> verdade na prefeitura. Fixo no código, não escolha do formulário.
+>
+> **Provado contra o banco de produção, não deduzido.** A mesma apuração da
+> sessão 38 (AL PISCINAS · 202606), rodada pelo mesmo smoke:
 >
 > ```
-> AL PISCINAS · ambiente=hom · ativa     1 nota  R$ 2.500,00
-> AL PISCINAS · ambiente=hom · lancada   1 nota  R$ 2.500,00
+> ANTES  receitas lidas: 2 · R$ 5.000,00 → imposto R$ 112,50
+> DEPOIS receitas lidas: 0 · R$     0,00 → imposto R$   0,00
+>        ambiente=hom  2 nota(s)  R$ 5000.00  ⚠ HOMOLOGAÇÃO — nota de teste dentro da base
 > ```
 >
-> **100% da receita que existe no banco é de homologação**, e a apuração
-> rodada pelo caminho de produção devolveu **R$ 112,50 de imposto** sobre ela,
-> sem um sinal de que a base é teste. O produto oferece emissão em homologação
-> de propósito (`emitir_nota_homol_antes_producao`), então este é um caminho que
-> cliente real percorre: ele testa, e o teste vira imposto.
+> **E alcança o que vai à Receita:** `serpro-pgdasd.ts:42` chama a MESMA
+> `lerReceitasParaApuracao` — não monta receita por conta própria. O PGDAS-D
+> deixou de poder declarar nota de teste pela mesma linha.
 >
-> **Conserto provável:** `.neq('ambiente', 'hom')` nas duas leituras de
-> `receitas-source`, com teste. Cuidado: `lancada` (lançamento manual de nota
-> emitida fora) nasce com o DEFAULT `'hom'` da coluna — filtrar por ambiente sem
-> olhar isso apagaria receita legítima. **Decidir o que `lancada` deve carregar
-> em `ambiente` é parte do conserto, não um detalhe.**
+> **Testes que mordem a mutação** (todos verificados removendo a linha do código
+> e vendo o vermelho; nenhum passa nos dois estados):
+> - `receitas-source.test.ts` — 2 novos (o stub agora REGISTRA os filtros; antes
+>   engolia `.eq()`, e um teste de filtro passaria com e sem a correção)
+> - `emitido-ano.test.ts` — **arquivo novo**, o módulo não tinha teste
+> - `dashboard/queries.test.ts` — **arquivo novo**, idem
+> - `notas_fiscais/actions.test.ts` — 2 novos para o carimbo do lançamento manual
 >
-> ### 🟡 Divergência de valor, ainda sem veredito
+> **Badge "Teste" na lista de notas.** A correção abria um buraco novo: a nota de
+> homologação continua na lista, e o cliente veria R$ 0,00 em receita, imposto e
+> teto sem nada explicando. Nota `ambiente='hom'` agora mostra um chip **Teste**
+> com o motivo no `title`. ⚠️ **Sem teste automatizado** — o projeto não tem
+> infraestrutura de teste de componente (zero `@testing-library`); verificado por
+> `tsc` e `next build`. Vale um olho na tela.
 >
-> Para AL PISCINAS / 202606, no mesmo dia e mesma competência:
+> ### 🟡 Divergência 112,50 × 344,33 — agora sem dado para reproduzir
 >
-> | Quem calcula | Valor |
-> |---|---|
-> | `calcularApuracao` (o que a tela mostra) | **R$ 112,50** |
-> | SERPRO `/Declarar` dry-run (o que a Receita cobra) | **R$ 344,33** |
->
-> Não chamei de bug porque `montarDeclaracaoPgdasd` monta a declaração por conta
-> própria e pode estar somando as duas notas (R$ 5.000) onde a apuração soma uma
-> (R$ 2.500) — 344,33 é 6,89% de 5.000. **Mas se a tela promete 112,50 e a guia
-> vier 344,33, o usuário descobre no vencimento.** Vale reconciliar as duas
-> fontes antes de qualquer cliente real.
->
-> ### O passo exato onde paramos — Vercel, ainda travada no navegador
->
-> 🔴 **Conectar a CLI da Vercel ao `balu-contabil` continua pendente**, e a causa
-> foi isolada: **quem decide a conta é a sessão do vercel.com no NAVEGADOR
-> PADRÃO do Windows**. Quatro tentativas em 02/09, todas caindo em `easy-drop`,
-> a última já depois de o usuário deslogar (o logout foi em outro navegador).
-> Medido pela API, não pela CLI: `contato.easydropshipping@gmail.com`,
-> id `8OFkNzl4S2sR9wRsvnxqCkHT`, projeto `balu-contabil` → **403 forbidden**.
->
-> O que NÃO funciona, já testado — não repita:
-> - `vercel login` → device flow, abre o navegador sozinho e ele auto-aprova em ~1s
-> - `BROWSER=none` → não impede a abertura
-> - `vercel login <email>` → **descontinuado** na CLI 58 (`--help` ainda mente), vira device flow
-> - `CI=1` → suprime a saída inteira: nenhum código impresso, nada a aprovar
->
-> **O que destrava:** logout do vercel.com **no navegador padrão do Windows**, ou
-> criar token em janela anônima (`vercel.com/account/tokens`, escopo
-> `gestao-9664s-projects`) e pôr `VERCEL_TOKEN=` em `app/.env.local`.
->
-> ✅ **Ferramentas prontas para o momento em que a conta entrar:**
-> - `app/scratchpad/vercel-conferir-acesso.mjs` — confere conta, times, projeto e
->   os 8 últimos deploys com autor. Valida contra o `user_id
->   F8YnCuMKWDqZni3mH0QRofSw`, a conta que **provadamente** tinha acesso em
->   12/08 (extraído dos claims do `VERCEL_OIDC_TOKEN` de `balu/.env.local`).
-> - `app/scratchpad/vercel-quem-sou.mjs` — pergunta à API quem é um `auth.json`.
-> - Use **sempre** `--global-config ~/.vercel-balu`: isola o `auth.json` e evita
->   repetir o acidente de 01/09, que apagou as credenciais da máquina.
->
-> ⚠️ `balu/.env.local` tem UMA variável, `VERCEL_OIDC_TOKEN`, escrita em
-> **12/08** e **expirada desde 13/08** (validade de 12h). Os 403 dela são
-> validade, não permissão. Não serve para gestão; já extraímos o que valia.
+> A sessão 38 abriu isto e ele **não foi investigado**. Com a base zerada pelo
+> filtro, os dois lados hoje partem de R$ 0,00, então a divergência não se
+> reproduz mais com o dado que existe. A hipótese da sessão 38 continua de pé e
+> continua **não confirmada**: `montarDeclaracaoPgdasd` pode estar somando as
+> duas notas (R$ 5.000 → 6,89% = 344,33) onde a apuração soma uma. **Reconciliar
+> assim que houver receita de produção**, antes de qualquer cliente real — se a
+> tela promete um número e a guia vier outro, o usuário descobre no vencimento.
 >
 > ### Fila, na ordem
 >
-> 1. 🔴 **Filtrar `ambiente` em `receitas-source`** + decidir o `ambiente` de
->    `lancada`, com teste. É o único achado que corrompe número que o cliente vê.
-> 2. 🟡 **Reconciliar `calcularApuracao` × SERPRO** (112,50 × 344,33).
-> 3. 🔴 **Vercel** (acima) → e então os 4 itens do Asaas da sessão 37 parte 3,
->    que continuam válidos e intocados: webhook, 3 variáveis, subconta sandbox.
-> 4. 🔴 **Advogado nos dois documentos legais**, e republicar sem o aviso de
+> 1. 🔴 **Vercel** — quem decide a conta é a sessão do vercel.com no **navegador
+>    PADRÃO do Windows**. Destrava com logout lá, ou token em janela anônima
+>    (`vercel.com/account/tokens`, escopo `gestao-9664s-projects`) em
+>    `VERCEL_TOKEN=` no `app/.env.local`. **Não repita:** `vercel login` (device
+>    flow auto-aprova em ~1s), `BROWSER=none`, `vercel login <email>`
+>    (descontinuado na CLI 58), `CI=1`. Ferramentas prontas:
+>    `app/scratchpad/vercel-conferir-acesso.mjs` e `vercel-quem-sou.mjs`, sempre
+>    com `--global-config ~/.vercel-balu`. → e então os 4 itens do Asaas da
+>    sessão 37 parte 3: webhook, 3 variáveis, subconta sandbox.
+> 2. 🔴 **Advogado nos dois documentos legais**, e republicar sem o aviso de
 >    minuta (as QUATRO versões publicadas o carregam).
+> 3. 🟡 **Webhook da Focus continua sem prova** — o `pendente → ativa` do smoke
+>    veio do polling, que é redundância. Em produção quem completa a nota é o
+>    webhook, e ele não alcança esta máquina.
+> 4. 🟡 **Reconciliar `calcularApuracao` × SERPRO** quando houver receita de
+>    produção (acima).
 > 5. 🟡 **Rotacionar 16 dos 17 segredos** dos backups apagados.
 >    🚨 **`CERT_ENC_KEY` é a exceção**: cifra os certificados A1 em repouso;
 >    trocá-la torna todo `enc:v1:` indecifrável. Exige migration de recifragem.
@@ -114,6 +115,72 @@
 > npm run build` a partir de `app/`. Para o Playwright inteiro, as 9 specs
 > destrutivas exigem `E2E_SUPABASE_URL` + as duas chaves +
 > `E2E_TENANT_SINTETICO='sim-eu-autorizo-tenant-sintetico-em-producao'`.
+
+> ## 🆕 SESSÃO 39 (02/09) — o achado da 38, corrigido nos três lugares
+>
+> ### Como o terceiro braço apareceu
+>
+> A fila dizia "filtrar `ambiente` em `receitas-source`". Ler os vizinhos custou
+> um `grep` e achou mais dois: `emitido-ano.ts` e `dashboard/queries.ts` liam
+> `notas_fiscais` com o MESMO conjunto de filtros e o MESMO furo. O de
+> `emitido-ano` era o mais fácil de perder — ele governa o alerta de teto do
+> Simples/MEI, então emitir em homologação gastava o limite do cliente e
+> anteciparia o aviso de sublimite sobre faturamento que nunca existiu.
+>
+> O do dashboard não erra imposto nenhum, mas erra pior de outro jeito: se o card
+> somasse nota de homologação e a apuração não, o mesmo mês teria **dois números
+> na tela** e nenhum dos dois explicaria o outro — a mesma classe de defeito que
+> a sessão 38 registrou como 112,50 × 344,33.
+>
+> ### O que foi medido antes de decidir
+>
+> `app/scratchpad/_medir-ambiente-notas.mjs` (somente leitura) contra o banco:
+>
+> ```
+> hom · ativa     · emissao   1 nota  R$ 2.500,00   09/06
+> hom · cancelada · emissao   1 nota  R$   100,00   02/09
+> hom · lancada   · manual    1 nota  R$ 2.500,00   09/06
+> ```
+>
+> **Três linhas no banco inteiro, nenhuma de produção.** Foi isso que dispensou
+> backfill: não havia nota legítima carimbada `'hom'` a preservar. A `lancada` de
+> 09/06 é dado de teste da AL PISCINAS e sai da base — corretamente. (E o
+> trigger `tg_notas_fiscais_ambiente_imutavel` da 0098 barra UPDATE de
+> `ambiente` fora do service role, então backfill nunca seria uma linha só.)
+>
+> ⚠️ **Se um dia aparecer nota de produção anterior à 0096**, ela veio do DEFAULT
+> `'hom'` quando a coluna foi criada e sumirá da base de imposto. Hoje não
+> existe nenhuma; conferir antes de assumir que continua assim.
+>
+> ### Arquivos tocados
+>
+> ```
+> src/lib/fiscal/receitas-source.ts        filtro + bloco de decisão documentado
+> src/lib/fiscal/emitido-ano.ts            filtro
+> src/lib/dashboard/queries.ts             filtro
+> notas_fiscais/actions.ts                 ambiente: 'prod' no lançamento manual
+> notas_fiscais/NotasFiscaisList.tsx       chip "Teste" + campo ambiente
+> notas_fiscais/page.tsx                   select do ambiente
+> src/lib/fiscal/receitas-source.test.ts   stub registra filtros + 2 testes
+> src/lib/fiscal/emitido-ano.test.ts       NOVO
+> src/lib/dashboard/queries.test.ts        NOVO
+> notas_fiscais/actions.test.ts            2 testes do carimbo manual
+> scratchpad/_medir-ambiente-notas.mjs     NOVO (leitura)
+> scratchpad/_ids-empresas.mjs             NOVO (leitura)
+> ```
+>
+> ### O que NÃO foi feito, e por quê
+>
+> - **Dry-run do PGDAS-D depois da correção** — o classificador barrou o comando
+>   (`smoke-fiscal-mcb.ts transmitir`, que chama o SERPRO). A prova de que a
+>   correção alcança a transmissão é de código, não de execução:
+>   `serpro-pgdasd.ts:42` chama `lerReceitasParaApuracao`. Para rodar:
+>   `! cd app && npx tsx --tsconfig scripts/tsconfig.smoke.json --env-file=.env.local scripts/smoke-fiscal-mcb.ts transmitir --empresa=3f7370a5-bfdc-4d3b-b59d-9165967d28c8 --competencia=202606`
+>   (sempre dry-run, `indicadorTransmissao: false`, sem flag para transmitir).
+> - **Teste do chip "Teste"** — sem infraestrutura de teste de componente no
+>   projeto. Registrado acima como não verificado em tela.
+> - **Backfill de `ambiente`** — desnecessário (nenhuma nota de produção existe)
+>   e barrado pelo trigger da 0098 fora do service role.
 
 > ## 🆕 SESSÃO 38 (02/09) — o smoke fiscal saiu, e achou o que devia
 >

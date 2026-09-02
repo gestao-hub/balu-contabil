@@ -1058,6 +1058,22 @@ export async function lancarNotaManualAction(input: NotaManualInput): Promise<La
     data_emissao: new Date(`${input.dataEmissao}T12:00:00-03:00`).toISOString(),
     status: 'lancada' as const,
     origem: 'manual' as const,
+    // AMBIENTE EXPLÍCITO, e não o DEFAULT 'hom' da coluna (02/09/2026).
+    //
+    // O lançamento manual registra uma nota que JÁ FOI EMITIDA no mundo real,
+    // fora do Balu — na prefeitura, em outro sistema. Ela é receita de verdade
+    // e tem de entrar na base de imposto, independentemente de a empresa ainda
+    // estar testando emissão em homologação por aqui: são coisas separadas.
+    //
+    // Deixar cair no DEFAULT 'hom' (era o que acontecia) passou a apagá-la da
+    // apuração, do teto anual e da declaração, desde que `receitas-source.ts`
+    // ganhou o filtro de ambiente. Dos dois erros possíveis, subdeclarar à
+    // Receita é o caro; por isso 'prod' é fixo aqui, e não uma escolha do
+    // formulário — quem lança manualmente está declarando fato consumado.
+    //
+    // Nada disto alcança a Focus: nota `origem: 'manual'` nunca é consultada,
+    // baixada ou cancelada por lá, então o carimbo só governa a base de cálculo.
+    ambiente: 'prod' as const,
   };
 
   let row: Record<string, unknown>;

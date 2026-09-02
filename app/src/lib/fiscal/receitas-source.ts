@@ -63,6 +63,25 @@ async function lerTodasAsPaginas(
  * DECISÃO FINAL (2026-05-31): OPÇÃO (b) — fonte canônica de receita é `notas_fiscais`.
  * A tabela `receitas_fiscais` é órfã (ninguém a popula, esvaziada sem backup) e está
  * descontinuada. Toda leitura de receita para apuração passa por esta função.
+ *
+ * ─── AMBIENTE (2026-09-02) ──────────────────────────────────────────────────
+ * Esta leitura filtrava `status` e `tipo_documento` e IGNORAVA `ambiente`. O
+ * smoke fiscal de 02/09 mediu o efeito no banco: 100% da receita existente era
+ * de homologação, e a apuração devolveu R$ 112,50 de imposto sobre nota de
+ * teste, sem sinalizar nada.
+ *
+ * Não é caso de laboratório: o produto OFERECE emissão em homologação antes da
+ * produção (`emitir_nota_homol_antes_producao`), então o cliente testa — e o
+ * teste virava imposto e ia dentro do PGDAS-D transmitido à Receita.
+ *
+ * O filtro é POSITIVO (`= 'prod'`), não negativo (`!= 'hom'`): se um terceiro
+ * valor de ambiente aparecer um dia, ele fica de fora da base de imposto até
+ * alguém decidir o contrário — errar para fora da declaração é recuperável,
+ * declarar receita que não existiu não é.
+ *
+ * ⚠️ `lancada` (lançamento manual de NF emitida fora do Balu) nasce com
+ * `ambiente: 'prod'` explícito em `lancarNotaManualAction` — o DEFAULT 'hom' da
+ * coluna a apagaria daqui. Ver o comentário de lá antes de mexer.
  */
 export async function lerReceitasParaApuracao(
   supabase: SupabaseClient,
@@ -80,6 +99,9 @@ export async function lerReceitasParaApuracao(
       // 'ativa' = emissão real autorizada; 'lancada' = lançamento manual (NF emitida fora).
       // Ambas são receita válida → entram na base de imposto.
       .in('status', ['ativa', 'lancada'])
+      // AMBIENTE: só nota de PRODUÇÃO é receita. Ver o bloco de comentário
+      // acima da função — nota de homologação é teste, não faturamento.
+      .eq('ambiente', 'prod')
       .in('tipo_documento', ['NFSe', 'NFe', 'NFCe'])
       .gte('data_emissao', inicioIso),
     'Falha ao ler notas para apuração',
@@ -114,6 +136,9 @@ export async function lerNotasAnoCalendario(
       .select('id, data_emissao, valor_total, tipo_documento')
       .eq('company_id', companyId)
       .in('status', ['ativa', 'lancada'])
+      // AMBIENTE: mesma regra da apuração — a declaração anual não declara nota
+      // de teste. Ver o bloco acima de `lerReceitasParaApuracao`.
+      .eq('ambiente', 'prod')
       .in('tipo_documento', ['NFSe', 'NFe', 'NFCe'])
       .gte('data_emissao', inicio)
       .lt('data_emissao', fim),

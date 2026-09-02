@@ -340,6 +340,36 @@ describe('emitirNotaAction (NFS-e)', () => {
   });
 });
 
+describe('lancarNotaManualAction — o carimbo de ambiente do lancamento manual', () => {
+  // O DEFEITO IRMAO do de 02/09/2026. Depois que `receitas-source.ts` passou a
+  // filtrar `ambiente = 'prod'`, uma nota manual sem carimbo cai no DEFAULT
+  // 'hom' da coluna e SOME da base de imposto, do teto anual e da declaracao
+  // anual — em silencio, porque o insert continua devolvendo ok.
+  //
+  // E lancamento manual e justamente a nota que MAIS precisa entrar: ela
+  // registra NF ja emitida no mundo real, fora do Balu. Subdeclarar a Receita e
+  // o erro caro dos dois.
+  //
+  // A mutacao que este teste morde: apagar `ambiente: 'prod'` do `base`.
+  it('grava ambiente prod — nota emitida fora do Balu e receita real', async () => {
+    const r = await lancarNotaManualAction(inputNotaManual());
+    expect(r.ok).toBe(true);
+    const insert = h.inserts.find((i) => i.tabela === 'notas_fiscais');
+    expect(insert).toBeDefined();
+    expect(insert?.valores.ambiente).toBe('prod');
+  });
+
+  // Nao depende do ambiente da EMPRESA: o cliente pode estar testando emissao
+  // em homologacao por aqui e, ao mesmo tempo, ter nota de verdade emitida na
+  // prefeitura. Sao coisas separadas, e amarrar as duas apagaria a segunda.
+  it('carimba prod mesmo com a credencial da empresa em homologacao', async () => {
+    h.estado.credencial = { ok: true, ambiente: 'hom', token: 'tok-hom-1' };
+    const r = await lancarNotaManualAction(inputNotaManual());
+    expect(r.ok).toBe(true);
+    expect(h.inserts.find((i) => i.tabela === 'notas_fiscais')?.valores.ambiente).toBe('prod');
+  });
+});
+
 describe('emitirNfeAction (NF-e)', () => {
   // M2: mesma mutacao de M1, agora em emitirNfeAction — nao ha `const env`
   // local aqui, `credencial.ambiente` e usado direto no insert e na chamada
