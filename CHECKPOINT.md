@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-09-02 (sessão 39 — **quatro frentes fechadas: o achado do `ambiente`, a Vercel, o Asaas em produção e a tela de assinatura**. (1) `ambiente` não filtrado tinha TRÊS braços, não um — apuração/declaração, teto anual e card do dashboard; a apuração que devolvia R$ 112,50 sobre nota de teste agora devolve R$ 0,00, e o dry-run do PGDAS-D para antes do SERPRO. (2) **A Vercel destravou** com `testeefluxodeautomacao@gmail.com` — 40 dias de bloqueio. (3) **Asaas em produção**: `ASAAS_ENV=prod` + 4 credenciais gravadas, e o **webhook da conta principal cadastrado** (`5bab1aab…`). No meio disso, um defeito MEU: gravei a chave do Asaas na Vercel com a barra invertida do escape do `.env.local` e deixei a produção com 401 por três horas — achado pelo próprio script, corrigido e redeployado. (4) A tela de assinatura virou **uma só**, com os dois pagadores identificados. Base: tsc 0 · 2385 testes · 189 arquivos · build limpo.)
+> **Última atualização:** 2026-09-02 (sessão 39, dia inteiro — **seis frentes**. (1) O `ambiente` não filtrado tinha TRÊS braços; corrigido e provado até o SERPRO. (2) **A Vercel destravou** depois de 40 dias. (3) **Asaas em produção**: `ASAAS_ENV=prod`, credenciais e webhook da conta principal. (4) A tela de assinatura virou **uma só**. (5) **Auditoria de segurança com laudo**: 37 IDs, **zero `NAO_VERIFICADO`**, veredito **GO CONDICIONAL** — os certificados A1 saíram do repositório para um cofre com ACL, o GCM ganhou `authTagLength`, e a árvore de dependências de PRODUÇÃO ficou limpa de CVE. (6) **Mudar o preço de um plano NÃO chegava ao Asaas** — achado a pedido do usuário, corrigido junto com `ciclo`, nome e o teto que travava planos populares. Base final: tsc 0 · **2415 testes** · build limpo · **destrutiva 76/76**.)
 >
 > _Anterior — sessão 38: **o smoke fiscal saiu e achou um defeito que corrompe número que o cliente vê**. A MCB MARKETING emitiu, foi autorizada, sincronizou e cancelou uma NFS-e em homologação, cada passo pelas funções da tela — o primeiro ciclo de nota fechado desde 09/06. O `transmitirPgdasd` percorreu a cadeia inteira em dry-run e o SERPRO respondeu "Requisição efetuada com sucesso" (R$ 344,33, `transmitida: false`). **O achado: `lerReceitasParaApuracao` não filtra `ambiente`** — 100% da receita do banco de produção é de homologação, e a apuração devolveu R$ 112,50 de imposto sobre ela sem sinalizar nada. Aberto também: a apuração diz R$ 112,50 e o SERPRO diz R$ 344,33 para a mesma competência. **A Vercel continua travada, e a causa foi isolada:** quem escolhe a conta é a sessão do navegador PADRÃO do Windows; quatro tentativas caíram em `easy-drop`, e `vercel login <email>` está descontinuado na CLI 58.)_
 >
@@ -99,24 +99,27 @@
 > ### Fila, na ordem
 >
 > 1. 🔴 **Advogado nos dois documentos legais**, e republicar sem o aviso de
->    minuta (as QUATRO versões publicadas o carregam). É o único 🔴 que sobrou.
-> 2. 🟡 **Webhook da FOCUS continua sem prova** — não confundir com o do Asaas,
->    que foi resolvido nesta sessão. O `pendente → ativa` do smoke fiscal veio do
->    polling, que é redundância; em produção quem completa a nota é o webhook, e
->    ele não alcança esta máquina.
-> 3. 🟡 **Reconciliar `calcularApuracao` × SERPRO** (112,50 × 344,33) quando
->    houver receita de PRODUÇÃO. Com a base filtrada, não se reproduz mais com o
->    dado que existe.
-> 4. 🟡 **Rotacionar 16 dos 17 segredos** dos backups apagados.
+>    minuta (as QUATRO versões publicadas o carregam).
+> 2. 🔴 **Rotacionar as credenciais do SERPRO** (`Consumer_key`/`Consumer_Secret`)
+>    e as senhas de `senha.json` — achado `SEC-CRED-002` da auditoria. Elas
+>    ficaram legíveis em `docs/n8n/` por tempo indeterminado; os arquivos foram
+>    movidos para o cofre, **mas mover não revoga**.
+> 3. 🟡 **Rotacionar 16 dos 17 segredos** dos backups apagados.
 >    🚨 **`CERT_ENC_KEY` é a exceção**: cifra os certificados A1 em repouso;
 >    trocá-la torna todo `enc:v1:` indecifrável. Exige migration de recifragem.
-> 5. 🟡 **Parear o número oficial do WhatsApp** (todos são de teste).
-> 6. 🟡 **MCB sem `anexo_simples`** — a apuração dela recusa com
->    `ConfiguracaoIncompletaError`. Comportamento correto do produto, cadastro
->    incompleto da empresa.
-> 7. 🟡 **Primeiro pagamento real pelo Asaas ainda não aconteceu.** Tudo está
->    cadastrado e a sonda provou url + segredo, mas "ok" é leitura. A prova de
->    ponta a ponta é um pagamento chegando e virando linha em `cobrancas`.
+> 4. 🟡 **Webhook da FOCUS continua sem prova** — não confundir com o do Asaas,
+>    que foi resolvido. O `pendente → ativa` do smoke veio do polling, que é
+>    redundância; em produção quem completa a nota é o webhook.
+> 5. 🟡 **Primeiro pagamento real pelo Asaas ainda não aconteceu.** Tudo está
+>    cadastrado e a sonda provou url + segredo, mas "ok" é leitura.
+> 6. 🟡 **Reconciliar `calcularApuracao` × SERPRO** (112,50 × 344,33) quando
+>    houver receita de PRODUÇÃO — hipótese na seção da parte 1.
+> 7. 🟡 **Parear o número oficial do WhatsApp** (todos são de teste).
+> 8. 🟡 **MCB sem `anexo_simples`** — a apuração recusa com
+>    `ConfiguracaoIncompletaError`. Cadastro incompleto, não defeito.
+> 9. ⚪ Da auditoria, com dono e prazo: CSP sem `script-src`; `role: 'system'` no
+>    cliente de IA (`IA-INJ-001`); vitest/vite major; suíte de prompts
+>    adversariais; conexão de conciliação órfã (uma linha).
 >
 > **Antes de mexer em qualquer coisa:** `npx tsc --noEmit && npx vitest run &&
 > npm run build` a partir de `app/`. Para o Playwright inteiro, as 9 specs
@@ -366,6 +369,142 @@
 >
 > Subiram 3 commits (`c492d3c..194ef80`) — o da sessão 38 também estava parado.
 > **Push na `main` é a publicação:** dispara o deploy de produção sozinho.
+
+> ## 🆕 SESSÃO 39, parte 3 — auditoria, cruzamento e o preço que não chegava ao Asaas
+>
+> ### Cruzamento da auditoria funcional de 29/08 × código
+>
+> **Os 7 BUGs estão fechados**, cada um com correção que cita a auditoria (23
+> arquivos citam `BUG-00*`). Inclusive os itens que não viraram BUG formal:
+> "Explicações aprova de novo", "o início do Contador mistura linguagem de
+> empresa" e o CNPJ duplicado (migration 0106).
+>
+> ⚠️ **BUG-001 tinha duas metades**, e só uma é do advogado: o **Markdown bruto**
+> era código e foi corrigido (`MarkdownLegal`); o **texto de minuta** segue em
+> revisão jurídica.
+>
+> **A exportação LGPD não é bug**: a action devolve JSON e o download é `Blob` +
+> `createObjectURL`. A instrumentação da auditoria não enxerga isso.
+>
+> **As 13 migrations conferidas como APLICADAS no banco**, pelo efeito e não pelo
+> arquivo (`scratchpad/_conferir-migrations-aplicadas.mjs`). A primeira rodada
+> acusou 5 faltando — era eu adivinhando nomes de objeto (`config_whatsapp_plataforma`
+> em vez de `config_whatsapp`). **Falso alarme registrado de propósito:** assustar
+> com o que está certo é o pior resultado de uma ferramenta de auditoria.
+>
+> ### /code-review + /systematic-debugging sobre a correção do `ambiente`
+>
+> Seis achados, **três deles regressões que EU introduzi no mesmo dia**:
+>
+> 1. Deixei `/contador/assinatura` no sweep responsivo depois de virá-la
+>    redirect, com um comentário dizendo que isso comprava cobertura — a guarda
+>    do teste afirma o CONTRÁRIO. O perfil Contador falharia. **Confirmado por
+>    execução:** revertida a rota, o sweep fica vermelho; com a correção, verde.
+> 2. O card do dashboard usava `.eq('status','ativa')` e a apuração
+>    `.in(['ativa','lancada'])`. Com o lançamento manual carimbado `prod`, uma NF
+>    emitida fora do Balu passou a pagar imposto e o card mostrava R$ 0,00 — a
+>    MESMA divergência que a mudança dizia fechar, pelo outro lado. **E o teste
+>    que escrevi travava o comportamento errado**, ou seja, protegia o defeito.
+> 3. `atualizarStatusNotaAction` não barrava `origem='manual'`.
+>
+> ### Auditoria de segurança (skill `security-system-app`) — laudo emitido
+>
+> Evidência em `security-evidence/2026-09-02/` (gitignored). **37 IDs, zero
+> `NAO_VERIFICADO`** — a sessão 37 tinha fechado com 89 de 156 não exercitados.
+>
+> | Frente | Resultado |
+> |---|---|
+> | Suíte destrutiva | **76/76** (IDOR × 3 papéis, matriz de tenant com controle positivo, 6 buckets) |
+> | RLS | **48/48 tabelas** com RLS ligada; helpers com `auth.uid()`, `SECURITY DEFINER` e **`search_path` fixado** |
+> | `service_role` no bundle | **ausente** — 118 arquivos de `.next/static` e `public/` varridos contra o valor real |
+> | DAST (ZAP, produção) | **FAIL-NEW 0** · WARN 7 · PASS 54 |
+> | Segredos | 166 alertas, **zero segredo real** — os 2 "do produto" eram um UUID e a palavra `errado` num exemplo de curl |
+>
+> **Veredito: 🟡 GO CONDICIONAL** (era NO-GO até os certificados saírem).
+>
+> 🔴 **O que a auditoria achou de material:** `docs/n8n/` guardava dois
+> certificados A1 de empresas REAIS (um com a senha no nome do arquivo), o
+> **export do n8n com as credenciais de produção do SERPRO em claro** e um
+> `senha.json`. Nunca foram commitados — mas a pasta **não estava no
+> `.gitignore`**: foi sorte, não regra. Tudo movido para
+> `C:\Walace importante\_COFRE-balu-credenciais\` com herança de permissão
+> removida, e `scan-secrets` reexecutado prova a ausência. **As credenciais do
+> SERPRO seguem válidas e precisam de rotação — item 2 da fila.**
+>
+> Também corrigidos: `authTagLength` do GCM em `envelope.ts` (que cifra os A1 em
+> repouso — `decryptBlob` tinha guarda de tamanho e `decifrarCampo` não, por
+> acidente), e a árvore de dependências de **produção** limpa de CVE
+> (`@xmldom/xmldom`, que entra por `xml-crypto` e assina o XML do termo do
+> SERPRO; `browserslist` via `overrides`). As 6 restantes são todas `dev`.
+>
+> ⚠️ **Discordei da ferramenta em um ponto:** o `scan-web.ps1` deu
+> `VERIFICADO_OK` no CSP porque checa **presença** do header. O CSP real é
+> `frame-ancestors 'none'` e nada mais — e o ZAP, independentemente, apontou o
+> mesmo. Virou achado, não aprovação.
+>
+> ### 🔴 O preço do plano NÃO chegava ao Asaas (verificado a pedido)
+>
+> `salvarPlanoAction` fazia `upsert` em `planos` e **nenhuma chamada ao Asaas**.
+> Só havia dois chamadores de `atualizarAssinatura` — a troca de plano pelo
+> cliente e o cron de faixa — e nenhum era o admin.
+>
+> É o **mesmo defeito** que `lib/billing/cron.ts` já tinha achado e consertado no
+> caminho da faixa; o comentário de lá descreve a consequência, e ela se aplica
+> inteira: `metricas.ts:67` monta o MRR de `planos.valor_centavos`, então a tela
+> mostraria o preço novo, o MRR contaria o novo, e o Asaas cobraria o antigo.
+> **Consertaram o buraco no cron e o mesmo buraco ficou aberto no admin.**
+>
+> Exposição era zero (6 assinaturas, todas trial/cortesia, nenhuma com
+> `asaas_subscription_id`) — mas o `ASAAS_ENV=prod` entrou no mesmo dia.
+>
+> **Decisão do usuário:** propagar para TODOS, inclusive quem já assinava.
+> Implementado com a regra do `cron.ts`: **Asaas primeiro, local depois**.
+>
+> O que o debugging e o review acharam **na própria implementação**:
+>
+> - leitura do preço atual ignorava `error` → falha transitória viraria "não
+>   mudou", gravaria e não propagaria (a divergência que o bloco impede);
+> - leitura das assinaturas **sem limite** → o PostgREST corta em `max-rows` e
+>   devolve `error: null`; mesma lição de `receitas-source.ts`;
+> - N chamadas HTTP **sequenciais** numa Server Action sem `maxDuration` — o
+>   próprio repo mediu isso (`cron/obrigacoes/route.test.ts:512`);
+> - 🔴 **`alvoId: input.id` gravava slug de texto em `audit_log.alvo_id`, que é
+>   UUID.** O PostgREST recusa com 22P02 e `registrarAuditoria` rebaixa a
+>   `console.warn`. **Medido: `audit_log` tinha ZERO linhas com
+>   `alvo_tipo='plano'`** — a auditoria de plano nunca gravou desde que foi
+>   escrita. Bug PRÉ-EXISTENTE, corrigido nas três chamadas;
+> - a tela prometia o oposto ("assinaturas já ativas seguem no valor contratado");
+> - o mock do teste **descartava os argumentos dos filtros**, então
+>   `.in('status', VIVOS)` não estava coberto — e o cabeçalho afirmava que sim.
+>
+> E os três que ficaram pendentes foram fechados na sequência: **`ciclo`**
+> (pior que o preço — ao ver YEARLY o `metricas.ts` divide por 12), **nome**
+> (a `description` é o que o cliente lê na fatura) e **o teto que recusava**
+> (travava até BAIXAR preço de um plano popular; o seed tem UM plano de empresa).
+>
+> `alinharPrecoComPlano` (`lib/billing/cron.ts`) é a rede: compara com o **Asaas
+> de verdade**, não com uma coluna local do tipo "último valor enviado" — a
+> coluna mentiria justamente quando alguém editasse pelo painel do Asaas.
+> Dispensou migration.
+>
+> ### Armadilhas registradas
+>
+> - **O Docker Desktop toma a porta 3000.** Ao subir o Docker para o DAST, o
+>   `wslrelay` ocupou a 3000 e passou a responder **404 em `/login`**. Rodar a
+>   suíte E2E contra aquilo daria 76 resultados sem significado. Conferir sempre
+>   que `/login` devolve **200** antes de rodar.
+> - `node --env-file` **não desescapa** `\$` — ver a memória do projeto.
+>
+> ### Ferramentas novas desta parte
+>
+> ```
+> scripts/rodar-e2e-responsivo.mjs        suíte E2E com a trava de ambiente satisfeita
+> scripts/diag-apuracao-x-pgdasd.ts       apuração × declaração, lado a lado
+> scratchpad/_conferir-migrations-aplicadas.mjs   efeito de cada migration no banco
+> scratchpad/_baas-postura.mjs            RLS, grants e service_role no bundle
+> scratchpad/_triar-gitleaks.mjs          separa segredo real de ruído
+> scratchpad/_auditar-ia.mjs              domínio IA/LLM do catálogo
+> ```
 
 > ## 🆕 SESSÃO 38 (02/09) — o smoke fiscal saiu, e achou o que devia
 >
