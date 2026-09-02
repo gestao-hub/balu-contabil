@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { asaas } from '@/lib/clients';
 import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 import { sincronizarCobrancas, type CobrancaRemota } from './cobranca';
+import { descricaoDoErroAsaas } from '@/lib/billing/subconta-erros';
 
 export type DadosTitular = {
   assinaturaId: string;
@@ -163,7 +164,15 @@ export async function criarAssinaturaNoAsaas(
     return { ok: true, subscriptionId: assinatura.id, faturaUrl };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('[billing assinar] falhou', msg);
+    // O LOG PRECISA DIZER O QUE FOI TENTADO, e nao so que falhou. Em 02/09/2026
+    // uma contratacao caiu aqui e, para descobrir o motivo, foi preciso ir ao
+    // Asaas conferir customer e assinatura um a um — porque a linha de log nao
+    // dizia nem o valor nem o plano.
+    console.error(
+      '[billing assinar] falhou',
+      { plano: plano.id, valor_centavos: plano.valor_centavos, ciclo: plano.ciclo },
+      msg,
+    );
     // O nome da variavel mudou para TOKEN_ASAAS_SANDBOX/PRODUCAO e este
     // teste continuou procurando ASAAS_API_KEY — que nao existe mais em
     // lugar nenhum. Resultado: token ausente caia no "Tente novamente",
@@ -171,6 +180,14 @@ export async function criarAssinaturaNoAsaas(
     // exatamente o que escondeu o bug do `$` nao escapado no .env.local.
     if (/TOKEN_ASAAS_\w+ nao configurado/.test(msg)) {
       return { ok: false, error: 'A cobrança ainda não está configurada. Fale com o suporte.' };
+    }
+    // A RAZAO DO ASAAS, quando ela existe e e acionavel. Sem isto o titular
+    // recebia "Tente novamente" para uma recusa que NUNCA mudaria de resposta —
+    // por exemplo um valor de plano abaixo do minimo que o Asaas aceita.
+    // Ver `descricaoDoErroAsaas`.
+    const razao = descricaoDoErroAsaas(err);
+    if (razao) {
+      return { ok: false, error: `A cobrança foi recusada: ${razao}` };
     }
     return { ok: false, error: 'Não foi possível concluir a assinatura agora. Tente novamente.' };
   }

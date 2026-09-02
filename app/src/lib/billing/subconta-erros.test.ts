@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { traduzirErroAsaas, statusDoErroAsaas, MENSAGENS_SUBCONTA } from './subconta-erros';
+import { traduzirErroAsaas, statusDoErroAsaas, MENSAGENS_SUBCONTA, descricaoDoErroAsaas } from './subconta-erros';
 
 /** Formato exato que `call` (clients/asaas.ts) monta ao receber !res.ok. */
 const doAsaas = (status: number, corpo: string) =>
@@ -125,5 +125,71 @@ describe('traduzirErroAsaas', () => {
         expect(MENSAGENS_SUBCONTA as readonly string[]).toContain(msg);
       }
     }
+  });
+});
+
+/**
+ * `descricaoDoErroAsaas` — 02/09/2026.
+ *
+ * O titular clicou em assinar e recebeu "Tente novamente" para uma recusa que
+ * NUNCA mudaria de resposta. O `criarCliente` tinha funcionado (o customer
+ * existe no Asaas de produção); a `criarAssinatura` foi recusada, e o motivo,
+ * que o Asaas manda por escrito, morreu num `console.error`.
+ *
+ * Cada teste morde uma mutação:
+ *   1. devolver a descrição para 5xx/401 (indisponibilidade e chave errada não
+ *      são acionáveis por quem está na tela — mandá-la "conferir o valor" faz
+ *      tentar de novo para sempre);
+ *   2. devolver o corpo cru quando o JSON não parseia;
+ *   3. deixar passar texto longo demais, que vira despejo na tela.
+ */
+describe('descricaoDoErroAsaas', () => {
+  const erroAsaas = (status: number, corpo: unknown) => {
+    const e = new Error(
+      `Asaas POST /v3/subscriptions → ${status}: ${JSON.stringify(corpo)}`,
+    ) as Error & { status: number };
+    e.status = status;
+    return e;
+  };
+
+  it('extrai a frase do Asaas num 400 de validação', () => {
+    const e = erroAsaas(400, {
+      errors: [{ code: 'invalid_value', description: 'O valor da cobrança não pode ser menor que R$ 5,00.' }],
+    });
+    expect(descricaoDoErroAsaas(e)).toBe('O valor da cobrança não pode ser menor que R$ 5,00.');
+  });
+
+  // MUTAÇÃO 1: 5xx e 401 não podem virar mensagem de "conserte o dado".
+  it.each([500, 502, 503, 401, 403])('não devolve descrição para %i', (status) => {
+    const e = erroAsaas(status, { errors: [{ description: 'qualquer coisa' }] });
+    expect(descricaoDoErroAsaas(e)).toBeNull();
+  });
+
+  // MUTAÇÃO 2: sem JSON aproveitável, quem chama usa o genérico — nunca o cru.
+  it('corpo sem JSON → null (o genérico assume)', () => {
+    const e = new Error('Asaas POST /v3/subscriptions → 400: Bad Request') as Error & { status: number };
+    e.status = 400;
+    expect(descricaoDoErroAsaas(e)).toBeNull();
+  });
+
+  it('JSON quebrado → null, não estoura', () => {
+    const e = new Error('Asaas POST /x → 400: {isso nao e json') as Error & { status: number };
+    e.status = 400;
+    expect(descricaoDoErroAsaas(e)).toBeNull();
+  });
+
+  // MUTAÇÃO 3: descrição gigante viraria despejo na tela.
+  it('descrição longa demais é descartada', () => {
+    const e = erroAsaas(400, { errors: [{ description: 'x'.repeat(201) }] });
+    expect(descricaoDoErroAsaas(e)).toBeNull();
+  });
+
+  it('sem `errors` → null', () => {
+    expect(descricaoDoErroAsaas(erroAsaas(400, { mensagem: 'outra forma' }))).toBeNull();
+  });
+
+  it('valor que não é Error → null', () => {
+    expect(descricaoDoErroAsaas(null)).toBeNull();
+    expect(descricaoDoErroAsaas(42)).toBeNull();
   });
 });

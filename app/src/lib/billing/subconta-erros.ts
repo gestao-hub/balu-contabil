@@ -126,6 +126,53 @@ export function traduzirErroAsaas(erro: unknown): string {
   return GENERICO;
 }
 
+/**
+ * A DESCRICAO que o proprio Asaas devolveu, quando ela e util ao usuario.
+ *
+ * ─── POR QUE ISTO EXISTE (02/09/2026) ───────────────────────────────────────
+ * O titular clicou em assinar e recebeu "Nao foi possivel concluir a assinatura
+ * agora. Tente novamente." A criacao do CLIENTE tinha funcionado (o customer
+ * existe no Asaas de producao); quem foi recusada foi a ASSINATURA, e o motivo
+ * — que o Asaas manda por escrito, em portugues — morreu num `console.error`.
+ * Resultado: a pessoa repetiu um clique que nunca ia funcionar, exatamente o
+ * modo de falha que o comentario de `assinar.ts` ja descrevia para outro caso.
+ *
+ * `traduzirErroAsaas` nao resolvia: as REGRAS acima sao afinadas para SUBCONTA
+ * (documento, CEP, telefone) e um erro de valor cai no generico igual.
+ *
+ * ─── POR QUE MOSTRAR O TEXTO DO ASAAS, SE A REGRA DA CASA E NAO MOSTRAR ─────
+ * A regra e nao vazar o CORPO CRU (que traz metodo, rota, status e JSON). A
+ * `description` e outra coisa: uma frase em portugues escrita para o usuario
+ * final ("O valor da cobranca nao pode ser menor que R$ 5,00"). Preferir uma
+ * mensagem vaga nossa a uma frase precisa deles seria escolher o silencio.
+ *
+ * Devolve `null` quando nao ha descricao aproveitavel — e ai quem chama usa o
+ * generico de sempre. Nunca devolve o corpo inteiro, nunca devolve URL, nunca
+ * devolve nada de 5xx/401 (esses nao sao acionaveis por quem esta na tela).
+ */
+export function descricaoDoErroAsaas(erro: unknown): string | null {
+  const status = statusDoErroAsaas(erro);
+  // 4xx de validacao e o unico caso em que a frase do Asaas ajuda quem clicou.
+  if (status === null || status < 400 || status >= 500) return null;
+  if (status === 401 || status === 403) return null;
+
+  const bruto = erro instanceof Error ? erro.message : typeof erro === 'string' ? erro : '';
+  const inicio = bruto.indexOf('{');
+  if (inicio < 0) return null;
+  try {
+    const corpo = JSON.parse(bruto.slice(inicio)) as { errors?: Array<{ description?: unknown }> };
+    const d = corpo.errors?.[0]?.description;
+    if (typeof d !== 'string') return null;
+    const limpo = d.trim();
+    // Descartar o que nao e frase: vazio, ou longo demais para caber numa
+    // mensagem de tela sem virar despejo.
+    if (limpo.length === 0 || limpo.length > 200) return null;
+    return limpo;
+  } catch {
+    return null;
+  }
+}
+
 /** Só para o teste provar que nenhuma saída vaza texto de entrada. */
 export const MENSAGENS_SUBCONTA = [
   DOCUMENTO_DUPLICADO, DOCUMENTO_INVALIDO, EMAIL_INVALIDO, CEP_INVALIDO,
