@@ -3,6 +3,11 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import PlanosAdmin from './PlanosAdmin';
 import type { PlanoInput } from './actions';
 
+// O reajuste de plano propaga o preco para cada assinatura viva no Asaas, uma
+// chamada por assinante. Sem este teto de tempo a Server Action morre no meio
+// do laco -- ver o comentario do TETO em `actions.ts`.
+export const maxDuration = 60;
+
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
@@ -28,8 +33,14 @@ export default async function Page() {
     <div className="p-6">
       <h1 className="text-xl font-semibold mb-1">Assinaturas</h1>
       <p className="mb-6 text-sm text-muted-foreground">
-        Preços, faixas e período de teste. As alterações valem para as próximas cobranças —
-        assinaturas já ativas seguem no valor contratado até o próximo ciclo.
+        {/* A frase antiga dizia que "assinaturas já ativas seguem no valor
+            contratado até o próximo ciclo". Isso era verdade enquanto o preço
+            NÃO propagava — e virou mentira em 02/09/2026, quando passou a
+            propagar. Copy que descreve o comportamento antigo é pior que copy
+            nenhuma: ela dá ao admin confiança para fazer justamente o que ele
+            não quer. (Achado do /code-review.) */}
+        Preços, faixas e período de teste. <strong>Mudar o preço reajusta na hora, no Asaas,
+        todas as assinaturas ativas do plano</strong> — inclusive as já contratadas.
       </p>
       <PlanosAdmin planos={(planos ?? []) as PlanoInput[]} usoPorPlano={usoPorPlano} />
     </div>
