@@ -57,6 +57,7 @@
  * 401. Foi o que aconteceu na primeira execução; ver o comentário longo em
  * `process.env.ASAAS_ENV = AMBIENTE`.
  */
+import nextEnv from '@next/env';
 import type { AsaasWebhook } from '@/lib/clients/asaas';
 import { asaasSub } from '@/lib/clients/asaas';
 import {
@@ -99,6 +100,27 @@ const AMBIENTE: 'prod' | 'sandbox' = AMBIENTE_BRUTO;
  * isto alcanca todas as chamadas seguintes.
  */
 process.env.ASAAS_ENV = AMBIENTE;
+
+/**
+ * ⚠️ SEGUNDA ARMADILHA DA MESMA EXECUCAO (02/09/2026): `--env-file` NAO
+ * DESESCAPA.
+ *
+ * A chave do Asaas comeca com `$aact_`, e o Next expande `$VAR` dentro de
+ * arquivos `.env` -- entao no `.env.local` ela PRECISA estar escrita
+ * `\$aact_...`, senao o `$aact_` vira nome de variavel e some. O `@next/env`
+ * desescapa e entrega 166 chars; o `--env-file` do Node entrega os 167, com a
+ * barra invertida junto. Resultado medido: 401 `invalid_access_token` contra
+ * `api.asaas.com` com uma chave que, limpa, autentica normalmente.
+ *
+ * Nao da para "so tirar a barra": ela e correta no arquivo. O conserto e ler
+ * como o APP le. `loadEnvConfig` nao sobrescreve o que ja esta em
+ * `process.env`, entao o `--env-file` tem de ser apagado primeiro -- so das
+ * chaves que este script usa, para nao mexer no resto do ambiente.
+ */
+for (const n of ['TOKEN_ASAAS_PRODUCAO', 'TOKEN_ASAAS_SANDBOX', 'ASAAS_WEBHOOK_SECRET', 'ASAAS_WEBHOOK_EMAIL']) {
+  delete process.env[n];
+}
+nextEnv.loadEnvConfig(process.cwd(), true, { info: () => {}, error: () => {} });
 /** Domínio de produção verificado no projeto `balu-contabil` da Vercel.
  *  Trocável por `--base=` — a sonda abaixo é quem diz se está certo. */
 const BASE = (arg('base') ?? 'https://balucontabil.com.br').replace(/\/+$/, '');
