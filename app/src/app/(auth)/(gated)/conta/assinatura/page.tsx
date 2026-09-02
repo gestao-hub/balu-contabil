@@ -258,8 +258,12 @@ export default async function Page() {
         </Secao>
       )}
 
-      {/* Nenhum dos dois: o item de menu já esconde este caso (ver
-          `menu-visibilidade.ts`), mas a rota continua alcançável por URL. */}
+      {/* Nenhum dos dois. NÃO é só alcançável por URL: `assinaturaVisivel` passa
+          para `userRole === 'empresa'` independentemente de `qtdEmpresas`, então
+          um usuário recém-cadastrado, ainda sem empresa, VÊ o item no menu e cai
+          aqui. Comportamento anterior à consolidação, não regressão — mas o
+          comentário original prometia uma garantia que não existe. (Achado do
+          /code-review de 02/09/2026.) */}
       {!escritorio && !empresa && (
         <Aviso>Nenhuma empresa selecionada, e você não faz parte de um escritório.</Aviso>
       )}

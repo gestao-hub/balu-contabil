@@ -80,12 +80,16 @@ const ROTAS_CONTADOR = [
   '/contador/atendimentos',
   '/contador/configuracoes',
   '/contador/configuracoes/avulsos',
-  // Desde 02/09/2026 esta rota REDIRECIONA para `/conta/assinatura` (a tela de
-  // assinatura virou uma so). Fica na lista de proposito: assim a pagina
-  // consolidada e varrida tambem sob sessao de CONTADOR, que e o papel que ve o
-  // bloco do escritorio — cobertura que `/conta/assinatura` na lista de empresa
-  // nao da.
-  '/contador/assinatura',
+  // Desde 02/09/2026 a tela de assinatura e UMA so e `/contador/assinatura`
+  // apenas REDIRECIONA para `/conta/assinatura`. A rota redirecionada NAO pode
+  // ficar nesta lista: `verificarRota(..., exigirAutenticada=true)` exige que a
+  // URL final seja a pedida, justamente para que um gate silencioso nao produza
+  // falso verde. Uma rota que redireciona de proposito falha nessa guarda.
+  //
+  // O destino entra no lugar dela, e a cobertura melhora em vez de piorar: a
+  // pagina consolidada passa a ser varrida sob sessao de CONTADOR, que e o
+  // papel que ve o bloco do escritorio.
+  '/conta/assinatura',
 ];
 
 const ROTAS_ADMIN = [

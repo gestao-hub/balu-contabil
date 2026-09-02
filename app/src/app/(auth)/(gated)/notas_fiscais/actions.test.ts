@@ -430,6 +430,29 @@ describe('atualizarStatusNotaAction — polling le o ambiente CARIMBADO na nota'
   });
 });
 
+describe('atualizarStatusNotaAction — nota MANUAL nao tem status na Focus', () => {
+  // Achado do /code-review de 02/09/2026. `cancelarNotaAction` ja barrava
+  // `origem === 'manual'`; esta action nao. Ficou pior no MESMO dia: com o
+  // carimbo `ambiente: 'prod'` do lancamento manual, uma empresa que so tem
+  // token de homologacao passou a receber "nao ha token desse ambiente
+  // cadastrado" — mensagem que nao descreve nada do que aconteceu, para uma
+  // pergunta que nao fazia sentido fazer.
+  //
+  // A mutacao mordida: apagar o early return de `origem === 'manual'`.
+  it('recusa com motivo proprio e NAO chama a Focus', async () => {
+    h.estado.notaExistente = {
+      id: 'nota-man-1', tipo_documento: 'NFSe', referencia: 'man_abc',
+      payload_focusnfe: { manual: true }, ambiente: 'prod', origem: 'manual',
+    };
+    const r = await atualizarStatusNotaAction('nota-man-1');
+    expect(r.ok).toBe(false);
+    expect(r).toMatchObject({ error: expect.stringContaining('lançada manualmente') });
+    expect(h.focus.consultarStatusNfse).not.toHaveBeenCalled();
+    expect(h.tokenParaAmbiente).not.toHaveBeenCalled();
+    expect(h.updates).toHaveLength(0);
+  });
+});
+
 describe('cancelarNotaAction — cancelamento le o ambiente CARIMBADO na nota', () => {
   const JUSTIFICATIVA = 'Emissao feita por engano, cliente cancelou o pedido.';
 

@@ -82,6 +82,24 @@ async function lerTodasAsPaginas(
  * ⚠️ `lancada` (lançamento manual de NF emitida fora do Balu) nasce com
  * `ambiente: 'prod'` explícito em `lancarNotaManualAction` — o DEFAULT 'hom' da
  * coluna a apagaria daqui. Ver o comentário de lá antes de mexer.
+ *
+ * ⚠️⚠️ O DEFAULT DA COLUNA É UMA ARMADILHA PARA IMPORTAÇÃO EM MASSA.
+ * A 0096 criou `ambiente` como `NOT NULL DEFAULT 'hom'` e NENHUMA migration faz
+ * backfill. Toda linha que nasça sem declarar o ambiente — carga inicial,
+ * migração de sistema antigo, script de seed — vira nota de teste aos olhos
+ * deste filtro e SOME da base de imposto, do teto e da declaração anual, em
+ * silêncio e na direção cara do erro.
+ *
+ * Hoje isso é risco latente, não perda: medido em 02/09/2026, o banco tem 3
+ * notas no total, todas de homologação e todas de teste — não existe nota de
+ * produção anterior à 0096 para perder, e a coluna `bubble_id` da `0001` sequer
+ * existe no banco real (ver docs/investigations/DB-DIVERGENCIA.md).
+ *
+ * **Por isso NÃO cabe backfill**: carimbar as pré-0096 como `'prod'` hoje
+ * ressuscitaria exatamente as notas de teste que este filtro veio remover. O
+ * que cabe é a regra para quem for importar: **quem insere em massa DECLARA o
+ * ambiente**, sempre. Conferir com `scratchpad/_medir-ambiente-notas.mjs` antes
+ * e depois de qualquer carga.
  */
 export async function lerReceitasParaApuracao(
   supabase: SupabaseClient,

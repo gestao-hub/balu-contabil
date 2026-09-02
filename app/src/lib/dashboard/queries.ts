@@ -50,7 +50,14 @@ export async function getDashboardMetrics(sb: SB, companyId: string): Promise<Da
       .from('notas_fiscais')
       .select('valor_total')
       .eq('company_id', companyId)
-      .eq('status', 'ativa')
+      // STATUS: 'ativa' (emissão autorizada) + 'lancada' (NF emitida fora do
+      // Balu, registrada à mão). O card contava só 'ativa' enquanto
+      // `receitas-source` e `emitido-ano` contam as duas — então uma nota
+      // lançada manualmente pagava imposto e entrava no teto, mas o card
+      // mostrava R$ 0,00 naquele mês. Era a MESMA divergência que o filtro de
+      // ambiente abaixo veio fechar, do outro lado. (Achado do /code-review de
+      // 02/09/2026, no mesmo dia em que o ambiente foi corrigido.)
+      .in('status', ['ativa', 'lancada'])
       // AMBIENTE: só produção. O card de receita do mês e a apuração precisam
       // contar a MESMA coisa — se o dashboard soma nota de homologação e a
       // apuração não, o cliente vê dois números para o mesmo mês e nenhum dos

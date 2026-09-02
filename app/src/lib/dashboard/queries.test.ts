@@ -52,12 +52,28 @@ describe('getDashboardMetrics — receita do mês', () => {
     expect(filtros.notas_fiscais).toContainEqual(['eq', 'ambiente', 'prod']);
   });
 
-  // O card conta o que a apuração conta: autorizada e de produção. Se um dos
-  // dois filtros cair, os dois números do mesmo mês voltam a divergir.
-  it('conta só nota autorizada, da empresa pedida', async () => {
+  /**
+   * O INVARIANTE QUE ESTE ARQUIVO EXISTE PARA GUARDAR, e que a primeira versão
+   * dele travou AO CONTRÁRIO (achado do /code-review de 02/09/2026).
+   *
+   * O card tem de contar exatamente o que a apuração conta. `receitas-source` e
+   * `emitido-ano` usam `.in('status', ['ativa','lancada'])`; o card usava
+   * `.eq('status','ativa')`. Com o lançamento manual carimbado `prod` no mesmo
+   * dia, uma NF emitida fora do Balu passou a pagar imposto e a ocupar o teto —
+   * e o card mostrava R$ 0,00 naquele mês. É a mesma divergência de "dois
+   * números para o mesmo mês" que a mudança do ambiente dizia estar fechando,
+   * só que pelo outro lado.
+   *
+   * O teste antigo afirmava `['eq','status','ativa']`, isto é, ele PROTEGIA o
+   * defeito. Um teste que trava o comportamento errado é pior que nenhum: ele
+   * transforma a correção em vermelho.
+   */
+  it('conta nota autorizada E lançada — o mesmo status da apuração', async () => {
     const { sb, filtros } = supabaseCom([]);
     await getDashboardMetrics(sb, 'empresa-1');
-    expect(filtros.notas_fiscais).toContainEqual(['eq', 'status', 'ativa']);
+    expect(filtros.notas_fiscais).toContainEqual(['in', 'status', ['ativa', 'lancada']]);
     expect(filtros.notas_fiscais).toContainEqual(['eq', 'company_id', 'empresa-1']);
+    // E não pode voltar a filtrar só 'ativa'.
+    expect(filtros.notas_fiscais).not.toContainEqual(['eq', 'status', 'ativa']);
   });
 });

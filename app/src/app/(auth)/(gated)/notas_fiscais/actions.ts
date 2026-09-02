@@ -419,9 +419,23 @@ export async function atualizarStatusNotaAction(
 
   const { data: nota } = await supabase
     .from('notas_fiscais')
-    .select('id, tipo_documento, referencia, payload_focusnfe, ambiente')
+    .select('id, tipo_documento, referencia, payload_focusnfe, ambiente, origem')
     .eq('id', id).eq('company_id', companyId).maybeSingle();
   if (!nota) return { ok: false, error: 'Nota não encontrada.' };
+
+  // LANÇAMENTO MANUAL NÃO TEM STATUS NA FOCUS — ela nunca esteve lá. Perguntar
+  // por uma `referencia` `man_…` só pode dar 404, e desde 02/09/2026 nem chega
+  // tão longe: com o carimbo `ambiente: 'prod'` do lançamento manual, uma
+  // empresa que só tem token de homologação recebe "não há token desse ambiente
+  // cadastrado" — mensagem que não descreve nada do que aconteceu.
+  //
+  // `cancelarNotaAction` já barra `origem === 'manual'` (o mesmo motivo). Esta
+  // action não barrava: hoje é armadilha latente, porque nenhuma tela liga o
+  // botão de status a uma nota manual — e "latente" só significa que ainda não
+  // custou nada. (Achado do /code-review de 02/09/2026.)
+  if (nota.origem === 'manual') {
+    return { ok: false, error: 'Esta nota foi lançada manualmente e não existe na Focus — não há status a consultar.' };
+  }
 
   // NÃO passa por `resolverCredencialEmissao` de propósito: a guarda de
   // produção decide onde uma nota NOVA nasce. Aplicá-la aqui impediria de
