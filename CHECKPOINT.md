@@ -1,7 +1,7 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-09-02 (sessão 39 — **o achado da sessão 38 foi corrigido, e ele tinha três braços, não um**. `lerReceitasParaApuracao` não filtrava `ambiente` — mas `somarEmitidoNoAno` (teto anual) e o card de receita do mês do dashboard também não, e o comentário de um deles já dizia "mesma família de filtro". Os três agora filtram `ambiente = 'prod'`, com teste que morde a remoção da linha em cada um. **A decisão sobre `lancada`: lançamento manual passa a nascer com `ambiente: 'prod'` explícito** — ele registra NF já emitida no mundo real, e o DEFAULT `'hom'` da coluna a apagaria da base de imposto. **Provado contra o banco**: a mesma apuração que devolvia R$ 112,50 sobre nota de teste agora lê 0 receitas e devolve R$ 0,00. E o dry-run do PGDAS-D, que na 38 voltava "Requisição efetuada com sucesso" com R$ 344,33, agora para antes do SERPRO com "Sem receita na competência para declarar" — a correção alcança o que vai à Receita, medido e não deduzido. Base: tsc 0 · 2379 testes · 189 arquivos · build limpo.)
+> **Última atualização:** 2026-09-02 (sessão 39 — **quatro frentes fechadas: o achado do `ambiente`, a Vercel, o Asaas em produção e a tela de assinatura**. (1) `ambiente` não filtrado tinha TRÊS braços, não um — apuração/declaração, teto anual e card do dashboard; a apuração que devolvia R$ 112,50 sobre nota de teste agora devolve R$ 0,00, e o dry-run do PGDAS-D para antes do SERPRO. (2) **A Vercel destravou** com `testeefluxodeautomacao@gmail.com` — 40 dias de bloqueio. (3) **Asaas em produção**: `ASAAS_ENV=prod` + 4 credenciais gravadas, e o **webhook da conta principal cadastrado** (`5bab1aab…`). No meio disso, um defeito MEU: gravei a chave do Asaas na Vercel com a barra invertida do escape do `.env.local` e deixei a produção com 401 por três horas — achado pelo próprio script, corrigido e redeployado. (4) A tela de assinatura virou **uma só**, com os dois pagadores identificados. Base: tsc 0 · 2385 testes · 189 arquivos · build limpo.)
 >
 > _Anterior — sessão 38: **o smoke fiscal saiu e achou um defeito que corrompe número que o cliente vê**. A MCB MARKETING emitiu, foi autorizada, sincronizou e cancelou uma NFS-e em homologação, cada passo pelas funções da tela — o primeiro ciclo de nota fechado desde 09/06. O `transmitirPgdasd` percorreu a cadeia inteira em dry-run e o SERPRO respondeu "Requisição efetuada com sucesso" (R$ 344,33, `transmitida: false`). **O achado: `lerReceitasParaApuracao` não filtra `ambiente`** — 100% da receita do banco de produção é de homologação, e a apuração devolveu R$ 112,50 de imposto sobre ela sem sinalizar nada. Aberto também: a apuração diz R$ 112,50 e o SERPRO diz R$ 344,33 para a mesma competência. **A Vercel continua travada, e a causa foi isolada:** quem escolhe a conta é a sessão do navegador PADRÃO do Windows; quatro tentativas caíram em `easy-drop`, e `vercel login <email>` está descontinuado na CLI 58.)_
 >
@@ -98,34 +98,25 @@
 >
 > ### Fila, na ordem
 >
-> 1. 🔴 **Vercel — falta UMA coisa: um token.** Tudo o mais está pronto e o
->    diagnóstico fechou. Ver a seção da sessão 39 abaixo. Em uma linha: **o
->    navegador padrão é o MICROSOFT EDGE** (lido do registro, não suposto), e é a
->    sessão do vercel.com DELE que decide a conta — o logout de 02/09 foi em
->    outro navegador, por isso não teve efeito. **O caminho recomendado não mexe
->    na sessão do Edge:** janela InPrivate → `vercel.com/account/tokens` → token
->    com escopo `gestao-9664s-projects` → linha `VERCEL_TOKEN=` em
->    `app/.env.local`. Depois: `node scratchpad/vercel-env-diff.mjs` (prévia
->    somente leitura, já escrita) responde de uma vez quem é o token, se ele
->    alcança o projeto, o que falta de variável e os últimos deploys.
->    **Não repita:** `vercel login` (device flow auto-aprova em ~1s na sessão do
->    Edge), `BROWSER=none`, `vercel login <email>` (descontinuado na CLI 58 —
->    o `--help` de 58.9.2 não tem nenhuma flag para evitar o navegador), `CI=1`.
->    → e então os itens do Asaas da sessão 37 parte 3.
-> 2. 🔴 **Advogado nos dois documentos legais**, e republicar sem o aviso de
->    minuta (as QUATRO versões publicadas o carregam).
-> 3. 🟡 **Webhook da Focus continua sem prova** — o `pendente → ativa` do smoke
->    veio do polling, que é redundância. Em produção quem completa a nota é o
->    webhook, e ele não alcança esta máquina.
-> 4. 🟡 **Reconciliar `calcularApuracao` × SERPRO** quando houver receita de
->    produção (acima).
-> 5. 🟡 **Rotacionar 16 dos 17 segredos** dos backups apagados.
+> 1. 🔴 **Advogado nos dois documentos legais**, e republicar sem o aviso de
+>    minuta (as QUATRO versões publicadas o carregam). É o único 🔴 que sobrou.
+> 2. 🟡 **Webhook da FOCUS continua sem prova** — não confundir com o do Asaas,
+>    que foi resolvido nesta sessão. O `pendente → ativa` do smoke fiscal veio do
+>    polling, que é redundância; em produção quem completa a nota é o webhook, e
+>    ele não alcança esta máquina.
+> 3. 🟡 **Reconciliar `calcularApuracao` × SERPRO** (112,50 × 344,33) quando
+>    houver receita de PRODUÇÃO. Com a base filtrada, não se reproduz mais com o
+>    dado que existe.
+> 4. 🟡 **Rotacionar 16 dos 17 segredos** dos backups apagados.
 >    🚨 **`CERT_ENC_KEY` é a exceção**: cifra os certificados A1 em repouso;
 >    trocá-la torna todo `enc:v1:` indecifrável. Exige migration de recifragem.
-> 6. 🟡 **Parear o número oficial do WhatsApp** (todos são de teste).
-> 7. 🟡 **MCB sem `anexo_simples`** — a apuração dela recusa com
+> 5. 🟡 **Parear o número oficial do WhatsApp** (todos são de teste).
+> 6. 🟡 **MCB sem `anexo_simples`** — a apuração dela recusa com
 >    `ConfiguracaoIncompletaError`. Comportamento correto do produto, cadastro
 >    incompleto da empresa.
+> 7. 🟡 **Primeiro pagamento real pelo Asaas ainda não aconteceu.** Tudo está
+>    cadastrado e a sonda provou url + segredo, mas "ok" é leitura. A prova de
+>    ponta a ponta é um pagamento chegando e virando linha em `cobrancas`.
 >
 > **Antes de mexer em qualquer coisa:** `npx tsc --noEmit && npx vitest run &&
 > npm run build` a partir de `app/`. Para o Playwright inteiro, as 9 specs
@@ -196,6 +187,116 @@
 >   projeto. Registrado acima como não verificado em tela.
 > - **Backfill de `ambiente`** — desnecessário (nenhuma nota de produção existe)
 >   e barrado pelo trigger da 0098 fora do service role.
+>
+> ## 🆕 SESSÃO 39, parte 2 — Vercel, Asaas em produção e a tela de assinatura
+>
+> ### A Vercel destravou (40 dias)
+>
+> `vercel login testeefluxodeautomacao@gmail.com` — o e-mail é colaborador do
+> projeto. **Medido pela API, não pelo "Congratulations"** (que já mentiu duas
+> vezes): `testeefluxodeautomacao-6083`, id `2FPfYfg0zhOH0kp7U96VBHjw`, enxerga
+> `gestao-9664s-projects` e alcança `balu-contabil` com HTTP 200.
+>
+> O diagnóstico que precedeu isso continua valendo para a próxima vez: **o
+> navegador padrão é o Microsoft Edge** (lido do registro), e é a sessão dele que
+> decide a conta — os logouts de 02/09 foram em outro navegador, por isso não
+> mudaram nada.
+>
+> ### Asaas em produção — e um defeito meu no meio
+>
+> Gravadas em `production`, por decisão explícita do usuário: `ASAAS_ENV=prod`,
+> `TOKEN_ASAAS_PRODUCAO`, `ASAAS_WEBHOOK_SECRET`, `ASAAS_WEBHOOK_EMAIL`,
+> `UAZAPI_ADMIN_TOKEN`. `TOKEN_ASAAS_SANDBOX` ficou de fora a pedido dele —
+> efeito colateral bom: virar `ASAAS_ENV` para sandbox em produção agora falha em
+> "não configurado" em vez de rodar contra a base errada.
+>
+> Antes de deployar, conferido que **nenhum cron cobra sozinho**: o
+> `honorarios-recorrentes` só materializa linhas via RPC; cobrança sai de
+> `emitirCobrancaEscritorio` e `criarAssinaturaNoAsaas`, as duas por clique.
+>
+> 🔴 **O DEFEITO: a chave foi para a Vercel com uma barra invertida.**
+> A chave do Asaas começa com `$aact_`, e o Next expande `$VAR` dentro de
+> arquivos `.env` — então no `.env.local` ela PRECISA estar escrita `\$aact_…`.
+> **A barra está certa no arquivo.** O que erra é quem copia:
+>
+> ```
+> @next/env (o app)    $aact_…    166 chars   ✅
+> node --env-file       \$aact_…   167 chars   401
+> Vercel                valor LITERAL, sem dotenv: vale o que for gravado
+> ```
+>
+> Meu `vercel-env-escrever.mjs` leu a linha crua e gravou os 167. Produção ficou
+> com `TOKEN_ASAAS_PRODUCAO` inválido por ~3h. Nada cobrou ninguém (o Asaas
+> recusava tudo, e cobrança só sai de clique), mas o app estava quebrado **depois
+> de eu ter dito que estava configurado**.
+>
+> Alcance levantado, não deduzido (`scratchpad/_diag-escapes-env.mjs`): das
+> variáveis deste `.env.local`, **exatamente 2** mudam entre o leitor cru e o do
+> app, e as duas são chaves do Asaas. Nenhuma outra foi afetada.
+>
+> Corrigido nos dois lados — escritor e smoke agora leem por `@next/env` — as 5
+> variáveis reescritas com 166 chars e o deploy refeito. **Regra para a próxima
+> vez: copiar do `.env.local` para qualquer outro lugar exige ler como o app lê.
+> Qualquer outra coisa é copiar uma string que nunca existiu.**
+>
+> ⚠️ Sob `tsx` um `.ts` vira CJS e `import default` de módulo CommonJS chega
+> `undefined` — em `.ts` use `import { loadEnvConfig } from '@next/env'`; o
+> default só funciona em `.mjs` (ESM real).
+>
+> ### Webhook da conta PRINCIPAL do Asaas — cadastrado
+>
+> `scripts/asaas-webhook-principal.ts` (novo). Reusa a lógica DE PRODUÇÃO
+> (`lib/billing/webhook-subconta`) e o HTTP de produção; o que acrescenta é uma
+> **sonda**, porque o Asaas aceita qualquer URL sem conferir se responde. Ela faz
+> um POST na própria rota com o segredo e corpo inválido de propósito, e separa
+> `invalid_json` (url certa + segredo certo) de `unauthorized` (segredo do deploy
+> é outro) de qualquer outra coisa (não é a rota). **`--aplicar` recusa rodar com
+> a sonda vermelha.**
+>
+> Resultado: webhook `5bab1aab-db2f-4c58-ab74-85b3de77c06a`, estado `ok` conferido
+> lendo de volta.
+>
+> 📌 **A conta de produção do Asaas é COMPARTILHADA com outros dois produtos** —
+> a prévia revelou os webhooks `Entre em Campo - pagamentos`
+> (`lp.baluhub.com.br`) e `Balu CRM` (função Supabase). Não é risco novo: webhook
+> do Asaas é por conta, então esses dois já recebiam tudo. E a nossa rota
+> **sempre responde 200** e nenhum ramo dela INSERE — evento alheio vira log e
+> 200, então a fila `SEQUENTIALLY` não trava.
+>
+> ### A tela de assinatura virou uma só
+>
+> Relatado da tela: "no login de contador aparecem 2 botões de assinatura". Não
+> eram duplicatas de código — eram dois PAGADORES (empresa × escritório, com
+> catálogos e chaves diferentes). Mas o menu listava as duas com o MESMO rótulo.
+>
+> Agora é uma página com até dois blocos identificados; `/contador/assinatura`
+> fica e redireciona (é destino de link em cinco lugares que não passam por
+> menu). O item de menu virou um só, com o predicado `assinaturaVisivel`
+> exportado do módulo puro — para o teste morder a regra de produção e não uma
+> cópia no fixture. 6 testes novos.
+>
+> ### Git push destravado (era credencial, não permissão)
+>
+> ```
+> gh auth switch --user grupoideapps
+> git -c credential.helper= -c credential.helper='!gh auth git-credential' push
+> gh auth switch --user cristaodevalor
+> ```
+>
+> O helper do sistema é o `manager`, que precisa de TTY; o remoto embute o
+> usuário na URL, então o helper do `gh` só responde com a conta ativa igual.
+> ⚠️ Push na `main` É a publicação: dispara deploy de produção sozinho.
+>
+> ### Ferramentas novas (todas em `app/scratchpad`, exceto o smoke)
+>
+> ```
+> scripts/asaas-webhook-principal.ts   webhook da conta principal (prévia + sonda)
+> vercel-env-diff.mjs                  o que falta na Vercel, com o efeito de cada ausência
+> vercel-env-escrever.mjs              copia do .env.local (prévia → --aplicar → confere)
+> vercel-redeploy.mjs                  redeploy do MESMO commit, para env nova valer
+> _medir-ambiente-notas.mjs            distribuição de `ambiente` em notas_fiscais
+> _diag-escapes-env.mjs                quais variáveis um leitor cru corromperia
+> ```
 >
 > ### Vercel — o que a sessão 39 descobriu, e o que sobrou
 >
