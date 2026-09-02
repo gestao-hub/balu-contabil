@@ -34,6 +34,28 @@ export type ResultadoAssinar =
 export const DIAS_ATE_PRIMEIRO_VENCIMENTO = 3;
 
 /**
+ * VALOR MINIMO QUE O ASAAS ACEITA, em centavos.
+ *
+ * ─── MEDIDO, NAO SUPOSTO (02/09/2026) ───────────────────────────────────────
+ * O plano `empresario_mensal` foi posto em R$ 1,00 para um teste barato de
+ * contratacao. O `criarCliente` passou (o customer existe no Asaas de producao)
+ * e a `criarAssinatura` foi recusada. A frase, literal, do Asaas:
+ *
+ *   "O valor minimo para cobrancas com a forma de pagamento Pergunte ao
+ *    Cliente e R$ 5,00."
+ *
+ * "Pergunte ao Cliente" e o `billingType: 'UNDEFINED'` que usamos logo abaixo
+ * de proposito, para o cliente escolher boleto/Pix/cartao na propria fatura.
+ *
+ * ⚠️ O NUMERO E DO ASAAS, NAO NOSSO. Baixar esta constante nao faz o Asaas
+ * aceitar menos — so devolve a recusa para o clique do titular, que foi
+ * exatamente o problema. E ele esta AMARRADO ao `billingType`: trocar
+ * 'UNDEFINED' por 'PIX' muda o minimo, e entao esta constante tem de ser
+ * remedida, nao adivinhada.
+ */
+export const VALOR_MINIMO_ASSINATURA_CENTAVOS = 500;
+
+/**
  * Primeiro vencimento: `hoje` (em BRT) + `dias`, como data civil.
  *
  * Exportada para teste: a aritmética de data com fuso é onde o Bloco A e o

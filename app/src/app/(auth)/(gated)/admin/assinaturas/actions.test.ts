@@ -283,6 +283,41 @@ describe('salvarPlanoAction — o reajuste tem de alcançar o Asaas', () => {
     expect((r as { data?: { aviso?: string } }).data?.aviso).toContain('1 assinatura');
   });
 
+  // ─── o minimo do Asaas, medido em 02/09/2026 ─────────────────────────────
+  //
+  // O `empresario_mensal` foi posto em R$ 1,00 para um teste barato e a
+  // contratacao foi recusada: "O valor minimo para cobrancas com a forma de
+  // pagamento Pergunte ao Cliente e R$ 5,00". Quem descobriu foi o TITULAR, no
+  // clique de assinar. A guarda troca isso por um aviso imediato para quem
+  // decidiu o preco.
+  //
+  // MUTAÇÃO mordida: apagar a checagem, ou trocar `<` por `<=` (que barraria o
+  // proprio minimo, tornando R$ 5,00 — o unico valor barato que FUNCIONA —
+  // impossivel de salvar).
+  it('recusa preço abaixo do mínimo do Asaas, sem chamar nada', async () => {
+    const r = await salvarPlanoAction({ ...PLANO, valor_centavos: 100 });
+
+    expect(r.ok).toBe(false);
+    // Sem o "R$": `toLocaleString` de moeda usa ESPACO NAO SEPARAVEL (U+00A0)
+    // entre o simbolo e o numero, e comparar com espaco comum falha por um byte
+    // invisivel. O que o teste precisa provar e que o VALOR aparece.
+    expect(r).toMatchObject({ error: expect.stringContaining('5,00') });
+    expect(h.upserts).toHaveLength(0);
+    expect(h.atualizacoesAsaas).toHaveLength(0);
+  });
+
+  it('aceita exatamente o mínimo', async () => {
+    const r = await salvarPlanoAction({ ...PLANO, valor_centavos: 500 });
+    expect(r.ok).toBe(true);
+    expect(h.upserts).toHaveLength(1);
+  });
+
+  // Plano gratuito nao passa pelo Asaas, entao o minimo nao se aplica.
+  it('zero continua permitido (plano gratuito)', async () => {
+    const r = await salvarPlanoAction({ ...PLANO, valor_centavos: 0 });
+    expect(r.ok).toBe(true);
+  });
+
   // ─── ciclo e nome também precisam alcançar o Asaas ───────────────────────
 
   // MUTAÇÃO: gatear só por preço. `ciclo` é pior que preço: ao ver YEARLY,

@@ -7,6 +7,7 @@ import { requireAdminBaluAction } from '@/lib/admin/guard';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { validarFaixas } from '@/lib/billing/validar-planos';
 import { asaas } from '@/lib/clients/asaas';
+import { VALOR_MINIMO_ASSINATURA_CENTAVOS } from '@/lib/billing/assinar';
 
 export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -33,6 +34,24 @@ export async function salvarPlanoAction(input: PlanoInput): Promise<ActionResult
   if (!input.id || !input.nome) return { ok: false, error: 'Id e nome são obrigatórios.' };
   if (!Number.isInteger(input.valor_centavos) || input.valor_centavos < 0) {
     return { ok: false, error: 'Valor inválido.' };
+  }
+  // GUARDA NA ORIGEM (02/09/2026). Sem ela, o admin salva um plano que o Asaas
+  // vai recusar, e quem descobre e o TITULAR, no clique de assinar — que foi o
+  // que aconteceu com o `empresario_mensal` em R$ 1,00. Barrar aqui troca um
+  // erro no fim da jornada de outra pessoa por um aviso imediato para quem
+  // decidiu o preco.
+  //
+  // Zero continua permitido: plano gratuito nao passa pelo Asaas.
+  if (input.valor_centavos > 0 && input.valor_centavos < VALOR_MINIMO_ASSINATURA_CENTAVOS) {
+    const min = (VALOR_MINIMO_ASSINATURA_CENTAVOS / 100).toLocaleString('pt-BR', {
+      style: 'currency', currency: 'BRL',
+    });
+    return {
+      ok: false,
+      error: `O Asaas não aceita cobrança abaixo de ${min} na forma de pagamento que usamos `
+        + '("Pergunte ao Cliente", em que o cliente escolhe boleto, Pix ou cartão). '
+        + 'Um plano com valor menor seria salvo aqui e recusado na hora de assinar.',
+    };
   }
   if (!Number.isInteger(input.trial_dias) || input.trial_dias < 0) {
     return { ok: false, error: 'Dias de teste inválido.' };
