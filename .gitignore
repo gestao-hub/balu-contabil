@@ -77,3 +77,18 @@ test-results/
 Balu-Levantamento-Lancamento-2026-07-23.pdf
 app/Document supabase e focus.docx
 security-evidence/
+
+# ── Certificados e material criptografico (auditoria de 02/09/2026) ──────────
+# `docs/n8n/` guardava DOIS certificados A1 (.pfx) de empresas REAIS, um deles
+# com a senha no proprio nome do arquivo. Eles nunca foram commitados -- mas
+# tambem nao havia regra impedindo: um `git add -A` bastaria, e o repositorio
+# tem remoto no GitHub. Isto e a regra que faltava.
+#
+# Certificado A1 e a identidade fiscal da empresa: quem o tem assina nota em
+# nome dela. Nao existe "rotacionar" barato aqui -- a emissao e paga e passa por
+# AC. Por isso a regra e por EXTENSAO, e nao por pasta.
+*.pfx
+*.p12
+*.jks
+*.keystore
+docs/n8n/
