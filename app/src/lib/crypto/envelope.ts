@@ -33,7 +33,13 @@ export function decryptBlob(blob: Buffer): Buffer {
   const iv = blob.subarray(0, IV_LEN);
   const tag = blob.subarray(IV_LEN, IV_LEN + TAG_LEN);
   const ct = blob.subarray(IV_LEN + TAG_LEN);
-  const decipher = createDecipheriv(ALGO, key(), iv);
+  // `authTagLength` FIXADO (achado do semgrep `gcm-no-tag-length`, 02/09/2026).
+  // O GCM aceita tag de 4 a 16 bytes, e o `setAuthTag` do Node aceita a que
+  // vier — sem este parametro, uma tag TRUNCADA seria validada como legitima, e
+  // uma de 4 bytes cai para 1 em 2^32 de forja, que e viavel. Aqui a guarda de
+  // tamanho acima ja garante 16, entao isto e cinto e suspensorio; em
+  // `decifrarCampo` (que nao tinha guarda) era o cinto que faltava.
+  const decipher = createDecipheriv(ALGO, key(), iv, { authTagLength: TAG_LEN });
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]);
 }
@@ -58,10 +64,18 @@ export function cifrarCampo(v: string): string {
 export function decifrarCampo(v: string | null): string | null {
   if (v == null || !v.startsWith(PREFIXO)) return v;
   const buf = Buffer.from(v.slice(PREFIXO.length), 'base64');
+  // A MESMA guarda que `decryptBlob` tinha e esta funcao NAO (02/09/2026).
+  // Sem ela, um valor curto produzia `tag` com menos de 16 bytes — e o
+  // `setAuthTag` aceitaria, enfraquecendo a autenticacao em vez de recusar o
+  // dado. Recusar e o lado certo: valor curto e corrupcao ou chave errada, e
+  // nos dois casos decifrar nao devia acontecer.
+  if (buf.length < IV_LEN + TAG_LEN) {
+    throw new Error('decifrarCampo: valor curto demais (corrompido ou chave errada).');
+  }
   const iv = buf.subarray(0, IV_LEN);
   const tag = buf.subarray(IV_LEN, IV_LEN + TAG_LEN);
   const enc = buf.subarray(IV_LEN + TAG_LEN);
-  const d = createDecipheriv(ALGO, key(), iv);
+  const d = createDecipheriv(ALGO, key(), iv, { authTagLength: TAG_LEN });
   d.setAuthTag(tag);
   return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
 }
