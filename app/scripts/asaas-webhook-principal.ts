@@ -50,10 +50,12 @@
  *   npx tsx --tsconfig scripts/tsconfig.smoke.json --env-file=.env.local \
  *     scripts/asaas-webhook-principal.ts [--ambiente=prod|sandbox] [--base=https://...] [--aplicar]
  *
- * `--ambiente` é EXPLÍCITO e não lê `ASAAS_ENV`: essa variável existe só na
- * Vercel, e no `.env.local` a ausência dela significaria sandbox — o script
- * cadastraria na conta errada calado. O padrão aqui é `prod`, porque é para
- * isso que ele existe.
+ * `--ambiente` (padrão `prod`) MANDA em tudo: ele não lê `ASAAS_ENV`, ele a
+ * ESCREVE antes da primeira chamada. `ASAAS_ENV` existe só na Vercel, e no
+ * `.env.local` a ausência dela significa sandbox — então quem escolhesse só a
+ * chave mandaria credencial de produção para `api-sandbox.asaas.com` e levaria
+ * 401. Foi o que aconteceu na primeira execução; ver o comentário longo em
+ * `process.env.ASAAS_ENV = AMBIENTE`.
  */
 import type { AsaasWebhook } from '@/lib/clients/asaas';
 import { asaasSub } from '@/lib/clients/asaas';
@@ -66,7 +68,37 @@ const args = process.argv.slice(2);
 const APLICAR = args.includes('--aplicar');
 const arg = (nome: string) => args.find((a) => a.startsWith(`--${nome}=`))?.split('=').slice(1).join('=');
 
-const AMBIENTE = (arg('ambiente') ?? 'prod') as 'prod' | 'sandbox';
+const AMBIENTE_BRUTO = arg('ambiente') ?? 'prod';
+if (AMBIENTE_BRUTO !== 'prod' && AMBIENTE_BRUTO !== 'sandbox') {
+  // Um typo (`--ambiente=producao`) cairia em sandbox calado, que e o modo de
+  // falhar deste arquivo inteiro: agir contra a conta errada sem avisar.
+  console.error(`
+--ambiente so aceita "prod" ou "sandbox" — recebi "${AMBIENTE_BRUTO}".
+`);
+  process.exit(1);
+}
+const AMBIENTE: 'prod' | 'sandbox' = AMBIENTE_BRUTO;
+
+/**
+ * ⚠️ ISTO NAO E OPCIONAL, E CUSTOU UM 401 NA PRIMEIRA EXECUCAO (02/09/2026).
+ *
+ * `clients/asaas.ts` decide a URL BASE e a chave pela MESMA variavel,
+ * `ASAAS_ENV` — `base()` e `apiKey()`, as duas lendo dela. E `ASAAS_ENV` so
+ * existe na Vercel: no `.env.local` ela esta ausente, e ausente significa
+ * sandbox de proposito ("o default nunca pode ser o que cobra de verdade").
+ *
+ * A primeira versao deste script escolhia a CHAVE por `--ambiente` e deixava a
+ * URL por conta do `ASAAS_ENV` ausente. Resultado: chave de producao enviada
+ * para `api-sandbox.asaas.com` → 401 `invalid_access_token`. O proprio
+ * `apiKey()` documenta essa armadilha ("token de sandbox na URL de producao, ou
+ * o contrario, da 401") e eu separei justamente as duas coisas que ele diz que
+ * andam juntas.
+ *
+ * Entao o `--ambiente` passa a mandar nas DUAS, escrevendo a variavel antes de
+ * qualquer chamada. `ehProd()` le em tempo de request, nao no import, entao
+ * isto alcanca todas as chamadas seguintes.
+ */
+process.env.ASAAS_ENV = AMBIENTE;
 /** Domínio de produção verificado no projeto `balu-contabil` da Vercel.
  *  Trocável por `--base=` — a sonda abaixo é quem diz se está certo. */
 const BASE = (arg('base') ?? 'https://balucontabil.com.br').replace(/\/+$/, '');
@@ -91,7 +123,12 @@ async function main() {
   const email = process.env.ASAAS_WEBHOOK_EMAIL ?? '';
   const url = urlWebhookSubconta(BASE);
 
+  // A URL base aparece porque a ausencia dela na tela foi o que deixou o 401
+  // sem explicacao: era impossivel ver que chave e host discordavam.
+  // (Espelha as constantes de `clients/asaas.ts`; e so exibicao.)
+  const hostApi = AMBIENTE === 'prod' ? 'api.asaas.com' : 'api-sandbox.asaas.com';
   linha(`  ${ok(Boolean(chave))} ${nomeChave.padEnd(22)} ${chave ? `${chave.length} chars` : 'AUSENTE'}`);
+  linha(`     conta Asaas          https://${hostApi}  (ASAAS_ENV=${AMBIENTE}, imposto por --ambiente)`);
   linha(`  ${ok(segredoUtilizavel(segredo))} ASAAS_WEBHOOK_SECRET   ${segredo ? `${segredo.length} chars (mín. ${MIN_SEGREDO})` : 'AUSENTE'}`);
   linha(`  ${ok(Boolean(email))} ASAAS_WEBHOOK_EMAIL    ${email || 'AUSENTE'}`);
   linha(`  ${ok(ehUrlEntregavel(url))} url                    ${url}`);
