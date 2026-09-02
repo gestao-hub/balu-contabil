@@ -80,6 +80,11 @@ const ROTAS_CONTADOR = [
   '/contador/atendimentos',
   '/contador/configuracoes',
   '/contador/configuracoes/avulsos',
+  // Desde 02/09/2026 esta rota REDIRECIONA para `/conta/assinatura` (a tela de
+  // assinatura virou uma so). Fica na lista de proposito: assim a pagina
+  // consolidada e varrida tambem sob sessao de CONTADOR, que e o papel que ve o
+  // bloco do escritorio — cobertura que `/conta/assinatura` na lista de empresa
+  // nao da.
   '/contador/assinatura',
 ];
 

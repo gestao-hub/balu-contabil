@@ -21,7 +21,7 @@ import Logo from '@/components/Logo';
 import ThemeToggle from '@/components/ThemeToggle';
 import { SinoNotificacoes } from '@/components/notificacoes/SinoNotificacoes';
 import { hrefAtivo } from '@/components/menu-ativo';
-import { itensVisiveis } from './menu-visibilidade';
+import { itensVisiveis, assinaturaVisivel, type ContextoMenu } from './menu-visibilidade';
 
 // Os values batem com o option set Bubble (lowercase). Para exibição, label é capitalizada.
 type Role = 'empresa' | 'contador' | 'adminbalu';
@@ -91,6 +91,10 @@ type NavItem = {
    *  confundir. Empresa AVULSA continua vendo — ela paga a propria e precisa
    *  de vencimento, troca de cartao e regularizacao. */
   ocultaEmCarteira?: boolean;
+  /** Regra própria do item, para o caso em que as flags acima (todas
+   *  conjuntivas) não conseguem descrevê-lo. Ver a documentação completa em
+   *  `menu-visibilidade.ts` e o uso em "Assinatura". */
+  visivelSe?: (ctx: ContextoMenu) => boolean;
   /** Título do grupo a que o item pertence. Itens com a MESMA `secao` têm de
    *  estar adjacentes na lista: o cabeçalho é desenhado antes do primeiro e um
    *  fecho depois do último, sem reordenar nada. Item sem `secao` continua solto,
@@ -149,11 +153,22 @@ const NAV: NavItem[] = [
   // TRABALHO recorrente: toda situação fiscal nova aparece nela pedindo revisão.
   { href: '/admin/explicacoes',     label: 'Explicações',    Icon: BookOpen, roles: ['adminbalu'] },
   { href: '/admin/configuracoes',   label: 'Configurações',  Icon: Settings, roles: ['adminbalu'] },
-  // Assinatura do titular (Bloco 4A). A do empresário é `precisaEmpresa`
-  // porque sem empresa corrente a tela vira beco "Nenhuma empresa
-  // selecionada" — mesma regra dos demais itens de empresa acima.
-  { href: '/contador/assinatura',   label: 'Assinatura',     Icon: CreditCard, roles: ['contador'] },
-  { href: '/conta/assinatura',      label: 'Assinatura',     Icon: CreditCard, precisaEmpresa: true, ocultaEmCarteira: true },
+  // Assinatura (Bloco 4A) — UM item, desde 02/09/2026.
+  //
+  // Eram dois, `/contador/assinatura` e `/conta/assinatura`, com o MESMO
+  // rótulo: o contador com empresa própria fora de carteira passava nos dois
+  // filtros e via "Assinatura" duas vezes, sem nada dizendo de quem era cada
+  // uma. A tela agora mostra os dois blocos identificados (ver
+  // `conta/assinatura/page.tsx`), e a rota antiga redireciona.
+  //
+  // A condição é uma DISJUNÇÃO, por isso vive em `visivelSe` e não nas flags:
+  //  · escritório  → paga por faixa de clientes, mesmo sem empresa própria;
+  //  · empresa avulsa → paga a própria conta.
+  // Empresa de carteira sozinha não vê nada: quem paga por ela é o escritório.
+  {
+    href: '/conta/assinatura', label: 'Assinatura', Icon: CreditCard,
+    visivelSe: assinaturaVisivel,
+  },
   { href: '/conta',                 label: 'Conta',          Icon: UserCircle },
 ];
 

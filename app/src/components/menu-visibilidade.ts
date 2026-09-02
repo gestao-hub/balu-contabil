@@ -20,6 +20,23 @@ export type ItemVisivel = {
   precisaEmpresa?: boolean;
   precisaCobranca?: boolean;
   ocultaEmCarteira?: boolean;
+  /**
+   * Regra PRÓPRIA do item, quando ele serve mais de um público e nenhuma
+   * combinação das flags acima o descreve.
+   *
+   * Existe por causa de "Assinatura" (02/09/2026), que era DOIS itens de mesmo
+   * rótulo — um do escritório, outro da empresa — e apareciam juntos para o
+   * contador com empresa própria. Virou um item só, e a condição dele é uma
+   * disjunção ("escritório OU empresa avulsa") que as flags, todas conjuntivas,
+   * não conseguem expressar: `precisaEmpresa` esconderia do contador sem
+   * empresa, e `ocultaEmCarteira` esconderia do contador cuja empresa ativa é
+   * da própria carteira — os dois casos em que a assinatura DO ESCRITÓRIO
+   * continua existindo e precisando ser paga.
+   *
+   * Quem usa isto abre mão das flags: elas continuam sendo aplicadas, então o
+   * item não deve declarar as duas coisas.
+   */
+  visivelSe?: (ctx: ContextoMenu) => boolean;
 };
 
 export type ContextoMenu = {
@@ -33,6 +50,27 @@ export type ContextoMenu = {
   /** Empresa ativa é de carteira (`contabilidade_id` preenchido). */
   empresaDeCarteira: boolean;
 };
+
+/**
+ * A regra do item "Assinatura", que é UM só desde 02/09/2026.
+ *
+ * Mora aqui, e não inline no `NAV` do componente, para que o teste morda a
+ * regra DE PRODUÇÃO em vez de uma cópia — um predicado duplicado no fixture
+ * passaria verde enquanto o menu real regredia.
+ *
+ * São dois pagadores e a condição é uma disjunção:
+ *  · o ESCRITÓRIO paga por faixa de clientes — vale mesmo sem empresa própria,
+ *    e vale mesmo quando a empresa ativa é da própria carteira;
+ *  · a empresa AVULSA paga a própria conta.
+ * Empresa de carteira, sozinha, não vê: quem paga por ela é o escritório
+ * (`assertAssinaturaEmpresa` em lib/billing/gate.ts libera SEMPRE para empresa
+ * com `contabilidade_id`).
+ */
+export function assinaturaVisivel(ctx: ContextoMenu): boolean {
+  const doEscritorio = ctx.userRole === 'contador' && ctx.temEscritorio;
+  const daEmpresa = (ctx.userRole === 'empresa' || ctx.qtdEmpresas > 0) && !ctx.empresaDeCarteira;
+  return doEscritorio || daEmpresa;
+}
 
 export function itensVisiveis<T extends ItemVisivel>(
   itens: readonly T[],
@@ -56,5 +94,8 @@ export function itensVisiveis<T extends ItemVisivel>(
     .filter((i) => !i.ocultaEmCarteira || !ctx.empresaDeCarteira)
     // Admin usa /admin (Visão geral) como home; o "/" (dashboard de empresa)
     // é beco para ele.
-    .filter((i) => !(ctx.userRole === 'adminbalu' && i.href === '/'));
+    .filter((i) => !(ctx.userRole === 'adminbalu' && i.href === '/'))
+    // Regra própria do item, por último: ela decide sozinha e não depende da
+    // ordem dos filtros acima.
+    .filter((i) => !i.visivelSe || i.visivelSe(ctx));
 }

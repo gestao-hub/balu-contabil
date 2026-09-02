@@ -3,10 +3,10 @@ import { useState, useTransition } from 'react';
 import { CreditCard, Check, Users, ExternalLink, Loader2 } from 'lucide-react';
 import {
   assinarPlanoAction, trocarPlanoAction, cancelarAssinaturaAction,
-} from '../../conta/assinatura/actions';
+} from './actions';
 import {
   useVerificarPagamento, aguardandoPagamento,
-} from '../../conta/assinatura/useVerificarPagamento';
+} from './useVerificarPagamento';
 
 export type PlanoCard = {
   id: string;
