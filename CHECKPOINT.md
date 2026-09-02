@@ -98,15 +98,20 @@
 >
 > ### Fila, na ordem
 >
-> 1. 🔴 **Vercel** — quem decide a conta é a sessão do vercel.com no **navegador
->    PADRÃO do Windows**. Destrava com logout lá, ou token em janela anônima
->    (`vercel.com/account/tokens`, escopo `gestao-9664s-projects`) em
->    `VERCEL_TOKEN=` no `app/.env.local`. **Não repita:** `vercel login` (device
->    flow auto-aprova em ~1s), `BROWSER=none`, `vercel login <email>`
->    (descontinuado na CLI 58), `CI=1`. Ferramentas prontas:
->    `app/scratchpad/vercel-conferir-acesso.mjs` e `vercel-quem-sou.mjs`, sempre
->    com `--global-config ~/.vercel-balu`. → e então os 4 itens do Asaas da
->    sessão 37 parte 3: webhook, 3 variáveis, subconta sandbox.
+> 1. 🔴 **Vercel — falta UMA coisa: um token.** Tudo o mais está pronto e o
+>    diagnóstico fechou. Ver a seção da sessão 39 abaixo. Em uma linha: **o
+>    navegador padrão é o MICROSOFT EDGE** (lido do registro, não suposto), e é a
+>    sessão do vercel.com DELE que decide a conta — o logout de 02/09 foi em
+>    outro navegador, por isso não teve efeito. **O caminho recomendado não mexe
+>    na sessão do Edge:** janela InPrivate → `vercel.com/account/tokens` → token
+>    com escopo `gestao-9664s-projects` → linha `VERCEL_TOKEN=` em
+>    `app/.env.local`. Depois: `node scratchpad/vercel-env-diff.mjs` (prévia
+>    somente leitura, já escrita) responde de uma vez quem é o token, se ele
+>    alcança o projeto, o que falta de variável e os últimos deploys.
+>    **Não repita:** `vercel login` (device flow auto-aprova em ~1s na sessão do
+>    Edge), `BROWSER=none`, `vercel login <email>` (descontinuado na CLI 58 —
+>    o `--help` de 58.9.2 não tem nenhuma flag para evitar o navegador), `CI=1`.
+>    → e então os itens do Asaas da sessão 37 parte 3.
 > 2. 🔴 **Advogado nos dois documentos legais**, e republicar sem o aviso de
 >    minuta (as QUATRO versões publicadas o carregam).
 > 3. 🟡 **Webhook da Focus continua sem prova** — o `pendente → ativa` do smoke
@@ -191,6 +196,75 @@
 >   projeto. Registrado acima como não verificado em tela.
 > - **Backfill de `ambiente`** — desnecessário (nenhuma nota de produção existe)
 >   e barrado pelo trigger da 0098 fora do service role.
+>
+> ### Vercel — o que a sessão 39 descobriu, e o que sobrou
+>
+> **A identidade do alvo, extraída dos claims do `VERCEL_OIDC_TOKEN` expirado**
+> (`balu/.env.local`; claims não são segredo, e o token está morto desde 13/08):
+>
+> ```
+> owner       gestao-9664s-projects
+> owner_id    team_UERmEwgxRUaDvbvd22K1Iqde
+> project     balu-contabil
+> project_id  prj_gwkgCHzDmfowDnGi25FrV1N1e212
+> ```
+>
+> O slug `gestao-9664s-projects` é o formato que a Vercel gera para a conta
+> pessoal `gestao-9664` — ou seja, **a conta certa não é a do easydrop**, e não
+> é uma equipe compartilhada. O `vercel-env-diff.mjs` já valida contra estes IDs.
+>
+> **O navegador padrão é o Microsoft Edge**, lido de
+> `HKCU\...\UrlAssociations\https\UserChoice` → `MSEdgeHTM`. Isto explica o
+> laço inteiro: a CLI abre o Edge, o Edge tem sessão viva, a sessão auto-aprova
+> em ~1s, e a conta que entra é a do Edge. As tentativas de logout de 02/09
+> foram em OUTRO navegador — por isso não mudaram nada. A CLI 58.9.2 não oferece
+> saída: `vercel login --help` só tem `--non-interactive`, `--scope`,
+> `--global-config`; **nenhuma flag para imprimir a URL sem abrir o navegador**.
+>
+> **Por que o token InPrivate é melhor que o logout:** não derruba a sessão do
+> easydrop no Edge (que o usuário usa), funciona sem navegador daí em diante, e
+> é reutilizável por qualquer script. O logout resolve uma vez só.
+>
+> ⚠️ **A identidade do easydrop está em toda parte nesta máquina.** A conta
+> GitHub ativa é `grupoideapps`, dona de `grupoideapps/easydrop` — e é a mesma
+> que tem acesso a `gestao-hub/balu-contabil` (foi ela que empurrou nesta
+> sessão). Não confunda: **ter acesso ao repositório não é ter acesso ao projeto
+> na Vercel.** São duas contas diferentes, e o 403 de `balu-contabil` vem da
+> segunda.
+>
+> ### Ferramenta nova: `app/scratchpad/vercel-env-diff.mjs`
+>
+> Prévia somente leitura, **nunca imprime valor de variável** — nem da Vercel
+> nem do `.env.local`, só nomes, alvos e presença. Responde de uma vez:
+> quem é o token · se alcança `balu-contabil` (403 = conta errada, o sintoma
+> exato) · o diff das 15 variáveis que o código lê, com o EFEITO de cada
+> ausência · os 5 últimos deploys com SHA e mensagem.
+>
+> As 15 são as que `grep process.env` encontrou em `src/`, agrupadas: Asaas
+> (`ASAAS_ENV`, `TOKEN_ASAAS_SANDBOX`, `TOKEN_ASAAS_PRODUCAO`,
+> `ASAAS_WEBHOOK_SECRET`, `ASAAS_WEBHOOK_EMAIL`), WhatsApp (`UAZAPI_TOKEN`,
+> `UAZAPI_ADMIN_TOKEN`, `UAZAPI_BASE_URL`, `UAZAPI_WEBHOOK_SECRET`) e Fiscal
+> (`FOCUS_NFE_TOKEN`, `FOCUS_NFE_TOKEN_PRODUCAO`, `FOCUS_WEBHOOK_SECRET`,
+> `SERPRO_CONSUMER_KEY`, `SERPRO_CONSUMER_SECRET`, `CERT_ENC_KEY`).
+> `TOKEN_ASAAS_PRODUCAO` não aparece no grep porque `clients/asaas.ts:35` monta
+> o nome em tempo de execução a partir de `ASAAS_ENV` — motivo pelo qual a
+> grafia com `Ç`/`Ã` do `.env.local` passou despercebida na sessão 37.
+>
+> ### Git push destravado (era credencial, não permissão)
+>
+> O helper do sistema é o `manager` (Git Credential Manager), que precisa de TTY
+> e morre com `could not read Password`. O remoto embute o usuário
+> (`https://grupoideapps@github.com/...`), então o helper do `gh` só responde se
+> a conta ATIVA do `gh` for a mesma. Receita, a partir de `balu/`:
+>
+> ```
+> gh auth switch --user grupoideapps
+> git -c credential.helper= -c credential.helper='!gh auth git-credential' push
+> gh auth switch --user cristaodevalor      # restaure a conta ativa
+> ```
+>
+> Subiram 3 commits (`c492d3c..194ef80`) — o da sessão 38 também estava parado.
+> **Push na `main` é a publicação:** dispara o deploy de produção sozinho.
 
 > ## 🆕 SESSÃO 38 (02/09) — o smoke fiscal saiu, e achou o que devia
 >
