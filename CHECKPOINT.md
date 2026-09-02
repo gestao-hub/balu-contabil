@@ -19,82 +19,38 @@
 
 > ## ▶️ RETOMAR AQUI — depois de 02/09/2026 (sessão 39)
 >
-> **Base: tsc 0 · 2379 testes · 189 arquivos · build limpo.** O achado 🔴 da
-> sessão 38 está fechado, e ele tinha **três braços**, não um.
+> **Base: tsc 0 · 2429 testes · 191 arquivos · build limpo · destrutiva 76/76.**
 >
-> ### ✅ Fechado — receita de homologação não entra mais em número nenhum
+> ### O que mudou de estado neste dia
 >
-> `lerReceitasParaApuracao` era o braço conhecido. Os outros dois estavam a
-> poucas linhas dali, com o mesmo furo — e o comentário de um deles já dizia,
-> por escrito, "mesma família de filtro de `receitas-source.ts`":
+> | Antes de 02/09 | Agora |
+> |---|---|
+> | Vercel inacessível há 40 dias | ✅ `testeefluxodeautomacao@gmail.com` alcança `balu-contabil` |
+> | Asaas só em sandbox | ✅ `ASAAS_ENV=prod`, credenciais e **webhook** da conta principal |
+> | Nenhum pagamento real | ✅ **`pay_rsxiy0aae2n9gfqa` RECEIVED** — o ciclo do billing fechou |
+> | Receita de homologação virava imposto | ✅ filtrada nos 3 lugares, provado até o SERPRO |
+> | Preço do plano não chegava ao Asaas | ✅ propaga (valor, ciclo e nome), com rede no cron |
+> | Cobertura de segurança: 89/156 não exercitados | ✅ **37 IDs, zero `NAO_VERIFICADO`** — GO CONDICIONAL |
+> | A1 e credenciais do SERPRO na árvore do git | ✅ em cofre com ACL (mas **falta rotacionar**) |
 >
-> | Onde | O que contaminava | Corrigido |
-> |---|---|---|
-> | `fiscal/receitas-source.ts` (2 leituras) | base de imposto **e** declaração anual (DASN/DEFIS) | `.eq('ambiente','prod')` |
-> | `fiscal/emitido-ano.ts` | teto anual do Simples/MEI — teste consumia o limite do cliente | `.eq('ambiente','prod')` |
-> | `dashboard/queries.ts` | card de receita do mês, a primeira coisa que o cliente vê | `.eq('ambiente','prod')` |
+> ### Por onde começar amanhã
 >
-> O filtro é **positivo** (`= 'prod'`), não negativo (`!= 'hom'`): um terceiro
-> valor de ambiente que apareça um dia fica FORA da base até alguém decidir o
-> contrário. Errar para fora da declaração é recuperável; declarar receita que
-> não existiu, não.
+> A fila abaixo está em ordem. **Os dois primeiros não são código** — são o
+> advogado e a rotação de credenciais, e os dois já estão parados esperando
+> decisão humana. Se a ideia for mexer em código, o primeiro item técnico é o
+> **webhook da Focus**, que continua sem prova.
 >
-> **A decisão sobre `lancada`, que a sessão 38 deixou aberta:** lançamento
-> manual passa a nascer com `ambiente: 'prod'` **explícito** em
-> `lancarNotaManualAction`. Ele registra NF **já emitida no mundo real**, fora
-> do Balu — é receita de verdade, e o DEFAULT `'hom'` da coluna a apagaria da
-> apuração assim que o filtro entrasse. Não depende do ambiente da empresa: o
-> cliente pode estar testando emissão em homologação por aqui e ter nota de
-> verdade na prefeitura. Fixo no código, não escolha do formulário.
+> ⚠️ **Antes de rodar a suíte E2E:** confira que `http://localhost:3000/login`
+> devolve **200**. Em 02/09 o Docker Desktop tomou a porta e respondia 404 —
+> rodar contra aquilo dá 76 resultados sem significado.
 >
-> **Provado contra o banco de produção, não deduzido.** A mesma apuração da
-> sessão 38 (AL PISCINAS · 202606), rodada pelo mesmo smoke:
+> ### 🟡 Divergência 112,50 × 344,33 — segue sem dado para reproduzir
 >
-> ```
-> ANTES  receitas lidas: 2 · R$ 5.000,00 → imposto R$ 112,50
-> DEPOIS receitas lidas: 0 · R$     0,00 → imposto R$   0,00
->        ambiente=hom  2 nota(s)  R$ 5000.00  ⚠ HOMOLOGAÇÃO — nota de teste dentro da base
-> ```
->
-> **E alcança o que vai à Receita — EXECUTADO, não só lido no código.** O mesmo
-> dry-run que na sessão 38 voltou `"Requisição efetuada com sucesso"` com
-> R$ 344,33 e o detalhamento por tributo agora para ANTES do SERPRO:
->
-> ```
-> ANTES   "Requisição efetuada com sucesso" · valorTotalDevido 344.33 · transmitida: false
-> DEPOIS  ok: false · "Sem receita na competência para declarar."
-> ```
->
-> `transmitirPgdasd` chama a MESMA `lerReceitasParaApuracao` (`serpro-pgdasd.ts:42`)
-> — não monta receita por conta própria. Com a base vazia ele nem chega a montar
-> a declaração: **declarar nota de teste à Receita deixou de ser alcançável pelo
-> caminho inteiro**, não só na tela. (Rodado pelo usuário em 02/09, porque o
-> classificador barra o comando para mim.)
->
-> **Testes que mordem a mutação** (todos verificados removendo a linha do código
-> e vendo o vermelho; nenhum passa nos dois estados):
-> - `receitas-source.test.ts` — 2 novos (o stub agora REGISTRA os filtros; antes
->   engolia `.eq()`, e um teste de filtro passaria com e sem a correção)
-> - `emitido-ano.test.ts` — **arquivo novo**, o módulo não tinha teste
-> - `dashboard/queries.test.ts` — **arquivo novo**, idem
-> - `notas_fiscais/actions.test.ts` — 2 novos para o carimbo do lançamento manual
->
-> **Badge "Teste" na lista de notas.** A correção abria um buraco novo: a nota de
-> homologação continua na lista, e o cliente veria R$ 0,00 em receita, imposto e
-> teto sem nada explicando. Nota `ambiente='hom'` agora mostra um chip **Teste**
-> com o motivo no `title`. ⚠️ **Sem teste automatizado** — o projeto não tem
-> infraestrutura de teste de componente (zero `@testing-library`); verificado por
-> `tsc` e `next build`. Vale um olho na tela.
->
-> ### 🟡 Divergência 112,50 × 344,33 — agora sem dado para reproduzir
->
-> A sessão 38 abriu isto e ele **não foi investigado**. Com a base zerada pelo
-> filtro, os dois lados hoje partem de R$ 0,00, então a divergência não se
-> reproduz mais com o dado que existe. A hipótese da sessão 38 continua de pé e
-> continua **não confirmada**: `montarDeclaracaoPgdasd` pode estar somando as
-> duas notas (R$ 5.000 → 6,89% = 344,33) onde a apuração soma uma. **Reconciliar
-> assim que houver receita de produção**, antes de qualquer cliente real — se a
-> tela promete um número e a guia vier outro, o usuário descobre no vencimento.
+> Aberta na sessão 38 e **não investigada**. Com a base filtrada por `ambiente`,
+> os dois lados partem de R$ 0,00 e ela não se reproduz com o dado que existe.
+> A instrumentação está pronta em `scripts/diag-apuracao-x-pgdasd.ts`: ela põe
+> `calcularApuracao` e `montarDeclaracaoPgdasd` lado a lado sobre a MESMA
+> entrada. Rodar assim que houver receita de produção.
 >
 > ### 💰 O mínimo do Asaas (medido em 02/09/2026)
 >
