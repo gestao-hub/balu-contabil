@@ -38,14 +38,25 @@ export async function GET(request: Request) {
     ? (typeRaw as EmailOtpType)
     : 'email';
 
+  // Recuperação de senha erra de volta em /reset_pw — é lá que fica o formulário
+  // de pedir outro link. Mandar para /login deixava o usuário sem próximo passo.
+  const destinoDeErro = type === 'recovery' ? '/reset_pw' : '/login';
   const fail = (msg: string) =>
-    NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(msg)}`);
+    NextResponse.redirect(`${origin}${destinoDeErro}?error=${encodeURIComponent(msg)}`);
 
   if (!token_hash) return fail('Link inválido ou expirado. Solicite um novo.');
 
   const supabase = await createServerClient();
   const { error } = await supabase.auth.verifyOtp({ type, token_hash });
-  if (error) return fail('Não foi possível confirmar o e-mail. Solicite um novo link.');
+  if (error) {
+    // Scanner de e-mail (Outlook/antivírus) pré-carrega o link e queima o token
+    // de uso único antes do clique — é a causa mais comum deste ramo.
+    return fail(
+      type === 'recovery'
+        ? 'O link expirou ou já foi usado. Solicite um novo.'
+        : 'Não foi possível confirmar o e-mail. Solicite um novo link.',
+    );
+  }
 
   return NextResponse.redirect(`${origin}${next}`);
 }

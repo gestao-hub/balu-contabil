@@ -10,7 +10,7 @@ Azul Principal `#1882C8`, acento `#5DC0F0`/`#2ECF8A`, alerta `#E05252`.
 | Arquivo | Template (Dashboard) | Assunto sugerido | Link usado |
 |---|---|---|---|
 | `confirm-signup.html` | **Confirm signup** | `Confirme seu e-mail — Balu` | `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/` |
-| `reset-password.html` | **Reset password** | `Redefina sua senha — Balu` | `{{ .ConfirmationURL }}` |
+| `reset-password.html` | **Reset password** | `Redefina sua senha — Balu` | `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery&next=/reset_pw?step=update` |
 | `change-email.html` | **Change Email Address** | `Confirme seu novo e-mail — Balu` | `{{ .ConfirmationURL }}` (mostra `{{ .NewEmail }}`) |
 
 ## Informativos de segurança (enviados pelo app — NÃO são templates do Supabase Auth)
@@ -47,8 +47,19 @@ Authorization: Bearer <PERSONAL_ACCESS_TOKEN>
 
 - **Confirm signup** aponta para a rota `app/src/app/auth/confirm/route.ts` (`verifyOtp` por
   `token_hash`, grava cookies no domínio do app — não no `.supabase.co`).
-- **Reset password** usa `{{ .ConfirmationURL }}`, que o `resetPasswordForEmail` já direciona
-  para `/auth/callback?next=/reset_pw?step=update`.
+- **Reset password** aponta para a mesma rota `auth/confirm/route.ts`, com `type=recovery`.
+  **Não** use `{{ .ConfirmationURL }}` aqui: ele passa pelo `/auth/v1/verify` do GoTrue, que
+  devolve o resultado no **fragmento** da URL (`#access_token=…` no sucesso, `#error=…` na
+  falha). Fragmento não é enviado ao servidor — o route handler via uma URL sem parâmetro
+  nenhum e respondia "Link inválido" tanto para link bom quanto para link expirado. O
+  `token_hash` também dispensa o cookie `code-verifier` do PKCE, então o link funciona quando
+  o reset é pedido no desktop e aberto no celular.
+  O `{{ .RedirectTo }}` vem do `redirectTo` passado em `resetPasswordForEmail` — é o que faz o
+  mesmo template servir `localhost` e produção; por isso ele precisa estar na allowlist de
+  Redirect URLs.
+- `/auth/hash` (`app/src/app/auth/hash/page.tsx`) é a rede de segurança para os e-mails
+  **antigos**, já enviados no formato `{{ .ConfirmationURL }}`: o `/auth/callback` manda o
+  navegador para lá quando a query vem vazia, e de lá o fragmento é lido no cliente.
 - **Change email** usa `{{ .ConfirmationURL }}` e exibe `{{ .NewEmail }}` no corpo.
 
 ## Notas

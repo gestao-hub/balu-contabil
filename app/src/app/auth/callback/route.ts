@@ -37,5 +37,14 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}${next}`);
   }
 
-  return fail('Link inválido ou expirado. Solicite um novo.');
+  // Sem `code` e sem `token_hash` não significa link ruim: o `/auth/v1/verify`
+  // do GoTrue devolve o resultado no FRAGMENTO (`#access_token=…` no sucesso,
+  // `#error=…` na falha), que nunca chega ao servidor. Daqui a URL parece vazia
+  // nos dois casos — era por isso que link BOM também caía em "Link inválido".
+  //
+  // O fragmento sobrevive ao redirect (o navegador o reaplica quando o destino
+  // não tem um), então `/auth/hash` consegue lê-lo e decidir com o motivo real.
+  return NextResponse.redirect(
+    `${origin}/auth/hash?next=${encodeURIComponent(next)}`,
+  );
 }

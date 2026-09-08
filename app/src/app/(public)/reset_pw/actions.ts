@@ -28,9 +28,21 @@ export async function requestResetAction(_prev: ResetState, formData: FormData):
 
   const supabase = await createServerClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    // O link do e-mail passa primeiro pelo /auth/callback, que troca o `code`
-    // por sessão (cookies) e então redireciona para o form de nova senha.
-    redirectTo: `${origin}/auth/callback?next=${encodeURIComponent('/reset_pw?step=update')}`,
+    // Aponta para a rota `token_hash` (verifyOtp), NÃO para /auth/callback.
+    //
+    // Por quê: o template usa `{{ .RedirectTo }}` para montar
+    // `…/auth/confirm?token_hash=…&type=recovery&next=/reset_pw?step=update`,
+    // um link que o SERVIDOR consegue ler. O caminho antigo passava pelo
+    // `/auth/v1/verify` do GoTrue, que devolve o resultado no FRAGMENTO da URL
+    // (`#access_token=…` ou `#error=…`) — e fragmento nunca chega ao servidor.
+    // O route handler via uma URL sem parâmetro nenhum e respondia "Link
+    // inválido" mesmo com o link bom. Também dependia do cookie `code-verifier`
+    // do PKCE, o que quebrava quem pede o reset no desktop e abre no celular.
+    //
+    // O `next` NÃO vai aqui: quem o acrescenta é o template (ver
+    // `supabase/templates/README.md`). `redirectTo` precisa bater com a
+    // allowlist de Redirect URLs do Supabase, então fica só o caminho base.
+    redirectTo: `${origin}/auth/confirm`,
   });
 
   if (error) return { error: error.message };
