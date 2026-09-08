@@ -1,7 +1,9 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-09-02 (sessão 39, dia inteiro — **seis frentes**. (1) O `ambiente` não filtrado tinha TRÊS braços; corrigido e provado até o SERPRO. (2) **A Vercel destravou** depois de 40 dias. (3) **Asaas em produção**: `ASAAS_ENV=prod`, credenciais e webhook da conta principal. (4) A tela de assinatura virou **uma só**. (5) **Auditoria de segurança com laudo**: 37 IDs, **zero `NAO_VERIFICADO`**, veredito **GO CONDICIONAL** — os certificados A1 saíram do repositório para um cofre com ACL, o GCM ganhou `authTagLength`, e a árvore de dependências de PRODUÇÃO ficou limpa de CVE. (6) **Mudar o preço de um plano NÃO chegava ao Asaas** — achado a pedido do usuário, corrigido junto com `ciclo`, nome e o teto que travava planos populares. Base final: tsc 0 · **2415 testes** · build limpo · **destrutiva 76/76**.)
+> **Última atualização:** 2026-09-08 (sessão 40 — **a recuperação de senha dizia "link inválido" para link bom**. O template "Reset password" usava `{{ .ConfirmationURL }}`, que passa pelo `/auth/v1/verify` do GoTrue — e esse endpoint devolve o resultado no **fragmento** da URL (`#access_token=…` no sucesso, `#error=…` na falha). Fragmento nunca chega ao servidor: o `/auth/callback`, sendo route handler, via uma URL sem parâmetro nenhum nos dois casos e caía no fallback de link inválido. O caminho antigo ainda dependia do cookie `code-verifier` do PKCE, gravado no navegador que PEDIU o reset — pedir no desktop e abrir no celular quebrava igual. Corrigido para `token_hash` → `/auth/confirm` (`verifyOtp`, server-side), com `/auth/hash` novo para resgatar os e-mails antigos já enviados. Template aplicado em produção pela Management API e reconferido na fonte. **De quebra: a pendência das Redirect URLs estava resolvida havia tempo** — o CHECKPOINT é que não sabia.)
+>
+> _Anterior — sessão 39 (2026-09-02, dia inteiro — **seis frentes**. (1) O `ambiente` não filtrado tinha TRÊS braços; corrigido e provado até o SERPRO. (2) **A Vercel destravou** depois de 40 dias. (3) **Asaas em produção**: `ASAAS_ENV=prod`, credenciais e webhook da conta principal. (4) A tela de assinatura virou **uma só**. (5) **Auditoria de segurança com laudo**: 37 IDs, **zero `NAO_VERIFICADO`**, veredito **GO CONDICIONAL** — os certificados A1 saíram do repositório para um cofre com ACL, o GCM ganhou `authTagLength`, e a árvore de dependências de PRODUÇÃO ficou limpa de CVE. (6) **Mudar o preço de um plano NÃO chegava ao Asaas** — achado a pedido do usuário, corrigido junto com `ciclo`, nome e o teto que travava planos populares. Base final: tsc 0 · **2415 testes** · build limpo · **destrutiva 76/76**.)_
 >
 > _Anterior — sessão 38: **o smoke fiscal saiu e achou um defeito que corrompe número que o cliente vê**. A MCB MARKETING emitiu, foi autorizada, sincronizou e cancelou uma NFS-e em homologação, cada passo pelas funções da tela — o primeiro ciclo de nota fechado desde 09/06. O `transmitirPgdasd` percorreu a cadeia inteira em dry-run e o SERPRO respondeu "Requisição efetuada com sucesso" (R$ 344,33, `transmitida: false`). **O achado: `lerReceitasParaApuracao` não filtra `ambiente`** — 100% da receita do banco de produção é de homologação, e a apuração devolveu R$ 112,50 de imposto sobre ela sem sinalizar nada. Aberto também: a apuração diz R$ 112,50 e o SERPRO diz R$ 344,33 para a mesma competência. **A Vercel continua travada, e a causa foi isolada:** quem escolhe a conta é a sessão do navegador PADRÃO do Windows; quatro tentativas caíram em `easy-drop`, e `vercel login <email>` está descontinuado na CLI 58.)_
 >
@@ -16,6 +18,49 @@
 > _Anterior — sessão 35: **o impasse circular da produção**. Mesmo com o token certo, nenhuma empresa de origem `balu` chegaria a produção: `focus_ambiente='prod'` exigia `focus_habilita_nfsen_producao`, que só vem do PUT, que só sai quando o ambiente já é `'prod'`. Ciclo fechado, sem porta de entrada — **quebrado**: o upload do certificado A1 agora libera produção sozinho. A AL PISCINAS emitiu em `producaorestrita.nfse.gov.br` em 09/06 e foi a única a percorrer o fluxo inteiro. **Pendente: o token do painel continua dando 401 em `/v2/empresas`, e o usuário confirmou que não há outro token lá.**)
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
+
+> ## ▶️ SESSÃO 40 (08/09/2026) — recuperação de senha
+>
+> O usuário reportou: recebeu o e-mail de recuperação, clicou, deu **"link
+> inválido"**. Não era link ruim — era o app não conseguindo ler o link bom.
+>
+> **A causa.** O template "Reset password" usava `{{ .ConfirmationURL }}`, que
+> aponta para o `/auth/v1/verify` do GoTrue. Esse endpoint devolve o resultado
+> no **fragmento** da URL: `#access_token=…` no sucesso, `#error=…` na falha.
+> Fragmento é resolvido só no navegador — **nunca é enviado ao servidor**. Como
+> `/auth/callback` é route handler, ele via uma URL sem parâmetro nenhum nos
+> dois casos e caía no fallback `'Link inválido ou expirado'`. Link bom e link
+> queimado davam exatamente a mesma tela.
+> Segundo defeito no mesmo caminho: o `exchangeCodeForSession` depende do cookie
+> `code-verifier` do PKCE, gravado no navegador que **pediu** o reset. Pedir no
+> desktop e abrir no celular quebrava mesmo com o link íntegro.
+>
+> **O que foi feito** (`2a3b61e`, `696154f`, ambos em `main`):
+> - `reset_pw/actions.ts`: `redirectTo` → `/auth/confirm` (era `/auth/callback`).
+> - `templates/reset-password.html`: link montado com `.TokenHash` e
+>   `.RedirectTo`. **Aplicado em produção** via Management API (PATCH 200) e
+>   reconferido pela API: 7336 chars, idêntico ao arquivo do repo, 4 `TokenHash`,
+>   zero `ConfirmationURL`.
+> - `auth/hash/page.tsx` (novo): lê o fragmento no cliente. É o resgate dos
+>   e-mails **antigos**, já nas caixas de entrada, que continuariam quebrados.
+> - `auth/callback`: sem `code`/`token_hash`, encaminha para `/auth/hash` em vez
+>   de afirmar que o link é inválido.
+> - `auth/confirm`: falha de `type=recovery` volta para `/reset_pw` (era
+>   `/login`, sem próximo passo) dizendo "expirou ou já foi usado" — o caso comum
+>   é **scanner de e-mail pré-carregando o link** e queimando o token de uso único.
+> - Bug meu, pego antes de subir: o comentário que eu tinha posto no topo do
+>   template citava `{{ .TokenHash }}` **com as chaves**. O GoTrue interpola o
+>   template inteiro, comentário incluído — cada e-mail sairia com um token real
+>   embutido. Corrigido em `696154f`.
+>
+> **Verificado em produção:** `balucontabil.com.br/auth/hash` → 200;
+> `/auth/confirm?type=recovery` sem token → 307 para `/reset_pw?error=…`.
+> **Não verificado:** o ciclo completo com e-mail real aberto em outro aparelho —
+> é o teste que fecha isso, e depende de alguém pedir um reset de verdade.
+>
+> **Achado de tabela:** a pendência "Supabase Auth Redirect URLs" estava listada
+> em dois lugares como aberta; a Management API mostra que está configurada,
+> incluindo o domínio próprio. Corrigido nos dois lugares.
 
 > ## ▶️ RETOMAR AQUI — depois de 02/09/2026 (sessão 39)
 >
@@ -4844,7 +4889,7 @@ Migration 0046 **aplicada** em produção (confirmado no banco: `docs_revisao` +
 
 **Migrations aplicadas em prod nesta sessão:** 0043 (via runner node+pg no scratchpad; classifier bloqueia MCP/escrita, usuário roda os scripts com `! node ...`).
 
-**Pendências reabertas:** (a) Supabase Auth Redirect URLs (`https://balu-contabil.vercel.app/**` + Site URL) — trava links de e-mail; (b) **Resend: chave configurada** — `RESEND_API_KEY` + `EMAIL_FROM` postos no `.env.local` (corrigido de `CHAVE_API_RESENDE`, nome que o código não lia) e no Vercel/Production (pendente redeploy p/ valer). **Bloqueio restante é DNS do usuário:** conta Resend (`contato@excluvia.com.br`) sem domínio verificado → modo teste, só entrega p/ `contato@excluvia.com.br`; `EMAIL_FROM` provisório = `Balu <onboarding@resend.dev>`. Ao verificar domínio em resend.com/domains, trocar `EMAIL_FROM` p/ remetente do domínio (local + Vercel). Fluxo de convite funciona pelo **link copiável** na tela enquanto isso.
+**Pendências reabertas:** (a) ~~Supabase Auth Redirect URLs~~ — **resolvida**; confirmado pela Management API em 08/09/2026 (ver "Pendências de infra" nº 2). O que travava os links de e-mail de senha era outra coisa: o template de recuperação, corrigido na sessão 40; (b) **Resend: chave configurada** — `RESEND_API_KEY` + `EMAIL_FROM` postos no `.env.local` (corrigido de `CHAVE_API_RESENDE`, nome que o código não lia) e no Vercel/Production (pendente redeploy p/ valer). **Bloqueio restante é DNS do usuário:** conta Resend (`contato@excluvia.com.br`) sem domínio verificado → modo teste, só entrega p/ `contato@excluvia.com.br`; `EMAIL_FROM` provisório = `Balu <onboarding@resend.dev>`. Ao verificar domínio em resend.com/domains, trocar `EMAIL_FROM` p/ remetente do domínio (local + Vercel). Fluxo de convite funciona pelo **link copiável** na tela enquanto isso.
 
 **Não confirmado ainda:** co-branding (logo/nome do escritório na sidebar do empresário) em produção.
 
@@ -4864,7 +4909,7 @@ Migration 0046 **aplicada** em produção (confirmado no banco: `docs_revisao` +
 
 **Pendências de infra:**
 1. ✅ **Auto-deploy (Git integration): ATIVO e testado em 2026-07-23** — usuário conectou o OAuth no navegador; push `accd874` na main disparou build automático (user `gestao-9664`), Ready em 58s, aliased para balu-contabil.vercel.app, smoke test ok (307→/login). Cada push na main deploya produção sozinho.
-2. **Supabase Auth:** adicionar `https://balu-contabil.vercel.app/**` em Authentication → URL Configuration → Redirect URLs (senão cadastro/reset/convite por e-mail não redirecionam).
+2. ✅ **Supabase Auth Redirect URLs: CONFIGURADAS** — verificado em 08/09/2026 lendo `GET /v1/projects/llykzqnugdpojwnlontj/config/auth` pela Management API. `uri_allow_list` = `http://localhost:3000/**`, `.../auth/callback`, `.../auth/confirm`, `https://balucontabil.com.br/**`, `https://www.balucontabil.com.br/**`, `https://balu-contabil.vercel.app/**`. **`site_url` = `https://balucontabil.com.br`** (domínio próprio) — note que o bloco da Vercel acima ainda registra `NEXT_PUBLIC_SITE_URL=https://balu-contabil.vercel.app`; os dois hosts estão na allowlist, então nada quebra, mas vale conferir qual está de fato na env de produção.
 3. **Rotação da `SUPABASE_SERVICE_ROLE_KEY`** (recomendação pendente de incidentes anteriores; a chave também está agora nas env vars da Vercel — legítimo, mas se quiser zero risco residual, rotacionar).
 
 **Bloco E — hardening + LGPD (COMPLETO, direto em `main`, sem branch — repo local):** 16 tasks + 2 rodadas de code-review adversarial com fixes verificados no banco vivo.
