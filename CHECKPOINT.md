@@ -62,6 +62,48 @@
 > em dois lugares como aberta; a Management API mostra que está configurada,
 > incluindo o domínio próprio. Corrigido nos dois lugares.
 
+> ### Dívida conhecida: a sessão nunca expira (decidido: deixar como está, 08/09/2026)
+>
+> Levantado a pedido do usuário — "todo login se encerra quando fecha o
+> navegador?". **Não.** Verificado em três camadas:
+>
+> - **Cookie:** `@supabase/ssr` 0.5.2 grava com `maxAge: 400 dias`
+>   (`dist/main/cookies.js:167` e `:325`). O `maxAge` vem DEPOIS do spread de
+>   `cookieOptions` — a lib **força** o valor e ignora o que o app passar. Cookie
+>   persistente: o navegador o guarda em disco e reenvia na próxima abertura.
+> - **Servidor:** `jwt_exp=3600`, mas `sessions_timebox=0` e
+>   `sessions_inactivity_timeout=0` — sem prazo máximo e sem expiração por
+>   inatividade. O refresh token renova indefinidamente.
+> - **App:** não sobrescreve `cookieOptions` em lugar nenhum.
+>
+> Resultado: a sessão só acaba quando o usuário clica em "Sair". Loga no
+> computador do escritório, fecha o navegador, continua logado daqui a um ano.
+> Senha salva no navegador **não tem relação** — é autofill do formulário; quem
+> mantém logado é o cookie.
+>
+> **Por que não foi corrigido:** o controle certo é
+> `sessions_inactivity_timeout` (corte no servidor, vale para todos os
+> dispositivos), e os docs são explícitos — *"This feature is only available on
+> Pro Plans and up"*. O projeto `llykzqnugdpojwnlontj` está na org
+> `omjazugobjvmpurrazsn` (`dev@excluvia.com.br's Org`), **plano `free`**. A outra
+> org da conta (PiperHub) é `pro`, mas o Balu não está nela. Usuário decidiu
+> **deixar como está** em 08/09/2026.
+>
+> **Se um dia quiser mexer**, em ordem de preferência:
+> 1. Subir a org para Pro (~US$25/mês) e então `PATCH …/config/auth` com
+>    `sessions_inactivity_timeout` (e talvez `sessions_timebox`). Sobe junto o
+>    fim do risco de pausa automática do projeto free — que num app fiscal em
+>    produção é um problema por si só.
+> 2. De graça, só no app: tirar `maxAge`/`expires` no `setAll` de
+>    `lib/supabase/server.ts` + handlers próprios no cliente de navegador. Vira
+>    cookie de sessão (morre ao fechar o navegador). Mais fraco: não expira por
+>    inatividade com a aba aberta e só vale naquele navegador.
+>
+> **Some a isto** (já registrados como aceitos): o cookie é gravado com
+> `httpOnly: false` — proposital no `@supabase/ssr`, porque o cliente de
+> navegador precisa ler o token, mas significa que um XSS lê a sessão inteira; e
+> o `signOut` não revoga sessões de outros dispositivos.
+
 > ## ▶️ RETOMAR AQUI — depois de 02/09/2026 (sessão 39)
 >
 > **Base: tsc 0 · 2429 testes · 191 arquivos · build limpo · destrutiva 76/76.**
