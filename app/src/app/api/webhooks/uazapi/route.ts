@@ -70,6 +70,10 @@ import { lerRespostaAtendimento } from '@/lib/atendimento/resposta';
 import {
   classificarPergunta, pareceUmaPergunta, temMarcaPessoal, TERMO_FISCAL, type TipoPergunta,
 } from '@/lib/atendimento/classificar';
+import {
+  pedeAtendimentoHumano, escolherEscritorio, textoEscolhaEscritorio, textoOpcaoInvalida,
+  textoEncaminhado, TEXTO_SEM_ESCRITORIOS, MAX_OPCOES, type OpcaoEscritorio,
+} from '@/lib/atendimento/encaminhar';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -460,11 +464,26 @@ async function escalarParaContador(
   const contabilidadeId = (empresa as { contabilidade_id: string | null } | null)?.contabilidade_id ?? null;
 
   if (!contabilidadeId) {
-    // Self-service: sem escritório, sem time a notificar. Estado legítimo.
+    // Sem escritório vinculado: quem chama oferece a lista de escritórios
+    // (`oferecerEscritorios`) — não há time a notificar daqui.
     console.warn('[webhook uazapi] empresa sem escritório vinculado, escalação pulada:', info.companyId);
     return null;
   }
 
+  await avisarEscritorio(admin, contabilidadeId, info);
+  return contabilidadeId;
+}
+
+/**
+ * Notifica o membro mais antigo do escritório de que há atendimento esperando
+ * humano. `companyId` nulo é o cliente SEM cadastro que pediu para ser
+ * encaminhado — a notificação vale do mesmo jeito, a fila mostra o telefone.
+ */
+async function avisarEscritorio(
+  admin: SupabaseClient,
+  contabilidadeId: string,
+  info: { companyId: string | null; pergunta: string; messageId: string },
+): Promise<void> {
   const { data: membro } = await admin
     .from('contabilidade_membros').select('user_id')
     .eq('contabilidade_id', contabilidadeId)
@@ -474,10 +493,10 @@ async function escalarParaContador(
 
   const ownerUserId = (membro as { user_id: string } | null)?.user_id ?? null;
   if (!ownerUserId) {
-    console.warn('[webhook uazapi] escritório sem membros, escalação pulada:', contabilidadeId);
-    // Devolve mesmo assim: a fila é do escritório, e a linha tem de ficar
-    // visível para ele mesmo que hoje não haja a quem notificar.
-    return contabilidadeId;
+    // A linha continua na fila do escritório (quem chama grava o
+    // `contabilidade_id`); só não há a quem notificar hoje.
+    console.warn('[webhook uazapi] escritório sem membros, aviso pulado:', contabilidadeId);
+    return;
   }
 
   // `chave` única por (owner_user_id, chave) — ver 0045_notificacoes.sql.
@@ -501,8 +520,132 @@ async function escalarParaContador(
   if (error) {
     console.error('[webhook uazapi] falha ao gravar escalação:', error.message);
   }
+}
 
-  return contabilidadeId;
+// ═══ ENCAMINHAMENTO PARA UM ESCRITÓRIO (06/10/2026) ═══
+//
+// Ver o cabeçalho de `lib/atendimento/encaminhar.ts`: pedido de humano é
+// decidido por código, e encaminhar significa GRAVAR a linha na fila do
+// escritório (`contabilidade_id` + `atendido_em` nulo) e avisá-lo — só DEPOIS
+// disso a confirmação vai ao cliente.
+
+type CtxEncaminhar = {
+  atendimentoId: string;
+  entrada: { from: string; text: string; messageId: string };
+  canal: ConfigUazapi | null;
+};
+
+/** Põe o atendimento na fila do escritório escolhido e confirma ao cliente. */
+async function encaminharAtendimento(
+  admin: SupabaseClient,
+  ctx: CtxEncaminhar & {
+    contabilidadeId: string;
+    companyId: string | null;
+    profileUserId: string | null;
+    /** O que a pessoa pediu — no fluxo da lista, a mensagem que ABRIU a lista. */
+    pedido: string;
+  },
+): Promise<NextResponse> {
+  const escritorio = await escritorioPorId(admin, ctx.contabilidadeId);
+  const texto = textoEncaminhado(escritorio?.nome ?? 'escritório de contabilidade', escritorio?.slaHoras ?? null);
+
+  // Grava ANTES de confirmar: a promessa ao cliente só sai quando é verdade.
+  const { error } = await admin.from('whatsapp_atendimentos').update({
+    contabilidade_id: ctx.contabilidadeId,
+    resolvido: false,
+    // NULO = espera humano: é o que põe a linha na fila e liga o SLA.
+    atendido_em: null,
+    opcoes_escritorio: null,
+    resposta_enviada: texto,
+    ...(ctx.profileUserId ? { profile_user_id: ctx.profileUserId } : {}),
+  }).eq('id', ctx.atendimentoId);
+  if (error) {
+    console.error('[webhook uazapi] falha ao gravar encaminhamento:', error.message);
+    const desculpa = 'Não consegui encaminhar seu atendimento agora. Pode pedir de novo em instantes?';
+    await enviarMensagem(ctx.canal, { telefone: ctx.entrada.from, texto: desculpa });
+    await admin.from('whatsapp_atendimentos')
+      .update({ resposta_enviada: desculpa, atendido_em: agoraIso() }).eq('id', ctx.atendimentoId);
+    return NextResponse.json({ ok: true, reason: 'encaminhamento_falhou' }, { status: 200 });
+  }
+
+  await avisarEscritorio(admin, ctx.contabilidadeId, {
+    companyId: ctx.companyId,
+    pergunta: ctx.pedido,
+    messageId: ctx.entrada.messageId,
+  });
+
+  const envio = await enviarMensagem(ctx.canal, { telefone: ctx.entrada.from, texto });
+  if (!envio.ok) console.error('[webhook uazapi] falha ao confirmar encaminhamento:', envio.erro ?? 'desconhecido');
+
+  return NextResponse.json({ ok: true, reason: 'encaminhado' }, { status: 200 });
+}
+
+/** Escritórios que podem receber atendimento: os aprovados, por nome. */
+async function escritoriosDisponiveis(admin: SupabaseClient): Promise<OpcaoEscritorio[]> {
+  const { data, error } = await admin.from('contabilidades')
+    .select('id, nome').eq('status', 'aprovada').order('nome').limit(MAX_OPCOES);
+  if (error) console.error('[webhook uazapi] leitura dos escritórios falhou:', error.message);
+  return (data ?? [])
+    .map((c) => ({ id: c.id as string, nome: ((c.nome as string | null) ?? '').trim() }))
+    .filter((c) => c.nome);
+}
+
+/**
+ * Pergunta para qual escritório encaminhar — só no NÚMERO DA PLATAFORMA, para
+ * quem não tem escritório. A lista enviada fica gravada na linha
+ * (`opcoes_escritorio`, 0109): a resposta "2" é lida contra ELA, não contra o
+ * banco de agora.
+ */
+async function oferecerEscritorios(
+  admin: SupabaseClient, ctx: CtxEncaminhar, opcoesPrevias?: OpcaoEscritorio[],
+): Promise<NextResponse> {
+  const opcoes = opcoesPrevias ?? await escritoriosDisponiveis(admin);
+  const texto = opcoes.length === 0
+    ? TEXTO_SEM_ESCRITORIOS
+    : opcoesPrevias ? textoOpcaoInvalida(opcoes) : textoEscolhaEscritorio(opcoes);
+
+  const envio = await enviarMensagem(ctx.canal, { telefone: ctx.entrada.from, texto });
+  if (!envio.ok) console.error('[webhook uazapi] falha ao enviar lista de escritórios:', envio.erro ?? 'desconhecido');
+
+  await admin.from('whatsapp_atendimentos').update({
+    resposta_enviada: texto,
+    resolvido: envio.ok,
+    // A lista É a resposta: ninguém espera humano ainda. O humano entra quando
+    // a pessoa escolher.
+    atendido_em: agoraIso(),
+    opcoes_escritorio: opcoes.length ? opcoes.map((o) => o.id) : null,
+  }).eq('id', ctx.atendimentoId);
+
+  return NextResponse.json({ ok: true, reason: 'escolha_de_escritorio' }, { status: 200 });
+}
+
+/**
+ * Há uma lista de escritórios esperando resposta deste telefone?
+ *
+ * Só conta se a lista foi a ÚLTIMA coisa respondida a ele, e dentro da janela
+ * de conversa: "2" mandado amanhã, depois de outra conversa, não é escolha.
+ */
+async function escolhaPendente(
+  admin: SupabaseClient, telefone: string, atendimentoId: string,
+): Promise<{ opcoes: OpcaoEscritorio[]; pedido: string } | null> {
+  const { data } = await admin.from('whatsapp_atendimentos')
+    .select('opcoes_escritorio, mensagem_recebida')
+    .eq('telefone', telefone)
+    .neq('id', atendimentoId)
+    .not('resposta_enviada', 'is', null)
+    .gte('created_at', new Date(Date.now() - JANELA_CONVERSA_HORAS * 3_600_000).toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const ids = (data?.opcoes_escritorio as string[] | null) ?? null;
+  if (!ids?.length) return null;
+
+  const { data: linhas } = await admin.from('contabilidades')
+    .select('id, nome').in('id', ids).eq('status', 'aprovada');
+  const porId = new Map((linhas ?? []).map((l) => [l.id as string, ((l.nome as string | null) ?? '').trim()]));
+  // Mesma ORDEM da lista enviada — é ela que dá sentido ao "2".
+  const opcoes = ids.filter((id) => porId.get(id)).map((id) => ({ id, nome: porId.get(id)! }));
+  return opcoes.length ? { opcoes, pedido: (data?.mensagem_recebida as string) ?? '' } : null;
 }
 
 export async function POST(req: Request) {
@@ -748,6 +891,52 @@ export async function POST(req: Request) {
       return await atenderContador(admin, {
         entrada, atendimentoId, escritorio: escritorioDoCanal!, membro, canal: canalDeSaida,
       });
+    }
+
+    const ctxEncaminhar: CtxEncaminhar = { atendimentoId, entrada, canal: canalDeSaida };
+
+    // ═══ RESPOSTA À LISTA DE ESCRITÓRIOS (número da plataforma) ═══
+    if (!escritorioDoCanal) {
+      const pendente = await escolhaPendente(admin, entrada.from, atendimentoId);
+      if (pendente) {
+        const escolhido = escolherEscritorio(entrada.text, pendente.opcoes);
+        if (escolhido) {
+          return await encaminharAtendimento(admin, {
+            ...ctxEncaminhar, contabilidadeId: escolhido,
+            companyId: profile?.current_company ?? null, profileUserId: profile?.user_id ?? null,
+            pedido: pendente.pedido || entrada.text,
+          });
+        }
+        // Resposta curta que não casou ("3" fora da lista, "esse aí"): repete
+        // a lista. Mensagem longa ou pergunta é assunto novo e segue o fluxo.
+        if (entrada.text.trim().length <= 40 && !pareceUmaPergunta(entrada.text)
+          && !pedeAtendimentoHumano(entrada.text)) {
+          return await oferecerEscritorios(admin, ctxEncaminhar, pendente.opcoes);
+        }
+      }
+    }
+
+    // ═══ PEDIDO DE ATENDIMENTO HUMANO ═══
+    //
+    // Decidido por código, antes da IA. Destino, nesta ordem:
+    //   1. o escritório dono do CANAL — quem escreveu para o número dele quer
+    //      falar com ele (e listar concorrentes ali seria inaceitável);
+    //   2. o escritório da empresa do cliente;
+    //   3. sem nenhum dos dois (número da plataforma, sem cadastro ou sem
+    //      vínculo): a pessoa escolhe numa lista.
+    if (pedeAtendimentoHumano(entrada.text)) {
+      const companyIdHumano = profile?.current_company ?? null;
+      const destino = escritorioDoCanal?.id ?? (companyIdHumano
+        ? ((await admin.from('companies').select('contabilidade_id').eq('id', companyIdHumano).maybeSingle())
+          .data?.contabilidade_id as string | null) ?? null
+        : null);
+      if (destino) {
+        return await encaminharAtendimento(admin, {
+          ...ctxEncaminhar, contabilidadeId: destino,
+          companyId: companyIdHumano, profileUserId: profile?.user_id ?? null, pedido: entrada.text,
+        });
+      }
+      return await oferecerEscritorios(admin, ctxEncaminhar);
     }
 
     if (!profile?.current_company) {
@@ -1018,6 +1207,26 @@ export async function POST(req: Request) {
     let contabilidadeId: string | null = null;
     if (!resolvido) {
       contabilidadeId = await escalarParaContador(admin, { companyId, pergunta: entrada.text, messageId: entrada.messageId });
+      // Empresa SEM escritório: a resposta da IA disse que ia encaminhar, e
+      // antes daqui ninguém recebia nada. Agora a pessoa escolhe para quem —
+      // só no número da plataforma (no de um escritório, a empresa sempre tem
+      // o escritório do canal, e `contabilidadeId` não é nulo aqui).
+      if (!contabilidadeId && !escritorioDoCanal && envio.ok) {
+        const opcoes = await escritoriosDisponiveis(admin);
+        const textoLista = opcoes.length ? textoEscolhaEscritorio(opcoes) : TEXTO_SEM_ESCRITORIOS;
+        const envioLista = await enviarMensagem(canalDeSaida, { telefone: entrada.from, texto: textoLista });
+        if (!envioLista.ok) console.error('[webhook uazapi] falha ao enviar lista de escritórios:', envioLista.erro ?? 'desconhecido');
+        // A lista fica NESTA linha — a última respondida a este telefone, que
+        // é onde `escolhaPendente` procura.
+        await admin.from('whatsapp_atendimentos').update({
+          profile_user_id: profile.user_id,
+          resposta_enviada: `${resposta}\n\n${textoLista}`,
+          resolvido: false,
+          atendido_em: agoraIso(),
+          opcoes_escritorio: opcoes.length ? opcoes.map((o) => o.id) : null,
+        }).eq('id', atendimentoId);
+        return NextResponse.json({ ok: true, reason: 'escolha_de_escritorio' }, { status: 200 });
+      }
     }
 
     const { error: erroUpdate } = await admin

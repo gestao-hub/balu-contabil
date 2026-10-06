@@ -257,6 +257,13 @@ export function montarPromptAtendimento(e: EntradaAtendimento): string {
     'do MEI").',
     'Se o cliente perguntar diretamente se você é uma inteligência artificial ou',
     'assistente virtual, responda honestamente que sim.',
+    // 06/10/2026: o modelo oferecia "posso te direcionar para o escritório" e
+    // respondia aos pedidos com "o escritório é o responsável", sem nada ser
+    // encaminhado. Quem encaminha agora é o CÓDIGO (lib/atendimento/encaminhar),
+    // ao reconhecer o pedido — o modelo só precisa dizer como pedir.
+    'NÃO ofereça transferir, direcionar ou encaminhar a conversa por conta própria.',
+    'Se a pessoa quiser falar com uma pessoa do escritório, diga que basta escrever',
+    '"quero falar com o contador" que o atendimento é encaminhado.',
     ...apresentacao,
     ...escritorio,
     ...carteira,

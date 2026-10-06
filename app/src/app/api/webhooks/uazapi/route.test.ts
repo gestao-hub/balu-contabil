@@ -66,7 +66,12 @@ const h = vi.hoisted(() => {
     erroUpdate: null as ErroPg | null,
     // Consultado pela busca de "primeira interação" (persona Assistente Balu):
     // null = nenhum atendimento anterior para este telefone = primeira mensagem.
-    interacaoAnterior: null as { id: string; resposta_enviada?: string | null } | null,
+    interacaoAnterior: null as {
+      id: string; resposta_enviada?: string | null;
+      opcoes_escritorio?: string[] | null; mensagem_recebida?: string | null;
+    } | null,
+    // Escritórios aprovados que a lista de encaminhamento oferece (06/10/2026).
+    contabilidades: [] as { id: string; nome: string }[],
     // 0091 — canal por escritorio. null = canal da plataforma.
     escritorio: null as null | {
       id: string; nome: string; slaHoras: number | null;
@@ -87,6 +92,7 @@ const h = vi.hoisted(() => {
     // por acidente com os outros usos de `whatsapp_atendimentos` neste mesmo
     // mock (`insert`/`update`/`upsert` são caminhos distintos de `select`).
     if (tabela === 'whatsapp_atendimentos') return estado.interacaoAnterior;
+    if (tabela === 'contabilidades') return estado.contabilidades;
     return null;
   };
 
@@ -108,6 +114,8 @@ const h = vi.hoisted(() => {
         // getLimitesFiscais (modo ESCRITORIO) filtra vigencia por lte.
         lte: (_c: unknown, _v: unknown) => b,
         gte: (_c: unknown, _v: unknown) => b,
+        // `escolhaPendente` (encaminhamento, 06/10/2026) filtra resposta não nula.
+        not: (_c: unknown, _o: unknown, _v: unknown) => b,
         order: (_c: unknown, _o: unknown) => b,
         limit: (_n: number) => b,
         maybeSingle: async () => ({ data: Array.isArray(linha) ? (linha[0] ?? null) : linha, error: null }),
@@ -225,6 +233,7 @@ beforeEach(() => {
   h.estado.erroClaim = null;
   h.estado.erroUpdate = null;
   h.estado.interacaoAnterior = null;
+  h.estado.contabilidades = [];
   h.estado.escritorio = null;
   h.estado.carteira = [];
 
@@ -1031,5 +1040,122 @@ describe('achados do code-review', () => {
     const upd = h.updates.find((u) => u.tabela === 'whatsapp_atendimentos');
     expect(String(upd?.valores.resposta_enviada)).toMatch(/mais de um cadastro/);
     expect(upd?.valores.atendido_em).toBeTruthy();
+  });
+});
+
+// ═══ ENCAMINHAMENTO PARA ESCRITÓRIO (06/10/2026) ═══
+//
+// O incidente: no canal do Escritório Demo, um número sem cadastro pediu sete
+// vezes para falar com o contador, a IA respondeu "o escritório é o
+// responsável" a todas, gravou `resolvido: true` — e nada chegou à fila.
+describe('webhook uazapi — encaminhamento para escritório', () => {
+  const DEMO = {
+    id: 'contab_demo', nome: 'Escritório Demo', slaHoras: 4,
+    whatsappSuporte: null, numero: '5532988887777',
+    config: { baseUrl: 'https://a.uazapi.com', token: 'tok-A' },
+    configDeResposta: { baseUrl: 'https://a.uazapi.com', token: 'tok-A' },
+  };
+
+  function urlDoCanal(corpo: unknown) {
+    return new Request('http://localhost/api/webhooks/uazapi?t=' + 'a'.repeat(64), {
+      method: 'POST', body: JSON.stringify(corpo),
+    });
+  }
+
+  const updateDoAtendimento = () => h.updates.filter((u) => u.tabela === 'whatsapp_atendimentos').at(-1);
+
+  it('canal de escritório + número sem cadastro: encaminha para o DONO do canal, sem IA', async () => {
+    h.estado.escritorio = DEMO;
+    h.estado.profile = null;
+    h.estado.membro = { user_id: 'contador_1' };
+
+    const res = await POST(urlDoCanal({ messageId: 'e1', from: '5532987006789', text: 'Falar com o contador' }));
+    const body = await res.json();
+
+    expect(body.reason).toBe('encaminhado');
+    expect(h.gerarTexto).not.toHaveBeenCalled();
+    const upd = updateDoAtendimento();
+    // Na fila: escritório gravado, esperando humano.
+    expect(upd?.valores).toMatchObject({ contabilidade_id: 'contab_demo', resolvido: false, atendido_em: null });
+    // O escritório é avisado.
+    expect(h.inserts.some((i) => i.tabela === 'notifications')).toBe(true);
+    const [, msg] = h.enviarMensagem.mock.calls.at(-1) as [unknown, { texto: string }];
+    expect(msg.texto).toMatch(/Encaminhei seu atendimento para a equipe do Escritório Demo/);
+    expect(msg.texto).toMatch(/4 horas/);
+  });
+
+  it('canal de escritório NUNCA lista outros escritórios', async () => {
+    h.estado.escritorio = DEMO;
+    h.estado.profile = null;
+    h.estado.contabilidades = [{ id: 'outro', nome: 'Concorrente' }];
+
+    await POST(urlDoCanal({ messageId: 'e2', from: '5532987006789', text: 'quero falar com atendente' }));
+
+    const textos = h.enviarMensagem.mock.calls.map((c) => (c[1] as { texto: string }).texto).join('\n');
+    expect(textos).not.toMatch(/Concorrente/);
+  });
+
+  it('número da plataforma + sem cadastro: pergunta para qual escritório, com a lista', async () => {
+    h.estado.profile = null;
+    h.estado.contabilidades = [{ id: 'c1', nome: 'Alfa Contábil' }, { id: 'c2', nome: 'Beta Contabilidade' }];
+
+    const res = await POST(requisicaoFalsa(
+      { messageId: 'p1', from: '5532987006789', text: 'quero falar com o contador' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.reason).toBe('escolha_de_escritorio');
+    expect(h.gerarTexto).not.toHaveBeenCalled();
+    const [, msg] = h.enviarMensagem.mock.calls.at(-1) as [unknown, { texto: string }];
+    expect(msg.texto).toContain('1. Alfa Contábil');
+    expect(msg.texto).toContain('2. Beta Contabilidade');
+    expect(updateDoAtendimento()?.valores.opcoes_escritorio).toEqual(['c1', 'c2']);
+  });
+
+  it('a resposta "2" à lista encaminha para o escritório escolhido', async () => {
+    h.estado.profile = null;
+    h.estado.membro = { user_id: 'contador_beta' };
+    h.estado.contabilidades = [{ id: 'c1', nome: 'Alfa Contábil' }, { id: 'c2', nome: 'Beta Contabilidade' }];
+    h.estado.interacaoAnterior = {
+      id: 'antes', resposta_enviada: 'Para qual escritório…',
+      opcoes_escritorio: ['c1', 'c2'], mensagem_recebida: 'quero falar com o contador',
+    };
+
+    const res = await POST(requisicaoFalsa({ messageId: 'p2', from: '5532987006789', text: '2' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.reason).toBe('encaminhado');
+    expect(updateDoAtendimento()?.valores).toMatchObject({ contabilidade_id: 'c2', atendido_em: null, resolvido: false });
+    // O aviso leva o PEDIDO original, não o "2".
+    const aviso = h.inserts.find((i) => i.tabela === 'notifications');
+    expect(String(aviso?.valores.corpo)).toContain('quero falar com o contador');
+  });
+
+  it('resposta curta que não casa com a lista repete a lista', async () => {
+    h.estado.profile = null;
+    h.estado.contabilidades = [{ id: 'c1', nome: 'Alfa Contábil' }];
+    h.estado.interacaoAnterior = {
+      id: 'antes', resposta_enviada: 'Para qual escritório…',
+      opcoes_escritorio: ['c1'], mensagem_recebida: 'falar com o contador',
+    };
+
+    const res = await POST(requisicaoFalsa({ messageId: 'p3', from: '5532987006789', text: '7' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.reason).toBe('escolha_de_escritorio');
+    const [, msg] = h.enviarMensagem.mock.calls.at(-1) as [unknown, { texto: string }];
+    expect(msg.texto).toMatch(/Não identifiquei/);
+  });
+
+  it('cliente com escritório vinculado que pede humano é encaminhado ao escritório DELE', async () => {
+    h.estado.company = { id: 'empresa_1', contabilidade_id: 'contab_X' };
+    h.estado.membro = { user_id: 'contador_X' };
+
+    const res = await POST(requisicaoFalsa(
+      { messageId: 'p4', from: '5532987006789', text: 'me passa pro escritório' }, SEGREDO));
+    const body = await res.json();
+
+    expect(body.reason).toBe('encaminhado');
+    expect(h.gerarTexto).not.toHaveBeenCalled();
+    expect(updateDoAtendimento()?.valores).toMatchObject({ contabilidade_id: 'contab_X', atendido_em: null });
   });
 });
