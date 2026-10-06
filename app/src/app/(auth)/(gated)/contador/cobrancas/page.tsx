@@ -39,6 +39,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { formatBRL } from '@/lib/format/dinheiro';
 import { rotuloStatus, corStatus, estaEmAberto } from '@/lib/billing/cobranca-escritorio-vm';
+import { statusHonorario, type StatusHonorario } from '@/lib/fiscal/status-honorario';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,11 @@ function abaDe(v: string | undefined): (typeof ABAS)[number] {
 const LIMITE = 200;
 
 type Row = {
+  /** Chave da lista: o id da cobrança, ou `h:<id>` para honorário sem cobrança. */
+  chave: string;
+  /** `registro` = honorário lançado em /contador/honorarios que ainda NÃO virou
+   *  cobrança no Asaas. Não tem fatura nem link — só existe na Balu. */
+  origem: 'cobranca' | 'registro';
   id: string;
   descricao: string;
   status: string;
@@ -129,8 +135,81 @@ export default async function ContadorCobrancasPage({
   // "nenhuma cobrança" como "não tenho nada a receber" e pararia de cobrar.
   if (error) console.error('[4b] ler cobrancas do escritorio (painel) falhou:', error.message);
 
-  const rows = (data ?? []) as unknown as Row[];
-  const truncada = rows.length === LIMITE;
+  const cobrancas = ((data ?? []) as unknown as Omit<Row, 'chave' | 'origem'>[])
+    .map((r): Row => ({ ...r, chave: r.id, origem: 'cobranca' }));
+
+  // HONORÁRIO SEM COBRANÇA GERADA. Lançar um honorário em /contador/honorarios
+  // só grava em `honorarios`; a linha em `cobrancas_escritorio` nasce apenas no
+  // "Gerar cobrança" (e só com a subconta aprovada). Sem esta perna, o
+  // escritório lançava o honorário, abria "Cobranças emitidas" e não o achava —
+  // que é exatamente o "o que está em aberto comigo?" que esta tela responde.
+  //
+  // Honorário que JÁ tem cobrança viva (não estornada) fica de fora: quem o
+  // representa é a cobrança, com o status que vem do Asaas. Mostrar os dois
+  // contaria o mesmo dinheiro duas vezes nos totais.
+  //
+  // Estornada não tem equivalente no honorário, então essa aba não o consulta.
+  const statusParaHonorario: Record<string, StatusHonorario | undefined> = {
+    pendente: 'aberto', vencida: 'atrasado', paga: 'pago',
+  };
+  const STATUS_DO_HONORARIO: Record<StatusHonorario, string> = {
+    aberto: 'pendente', atrasado: 'vencida', pago: 'paga',
+  };
+  let registros: Row[] = [];
+  let erroHonorarios = false;
+  if (aba.status !== 'estornada') {
+    const [{ data: hon, error: eHon }, { data: jaCobrados, error: eCob }] = await Promise.all([
+      supabase
+        .from('honorarios')
+        .select('id, empresa_cliente_id, mes_referencia, valor, data_vencimento, data_pagamento, observacao')
+        .eq('contabilidade_id', ctx.contabilidade.id)
+        .not('empresa_cliente_id', 'is', null)
+        .order('data_vencimento', { ascending: false })
+        .limit(LIMITE),
+      supabase
+        .from('cobrancas_escritorio')
+        .select('honorario_id')
+        .eq('contabilidade_id', ctx.contabilidade.id)
+        .not('honorario_id', 'is', null)
+        .neq('status', 'estornada'),
+    ]);
+    if (eHon || eCob) {
+      erroHonorarios = true;
+      console.error('[4b] ler honorarios sem cobranca (painel) falhou:', (eHon ?? eCob)?.message);
+    }
+    const cobrados = new Set((jaCobrados ?? []).map((c) => c.honorario_id as string));
+    const alvo = aba.status ? statusParaHonorario[aba.status] : undefined;
+    registros = (hon ?? [])
+      .filter((h) => !cobrados.has(h.id as string))
+      .map((h) => {
+        const st = statusHonorario({
+          data_pagamento: (h.data_pagamento as string | null) ?? null,
+          data_vencimento: h.data_vencimento as string,
+        });
+        return { h, st };
+      })
+      .filter(({ st }) => !alvo || st === alvo)
+      .map(({ h, st }): Row => {
+        const mes = String(h.mes_referencia ?? '').slice(0, 7).split('-').reverse().join('/');
+        return {
+          chave: `h:${h.id}`,
+          origem: 'registro',
+          id: h.id as string,
+          descricao: (h.observacao as string | null)?.trim() || `Honorário ${mes}`,
+          status: STATUS_DO_HONORARIO[st],
+          valor_centavos: Math.round(Number(h.valor) * 100),
+          vencimento: h.data_vencimento as string,
+          pago_em: (h.data_pagamento as string | null) ?? null,
+          link_fatura: null,
+          honorario_id: h.id as string,
+          empresa_cliente_id: h.empresa_cliente_id as string,
+        };
+      });
+  }
+
+  const truncada = cobrancas.length === LIMITE || registros.length === LIMITE;
+  const rows = [...cobrancas, ...registros]
+    .sort((a, b) => b.vencimento.localeCompare(a.vencimento));
 
   // Nome do cliente pelo admin client — ver o comentário da consulta acima. O
   // `.eq('contabilidade_id')` NÃO serve aqui, justamente porque o ex-cliente já
@@ -162,12 +241,13 @@ export default async function ContadorCobrancasPage({
           <h1 className="text-2xl font-semibold text-foreground">Cobranças emitidas</h1>
         </div>
         <p className="max-w-prose text-sm text-muted-foreground">
-          Tudo o que este escritório cobrou pela conta de recebimento própria — mensalidades e
-          serviços avulsos. O dinheiro entra direto na sua conta Asaas; a Balu não intermedia.
+          Tudo o que este escritório cobra dos clientes — honorários e serviços avulsos. O que foi
+          gerado pela conta de recebimento entra direto na sua conta Asaas; a Balu não intermedia.
+          Honorário lançado e ainda sem cobrança gerada aparece marcado como tal.
         </p>
       </header>
 
-      {error && (
+      {(error || erroHonorarios) && (
         <p
           role="alert"
           className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
@@ -242,7 +322,7 @@ export default async function ContadorCobrancasPage({
         <ul className="flex flex-col gap-2">
           {rows.map((r) => (
             <li
-              key={r.id}
+              key={r.chave}
               className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border bg-surface p-3"
             >
               <div className="min-w-0">
@@ -257,6 +337,11 @@ export default async function ContadorCobrancasPage({
                   <span className="rounded-md bg-surface-3 px-1.5 py-0.5 text-xs text-muted-foreground">
                     {r.honorario_id ? 'honorário' : 'avulso'}
                   </span>
+                  {r.origem === 'registro' && (
+                    <span className="rounded-md border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
+                      sem cobrança gerada
+                    </span>
+                  )}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground-2">{r.descricao}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -270,6 +355,14 @@ export default async function ContadorCobrancasPage({
                   sem precisar entrar no painel do Asaas. Aparece também em
                   cobrança paga: é o comprovante. Some na estornada, onde o link
                   não leva a lugar útil. */}
+              {r.origem === 'registro' && (
+                <Link
+                  href="/contador/honorarios"
+                  className="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground-2 transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+                >
+                  Abrir honorários
+                </Link>
+              )}
               {r.link_fatura && r.status !== 'estornada' && (
                 <a
                   href={r.link_fatura}
