@@ -112,6 +112,31 @@ async function call<T>(
   throw lastErr ?? new Error(`Asaas ${method} ${path} → falhou apos ${tentativas} tentativas`);
 }
 
+/**
+ * Envio MULTIPART (arquivo). Fica fora de `call` porque aquele fixa
+ * `Content-Type: application/json` — aqui quem monta o cabeçalho, com o
+ * boundary, é o próprio `fetch` a partir do `FormData`.
+ *
+ * SEM RETRY: o arquivo vai inteiro a cada tentativa, e o Asaas SUBSTITUI o
+ * arquivo do grupo a cada envio — repetir às cegas não ganha nada e dobra o
+ * tempo de quem está esperando com a foto na mão.
+ */
+async function callMultipart<T>(path: string, form: FormData, token: string): Promise<T> {
+  const res = await fetch(`${base()}${path}`, {
+    method: 'POST',
+    headers: { access_token: token },
+    body: form,
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const txt = (await res.text()).slice(0, 500);
+    const err = new Error(`Asaas POST ${path} → ${res.status}: ${txt}`) as AsaasHttpError;
+    err.status = res.status;
+    throw err;
+  }
+  return (await res.json()) as T;
+}
+
 export type AsaasCliente = { id: string; name: string; cpfCnpj: string };
 export type AsaasAssinatura = {
   id: string; customer: string; value: number; cycle: string;
@@ -272,6 +297,26 @@ export type AsaasStatusConta = {
   general: string;
 };
 
+/** Um grupo de documento pedido pelo KYC (`GET /v3/myAccount/documents`).
+ *  O `id` do GRUPO é o que vai na rota de envio. Com `onboardingUrl`, o envio
+ *  é pelo link do Asaas e NUNCA pela API (regra da doc). */
+export type AsaasGrupoDocumento = {
+  id: string;
+  status: string;
+  type: string;
+  title?: string | null;
+  description?: string | null;
+  responsible?: { name?: string | null; type?: string[] | string | null } | null;
+  onboardingUrl?: string | null;
+  onboardingUrlExpirationDate?: string | null;
+  documents?: Array<{ id: string; status: string }> | null;
+};
+
+export type AsaasDocumentosConta = {
+  rejectReasons?: string | null;
+  data: AsaasGrupoDocumento[];
+};
+
 /** Criação de subconta — vai SEMPRE pela conta-mãe. */
 export const asaasContaMae = {
   /**
@@ -408,6 +453,23 @@ export function asaasSub(token: string) {
      */
     consultarStatusConta: () =>
       call<AsaasStatusConta>('GET', '/v3/myAccount/status', undefined, token),
+
+    /** Documentos que o KYC DA PRÓPRIA SUBCONTA ainda pede. Mesmo motivo do
+     *  `, token` acima: `myAccount` é a conta do token. */
+    listarDocumentosConta: () =>
+      call<AsaasDocumentosConta>('GET', '/v3/myAccount/documents', undefined, token),
+
+    /** Envia o arquivo de UM grupo de documento (`grupoId` = `data[].id` de
+     *  `listarDocumentosConta`). Reenviar para o mesmo grupo substitui o
+     *  arquivo anterior. Enviar não é aprovar: o Asaas ainda analisa. */
+    enviarDocumentoConta: (grupoId: string, tipo: string, arquivo: Blob, nomeArquivo: string) => {
+      const form = new FormData();
+      form.append('type', tipo);
+      form.append('documentFile', arquivo, nomeArquivo);
+      return callMultipart<{ id: string; status: string }>(
+        `/v3/myAccount/documents/${encodeURIComponent(grupoId)}`, form, token,
+      );
+    },
 
     /**
      * Webhooks DA PROPRIA SUBCONTA. Mesma logica de `consultarStatusConta`: a

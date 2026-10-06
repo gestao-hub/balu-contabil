@@ -20,6 +20,8 @@ import { estadoWebhookDaContabilidade } from '@/lib/billing/webhook-subconta-asa
 import { avisoDoDiagnostico } from '@/lib/billing/webhook-subconta';
 import SubcontaForm from './SubcontaForm';
 import SaldoSaque, { type SaqueHistorico } from './SaldoSaque';
+import DocumentosSubconta from './DocumentosSubconta';
+import { documentosDaSubconta } from '@/lib/billing/documentos-subconta-asaas';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +86,13 @@ export default async function ContadorSubcontaPage() {
   // presumir permissão.
   const ehDono = Boolean(cont?.asaas_subconta_criada_por) && cont?.asaas_subconta_criada_por === ctx.userId;
 
+  // DOCUMENTOS DO KYC — lidos ao vivo enquanto a conta não está aprovada. Sem
+  // isto a tela dizia só "em análise", quando a análise nem tinha começado por
+  // falta de documento que só o escritório pode mandar.
+  const documentos = temSubconta && status !== 'aprovada'
+    ? await documentosDaSubconta(ctx.contabilidade.id)
+    : null;
+
   let historico: SaqueHistorico[] = [];
   if (temSubconta && status === 'aprovada') {
     const { data: saques } = await sb
@@ -122,6 +131,20 @@ export default async function ContadorSubcontaPage() {
         criadaEm={cont?.asaas_subconta_criada_em ?? null}
         avisoWebhook={avisoWebhook}
       />
+
+      {documentos?.ok && documentos.grupos.length > 0 && (
+        <DocumentosSubconta
+          grupos={documentos.grupos}
+          motivoRecusa={documentos.motivoRecusa}
+          ehDono={ehDono}
+        />
+      )}
+      {documentos && !documentos.ok && (
+        <p className="mt-6 rounded-md border border-alert/40 bg-alert/10 px-3 py-2 text-sm text-alert">
+          Não foi possível consultar no Asaas quais documentos faltam. Recarregue a página em
+          instantes.
+        </p>
+      )}
 
       {temSubconta && status === 'aprovada' && (
         <SaldoSaque
