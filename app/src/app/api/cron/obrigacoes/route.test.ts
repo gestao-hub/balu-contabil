@@ -102,6 +102,8 @@ vi.mock('@/lib/uazapi/instancia', () => ({
 }));
 vi.mock('@/lib/fiscal/apuracao-cron', () => ({ rodarApuracaoAutomatica: h.rodarApuracaoAutomatica }));
 vi.mock('@/lib/fiscal/pagamentos-serpro-cron', () => ({ rodarPagamentosSerpro: h.rodarPagamentosSerpro }));
+// Caixa Postal (0110): etapa SERPRO própria, testada em caixa-postal-sync.test.ts.
+vi.mock('@/lib/fiscal/caixa-postal-sync', () => ({ rodarCaixaPostal: vi.fn(async () => ({ elegiveis: 0, consultadas: 0, mensagens_novas: 0, erros: 0, cortada_por_orcamento: false })) }));
 
 import { GET } from './route';
 

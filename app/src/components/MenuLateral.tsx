@@ -12,7 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, FileText, Calculator, HandCoins, Settings, Building2, Briefcase,
   ChevronDown, Menu as MenuIcon, X, LogOut, Plus, UserCircle, LayoutDashboard, FilePlus, MessageCircle,
-  CreditCard, Receipt, Landmark, Tags, BookOpen, Headset, TrendingUp,
+  CreditCard, Receipt, Landmark, Tags, BookOpen, Headset, TrendingUp, Mail,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { useToast } from '@/components/Toaster';
@@ -107,6 +107,8 @@ const NAV: NavItem[] = [
   { href: '/clientes',              label: 'Clientes',       Icon: Users, precisaEmpresa: true },
   { href: '/notas_fiscais',         label: 'Notas fiscais',  Icon: FileText, precisaEmpresa: true },
   { href: '/impostos',              label: 'Impostos',       Icon: Calculator, precisaEmpresa: true },
+  // 0110 — Caixa Postal do e-CAC (mensagens e intimações da Receita).
+  { href: '/receita/mensagens',     label: 'Mensagens da Receita', Icon: Mail, precisaEmpresa: true },
   { href: '/contador',              label: 'Escritório',     Icon: Briefcase, roles: ['contador'] },
   { href: '/contador/aberturas',    label: 'Aberturas',      Icon: FilePlus, roles: ['contador'] },
   // Bloco 7: a fila de escaladas do WhatsApp. Fica perto do topo porque é o

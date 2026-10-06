@@ -32,7 +32,8 @@ export type NotificacaoTipo =
   | 'parametro_fiscal_desatualizado' // 0081 — só para AdminBalu
   | 'pagamento_confirmado' // 0086 — Frente 3 (Receita e Asaas)
   | 'whatsapp_desconectado' // 0092 — a instancia do escritorio caiu
-  | 'apuracao_bloqueada'; // 0093 — falta configuracao para calcular o imposto
+  | 'apuracao_bloqueada' // 0093 — falta configuracao para calcular o imposto
+  | 'receita_mensagem_nova'; // 0110 — mensagem nova na Caixa Postal do e-CAC
 
 export const NOTIFICACAO_TIPOS: Record<NotificacaoTipo, { label: string; severidade: Severidade }> = {
   das_a_vencer: { label: 'DAS a vencer', severidade: 'warning' },
@@ -61,6 +62,7 @@ export const NOTIFICACAO_TIPOS: Record<NotificacaoTipo, { label: string; severid
   pagamento_confirmado: { label: 'Pagamento confirmado', severidade: 'info' },
   whatsapp_desconectado: { label: 'WhatsApp do escritório desconectado', severidade: 'danger' },
   apuracao_bloqueada: { label: 'Cálculo de imposto bloqueado', severidade: 'warning' },
+  receita_mensagem_nova: { label: 'Mensagem nova da Receita (Caixa Postal do e-CAC)', severidade: 'warning' },
 };
 
 export const TIPOS_VALIDOS = Object.keys(NOTIFICACAO_TIPOS) as NotificacaoTipo[];
