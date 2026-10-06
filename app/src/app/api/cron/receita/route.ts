@@ -9,10 +9,12 @@
 // lá dentro trocaria aviso fiscal por tempo de e-mail. Aqui elas têm 60s só
 // delas.
 //
-// ⚠️ AGENDAMENTO: o plano da Vercel já usa os 2 crons permitidos
-// (`vercel.json`). Esta rota é disparada pelo pg_cron + pg_net, como
-// `whatsapp-encerrar` — o job vive em `scratchpad/_agendar-cron-receita.mjs`,
-// fora do git, porque carrega o CRON_SECRET de produção.
+// ⚠️ GATILHO: o plano da Vercel já usa os 2 crons permitidos (`vercel.json`).
+// Quem dispara esta rota é o próprio /api/cron/obrigacoes, logo no início
+// (`dispararVarreduraReceita`), como invocação separada com os 60s dela. O job
+// de pg_cron em `scratchpad/_agendar-cron-receita.mjs` continua possível, mas é
+// OPCIONAL — antes ele era o único gatilho, e sem ele nada rodava (achado do
+// code-review de 06/10).
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';

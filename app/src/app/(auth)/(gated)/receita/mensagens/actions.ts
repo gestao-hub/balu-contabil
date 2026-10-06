@@ -15,6 +15,7 @@ import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { sincronizarCaixaPostalEmpresa } from '@/lib/fiscal/caixa-postal-sync';
 import { detalharMensagem } from '@/lib/fiscal/serpro-caixa-postal';
+import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 import { gerarRelatorioSitfisEmpresa, BUCKET_RELATORIOS } from '@/lib/fiscal/sitfis-sync';
 import { signedUrlDownload } from '@/lib/clients/supabase-storage';
 import { consultarParcelamentosEmpresa, parcelasDisponiveis, gerarDasDaParcela } from '@/lib/fiscal/parcelamentos-sync';
@@ -97,7 +98,9 @@ export async function abrirMensagemReceitaAction(
     conteudo: r.mensagem.corpo,
     assunto: r.mensagem.assunto,
     lida_na_receita: true,
-    data_ciencia: r.mensagem.dataCiencia ?? agora.slice(0, 10),
+    // Data de HOJE EM BRASÍLIA: `agora` é UTC, e às 21h de Brasília já é o
+    // dia seguinte — um dia a menos de prazo para quem conta pela tela.
+    data_ciencia: r.mensagem.dataCiencia ?? ymdBrt(),
     aberta_em: agora,
     aberta_por: g.userId,
     updated_at: agora,

@@ -635,3 +635,37 @@ describe('GET /api/cron/obrigacoes — roteamento do WhatsApp por escritorio', (
     expect(h.enviarMensagem).not.toHaveBeenCalled();
   });
 });
+
+// ═══ Achado do code-review (06/10): a varredura da Receita ficou sem gatilho ═══
+// Ao sair deste cron, a Caixa Postal e o SITFIS passaram a depender de um job
+// de pg_cron criado à mão (com o segredo de produção, fora do git). Sem ele,
+// nada rodava — em silêncio. Agora este cron, que já roda todo dia, DISPARA
+// `/api/cron/receita` como invocação própria (60s só dela).
+describe('GET /api/cron/obrigacoes — disparo da varredura da Receita', () => {
+  it('chama /api/cron/receita na mesma origem, com o segredo do cron', async () => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const res = await GET(requisicaoFalsa());
+      expect(res.status).toBe(200);
+      const chamada = fetchMock.mock.calls.find((c) => String(c[0]).endsWith('/api/cron/receita'));
+      expect(chamada).toBeTruthy();
+      expect(String(chamada![0])).toBe('http://localhost/api/cron/receita');
+      expect((chamada![1] as RequestInit).headers).toMatchObject({ authorization: `Bearer ${SECRET}` });
+      expect((await res.json()).receita_disparada).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('falha no disparo NÃO derruba o cron (obrigação fiscal vem primeiro)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('rede fora'); }));
+    try {
+      const res = await GET(requisicaoFalsa());
+      expect(res.status).toBe(200);
+      expect((await res.json()).receita_disparada).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

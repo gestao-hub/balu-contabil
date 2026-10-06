@@ -21,7 +21,11 @@ export async function gerarRelatorioSitfisEmpresa(
   opts: { solicitadoPor: string | null; esperaMaximaMs: number },
 ): Promise<ResultadoGerarSitfis> {
   const r = await emitirRelatorioSitfis(admin, companyId, { esperaMaximaMs: opts.esperaMaximaMs });
-  await carimbar(admin, companyId);
+  // "Ainda gerando" é tentativa INTERROMPIDA, não consulta feita: carimbar
+  // aqui escondia a empresa da varredura por INTERVALO_DIAS (achado do
+  // code-review de 06/10). Erro definitivo (sem autorização, sem CNPJ)
+  // carimba, senão a empresa ocupa a frente da fila todo dia.
+  if (r.ok || !r.aindaGerando) await carimbar(admin, companyId);
   if (!r.ok) return r;
 
   const resultado = analisarRelatorio(r.pdf);
@@ -87,7 +91,8 @@ async function carimbar(admin: SupabaseClient, companyId: string): Promise<void>
  *  chamadas ao SERPRO mais a espera da geração. */
 const INTERVALO_DIAS = 7;
 const CUSTO_EMPRESA_MS = 8_000;
-const ESPERA_MAXIMA_NA_VARREDURA_MS = 6_000;
+/** Margem para a emissão em si (2ª chamada, upload, gravação) depois da espera. */
+const MARGEM_APOS_ESPERA_MS = 3_000;
 const TETO_EMPRESAS = 5_000;
 
 export type ResultadoVarreduraSitfis = {
@@ -119,8 +124,13 @@ export async function rodarSitfis(
 
   for (const f of fila) {
     if (Date.now() - inicio + CUSTO_EMPRESA_MS > opts.orcamentoMs) { r.cortada_por_orcamento = true; break; }
+    // A espera usa o orçamento que SOBRA, não um teto fixo: com 6s fixos
+    // (achado do code-review de 06/10), uma Receita que leva 10s para gerar
+    // deixava TODA empresa em "ainda gerando" — e a varredura nunca produzia
+    // relatório. Empresa que ainda assim não couber volta amanhã (sem carimbo).
+    const restante = opts.orcamentoMs - (Date.now() - inicio) - MARGEM_APOS_ESPERA_MS;
     const res = await gerarRelatorioSitfisEmpresa(admin, f.empresa_id as string, {
-      solicitadoPor: null, esperaMaximaMs: ESPERA_MAXIMA_NA_VARREDURA_MS,
+      solicitadoPor: null, esperaMaximaMs: Math.max(0, restante),
     });
     if (!res.ok) { r.erros++; console.warn(`[sitfis] ${f.empresa_id}: ${res.error}`); continue; }
     r.emitidos++;

@@ -62,13 +62,13 @@ async function gravarMensagens(
   return { novas };
 }
 
-/** Avisa o dono da empresa e o escritório que a atende — uma notificação por mensagem. */
-async function avisarNovas(admin: SupabaseClient, companyId: string, novas: MensagemResumo[]): Promise<void> {
-  if (novas.length === 0) return;
+/** Quem é avisado: o dono da empresa e cada membro do escritório que a atende. */
+async function destinatarios(admin: SupabaseClient, companyId: string): Promise<{
+  nomeEmpresa: string; destinos: { userId: string; href: string }[];
+}> {
   const { data: empresa } = await admin.from('companies')
     .select('user_id, contabilidade_id, nome, razao_social').eq('id', companyId).maybeSingle();
   const nomeEmpresa = ((empresa?.nome as string | null)?.trim() || (empresa?.razao_social as string | null)?.trim()) ?? '';
-
   const destinos: { userId: string; href: string }[] = [];
   if (empresa?.user_id) destinos.push({ userId: empresa.user_id as string, href: '/receita/mensagens' });
   if (empresa?.contabilidade_id) {
@@ -78,6 +78,40 @@ async function avisarNovas(admin: SupabaseClient, companyId: string, novas: Mens
       destinos.push({ userId: m.user_id as string, href: `/contador/clientes/${companyId}/receita` });
     }
   }
+  return { nomeEmpresa, destinos };
+}
+
+/**
+ * CARGA INICIAL (achado do code-review de 06/10): na primeira sincronização
+ * TUDO é "novo na Balu", e avisar uma a uma inundava dono e escritório com o
+ * histórico inteiro da caixa — e o cron de e-mail mandaria um e-mail por
+ * aviso. Aqui sai UM aviso-resumo por destinatário, e só se houver mensagem
+ * ainda não lida no e-CAC.
+ */
+async function avisarCargaInicial(admin: SupabaseClient, companyId: string, naoLidas: MensagemResumo[]): Promise<void> {
+  if (naoLidas.length === 0) return;
+  const { nomeEmpresa, destinos } = await destinatarios(admin, companyId);
+  if (destinos.length === 0) return;
+  const relevantes = naoLidas.filter((m) => m.relevante).length;
+  const qtd = `${naoLidas.length} mensage${naoLidas.length === 1 ? 'm' : 'ns'} não lida${naoLidas.length === 1 ? '' : 's'}`;
+  const { error } = await admin.from('notifications').upsert(destinos.map((d) => ({
+    owner_user_id: d.userId,
+    company_id: companyId,
+    tipo: 'receita_mensagem_nova',
+    severidade: relevantes > 0 ? 'danger' : 'warning',
+    titulo: 'Caixa Postal do e-CAC conectada',
+    corpo: `${nomeEmpresa ? `${nomeEmpresa}: ` : ''}há ${qtd} na Caixa Postal da Receita`
+      + (relevantes > 0 ? ` (${relevantes} marcada${relevantes === 1 ? '' : 's'} como importante).` : '.'),
+    action_href: d.href,
+    chave: `receita_caixa_inicial:${companyId}`,
+  })), { onConflict: 'owner_user_id,chave', ignoreDuplicates: true });
+  if (error) console.error('[caixa postal] aviso da carga inicial falhou:', error.message);
+}
+
+/** Avisa o dono da empresa e o escritório que a atende — uma notificação por mensagem. */
+async function avisarNovas(admin: SupabaseClient, companyId: string, novas: MensagemResumo[]): Promise<void> {
+  if (novas.length === 0) return;
+  const { nomeEmpresa, destinos } = await destinatarios(admin, companyId);
   if (destinos.length === 0) return;
 
   const linhas = destinos.flatMap((d) => novas.map((m) => ({
@@ -119,10 +153,21 @@ export async function sincronizarCaixaPostalEmpresa(
   const lista = await listarMensagens(admin, companyId, { somenteNaoLidas: !opts.completa });
   if (!lista.ok) return lista;
 
+  // Carga inicial = a empresa ainda não tem NENHUMA mensagem guardada. Lido
+  // ANTES de gravar. Erro de leitura conta como carga inicial: errar para o
+  // resumo custa um aviso; errar para o outro lado é a enxurrada.
+  const { data: jaTem, error: eJaTem } = await admin.from('mensagens_receita')
+    .select('id').eq('company_id', companyId).limit(1);
+  const cargaInicial = Boolean(eJaTem) || (jaTem ?? []).length === 0;
+
   const gravado = await gravarMensagens(admin, companyId, lista.lista.mensagens);
   if ('erro' in gravado) return { ok: false, error: `Não foi possível gravar as mensagens: ${gravado.erro}` };
 
-  await avisarNovas(admin, companyId, gravado.novas);
+  // Só o que ainda NÃO foi lido no e-CAC é notícia: mensagem aberta por lá
+  // (pelo contador, pelo próprio cliente) já foi vista por alguém.
+  const naoLidas = gravado.novas.filter((m) => !m.lidaNaReceita);
+  if (cargaInicial) await avisarCargaInicial(admin, companyId, naoLidas);
+  else await avisarNovas(admin, companyId, naoLidas);
   await carimbar(admin, companyId);
   return { ok: true, novas: gravado.novas.length, total: lista.lista.mensagens.length };
 }

@@ -89,9 +89,42 @@ function montarTextoWhatsapp(n: {
   return { corpo: linhas.join('\n'), linhaDigitavel };
 }
 
+/**
+ * Dispara a varredura da RECEITA (`/api/cron/receita`: Caixa Postal e SITFIS)
+ * como uma invocação PRÓPRIA, com os 60s dela.
+ *
+ * POR QUE AQUI (achado do code-review de 06/10): o plano da Vercel já usa os 2
+ * crons, e a alternativa — um job de pg_cron — exige criar à mão, fora do git,
+ * um comando com o segredo de produção. Sem esse passo, a varredura não rodava
+ * e nada acusava. Este cron já roda todo dia e tem o segredo no ambiente.
+ *
+ * Não espera a varredura terminar: o pedido sai, e o tempo-limite curto só
+ * corta a ESPERA deste lado — a invocação de lá segue com o orçamento dela.
+ * Tempo-limite estourado conta como disparado (o pedido chegou); erro de rede,
+ * não. Nunca lança: obrigação fiscal deste cron vem primeiro.
+ */
+async function dispararVarreduraReceita(req: Request): Promise<boolean> {
+  try {
+    await fetch(new URL('/api/cron/receita', req.url).toString(), {
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET ?? ''}` },
+      signal: AbortSignal.timeout(1_500),
+      cache: 'no-store',
+    });
+    return true;
+  } catch (e) {
+    const nome = e instanceof Error ? e.name : '';
+    if (nome === 'TimeoutError' || nome === 'AbortError') return true;
+    console.error('[cron obrigacoes] disparo da varredura da Receita falhou', e);
+    return false;
+  }
+}
+
 export async function GET(req: Request) {
   const recusa = checarCron(req);
   if (recusa) return NextResponse.json(recusa.body, { status: recusa.status });
+
+  // Primeiro de tudo: a varredura da Receita roda em paralelo, na invocação dela.
+  const receitaDisparada = await dispararVarreduraReceita(req);
 
   const admin = createAdminClient();
 
@@ -403,6 +436,7 @@ export async function GET(req: Request) {
     sla_avisos: eSla ? null : (slaAvisos ?? 0),
     conciliacao,
     pagamentos_serpro: pagamentosSerpro,
+    receita_disparada: receitaDisparada,
     billing,
     apuracao,
   });

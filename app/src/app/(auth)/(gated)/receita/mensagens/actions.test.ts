@@ -60,6 +60,22 @@ describe('abrirMensagemReceitaAction', () => {
     expect(h.auditoria).toHaveBeenCalledWith(expect.objectContaining({ acao: 'receita.mensagem_aberta', actorUserId: 'u1' }));
   });
 
+  // Achado do code-review (06/10): a data de reserva era a data em UTC — às
+  // 22h de Brasília já é o dia seguinte, e a ciência é o que inicia o prazo.
+  it('sem dataCiencia da Receita, grava a data de HOJE EM BRASÍLIA (não em UTC)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-11T01:30:00Z')); // 22h30 de 10/10 em Brasília
+    try {
+      h.detalharMensagem.mockResolvedValue({
+        ok: true, mensagem: { isn: '123', assunto: 'Aviso', corpo: 'Corpo', dataCiencia: null },
+      });
+      await abrirMensagemReceitaAction('m1', true);
+      expect(h.updates[0].data_ciencia).toBe('2026-10-10');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('mensagem que a RLS não devolve (outra empresa) não é aberta', async () => {
     h.estado.mensagem = null;
     expect((await abrirMensagemReceitaAction('m_outro', true)).ok).toBe(false);

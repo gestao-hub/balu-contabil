@@ -81,6 +81,42 @@ describe('sincronizarCaixaPostalEmpresa', () => {
     expect(avisos.find((a) => a.owner_user_id === 'contador_1')?.action_href).toBe('/contador/clientes/emp_1/receita');
   });
 
+  // ── Achado do code-review (06/10): a primeira sincronização avisava o
+  // histórico inteiro, mensagem por mensagem, inclusive as já lidas no e-CAC.
+  it('carga inicial: UM aviso-resumo por destinatário, só contando as não lidas', async () => {
+    h.estado.existentes = []; // empresa nunca sincronizada
+    h.listarMensagens.mockResolvedValue({
+      ok: true,
+      lista: {
+        mensagens: [msg('1', { lidaNaReceita: true }), msg('2', { lidaNaReceita: true }), msg('3'), msg('4')],
+        ultimaPagina: true, proximoPonteiro: null,
+      },
+    });
+    await sincronizarCaixaPostalEmpresa(admin, 'emp_1', { completa: true });
+    const avisos = h.upserts.find((u) => u.tabela === 'notifications')?.linhas as Record<string, unknown>[];
+    expect(avisos).toHaveLength(2); // dono + 1 membro, e não 4 mensagens x 2
+    expect(avisos[0]).toMatchObject({ chave: 'receita_caixa_inicial:emp_1' });
+    expect(String(avisos[0].corpo)).toMatch(/2 mensage/);
+  });
+
+  it('carga inicial com tudo já lido no e-CAC: ninguém é avisado', async () => {
+    h.estado.existentes = [];
+    h.listarMensagens.mockResolvedValue({
+      ok: true, lista: { mensagens: [msg('1', { lidaNaReceita: true })], ultimaPagina: true, proximoPonteiro: null },
+    });
+    await sincronizarCaixaPostalEmpresa(admin, 'emp_1', { completa: true });
+    expect(h.upserts.some((u) => u.tabela === 'notifications')).toBe(false);
+  });
+
+  it('mensagem nova que já chegou LIDA (abriram pelo e-CAC) não vira aviso', async () => {
+    h.estado.existentes = [{ isn: '1', lida_na_receita: true, data_ciencia: null }];
+    h.listarMensagens.mockResolvedValue({
+      ok: true, lista: { mensagens: [msg('1', { lidaNaReceita: true }), msg('2', { lidaNaReceita: true })], ultimaPagina: true, proximoPonteiro: null },
+    });
+    await sincronizarCaixaPostalEmpresa(admin, 'emp_1', { completa: true });
+    expect(h.upserts.some((u) => u.tabela === 'notifications')).toBe(false);
+  });
+
   it('nada novo: não avisa ninguém', async () => {
     h.estado.existentes = [{ isn: '1', lida_na_receita: false, data_ciencia: null }];
     h.listarMensagens.mockResolvedValue({ ok: true, lista: { mensagens: [msg('1')], ultimaPagina: true, proximoPonteiro: null } });
