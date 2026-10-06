@@ -349,6 +349,36 @@ export const CobrarClienteSchema = z.object({
 });
 export type CobrarClienteInput = z.infer<typeof CobrarClienteSchema>;
 
+// "Usar serviço" do catálogo de avulsos: o mesmo pedido de cobrança, mas o
+// destino pode ser a carteira, um cliente avulso já cadastrado (0108) ou um
+// novo, cadastrado na hora. Documento/telefone/e-mail são validados de novo na
+// action com `lib/billing/cliente-avulso` — aqui só a forma.
+export const UsarServicoSchema = z.object({
+  servicoAvulsoId: z.string().uuid('Serviço inválido.'),
+  destino: z.discriminatedUnion('tipo', [
+    z.object({ tipo: z.literal('empresa'), companyId: z.string().uuid('Cliente inválido.') }),
+    z.object({ tipo: z.literal('avulso'), clienteAvulsoId: z.string().uuid('Cliente inválido.') }),
+    z.object({
+      tipo: z.literal('novo'),
+      nome: z.string().trim().min(2, 'Informe o nome do cliente.').max(200, 'Nome longo demais.'),
+      cpfCnpj: z.string().max(20, 'CPF/CNPJ inválido.'),
+      email: z.string().max(200, 'E-mail longo demais.').nullish().transform((v) => v?.trim() || null),
+      telefone: z.string().max(30, 'Telefone inválido.').nullish().transform((v) => v?.trim() || null),
+    }),
+  ], { errorMap: () => ({ message: 'Escolha para quem é a cobrança.' }) }),
+  descricaoLivre: z.string().max(200, 'Descrição longa demais.').nullish().transform((v) => v?.trim() || null),
+  baseCentavos: z.number({ invalid_type_error: 'Informe o valor em números.' })
+    .int('Informe o valor em números.').max(2_147_483_647, 'Valor alto demais.')
+    .nullish().transform((v) => v ?? null),
+  vencimento: z.string({ required_error: 'Informe o vencimento.', invalid_type_error: 'Informe o vencimento.' })
+    .regex(DATA_ISO, 'Informe o vencimento.'),
+  idempotencyKey: z.string({
+    required_error: 'Informe a chave de emissão.',
+    invalid_type_error: 'Chave de emissão inválida.',
+  }).uuid('Chave de emissão inválida.').transform((v) => v.toLowerCase()),
+});
+export type UsarServicoInput = z.infer<typeof UsarServicoSchema>;
+
 export const CobrarHonorarioSchema = z.object({
   honorarioId: z.string().uuid('Honorário inválido.'),
   // Ausente = usa o vencimento que o honorário já tem. Só é preciso digitar

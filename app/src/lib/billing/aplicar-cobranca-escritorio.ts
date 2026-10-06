@@ -32,8 +32,11 @@ export type CobrancaDoEscritorio = {
   pago_em: string | null;
   honorario_id: string | null;
   contabilidade_id: string;
-  /** Quem pagou. Sem isto não há a quem mandar a quitação (Frente 3). */
-  empresa_cliente_id: string;
+  /** Quem pagou. Sem isto não há a quem mandar a quitação (Frente 3).
+   *  `null` quando a cobrança é de um cliente avulso (0108) — aí quem pagou
+   *  está em `cliente_avulso_id`, e não há app do cliente a avisar. */
+  empresa_cliente_id: string | null;
+  cliente_avulso_id?: string | null;
   /** Aparece no corpo do aviso — é como o cliente reconhece a cobrança. */
   descricao: string | null;
 };
@@ -205,9 +208,16 @@ async function avisarPagamentoConfirmado(
     // escrito pelo compare-and-swap, a reconciliação seguinte devolve
     // `sem_efeito` e nunca mais passa por aqui — o cliente que pagou jamais
     // seria avisado, e nada apontaria para o motivo.
-    const { data: empresa, error: eEmpresa } = await sb
-      .from('companies').select('user_id, nome, razao_social')
-      .eq('id', cob.empresa_cliente_id).maybeSingle();
+    // Cliente avulso (0108) não é linha de `companies` nem tem login: só o
+    // escritório é avisado, com o nome que ele cadastrou.
+    const { data: lido, error: eEmpresa } = cob.empresa_cliente_id
+      ? await sb.from('companies').select('user_id, nome, razao_social')
+        .eq('id', cob.empresa_cliente_id).maybeSingle()
+      : cob.cliente_avulso_id
+        ? await sb.from('clientes_avulsos').select('nome')
+          .eq('id', cob.cliente_avulso_id).maybeSingle()
+        : { data: null, error: null };
+    const empresa = lido as { user_id?: string | null; nome?: string | null; razao_social?: string | null } | null;
     if (eEmpresa) {
       console.error(`[4b ${origem}] leitura da empresa falhou, cliente pode ficar sem aviso`, cob.id, eEmpresa.message);
     }

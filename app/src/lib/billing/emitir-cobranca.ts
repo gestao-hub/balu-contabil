@@ -30,6 +30,11 @@ import { cobrancaViva } from '@/lib/billing/cobranca-escritorio';
 import { soDigitos } from '@/lib/billing/subconta';
 
 export type ClienteCobravel = {
+  /** De onde o cliente vem, e portanto qual coluna da cobrança ele preenche:
+   *  `empresa` → `empresa_cliente_id` (carteira); `avulso` → `cliente_avulso_id`
+   *  (0108 — quem o escritório cobra sem ter na carteira). Ausente = `empresa`,
+   *  o caminho que existia antes da 0108. */
+  origem?: 'empresa' | 'avulso';
   id: string;
   nome: string;
   /** Documento COMO ESTA NO BANCO — a normalizacao acontece aqui dentro. */
@@ -314,6 +319,11 @@ async function cobrancaQueBloqueia(
     : null;
 }
 
+/** Tipo do alvo da auditoria: cliente avulso não é linha de `companies`. */
+function alvoTipoDo(c: ClienteCobravel): string {
+  return c.origem === 'avulso' ? 'cliente_avulso' : 'company';
+}
+
 /** A frase para o contador quando algo já emitido bloqueia esta emissão. */
 function mensagemDoBloqueio(b: Bloqueio): string {
   if (b.motivo === 'submissao') return JA_EMITIDA_SUBMISSAO;
@@ -466,7 +476,9 @@ export async function emitirCobrancaEscritorio(
   // unicos: 23505 aqui e a REDE DE BAIXO mordendo, tratada logo abaixo.
   const { data: linha, error } = await sb.from('cobrancas_escritorio').insert({
     contabilidade_id: p.contabilidadeId,
-    empresa_cliente_id: p.cliente.id,
+    // O CHECK da 0108 exige exatamente um dos dois.
+    empresa_cliente_id: p.cliente.origem === 'avulso' ? null : p.cliente.id,
+    cliente_avulso_id: p.cliente.origem === 'avulso' ? p.cliente.id : null,
     honorario_id: p.honorarioId,
     servico_avulso_id: p.servicoAvulsoId,
     asaas_charge_id: cobranca.id,
@@ -493,7 +505,7 @@ export async function emitirCobrancaEscritorio(
     const jaExiste = await cobrancaQueBloqueia(sb, p);
     await registrarAuditoria({
       actorUserId: p.userId, acao: 'cobranca_escritorio.duplicada_bloqueada',
-      alvoTipo: 'company', alvoId: p.cliente.id, contabilidadeId: p.contabilidadeId,
+      alvoTipo: alvoTipoDo(p.cliente), alvoId: p.cliente.id, contabilidadeId: p.contabilidadeId,
       meta: {
         charge_id: cobranca.id, valor_centavos: p.valorCentavos,
         honorario_id: p.honorarioId, servico_avulso_id: p.servicoAvulsoId,
@@ -517,7 +529,7 @@ export async function emitirCobrancaEscritorio(
     // um boleto que o painel do escritorio nunca mostra.
     await registrarAuditoria({
       actorUserId: p.userId, acao: 'cobranca_escritorio.nao_gravada',
-      alvoTipo: 'company', alvoId: p.cliente.id, contabilidadeId: p.contabilidadeId,
+      alvoTipo: alvoTipoDo(p.cliente), alvoId: p.cliente.id, contabilidadeId: p.contabilidadeId,
       meta: {
         charge_id: cobranca.id, valor_centavos: p.valorCentavos,
         honorario_id: p.honorarioId, servico_avulso_id: p.servicoAvulsoId,
@@ -543,7 +555,7 @@ export async function emitirCobrancaEscritorio(
 
   await registrarAuditoria({
     actorUserId: p.userId, acao: 'cobranca_escritorio.emitida',
-    alvoTipo: 'company', alvoId: p.cliente.id, contabilidadeId: p.contabilidadeId,
+    alvoTipo: alvoTipoDo(p.cliente), alvoId: p.cliente.id, contabilidadeId: p.contabilidadeId,
     // Sem a chave, sem o token, sem o corpo do Asaas.
     meta: {
       cobranca_id: linha.id, charge_id: cobranca.id,
@@ -587,4 +599,22 @@ export async function clienteDaCarteira(
     cpfCnpj: c.cnpj ?? '',
     email: c.email,
   };
+}
+
+/**
+ * O cliente avulso (0108), se ele for DESTE escritório.
+ *
+ * Mesma forma e mesmo silêncio de `clienteDaCarteira`: `null` para "não existe"
+ * e para "é de outro escritório", sem revelar a diferença.
+ */
+export async function clienteAvulsoDoEscritorio(
+  sb: SupabaseClient, contabilidadeId: string, clienteAvulsoId: string,
+): Promise<ClienteCobravel | null> {
+  const { data } = await sb
+    .from('clientes_avulsos')
+    .select('id, nome, cpf_cnpj, email, contabilidade_id')
+    .eq('id', clienteAvulsoId).eq('contabilidade_id', contabilidadeId).maybeSingle();
+  const c = data as { id: string; nome: string; cpf_cnpj: string; email: string | null } | null;
+  if (!c) return null;
+  return { origem: 'avulso', id: c.id, nome: c.nome.trim(), cpfCnpj: c.cpf_cnpj, email: c.email };
 }

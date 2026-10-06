@@ -17,13 +17,15 @@
 // quebra no runtime — mordeu o Bloco 4A.
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Loader2, Pencil, Plus, Power, RotateCcw, Trash2, X } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, Loader2, Pencil, Plus, Power, Receipt, RotateCcw, Trash2, X } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { formatBRL, normalizarValorBRL } from '@/lib/format/dinheiro';
 import { validarServicoAvulso, CATALOGO_SUGERIDO, type TipoValor } from '@/lib/billing/avulso';
 import {
   salvarServicoAction, definirAtivoServicoAction, apagarServicoAction, semearCatalogoAction,
 } from './actions';
+import UsarServicoDialog, { type EmpresaOpcao, type ClienteAvulsoOpcao } from './UsarServicoDialog';
 
 export type ServicoVm = {
   id: string;
@@ -89,9 +91,10 @@ function reaisDoCentavos(c: number | null): string {
  * cima: componente declarado dentro de outro é um tipo novo a cada render, e o
  * React desmonta e remonta a lista inteira a cada tecla digitada no formulário.
  */
-function LinhaServico({ s, pending, onEditar, onSituacao, onApagar }: {
+function LinhaServico({ s, pending, onUsar, onEditar, onSituacao, onApagar }: {
   s: ServicoVm;
   pending: boolean;
+  onUsar: (s: ServicoVm) => void;
   onEditar: (s: ServicoVm) => void;
   onSituacao: (s: ServicoVm) => void;
   onApagar: (s: ServicoVm) => void;
@@ -114,6 +117,18 @@ function LinhaServico({ s, pending, onEditar, onSituacao, onApagar }: {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        {/* Serviço desativado saiu da emissão de propósito — a action recusa. */}
+        {s.ativo && (
+          <button
+            type="button"
+            onClick={() => onUsar(s)}
+            disabled={pending}
+            title="Gerar uma cobrança deste serviço"
+            className={`${botaoLinha} border-primary/40 text-primary hover:bg-primary/10`}
+          >
+            <Receipt className="size-3.5" /> Usar serviço
+          </button>
+        )}
         <button type="button" onClick={() => onEditar(s)} disabled={pending} className={botaoLinha}>
           <Pencil className="size-3.5" /> Editar
         </button>
@@ -139,7 +154,17 @@ function LinhaServico({ s, pending, onEditar, onSituacao, onApagar }: {
   );
 }
 
-export default function CatalogoAvulsos({ servicos }: { servicos: ServicoVm[] }) {
+export default function CatalogoAvulsos({
+  servicos, empresas = [], clientesAvulsos = [], nomeEscritorio = null, bloqueioCobranca = null,
+}: {
+  servicos: ServicoVm[];
+  empresas?: EmpresaOpcao[];
+  clientesAvulsos?: ClienteAvulsoOpcao[];
+  nomeEscritorio?: string | null;
+  /** Por que o escritório não pode emitir agora (assinatura, subconta) — dito
+   *  ao clicar, e não depois de preencher o card. */
+  bloqueioCobranca?: { texto: string; href: string; rotulo: string } | null;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [form, setForm] = useState<FormState>(VAZIO);
@@ -147,6 +172,13 @@ export default function CatalogoAvulsos({ servicos }: { servicos: ServicoVm[] })
   const [pending, start] = useTransition();
   /** Digitando uma categoria que ainda não existe na lista. */
   const [criandoCategoria, setCriandoCategoria] = useState(false);
+  /** O serviço com o card "Usar serviço" aberto. */
+  const [usando, setUsando] = useState<ServicoVm | null>(null);
+
+  function usar(s: ServicoVm) {
+    if (bloqueioCobranca) { toast('error', bloqueioCobranca.texto); return; }
+    setUsando(s);
+  }
 
   // Opções do dropdown: as categorias que o escritório JÁ usa no catálogo
   // (ativos e desativados) somadas às da lista sugerida — assim o catálogo
@@ -265,6 +297,7 @@ export default function CatalogoAvulsos({ servicos }: { servicos: ServicoVm[] })
       key={s.id}
       s={s}
       pending={pending}
+      onUsar={usar}
       onEditar={editar}
       onSituacao={mudarSituacao}
       onApagar={apagar}
@@ -273,6 +306,29 @@ export default function CatalogoAvulsos({ servicos }: { servicos: ServicoVm[] })
 
   return (
     <section className="space-y-6">
+      {bloqueioCobranca && (
+        <p
+          role="status"
+          className="flex flex-wrap items-start gap-2 rounded-md border border-alert/40 bg-alert/10 px-3 py-2 text-sm text-alert"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>
+            {bloqueioCobranca.texto}{' '}
+            <Link href={bloqueioCobranca.href} className="font-medium underline">{bloqueioCobranca.rotulo}</Link>
+          </span>
+        </p>
+      )}
+
+      {usando && (
+        <UsarServicoDialog
+          servico={usando}
+          empresas={empresas}
+          clientesAvulsos={clientesAvulsos}
+          nomeEscritorio={nomeEscritorio}
+          onFechar={() => { setUsando(null); router.refresh(); }}
+        />
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-surface p-5">
         <div>
           <h2 className="text-sm font-semibold text-foreground">

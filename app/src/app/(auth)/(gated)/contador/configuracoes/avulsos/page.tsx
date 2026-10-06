@@ -14,6 +14,8 @@ import { Receipt } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import type { TipoValor } from '@/lib/billing/avulso';
+import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
+import { MSG_ASSINATURA_PENDENTE, MSG_SUBCONTA_NAO_APROVADA } from '@/lib/billing/mensagens';
 import CatalogoAvulsos, { type ServicoVm } from './CatalogoAvulsos';
 
 export const dynamic = 'force-dynamic';
@@ -29,12 +31,54 @@ export default async function ContadorAvulsosPage() {
   const supabase = await createServerClient();
   // SEM filtro por `ativo`: a tela lista os desativados também, senão desativar
   // seria indistinguível de sumir para sempre e não haveria como reativar.
-  const { data, error } = await supabase
-    .from('servicos_avulsos')
-    .select('id, nome, categoria, tipo_valor, valor_centavos, percentual, ativo')
-    .eq('contabilidade_id', ctx.contabilidade.id)
-    .order('categoria', { ascending: true })
-    .order('nome', { ascending: true });
+  const contabilidadeId = ctx.contabilidade.id;
+  const [{ data, error }, { data: empresasRaw }, { data: avulsosRaw }, { data: cont }, gate] = await Promise.all([
+    supabase
+      .from('servicos_avulsos')
+      .select('id, nome, categoria, tipo_valor, valor_centavos, percentual, ativo')
+      .eq('contabilidade_id', contabilidadeId)
+      .order('categoria', { ascending: true })
+      .order('nome', { ascending: true }),
+    // Destinos do "Usar serviço": a carteira (policy `companies_select_contador`)
+    // e os clientes avulsos (policy da 0108) — os dois pela sessão.
+    supabase
+      .from('companies')
+      .select('id, nome, razao_social')
+      .eq('contabilidade_id', contabilidadeId)
+      .is('deleted_at', null)
+      .order('nome'),
+    supabase
+      .from('clientes_avulsos')
+      .select('id, nome, cpf_cnpj, email, telefone')
+      .eq('contabilidade_id', contabilidadeId)
+      .order('nome'),
+    supabase
+      .from('contabilidades')
+      .select('asaas_subconta_status')
+      .eq('id', contabilidadeId)
+      .maybeSingle(),
+    assertAssinaturaEscritorio(contabilidadeId),
+  ]);
+
+  // FALHA FECHADA, como em honorários: erro de leitura vira "não pode cobrar".
+  const subcontaAprovada = cont?.asaas_subconta_status === 'aprovada';
+  const bloqueioCobranca = !gate.ok
+    ? { texto: MSG_ASSINATURA_PENDENTE, href: '/contador/assinatura', rotulo: 'Ver assinatura' }
+    : !subcontaAprovada
+      ? { texto: MSG_SUBCONTA_NAO_APROVADA, href: '/contador/configuracoes/subconta', rotulo: 'Configurar conta de recebimento' }
+      : null;
+
+  const empresas = (empresasRaw ?? []).map((e) => ({
+    id: e.id as string,
+    nome: ((e.nome as string | null)?.trim() || (e.razao_social as string | null)?.trim()) ?? '',
+  }));
+  const clientesAvulsos = (avulsosRaw ?? []).map((c) => ({
+    id: c.id as string,
+    nome: c.nome as string,
+    cpfCnpj: c.cpf_cnpj as string,
+    email: (c.email as string | null) ?? null,
+    telefone: (c.telefone as string | null) ?? null,
+  }));
 
   // Falha de leitura NÃO pode chegar como lista vazia: o escritório veria um
   // catálogo cheio como "vazio" e clicaria em "começar com a lista sugerida"
@@ -75,7 +119,13 @@ export default async function ContadorAvulsosPage() {
         </p>
       )}
 
-      <CatalogoAvulsos servicos={servicos} />
+      <CatalogoAvulsos
+        servicos={servicos}
+        empresas={empresas}
+        clientesAvulsos={clientesAvulsos}
+        nomeEscritorio={ctx.contabilidade.nome ?? null}
+        bloqueioCobranca={bloqueioCobranca}
+      />
     </main>
   );
 }

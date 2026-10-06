@@ -40,6 +40,7 @@ import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { formatBRL } from '@/lib/format/dinheiro';
 import { rotuloStatus, corStatus, estaEmAberto } from '@/lib/billing/cobranca-escritorio-vm';
 import { statusHonorario, type StatusHonorario } from '@/lib/fiscal/status-honorario';
+import CompartilharCobranca from '@/components/CompartilharCobranca';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,7 +94,9 @@ type Row = {
   pago_em: string | null;
   link_fatura: string | null;
   honorario_id: string | null;
-  empresa_cliente_id: string;
+  /** `null` quando a cobrança é de um cliente avulso (0108). */
+  empresa_cliente_id: string | null;
+  cliente_avulso_id: string | null;
 };
 
 export default async function ContadorCobrancasPage({
@@ -109,6 +112,7 @@ export default async function ContadorCobrancasPage({
   if (ctx.contabilidade.status === 'suspensa') redirect('/contador/aguardando');
 
   const aba = abaDe((await searchParams).situacao);
+  const nomeEscritorio = ctx.contabilidade.nome ?? null;
   const supabase = await createServerClient();
 
   // SEM o join embutido em `companies`, de propósito. Esta leitura é pela
@@ -123,7 +127,7 @@ export default async function ContadorCobrancasPage({
     .from('cobrancas_escritorio')
     .select(`
       id, descricao, status, valor_centavos, vencimento, pago_em, link_fatura,
-      honorario_id, empresa_cliente_id
+      honorario_id, empresa_cliente_id, cliente_avulso_id
     `)
     .eq('contabilidade_id', ctx.contabilidade.id)
     .order('vencimento', { ascending: false })
@@ -203,6 +207,7 @@ export default async function ContadorCobrancasPage({
           link_fatura: null,
           honorario_id: h.id as string,
           empresa_cliente_id: h.empresa_cliente_id as string,
+          cliente_avulso_id: null,
         };
       });
   }
@@ -215,14 +220,34 @@ export default async function ContadorCobrancasPage({
   // `.eq('contabilidade_id')` NÃO serve aqui, justamente porque o ex-cliente já
   // não o tem; o recorte é a lista de ids que a RLS liberou logo acima.
   const nomePorEmpresa: Record<string, string> = {};
-  const idsEmpresas = Array.from(new Set(rows.map((r) => r.empresa_cliente_id)));
+  const idsEmpresas = Array.from(new Set(rows.map((r) => r.empresa_cliente_id).filter((x): x is string => !!x)));
   if (idsEmpresas.length > 0) {
     const { data: empresas } = await createAdminClient()
       .from('companies').select('id, nome').in('id', idsEmpresas);
     for (const e of empresas ?? []) nomePorEmpresa[e.id as string] = ((e.nome as string) ?? '').trim();
   }
-  const nomeDoCliente = (empresaId: string): string =>
-    nomePorEmpresa[empresaId] || 'Cliente sem nome';
+
+  // Cliente avulso (0108): fora da carteira e sem app. Pela SESSÃO — a policy
+  // `clientes_avulsos_select_dono` já recorta pelo escritório. O contato vem
+  // junto porque é dele que saem os botões de WhatsApp e e-mail.
+  const avulsoPorId: Record<string, { nome: string; email: string | null; telefone: string | null }> = {};
+  const idsAvulsos = Array.from(new Set(rows.map((r) => r.cliente_avulso_id).filter((x): x is string => !!x)));
+  if (idsAvulsos.length > 0) {
+    const { data: avulsos } = await supabase
+      .from('clientes_avulsos').select('id, nome, email, telefone').in('id', idsAvulsos);
+    for (const a of avulsos ?? []) {
+      avulsoPorId[a.id as string] = {
+        nome: ((a.nome as string) ?? '').trim(),
+        email: (a.email as string | null) ?? null,
+        telefone: (a.telefone as string | null) ?? null,
+      };
+    }
+  }
+
+  const nomeDoCliente = (r: Row): string =>
+    (r.cliente_avulso_id
+      ? avulsoPorId[r.cliente_avulso_id]?.nome
+      : r.empresa_cliente_id ? nomePorEmpresa[r.empresa_cliente_id] : '') || 'Cliente sem nome';
 
   // Os dois totais que importam para quem cobra, e só sobre o RECORTE ATUAL —
   // um total "de tudo" mostrado sob uma aba filtrada seria lido como o total da
@@ -312,7 +337,10 @@ export default async function ContadorCobrancasPage({
               <Link href="/contador/honorarios" className="inline-flex min-h-6 items-center text-primary hover:underline">
                 Honorários
               </Link>{' '}
-              e um serviço avulso pela ficha do cliente.
+              e um serviço avulso pela ficha do cliente ou pelo botão &ldquo;Usar serviço&rdquo; em{' '}
+              <Link href="/contador/configuracoes/avulsos" className="inline-flex min-h-6 items-center text-primary hover:underline">
+                Serviços avulsos
+              </Link>.
             </>
           ) : (
             <>Nenhuma cobrança nesta situação.</>
@@ -327,7 +355,7 @@ export default async function ContadorCobrancasPage({
             >
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-2 text-sm text-foreground">
-                  <span className="font-medium">{nomeDoCliente(r.empresa_cliente_id)}</span>
+                  <span className="font-medium">{nomeDoCliente(r)}</span>
                   <span className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${corStatus(r.status)}`}>
                     {rotuloStatus(r.status)}
                   </span>
@@ -337,6 +365,14 @@ export default async function ContadorCobrancasPage({
                   <span className="rounded-md bg-surface-3 px-1.5 py-0.5 text-xs text-muted-foreground">
                     {r.honorario_id ? 'honorário' : 'avulso'}
                   </span>
+                  {r.cliente_avulso_id && (
+                    <span
+                      title="Cliente fora da carteira — não tem o app, a fatura vai por WhatsApp ou e-mail"
+                      className="rounded-md border border-border px-1.5 py-0.5 text-xs text-muted-foreground"
+                    >
+                      fora da carteira
+                    </span>
+                  )}
                   {r.origem === 'registro' && (
                     <span className="rounded-md border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
                       sem cobrança gerada
@@ -355,6 +391,22 @@ export default async function ContadorCobrancasPage({
                   sem precisar entrar no painel do Asaas. Aparece também em
                   cobrança paga: é o comprovante. Some na estornada, onde o link
                   não leva a lugar útil. */}
+              {/* COMPARTILHAR — só para cliente avulso: quem está na carteira já vê
+                  a cobrança no app. Some quando não há mais o que pagar. */}
+              {r.cliente_avulso_id && r.link_fatura && estaEmAberto(r.status) && (
+                <div className="flex flex-wrap gap-2">
+                  <CompartilharCobranca
+                    nomeCliente={nomeDoCliente(r)}
+                    nomeEscritorio={nomeEscritorio}
+                    descricao={r.descricao}
+                    valorCentavos={r.valor_centavos}
+                    vencimento={r.vencimento}
+                    linkFatura={r.link_fatura}
+                    telefone={avulsoPorId[r.cliente_avulso_id]?.telefone ?? null}
+                    email={avulsoPorId[r.cliente_avulso_id]?.email ?? null}
+                  />
+                </div>
+              )}
               {r.origem === 'registro' && (
                 <Link
                   href="/contador/honorarios"

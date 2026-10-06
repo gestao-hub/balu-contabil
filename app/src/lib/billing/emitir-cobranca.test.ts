@@ -429,6 +429,28 @@ describe('emitirCobrancaEscritorio — persistencia', () => {
     });
   });
 
+  // 0108: o CHECK do banco exige exatamente um destino. Cliente avulso vai em
+  // `cliente_avulso_id`, e `empresa_cliente_id` fica NULL — nunca os dois.
+  it('cliente avulso grava em cliente_avulso_id, com empresa_cliente_id nulo', async () => {
+    await emitirCobrancaEscritorio(fakeSb(), pedido({
+      servicoAvulsoId: 'srv_1', cliente: { ...CLIENTE, origem: 'avulso', id: 'avulso_1' },
+    }));
+    expect(db.insercoes[0].valores).toMatchObject({
+      empresa_cliente_id: null,
+      cliente_avulso_id: 'avulso_1',
+    });
+    const a = h.auditorias.find((x) => x.acao === 'cobranca_escritorio.emitida');
+    expect(a?.alvoTipo).toBe('cliente_avulso');
+  });
+
+  it('empresa da carteira continua em empresa_cliente_id', async () => {
+    await emitirCobrancaEscritorio(fakeSb(), pedido({ servicoAvulsoId: 'srv_1' }));
+    expect(db.insercoes[0].valores).toMatchObject({
+      empresa_cliente_id: COMPANY_ID,
+      cliente_avulso_id: null,
+    });
+  });
+
   it('a auditoria de sucesso liga cobranca, charge e origem', async () => {
     await emitirCobrancaEscritorio(fakeSb(), pedido({ servicoAvulsoId: 'srv_1' }));
     const a = h.auditorias.find((x) => x.acao === 'cobranca_escritorio.emitida');
