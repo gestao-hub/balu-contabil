@@ -20,7 +20,7 @@ export default function DeclaracoesSection({ declaracoes }: { declaracoes: Decla
   if (declaracoes.length === 0) {
     return (
       <p className="text-sm text-muted-foreground rounded-md border border-border bg-surface px-4 py-3">
-        Nenhuma declaração consultada. Use <strong>“Consultar na SERPRO”</strong> (no Histórico de guias, abaixo) para buscar as PGDAS-D do ano.
+        Nenhuma declaração consultada. Use <strong>“Atualizar com a Receita”</strong> (no Histórico, abaixo) para buscar as PGDAS-D do ano.
       </p>
     );
   }

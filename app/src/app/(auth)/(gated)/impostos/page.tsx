@@ -17,6 +17,7 @@ import { type DeclaracaoRow } from './DeclaracoesSection';
 import DeclaracoesMeiSection from './DeclaracoesMeiSection';
 import DeclaracoesDefisSection from './DeclaracoesDefisSection';
 import GateInicialSerpro from './GateInicialSerpro';
+import AtualizarComReceitaButton from './AtualizarComReceitaButton';
 import PreviaMesCorrente from './PreviaMesCorrente';
 import FilaObrigacoes from './FilaObrigacoes';
 import CompetenciaAtualCardMei from './CompetenciaAtualCardMei';
@@ -226,7 +227,12 @@ export default async function ImpostosPage() {
               </section>
             )}
             <section>
-              <h2 className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Histórico</h2>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-xs uppercase tracking-wide text-muted-foreground">Histórico</h2>
+                {/* Depois da sincronização inicial não havia como reconsultar a
+                    Receita (declaração transmitida fora da Balu nunca aparecia). */}
+                {(regimeCode === '1' || regimeCode === '2') && <AtualizarComReceitaButton />}
+              </div>
               <HistoricoGuias initial={pagasHistorico} />
             </section>
           </>

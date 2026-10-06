@@ -3,6 +3,7 @@
 // usar a fila de obrigações (FilaObrigacoes) + detalhe por competência.
 import Link from 'next/link';
 import { Calculator, FileDown, Receipt } from 'lucide-react';
+import GerarDasMeiButton from './GerarDasMeiButton';
 import { brl, dataBR, statusGuiaBadge, competenciaLabel } from '@/lib/fiscal/guia';
 import { fatorRAplicavel } from '@/lib/fiscal/regime';
 import { situacaoDasMei } from '@/lib/fiscal/situacao-fiscal';
@@ -84,6 +85,9 @@ export default function CompetenciaAtualCardMei({ apuracao, guia, competencia, a
 
         <div className="sm:w-56 flex flex-col gap-2 shrink-0">
           {guia && <GuiaActions guia={guia} variant="primary" />}
+          {/* Guia OFICIAL da Receita (PGMEI): aparece enquanto a competência
+              não tem guia com número da Receita e não está paga. */}
+          {!guia?.pagamento && !guia?.numero && <GerarDasMeiButton competencia={competencia} />}
         </div>
       </div>
 
@@ -118,6 +122,9 @@ function EmptyCompetencia({ competencia }: { competencia: string }) {
         <FileDown className="size-4" />
         Calcular agora
       </Link>
+      <div className="mx-auto mt-3 max-w-xs">
+        <GerarDasMeiButton competencia={competencia} />
+      </div>
     </div>
   );
 }
