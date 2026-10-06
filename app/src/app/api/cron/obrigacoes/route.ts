@@ -12,7 +12,6 @@ import { rodarBilling } from '@/lib/billing/cron';
 import { rodarConciliacao } from '@/lib/conciliacao/cron';
 import { rodarApuracaoAutomatica } from '@/lib/fiscal/apuracao-cron';
 import { rodarPagamentosSerpro } from '@/lib/fiscal/pagamentos-serpro-cron';
-import { rodarCaixaPostal } from '@/lib/fiscal/caixa-postal-sync';
 import { dentroDoOrcamento } from '@/lib/fiscal/apuracao-cron-plano';
 import { enviarMensagem, type ConfigUazapi } from '@/lib/uazapi/cliente';
 import { configDaPlataforma, escritorioPorId } from '@/lib/uazapi/instancia';
@@ -344,18 +343,6 @@ export async function GET(req: Request) {
     pagamentosSerpro = { erro: String(err) };
   }
 
-  // Caixa Postal do e-CAC (0110): mensagens novas da Receita viram aviso para
-  // a empresa e o escritório. Só LISTA — abrir dá ciência e é decisão de uma
-  // pessoa. Mesma disciplina da etapa acima: SERPRO por empresa, orçamento
-  // próprio (8s), try/catch isolado.
-  let caixaPostal: unknown = null;
-  try {
-    caixaPostal = await rodarCaixaPostal(admin);
-  } catch (err) {
-    console.error('[cron obrigacoes] caixa postal falhou', err);
-    caixaPostal = { erro: String(err) };
-  }
-
   // Billing (Bloco 4A) roda AQUI e não em cron próprio: o plano Hobby da
   // Vercel permite exatamente 2 crons e o vercel.json já tem 2. O endpoint
   // /api/cron/billing continua existindo para disparo manual.
@@ -416,7 +403,6 @@ export async function GET(req: Request) {
     sla_avisos: eSla ? null : (slaAvisos ?? 0),
     conciliacao,
     pagamentos_serpro: pagamentosSerpro,
-    caixa_postal: caixaPostal,
     billing,
     apuracao,
   });

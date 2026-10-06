@@ -270,12 +270,25 @@ type ProcuradorRequest = {
  * autenticar_procurador_token). Compartilhado por /Consultar e /Emitir. Lança em status >= 400.
  * Devolve o envelope de resposta já parseado (objeto).
  */
+type RotaProcurador =
+  | '/integra-contador/v1/Consultar' | '/integra-contador/v1/Emitir'
+  | '/integra-contador/v1/Declarar' | '/integra-contador/v1/Apoiar';
+
 async function requestComProcurador(
-  path: '/integra-contador/v1/Consultar' | '/integra-contador/v1/Emitir' | '/integra-contador/v1/Declarar',
+  path: RotaProcurador,
   params: ProcuradorRequest,
 ): Promise<unknown> {
+  const { status, body: respBody } = await requestComProcuradorBruto(path, params);
+  return interpretarResposta(path, status, respBody);
+}
+
+/** A ida e volta HTTP, sem interpretar: status, corpo e ETag. */
+async function requestComProcuradorBruto(
+  path: RotaProcurador,
+  params: ProcuradorRequest,
+): Promise<{ status: number; body: string; etag: string | undefined }> {
   const body = JSON.stringify(params.envelope);
-  const { status, body: respBody } = await new Promise<{ status: number; body: string }>(
+  return new Promise<{ status: number; body: string; etag: string | undefined }>(
     (resolve, reject) => {
       const req = https.request(
         {
@@ -295,7 +308,9 @@ async function requestComProcurador(
         (res) => {
           let d = '';
           res.on('data', (c) => (d += c));
-          res.on('end', () => resolve({ status: res.statusCode ?? 0, body: d }));
+          res.on('end', () => resolve({
+            status: res.statusCode ?? 0, body: d, etag: res.headers.etag as string | undefined,
+          }));
         },
       );
       req.setTimeout(25_000, () => req.destroy(new Error(`SERPRO ${path}: timeout (25s).`)));
@@ -304,6 +319,10 @@ async function requestComProcurador(
       req.end();
     },
   );
+}
+
+/** Status >= 400 vira erro com o `codigo/texto` do envelope; o resto, JSON. */
+function interpretarResposta(path: string, status: number, respBody: string): unknown {
   if (status >= 400) {
     // A SERPRO devolve um envelope com `mensagens[].codigo/texto`; surfa-las
     // (o início do body é só o eco do request — inútil pra diagnóstico).
@@ -342,4 +361,22 @@ export function emitirComProcurador(params: ProcuradorRequest): Promise<unknown>
 /** POST /Declarar (produção) via mTLS + token do procurador. PGDAS-D (TRANSDECLARACAO11). */
 export function declararComProcurador(params: ProcuradorRequest): Promise<unknown> {
   return requestComProcurador('/integra-contador/v1/Declarar', params);
+}
+
+/**
+ * POST /Apoiar (produção) via mTLS + token do procurador — serviços de APOIO,
+ * como o pedido de protocolo do SITFIS (SOLICITARPROTOCOLO91).
+ *
+ * Devolve também o ETag, porque o SITFIS responde **304 sem corpo** quando o
+ * protocolo do dia já foi pedido, e o protocolo vem no cabeçalho ETag (cache
+ * documentado em integra-sitfis/sitfis/cache). Ler o corpo como JSON nesse caso
+ * seria jogar fora a resposta certa como "não-JSON".
+ */
+export async function apoiarComProcurador(
+  params: ProcuradorRequest,
+): Promise<{ status: number; corpo: unknown | null; etag: string | null }> {
+  const path = '/integra-contador/v1/Apoiar' as const;
+  const { status, body, etag } = await requestComProcuradorBruto(path, params);
+  if (status === 304) return { status, corpo: null, etag: etag ?? null };
+  return { status, corpo: interpretarResposta(path, status, body), etag: etag ?? null };
 }

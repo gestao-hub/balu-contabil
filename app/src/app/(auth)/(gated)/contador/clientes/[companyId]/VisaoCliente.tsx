@@ -154,7 +154,7 @@ export default function VisaoCliente({ empresa, tab, notas, guias, declaracoes, 
               href={`/contador/clientes/${empresa.id}/receita`}
               className="inline-block px-4 py-2 text-sm font-medium border-b-2 -mb-px border-transparent text-muted-foreground-2 hover:text-foreground"
             >
-              Mensagens da Receita
+              Receita Federal
             </Link>
           </li>
         </ul>

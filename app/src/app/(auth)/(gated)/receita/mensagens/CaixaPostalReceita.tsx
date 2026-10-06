@@ -10,6 +10,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Eye, Inbox, Loader2, Mail, MailOpen, RefreshCw, X } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
+import { dataHoraBrt } from '@/lib/format/data-brt';
 import { abrirMensagemReceitaAction, atualizarCaixaPostalAction } from './actions';
 
 export type MensagemReceitaVm = {
@@ -151,7 +152,7 @@ export default function CaixaPostalReceita({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {consultadaEm
-            ? `Última consulta à Receita: ${new Date(consultadaEm).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.`
+            ? `Última consulta à Receita: ${dataHoraBrt(consultadaEm)}.`
             : 'Ainda não consultada.'}
           {naoLidas > 0 && <strong className="ml-1 text-foreground">{naoLidas} não lida(s).</strong>}
         </p>

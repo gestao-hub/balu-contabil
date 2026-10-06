@@ -15,6 +15,8 @@ import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { registrarAuditoria } from '@/lib/security/audit';
 import { sincronizarCaixaPostalEmpresa } from '@/lib/fiscal/caixa-postal-sync';
 import { detalharMensagem } from '@/lib/fiscal/serpro-caixa-postal';
+import { gerarRelatorioSitfisEmpresa, BUCKET_RELATORIOS } from '@/lib/fiscal/sitfis-sync';
+import { signedUrlDownload } from '@/lib/clients/supabase-storage';
 
 type Resultado<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -110,4 +112,46 @@ export async function abrirMensagemReceitaAction(
 
   revalidar(m.company_id as string);
   return { ok: true, data: { conteudo: r.mensagem.corpo } };
+}
+
+// ─── SITUAÇÃO FISCAL (SITFIS, 0111) ──────────────────────────────────────────
+
+/** Espera da tela pela geração do relatório na Receita (a varredura espera menos). */
+const ESPERA_MAXIMA_TELA_MS = 25_000;
+
+/** Emite agora o Relatório de Situação Fiscal e guarda o PDF. */
+export async function emitirSituacaoFiscalAction(
+  companyId: string | null,
+): Promise<Resultado<{ resultado: string }>> {
+  const e = await empresaPermitida(companyId);
+  if (!e.ok) return e;
+  const r = await gerarRelatorioSitfisEmpresa(createAdminClient(), e.companyId, {
+    solicitadoPor: e.userId, esperaMaximaMs: ESPERA_MAXIMA_TELA_MS,
+  });
+  if (!r.ok) return { ok: false, error: r.error };
+  await registrarAuditoria({
+    actorUserId: e.userId, acao: 'receita.sitfis_emitido', alvoTipo: 'company', alvoId: e.companyId,
+    contabilidadeId: e.contabilidadeId ?? undefined, meta: { relatorio_id: r.id, resultado: r.resultado },
+  });
+  revalidar(e.companyId);
+  return { ok: true, data: { resultado: r.resultado } };
+}
+
+/**
+ * Link de download (5 min) do relatório. A linha é lida pela SESSÃO — a RLS da
+ * 0111 só a devolve ao dono da empresa e ao escritório dela —, e só então o
+ * service role assina a URL do bucket privado.
+ */
+export async function baixarRelatorioSitfisAction(relatorioId: string): Promise<Resultado<{ url: string }>> {
+  if (!relatorioId) return { ok: false, error: 'Relatório não informado.' };
+  const g = await getContabilidadeCtx();
+  if ('error' in g) return { ok: false, error: 'Entre na sua conta.' };
+  const sb = await createServerClient();
+  const { data } = await sb.from('relatorios_situacao_fiscal')
+    .select('storage_path, emitido_em').eq('id', relatorioId).maybeSingle();
+  if (!data) return { ok: false, error: 'Relatório não encontrado.' };
+  const dia = String(data.emitido_em ?? '').slice(0, 10);
+  const url = await signedUrlDownload(BUCKET_RELATORIOS, data.storage_path as string, `situacao-fiscal-${dia}.pdf`);
+  if (!url) return { ok: false, error: 'Não foi possível gerar o link do relatório. Tente de novo.' };
+  return { ok: true, data: { url } };
 }
