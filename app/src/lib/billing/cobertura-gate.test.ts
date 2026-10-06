@@ -116,11 +116,29 @@ describe('cobertura do gate de assinatura', () => {
 
     it.each([
       ['(auth)/(gated)/contador/clientes/[companyId]/cobrar-actions.ts', 'cobrarClienteAction'],
-      ['(auth)/(gated)/contador/honorarios/cobrar-actions.ts', 'cobrarHonorarioAction'],
+      ['(auth)/(gated)/contador/configuracoes/avulsos/usar-actions.ts', 'usarServicoAction'],
     ])('%s passa pelo motor (e nao pelo Asaas direto)', (arquivo, action) => {
       const corpo = corpoDaAction(ler(arquivo), action);
       expect(corpo).toContain('emitirCobrancaEscritorio(');
       // Falar com o Asaas daqui seria contornar o gate e o cofre da credencial.
+      expect(corpo).not.toMatch(/asaasSub\s*\(|lerCredencial\s*\(/);
+    });
+
+    // HONORÁRIO (06/10/2026): o escritório e o CLIENTE ("Pagar") emitem pelo
+    // mesmo miolo, `cobrarHonorario`, que por sua vez passa pelo motor. A rede
+    // cobre os dois degraus: cada porta chama o miolo, e o miolo chama o motor.
+    it('cobrarHonorario (miolo do honorário) passa pelo motor', () => {
+      const corpo = corpoDaAction(lerLib(join('billing', 'cobrar-honorario.ts')), 'cobrarHonorario');
+      expect(corpo).toContain('emitirCobrancaEscritorio(');
+      expect(corpo).not.toMatch(/asaasSub\s*\(|lerCredencial\s*\(/);
+    });
+
+    it.each([
+      ['(auth)/(gated)/contador/honorarios/cobrar-actions.ts', 'cobrarHonorarioAction'],
+      ['(auth)/(gated)/honorarios/pagar-actions.ts', 'pagarHonorarioAction'],
+    ])('%s passa pelo miolo do honorário (e nao pelo Asaas direto)', (arquivo, action) => {
+      const corpo = corpoDaAction(ler(arquivo), action);
+      expect(corpo).toContain('cobrarHonorario(');
       expect(corpo).not.toMatch(/asaasSub\s*\(|lerCredencial\s*\(/);
     });
   });

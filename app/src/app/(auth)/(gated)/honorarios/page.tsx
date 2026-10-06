@@ -6,6 +6,7 @@ import { getContabilidadeCtx } from '@/lib/contador/guards';
 import { statusHonorario, type StatusHonorario } from '@/lib/fiscal/status-honorario';
 import { formatBRL, valorToCentavos } from '@/lib/format/dinheiro';
 import { mesAnoCompetencia } from '@/lib/format/data-brt';
+import PagarHonorarioButton from './PagarHonorarioButton';
 
 const STATUS_LABEL: Record<StatusHonorario, string> = { pago: 'Pago', atrasado: 'Atrasado', aberto: 'Aberto' };
 const STATUS_BADGE: Record<StatusHonorario, string> = {
@@ -102,6 +103,7 @@ export default async function HonorariosPage() {
                 <th className="px-4 py-3 text-right">Valor</th>
                 <th className="px-4 py-3 text-left">Vencimento</th>
                 <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-right"><span className="sr-only">Pagamento</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -116,6 +118,11 @@ export default async function HonorariosPage() {
                       <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[st]}`}>
                         {STATUS_LABEL[st]}
                       </span>
+                    </td>
+                    {/* Pagar: abre a fatura do escritório (boleto, Pix ou
+                        cartão), emitindo-a na hora se ainda não existir. */}
+                    <td className="px-4 py-3 text-right">
+                      {st !== 'pago' && <PagarHonorarioButton honorarioId={h.id} />}
                     </td>
                   </tr>
                 );
