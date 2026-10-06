@@ -20,7 +20,7 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle, Loader2, Pencil, Plus, Power, RotateCcw, Trash2, X } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { formatBRL, normalizarValorBRL } from '@/lib/format/dinheiro';
-import { validarServicoAvulso, type TipoValor } from '@/lib/billing/avulso';
+import { validarServicoAvulso, CATALOGO_SUGERIDO, type TipoValor } from '@/lib/billing/avulso';
 import {
   salvarServicoAction, definirAtivoServicoAction, apagarServicoAction, semearCatalogoAction,
 } from './actions';
@@ -51,6 +51,10 @@ type FormState = {
 const VAZIO: FormState = {
   id: null, nome: '', categoria: '', tipoValor: 'fixo', valor: '', percentual: '', ativo: true,
 };
+
+/** Valor do <option> que abre o campo de texto. Não colide com categoria real:
+ *  nenhum nome digitado começa com dois sublinhados por acaso. */
+const NOVA_CATEGORIA = '__nova__';
 
 const rotuloCampo = 'text-xs font-medium text-muted-foreground-2';
 const campo = 'rounded-md border border-border bg-surface-2 text-foreground px-3 py-2 text-sm';
@@ -141,6 +145,21 @@ export default function CatalogoAvulsos({ servicos }: { servicos: ServicoVm[] })
   const [form, setForm] = useState<FormState>(VAZIO);
   const [erro, setErro] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  /** Digitando uma categoria que ainda não existe na lista. */
+  const [criandoCategoria, setCriandoCategoria] = useState(false);
+
+  // Opções do dropdown: as categorias que o escritório JÁ usa no catálogo
+  // (ativos e desativados) somadas às da lista sugerida — assim o catálogo
+  // vazio também tem o que escolher. Sem duplicar por caixa/espaço:
+  // "fiscal " e "Fiscal" são a mesma categoria e viravam dois grupos.
+  const categorias = (() => {
+    const porChave = new Map<string, string>();
+    for (const c of [...servicos.map((s) => s.categoria), ...CATALOGO_SUGERIDO.map((s) => s.categoria)]) {
+      const t = (c ?? '').trim();
+      if (t && !porChave.has(t.toLocaleLowerCase('pt-BR'))) porChave.set(t.toLocaleLowerCase('pt-BR'), t);
+    }
+    return Array.from(porChave.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  })();
 
   const ativos = servicos.filter((s) => s.ativo);
   const inativos = servicos.filter((s) => !s.ativo);
@@ -152,6 +171,7 @@ export default function CatalogoAvulsos({ servicos }: { servicos: ServicoVm[] })
 
   function editar(s: ServicoVm) {
     setErro(null);
+    setCriandoCategoria(false);
     setForm({
       id: s.id,
       nome: s.nome,
@@ -192,6 +212,7 @@ export default function CatalogoAvulsos({ servicos }: { servicos: ServicoVm[] })
       if (!r.ok) { setErro(r.error); toast('error', r.error); return; }
       toast('success', form.id ? 'Serviço atualizado.' : 'Serviço adicionado ao catálogo.');
       setForm(VAZIO);
+      setCriandoCategoria(false);
       router.refresh();
     });
   }
@@ -279,14 +300,45 @@ export default function CatalogoAvulsos({ servicos }: { servicos: ServicoVm[] })
 
           <label className="flex flex-col gap-1">
             <span className={rotuloCampo}>Categoria</span>
-            <input
-              type="text"
-              value={form.categoria}
-              onChange={(e) => set('categoria', e.target.value)}
-              placeholder="Societário"
-              maxLength={100}
-              className={campo}
-            />
+            {criandoCategoria ? (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={form.categoria}
+                  onChange={(e) => set('categoria', e.target.value)}
+                  placeholder="Nome da nova categoria"
+                  maxLength={100}
+                  autoFocus
+                  className={`${campo} min-w-0 flex-1`}
+                />
+                <button
+                  type="button"
+                  onClick={() => { setCriandoCategoria(false); set('categoria', ''); }}
+                  title="Voltar para a lista de categorias"
+                  className={botaoLinha}
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ) : (
+              <select
+                // Pela chave sem caixa: um serviço gravado como "fiscal" ainda
+                // aparece selecionado na opção "Fiscal".
+                value={
+                  categorias.find((c) => c.toLocaleLowerCase('pt-BR') === form.categoria.trim().toLocaleLowerCase('pt-BR'))
+                  ?? ''
+                }
+                onChange={(e) => {
+                  if (e.target.value === NOVA_CATEGORIA) { setCriandoCategoria(true); set('categoria', ''); return; }
+                  set('categoria', e.target.value);
+                }}
+                className={campo}
+              >
+                <option value="">Sem categoria</option>
+                {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+                <option value={NOVA_CATEGORIA}>+ Nova categoria…</option>
+              </select>
+            )}
           </label>
 
           <label className="flex flex-col gap-1">
@@ -351,7 +403,7 @@ export default function CatalogoAvulsos({ servicos }: { servicos: ServicoVm[] })
           {editando && (
             <button
               type="button"
-              onClick={() => { setForm(VAZIO); setErro(null); }}
+              onClick={() => { setForm(VAZIO); setErro(null); setCriandoCategoria(false); }}
               disabled={pending}
               className={botaoLinha}
             >
