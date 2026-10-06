@@ -1,7 +1,9 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-10-05 (sessão 42 — cobranças do escritório: honorário em Cobranças emitidas, categoria em dropdown, "Usar serviço" com cliente fora da carteira + migration 0108; ver o bloco SESSÃO 42.)
+> **Última atualização:** 2026-10-06 (sessão 43 — KYC da subconta visível e enviável, encaminhamento do WhatsApp para escritório, "Responder" na fila, "Pagar" do honorário pelo cliente; migration 0109; ver o bloco SESSÃO 43.)
+>
+> _Anterior — sessão 42 (05/10/2026): cobranças do escritório: honorário em Cobranças emitidas, categoria em dropdown, "Usar serviço" com cliente fora da carteira + migration 0108; ver o bloco SESSÃO 42.)
 >
 > _Anterior — sessão 41 (18/09/2026): **limpeza de contas de teste e achado de schema drift novo**. Pedido do usuário: soltar MCB MARKETING e PIPER HUB da conta de teste (`testeefluxodeautomacao@gmail.com`) para reaproveitar os CNPJs, e excluir todas as contas de teste da plataforma, mantendo só o Super Admin. **Achado técnico:** o banco real não tem NENHUMA FK em cascata de `auth.users` para boa parte das tabelas declaradas nas migrations — confirmado via `pg_constraint` direto (não pelo `information_schema`, que escondeu as FKs cross-schema). A maioria das colunas está `CASCADE`/`SET NULL` corretas; só duas ficaram `NO ACTION` e travaram a exclusão: `contabilidades.aprovada_por` e `convites.usado_por` — zeradas para destravar, sem tocar nas linhas donas. **Feito:** MCB e PIPER HUB com `user_id=null` + `deleted_at=now()` (soft delete, CNPJs livres); `ideapp` e `Padaria Modelo` (mesma conta) soft-deletadas por consistência; 6 contas excluídas (`michelbovo@gmail.com`, `choicecarvalho@gmail.com`, `walacesssantos@gmail.com`, `eufacopublicidade+e2e@gmail.com`, `testeefluxodeautomacao@gmail.com`, `eufacopublicidade+admin@gmail.com`); restam só 3: `gestao@excluvia.com.br` (única `AdminBalu`/Super Admin, por decisão do usuário), `allanvalle@outlook.com` e `allanbv00@gmail.com` (AL PISCINAS, notas fiscais ativas, preservadas por serem uso real). **Pendência aberta, decisão do usuário:** apareceu um escritório `contabilidades` chamado **"Escritório Teste Balu"** (`id 1418c7fb-f578-4029-a003-a754e9cf8dcc`) com **subconta Asaas real** (`asaas_subconta_id dbd05c4a-5b4f-4bf3-b445-16da1e219e17`) e **instância WhatsApp/uazapi real** (`r42092cbc8ff21d`) ainda ativas — só o campo `aprovada_por` foi zerado (era o que travava a exclusão do admin que tinha aprovado); o escritório, a subconta e o WhatsApp em si não foram tocados e continuam no ar. Usuário decide depois o que fazer com isso.)
 >
@@ -22,6 +24,36 @@
 > _Anterior — sessão 35: **o impasse circular da produção**. Mesmo com o token certo, nenhuma empresa de origem `balu` chegaria a produção: `focus_ambiente='prod'` exigia `focus_habilita_nfsen_producao`, que só vem do PUT, que só sai quando o ambiente já é `'prod'`. Ciclo fechado, sem porta de entrada — **quebrado**: o upload do certificado A1 agora libera produção sozinho. A AL PISCINAS emitiu em `producaorestrita.nfse.gov.br` em 09/06 e foi a única a percorrer o fluxo inteiro. **Pendente: o token do painel continua dando 401 em `/v2/empresas`, e o usuário confirmou que não há outro token lá.**)
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
+
+> ## ▶️ SESSÃO 43 (06/10/2026) — subconta, encaminhamento do WhatsApp, resposta e pagamento
+>
+> **Tudo publicado** (commits `374ba71`, `5442bb7`, `58af73c`, `a555283`; Vercel "Deployment has completed").
+>
+> 1. **Conta de recebimento "em análise" não estava em análise.** Consulta ao Asaas (só leitura,
+>    `app/scripts/_status-subconta-kyc.ts`): Escritório Demo com `documentation/bankAccountInfo/general:
+>    PENDING`, documento de identificação e selfie `NOT_SENT`, sem `onboardingUrl`. A tela da subconta agora
+>    lista ao vivo o que o KYC pede e tem envio por API (`POST /v3/myAccount/documents/{grupo}`), arquivo
+>    direto ao Asaas, sem cópia. ⚠️ **NÃO VERIFICADO:** pela doc do Asaas, subconta NÃO-BaaS (a nossa) manda
+>    documentos e ativa a conta pela interface do Asaas — o envio por API pode ser recusado.
+> 2. **Código de ativação do Asaas não tem API.** Subconta padrão recebe e-mail de ativação (senha + código)
+>    e isso só se usa no Asaas. Deixar tudo dentro da Balu exige o modelo **BaaS/white label** — conversa
+>    comercial com o Asaas, não código. Pendente decisão do usuário; sugerido um passo a passo na tela.
+> 3. **Escritório Demo DESTRAVADO para demonstração:** `asaas_subconta_status` forçado para `aprovada` no
+>    banco (a conta real no Asaas segue PENDENTE). O botão "Sincronizar" da tela devolve o status real.
+>    Emitir cobrança ali fala com o Asaas de verdade.
+> 4. **"Falar com o contador" não encaminhava.** Ramo de número sem cadastro não tinha escalação; a IA
+>    decidia e respondia `resolvido: true`. Agora `lib/atendimento/encaminhar` detecta o pedido por código:
+>    canal de escritório → o dono do canal; cliente vinculado → o escritório dele; número da plataforma sem
+>    vínculo → lista dos escritórios aprovados, resposta por número ou nome. **Migration 0109**
+>    (`whatsapp_atendimentos.opcoes_escritorio`), aplicada antes do deploy. Testado pelo usuário: transferiu.
+> 5. **"Responder" na fila de Atendimentos:** caixa na tela, envia pela instância uazapi DO ESCRITÓRIO
+>    (não wa.me — decisão do usuário), fecha o atendimento e grava a resposta no histórico da IA.
+> 6. **"Pagar" do honorário pelo cliente** (`/honorarios`): abre a fatura existente ou emite na hora pela
+>    subconta do escritório (vencido vira hoje). Miolo extraído para `lib/billing/cobrar-honorario.ts`,
+>    usado também pelo "Gerar cobrança" do escritório; rede `cobertura-gate.test.ts` ampliada.
+>
+> **Base:** tsc limpo · **2497 testes** verdes. **Não verificado no navegador logado:** envio de documento
+> do KYC, "Responder" e "Pagar" (só testes automáticos).
 
 > ## ▶️ SESSÃO 42 (05/10/2026) — cobranças do escritório: honorário visível, categoria em dropdown, "Usar serviço"
 >
