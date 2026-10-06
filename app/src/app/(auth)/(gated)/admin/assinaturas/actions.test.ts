@@ -26,6 +26,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const h = vi.hoisted(() => {
   const upserts: Array<Record<string, unknown>> = [];
+  const updates: Array<{ tabela: string; valores: Record<string, unknown> }> = [];
+  const deletes: Array<{ tabela: string }> = [];
   const auditorias: Array<{ acao: string; alvoId?: string | null; meta?: Record<string, unknown> }> = [];
   const atualizacoesAsaas: Array<{ id: string; value: number; description: string; cycle?: string }> = [];
 
@@ -34,6 +36,14 @@ const h = vi.hoisted(() => {
     precoAtual: 19900 as number | null,
     cicloAtual: 'MONTHLY' as string,
     nomeAtual: 'Escritório 50' as string,
+    // Campos do plano-ALVO lidos por desativar/excluir (mesma linha de
+    // 'planos', maybeSingle ignora o `.select()` como o resto do mock).
+    publicoAlvo: 'escritorio' as 'escritorio' | 'empresa',
+    ativoAlvo: true,
+    planoNaoEncontrado: false,
+    // Lista de planos de escritório ATIVOS que sobrariam após a desativação —
+    // é o que `validarFaixas` recebe.
+    outrosPlanosEscritorio: [] as Array<{ id: string; clientes_min: number | null; clientes_max: number | null }>,
     assinaturas: [] as Array<Record<string, unknown>>,
     /** ids de assinatura do Asaas que devem FALHAR na atualização. */
     falharEm: [] as string[],
@@ -41,6 +51,8 @@ const h = vi.hoisted(() => {
     erroLeituraPlano: null as { message: string } | null,
     erroLeituraAssinaturas: null as { message: string } | null,
     upsertError: null as { message: string } | null,
+    updateError: null as { message: string } | null,
+    deleteError: null as { message: string; code?: string } | null,
   };
 
   function from(tabela: string) {
@@ -73,11 +85,14 @@ const h = vi.hoisted(() => {
     q.maybeSingle = async () => {
       if (tabela === 'planos') {
         if (estado.erroLeituraPlano) return { data: null, error: estado.erroLeituraPlano };
+        if (estado.planoNaoEncontrado) return { data: null, error: null };
         return {
           data: estado.precoAtual == null ? null : {
             valor_centavos: estado.precoAtual,
             ciclo: estado.cicloAtual,
             nome: estado.nomeAtual,
+            publico: estado.publicoAlvo,
+            ativo: estado.ativoAlvo,
           },
           error: null,
         };
@@ -85,24 +100,44 @@ const h = vi.hoisted(() => {
       return { data: null, error: null };
     };
     // `assinaturas` termina como thenable (select+filtros, sem .single()).
+    // `planos` também: como lista (validação de faixas) OU como update/delete
+    // (a mesma chamada `.then` — a única forma de distinguir é `q.__op`,
+    // marcado por `q.update`/`q.delete` abaixo).
     q.then = (resolve: (v: unknown) => unknown) => {
       if (tabela === 'assinaturas') {
         if (estado.erroLeituraAssinaturas) {
           return resolve({ data: null, error: estado.erroLeituraAssinaturas });
         }
-        return resolve({ data: aplicar(estado.assinaturas), error: null });
+        const linhas = aplicar(estado.assinaturas);
+        // `count` só importa para o `.select('id', {count:'exact', head:true})`
+        // de desativar/excluir — incluí-lo sempre é inofensivo para quem lê só `data`.
+        return resolve({ data: linhas, count: linhas.length, error: null });
       }
-      // `planos` também é lido como lista na validação de faixas.
+      if (tabela === 'planos') {
+        if (q.__op === 'update') return resolve({ error: estado.updateError });
+        if (q.__op === 'delete') return resolve({ error: estado.deleteError });
+        return resolve({ data: estado.outrosPlanosEscritorio, error: null });
+      }
       return resolve({ data: [], error: null });
     };
     q.upsert = async (valores: Record<string, unknown>) => {
       upserts.push(valores);
       return { error: estado.upsertError };
     };
+    q.update = (valores: Record<string, unknown>) => {
+      q.__op = 'update';
+      updates.push({ tabela, valores });
+      return q;
+    };
+    q.delete = () => {
+      q.__op = 'delete';
+      deletes.push({ tabela });
+      return q;
+    };
     return q;
   }
 
-  return { upserts, auditorias, atualizacoesAsaas, estado, from };
+  return { upserts, updates, deletes, auditorias, atualizacoesAsaas, estado, from };
 });
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: h.from }) }));
@@ -125,7 +160,7 @@ vi.mock('@/lib/clients/asaas', () => ({
   },
 }));
 
-import { salvarPlanoAction } from './actions';
+import { salvarPlanoAction, desativarPlanoAction, excluirPlanoAction } from './actions';
 
 const PLANO = {
   id: 'plano-esc-1',
@@ -141,16 +176,24 @@ const PLANO = {
 
 beforeEach(() => {
   h.upserts.length = 0;
+  h.updates.length = 0;
+  h.deletes.length = 0;
   h.auditorias.length = 0;
   h.atualizacoesAsaas.length = 0;
   h.estado.precoAtual = 19900;
   h.estado.cicloAtual = 'MONTHLY';
   h.estado.nomeAtual = 'Escritório 50';
+  h.estado.publicoAlvo = 'escritorio';
+  h.estado.ativoAlvo = true;
+  h.estado.planoNaoEncontrado = false;
+  h.estado.outrosPlanosEscritorio = [];
   h.estado.assinaturas = [];
   h.estado.falharEm = [];
   h.estado.upsertError = null;
   h.estado.erroLeituraPlano = null;
   h.estado.erroLeituraAssinaturas = null;
+  h.estado.updateError = null;
+  h.estado.deleteError = null;
 });
 
 describe('salvarPlanoAction — o reajuste tem de alcançar o Asaas', () => {
@@ -435,5 +478,134 @@ describe('salvarPlanoAction — o reajuste tem de alcançar o Asaas', () => {
     const aud = h.auditorias.find((a) => a.acao === 'plano.salvar');
     expect(aud?.meta?.preco_mudou).toBe(true);
     expect(aud?.meta?.valor_centavos).toBe(24900);
+  });
+});
+
+// ─── desativarPlanoAction — a checagem de faixa é forçável, a de assinatura
+// viva NUNCA é (09/2026, a pedido do AdminBalu) ───────────────────────────
+describe('desativarPlanoAction', () => {
+  const ID = 'escritorio_51_200';
+  // Cobertura com buraco 0-50 — o MESMO exemplo que motivou o pedido.
+  const COM_BURACO = [{ id: 'escritorio_51_200_outro', clientes_min: 51, clientes_max: null }];
+  // Cobertura sem buraco: 0-50 e 51+.
+  const SEM_BURACO = [
+    { id: 'escritorio_0_50', clientes_min: 0, clientes_max: 50 },
+    { id: 'escritorio_51_mais', clientes_min: 51, clientes_max: null },
+  ];
+
+  it('assinatura viva bloqueia mesmo com forcar=true — nunca é forçável', async () => {
+    h.estado.assinaturas = [{ id: 'a1', plano_id: ID, status: 'ativa', asaas_subscription_id: 'sub_1' }];
+
+    const r = await desativarPlanoAction(ID, true);
+
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('1 assinatura') });
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it('faixa com buraco → recusa com code "faixas_inconsistentes", não desativa', async () => {
+    h.estado.outrosPlanosEscritorio = COM_BURACO;
+
+    const r = await desativarPlanoAction(ID);
+
+    expect(r).toMatchObject({
+      ok: false,
+      code: 'faixas_inconsistentes',
+      error: expect.stringContaining('faixas inconsistentes'),
+    });
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it('forcar=true pula a checagem de faixa e desativa mesmo com buraco', async () => {
+    h.estado.outrosPlanosEscritorio = COM_BURACO;
+
+    const r = await desativarPlanoAction(ID, true);
+
+    expect(r).toEqual({ ok: true });
+    expect(h.updates).toHaveLength(1);
+    expect(h.updates[0]!.valores).toMatchObject({ ativo: false });
+    const aud = h.auditorias.find((a) => a.acao === 'plano.desativar');
+    expect(aud?.meta?.forcado_com_faixas_inconsistentes).toBe(true);
+  });
+
+  it('sem buraco, desativa direto (sem precisar forçar) e audita forcado=false', async () => {
+    h.estado.outrosPlanosEscritorio = SEM_BURACO;
+
+    const r = await desativarPlanoAction(ID);
+
+    expect(r).toEqual({ ok: true });
+    expect(h.updates).toHaveLength(1);
+    const aud = h.auditorias.find((a) => a.acao === 'plano.desativar');
+    expect(aud?.meta?.forcado_com_faixas_inconsistentes).toBe(false);
+  });
+
+  it('plano de empresa não valida faixa (não tem)', async () => {
+    h.estado.publicoAlvo = 'empresa';
+    h.estado.outrosPlanosEscritorio = COM_BURACO; // seria buraco se fosse escritório
+
+    const r = await desativarPlanoAction('empresario_mensal');
+
+    expect(r).toEqual({ ok: true });
+    expect(h.updates).toHaveLength(1);
+  });
+});
+
+// ─── excluirPlanoAction — DELETE de verdade, com as mesmas travas de negócio
+// de desativar mais a trava de integridade referencial ────────────────────
+describe('excluirPlanoAction', () => {
+  const ID = 'plano-velho';
+
+  it('plano ainda ativo → recusa, não tenta apagar', async () => {
+    h.estado.ativoAlvo = true;
+
+    const r = await excluirPlanoAction(ID);
+
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('Desative') });
+    expect(h.deletes).toHaveLength(0);
+  });
+
+  it('plano não encontrado → erro claro, não tenta apagar', async () => {
+    h.estado.planoNaoEncontrado = true;
+
+    const r = await excluirPlanoAction(ID);
+
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('não encontrado') });
+    expect(h.deletes).toHaveLength(0);
+  });
+
+  it('inativo mas com assinatura viva presa a ele → recusa', async () => {
+    h.estado.ativoAlvo = false;
+    h.estado.assinaturas = [{ id: 'a1', plano_id: ID, status: 'trial', asaas_subscription_id: null }];
+
+    const r = await excluirPlanoAction(ID);
+
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('1 assinatura') });
+    expect(h.deletes).toHaveLength(0);
+  });
+
+  it('inativo e sem assinatura viva → apaga e audita', async () => {
+    h.estado.ativoAlvo = false;
+    h.estado.assinaturas = [];
+
+    const r = await excluirPlanoAction(ID);
+
+    expect(r).toEqual({ ok: true });
+    expect(h.deletes).toHaveLength(1);
+    const aud = h.auditorias.find((a) => a.acao === 'plano.excluir');
+    expect(aud?.meta?.plano_id).toBe(ID);
+  });
+
+  it('violação de FK (histórico preso ao plano) vira mensagem amigável, não o erro cru do Postgres', async () => {
+    h.estado.ativoAlvo = false;
+    h.estado.assinaturas = [];
+    h.estado.deleteError = {
+      message: 'update or delete on table "planos" violates foreign key constraint "assinaturas_plano_id_fkey"',
+      code: '23503',
+    };
+
+    const r = await excluirPlanoAction(ID);
+
+    expect(r.ok).toBe(false);
+    expect((r as { error: string }).error).not.toContain('constraint');
+    expect((r as { error: string }).error).toContain('já usaram este plano');
   });
 });

@@ -9,7 +9,9 @@ import { validarFaixas } from '@/lib/billing/validar-planos';
 import { asaas } from '@/lib/clients/asaas';
 import { VALOR_MINIMO_ASSINATURA_CENTAVOS } from '@/lib/billing/assinar';
 
-export type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
+export type ActionResult<T = unknown> =
+  | { ok: true; data?: T }
+  | { ok: false; error: string; code?: 'faixas_inconsistentes' };
 
 export type PlanoInput = {
   id: string;
@@ -26,6 +28,28 @@ export type PlanoInput = {
 /** Status que significam "assinatura viva" — os que impedem desativar um
  *  plano e os que contam como "em uso" na tela. */
 const VIVOS = ['trial', 'ativa', 'inadimplente'];
+
+/**
+ * Quantas assinaturas VIVAS usam o plano — a trava comum de desativar e excluir.
+ *
+ * `null` quando a leitura falha: FALHA FECHADA. Ler erro como "zero" deixaria
+ * desativar/apagar um plano com gente pagando nele só porque o banco piscou.
+ */
+async function contarAssinaturasVivas(
+  admin: ReturnType<typeof createAdminClient>,
+  planoId: string,
+): Promise<number | null> {
+  const { count, error } = await admin
+    .from('assinaturas').select('id', { count: 'exact', head: true })
+    .eq('plano_id', planoId).in('status', VIVOS);
+  if (error) {
+    console.error('[planos] contar assinaturas vivas falhou:', { plano_id: planoId, erro: error.message });
+    return null;
+  }
+  return count ?? 0;
+}
+
+const ERRO_CONTAGEM = 'Não foi possível conferir as assinaturas deste plano. Tente de novo.';
 
 export async function salvarPlanoAction(input: PlanoInput): Promise<ActionResult> {
   const ctx = await requireAdminBaluAction();
@@ -287,35 +311,55 @@ export async function salvarPlanoAction(input: PlanoInput): Promise<ActionResult
   return { ok: true };
 }
 
-export async function desativarPlanoAction(id: string): Promise<ActionResult> {
+export async function desativarPlanoAction(id: string, forcar = false): Promise<ActionResult> {
   const ctx = await requireAdminBaluAction();
   if ('error' in ctx) return { ok: false, error: ctx.error };
   if (!id) return { ok: false, error: 'ID ausente.' };
 
   const admin = createAdminClient();
 
+  // Sem isto, um id inexistente (ex.: outra aba viu o plano ser EXCLUIDO por
+  // outro admin) passava direto: `alvo` vinha `null`, a checagem de faixa
+  // abaixo era pulada (`null?.publico === 'escritorio'` e false), e o UPDATE
+  // que so vem depois casava zero linhas SEM ERRO — a action auditava e
+  // devolvia `ok:true`, mostrando "Plano desativado." para um plano que
+  // nunca existiu. (Achado do /code-review, 09/2026.)
+  const [vivas, { data: alvo }] = await Promise.all([
+    contarAssinaturasVivas(admin, id),
+    admin.from('planos').select('publico').eq('id', id).maybeSingle(),
+  ]);
+  if (!alvo) return { ok: false, error: 'Plano não encontrado.' };
+  if (vivas === null) return { ok: false, error: ERRO_CONTAGEM };
+
   // Desativar plano com assinatura viva deixaria orfaos que ninguem
   // conseguiria cobrar nem exibir. Recusar dizendo QUANTAS sao.
-  const { count } = await admin
-    .from('assinaturas').select('id', { count: 'exact', head: true })
-    .eq('plano_id', id).in('status', VIVOS);
-  if ((count ?? 0) > 0) {
-    return { ok: false, error: `Não dá para desativar: ${count} assinatura(s) usam este plano.` };
+  // NUNCA forcavel: ao contrario do buraco de faixa (abaixo), isto orfanaria
+  // gente que esta pagando agora, sem caminho de recuperacao.
+  if (vivas > 0) {
+    return { ok: false, error: `Não dá para desativar: ${vivas} assinatura(s) usam este plano.` };
   }
 
   // A contagem acima NAO basta: assinatura de escritorio nasce com
   // plano_id NULL e so ganha plano na primeira passada do cron, entao numa
   // base recem-instalada ela le 0 e deixaria desativar a faixa do meio,
   // abrindo um buraco. Validar o conjunto RESULTANTE fecha isso.
-  const { data: alvo } = await admin
-    .from('planos').select('publico').eq('id', id).maybeSingle();
-  if (alvo?.publico === 'escritorio') {
+  //
+  // FORCAVEL (09/2026, a pedido do AdminBalu): diferente do bloqueio acima,
+  // este e sobre cobertura para assinaturas FUTURAS/ainda-nao-atribuidas, nao
+  // sobre gente pagando agora — e uma decisao de negocio legitima (ex.:
+  // deixar de aceitar escritorios pequenos). `forcar=true` pula so esta
+  // checagem; a de assinatura viva acima continua valendo sempre.
+  if (alvo.publico === 'escritorio' && !forcar) {
     const { data: restantes } = await admin
       .from('planos').select('id, clientes_min, clientes_max')
       .eq('publico', 'escritorio').eq('ativo', true).neq('id', id);
     const v = validarFaixas(restantes ?? []);
     if (!v.ok) {
-      return { ok: false, error: `Desativar deixaria as faixas inconsistentes. ${v.erro}` };
+      return {
+        ok: false,
+        error: `Desativar deixaria as faixas inconsistentes. ${v.erro}`,
+        code: 'faixas_inconsistentes',
+      };
     }
   }
 
@@ -328,6 +372,54 @@ export async function desativarPlanoAction(id: string): Promise<ActionResult> {
     // texto, entao o insert era recusado com 22P02 e virava `console.warn`.
     // Bug PRE-EXISTENTE -- por isso `audit_log` nao tinha nenhuma linha de plano.
     actorUserId: ctx.userId, acao: 'plano.desativar', alvoTipo: 'plano', alvoId: null,
+    meta: { plano_id: id, forcado_com_faixas_inconsistentes: forcar },
+  });
+
+  revalidatePath('/admin/assinaturas');
+  return { ok: true };
+}
+
+export async function excluirPlanoAction(id: string): Promise<ActionResult> {
+  const ctx = await requireAdminBaluAction();
+  if ('error' in ctx) return { ok: false, error: ctx.error };
+  if (!id) return { ok: false, error: 'ID ausente.' };
+
+  const admin = createAdminClient();
+
+  const [vivas, { data: alvo }] = await Promise.all([
+    contarAssinaturasVivas(admin, id),
+    admin.from('planos').select('ativo').eq('id', id).maybeSingle(),
+  ]);
+  if (!alvo) return { ok: false, error: 'Plano não encontrado.' };
+  if (vivas === null) return { ok: false, error: ERRO_CONTAGEM };
+  if (alvo.ativo) return { ok: false, error: 'Desative o plano antes de excluir.' };
+
+  // Mesma trava de `desativarPlanoAction`: nunca apagar um plano com
+  // assinatura viva presa a ele — mesmo ja desativado, uma assinatura pode
+  // ter ficado presa nele antes da desativacao.
+  if (vivas > 0) {
+    return { ok: false, error: `Não dá para excluir: ${vivas} assinatura(s) ainda usam este plano.` };
+  }
+
+  const { error } = await admin.from('planos').delete().eq('id', id);
+  if (error) {
+    // `assinaturas_plano_id_fkey` nao tem ON DELETE CASCADE nem SET NULL: o
+    // Postgres recusa apagar um plano que QUALQUER assinatura ja referenciou,
+    // mesmo cancelada/expirada ha muito tempo — apagar perderia de que plano
+    // uma assinatura antiga fazia parte. Isto e o comportamento certo, so
+    // traduzido: o admin nao deveria ver um 23503 cru.
+    if (error.code === '23503') {
+      return {
+        ok: false,
+        error: 'Não é possível excluir: existem assinaturas (ativas ou não) que já usaram este '
+          + 'plano, e apagá-lo perderia esse histórico. Mantenha-o desativado em vez de excluir.',
+      };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  await registrarAuditoria({
+    actorUserId: ctx.userId, acao: 'plano.excluir', alvoTipo: 'plano', alvoId: null,
     meta: { plano_id: id },
   });
 

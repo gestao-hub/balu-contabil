@@ -1,7 +1,9 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-09-08 (sessão 40 — **a recuperação de senha dizia "link inválido" para link bom**. O template "Reset password" usava `{{ .ConfirmationURL }}`, que passa pelo `/auth/v1/verify` do GoTrue — e esse endpoint devolve o resultado no **fragmento** da URL (`#access_token=…` no sucesso, `#error=…` na falha). Fragmento nunca chega ao servidor: o `/auth/callback`, sendo route handler, via uma URL sem parâmetro nenhum nos dois casos e caía no fallback de link inválido. O caminho antigo ainda dependia do cookie `code-verifier` do PKCE, gravado no navegador que PEDIU o reset — pedir no desktop e abrir no celular quebrava igual. Corrigido para `token_hash` → `/auth/confirm` (`verifyOtp`, server-side), com `/auth/hash` novo para resgatar os e-mails antigos já enviados. Template aplicado em produção pela Management API e reconferido na fonte. **De quebra: a pendência das Redirect URLs estava resolvida havia tempo** — o CHECKPOINT é que não sabia.)
+> **Última atualização:** 2026-09-18 (sessão 41 — **limpeza de contas de teste e achado de schema drift novo**. Pedido do usuário: soltar MCB MARKETING e PIPER HUB da conta de teste (`testeefluxodeautomacao@gmail.com`) para reaproveitar os CNPJs, e excluir todas as contas de teste da plataforma, mantendo só o Super Admin. **Achado técnico:** o banco real não tem NENHUMA FK em cascata de `auth.users` para boa parte das tabelas declaradas nas migrations — confirmado via `pg_constraint` direto (não pelo `information_schema`, que escondeu as FKs cross-schema). A maioria das colunas está `CASCADE`/`SET NULL` corretas; só duas ficaram `NO ACTION` e travaram a exclusão: `contabilidades.aprovada_por` e `convites.usado_por` — zeradas para destravar, sem tocar nas linhas donas. **Feito:** MCB e PIPER HUB com `user_id=null` + `deleted_at=now()` (soft delete, CNPJs livres); `ideapp` e `Padaria Modelo` (mesma conta) soft-deletadas por consistência; 6 contas excluídas (`michelbovo@gmail.com`, `choicecarvalho@gmail.com`, `walacesssantos@gmail.com`, `eufacopublicidade+e2e@gmail.com`, `testeefluxodeautomacao@gmail.com`, `eufacopublicidade+admin@gmail.com`); restam só 3: `gestao@excluvia.com.br` (única `AdminBalu`/Super Admin, por decisão do usuário), `allanvalle@outlook.com` e `allanbv00@gmail.com` (AL PISCINAS, notas fiscais ativas, preservadas por serem uso real). **Pendência aberta, decisão do usuário:** apareceu um escritório `contabilidades` chamado **"Escritório Teste Balu"** (`id 1418c7fb-f578-4029-a003-a754e9cf8dcc`) com **subconta Asaas real** (`asaas_subconta_id dbd05c4a-5b4f-4bf3-b445-16da1e219e17`) e **instância WhatsApp/uazapi real** (`r42092cbc8ff21d`) ainda ativas — só o campo `aprovada_por` foi zerado (era o que travava a exclusão do admin que tinha aprovado); o escritório, a subconta e o WhatsApp em si não foram tocados e continuam no ar. Usuário decide depois o que fazer com isso.)
+>
+> _Anterior — sessão 40 (08/09/2026): **a recuperação de senha dizia "link inválido" para link bom**. O template "Reset password" usava `{{ .ConfirmationURL }}`, que passa pelo `/auth/v1/verify` do GoTrue — e esse endpoint devolve o resultado no fragmento da URL (`#access_token=…` no sucesso, `#error=…` na falha). Fragmento nunca chega ao servidor: o `/auth/callback`, sendo route handler, via uma URL sem parâmetro nenhum nos dois casos e caía no fallback de link inválido. O caminho antigo ainda dependia do cookie `code-verifier` do PKCE, gravado no navegador que PEDIU o reset — pedir no desktop e abrir no celular quebrava igual. Corrigido para `token_hash` → `/auth/confirm` (`verifyOtp`, server-side), com `/auth/hash` novo para resgatar os e-mails antigos já enviados. Template aplicado em produção pela Management API e reconferido na fonte. De quebra: a pendência das Redirect URLs estava resolvida havia tempo — o CHECKPOINT é que não sabia.)_
 >
 > _Anterior — sessão 39 (2026-09-02, dia inteiro — **seis frentes**. (1) O `ambiente` não filtrado tinha TRÊS braços; corrigido e provado até o SERPRO. (2) **A Vercel destravou** depois de 40 dias. (3) **Asaas em produção**: `ASAAS_ENV=prod`, credenciais e webhook da conta principal. (4) A tela de assinatura virou **uma só**. (5) **Auditoria de segurança com laudo**: 37 IDs, **zero `NAO_VERIFICADO`**, veredito **GO CONDICIONAL** — os certificados A1 saíram do repositório para um cofre com ACL, o GCM ganhou `authTagLength`, e a árvore de dependências de PRODUÇÃO ficou limpa de CVE. (6) **Mudar o preço de um plano NÃO chegava ao Asaas** — achado a pedido do usuário, corrigido junto com `ciclo`, nome e o teto que travava planos populares. Base final: tsc 0 · **2415 testes** · build limpo · **destrutiva 76/76**.)_
 >
@@ -18,6 +20,71 @@
 > _Anterior — sessão 35: **o impasse circular da produção**. Mesmo com o token certo, nenhuma empresa de origem `balu` chegaria a produção: `focus_ambiente='prod'` exigia `focus_habilita_nfsen_producao`, que só vem do PUT, que só sai quando o ambiente já é `'prod'`. Ciclo fechado, sem porta de entrada — **quebrado**: o upload do certificado A1 agora libera produção sozinho. A AL PISCINAS emitiu em `producaorestrita.nfse.gov.br` em 09/06 e foi a única a percorrer o fluxo inteiro. **Pendente: o token do painel continua dando 401 em `/v2/empresas`, e o usuário confirmou que não há outro token lá.**)
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
+
+> ## ▶️ SESSÃO 41 (18/09/2026) — limpeza de contas de teste + schema drift novo
+>
+> **Pedido do usuário:** soltar as empresas **MCB MARKETING** e **PIPER HUB**
+> da conta de teste `testeefluxodeautomacao@gmail.com` (queria reaproveitar os
+> CNPJs numa empresa nova) e, separado, **excluir todas as contas de teste da
+> plataforma**, deixando só o Super Admin.
+>
+> **Por que "soltar" era necessário.** A migration `0106_cnpj_unico_por_empresa_ativa.sql`
+> criou um índice único **global** — `companies(cnpj) WHERE deleted_at IS NULL`
+> — um CNPJ só pode estar ativo em UMA empresa no sistema inteiro. Pra
+> reaproveitar `53015033000171` (MCB) e `61061690000183` (Piper) numa empresa
+> nova, o registro velho precisa sair do jeito certo: `user_id = null` +
+> `deleted_at = now()` (soft delete), nunca `DELETE FROM`. É o mesmo padrão que
+> a própria migration documenta pra troca de contador.
+>
+> **Achado técnico — novo capítulo do schema drift (ver 0028):** ao investigar
+> por que `DELETE /auth/v1/admin/users/{id}` ia falhar ou deixar lixo pra trás,
+> descobri que o `information_schema` **escondia** as FKs que apontam pra
+> `auth.users` — `constraint_column_usage`/`referential_constraints` voltavam
+> vazios pra qualquer coluna que referencia o schema `auth`. Só apareceram
+> consultando `pg_constraint` direto (`confrelid = 'auth.users'::regclass`).
+> Com a lista certa: a maioria das ~20 colunas que referenciam `auth.users`
+> está `ON DELETE CASCADE` ou `SET NULL` como esperado — só **duas** estavam
+> `NO ACTION` e bloquearam a exclusão na hora: `contabilidades.aprovada_por` e
+> `convites.usado_por`. Zeradas as duas (só o ponteiro de auditoria, não a
+> linha dona) e a exclusão passou.
+>
+> **O que foi feito** (direto no Postgres via `pg`, senão pela Admin API do
+> GoTrue — o classificador do modo automático bloqueia UPDATE/DELETE nesta
+> sessão, mesmo padrão do `git push`; o usuário rodou os scripts com `!`):
+> - `companies`: MCB e PIPER HUB com `user_id = null` + `deleted_at = now()`.
+>   CNPJs livres; nota fiscal cancelada, cliente e certificado da MCB
+>   preservados no banco.
+> - `companies`: `ideapp` e `Padaria Modelo` (mesma conta de teste) também
+>   soft-deletadas, por consistência (`dev.ide` já estava).
+> - `role_types` das 6 contas removidos antes da exclusão.
+> - `contabilidades.aprovada_por` e `convites.usado_por` zerados (destrava,
+>   não apaga a linha).
+> - 6 contas excluídas via `DELETE /auth/v1/admin/users/{id}`:
+>   `michelbovo@gmail.com`, `choicecarvalho@gmail.com`,
+>   `walacesssantos@gmail.com`, `eufacopublicidade+e2e@gmail.com`,
+>   `testeefluxodeautomacao@gmail.com`, `eufacopublicidade+admin@gmail.com`.
+>
+> **Restam 3 contas na plataforma**, confirmado por `GET
+> /auth/v1/admin/users` depois da limpeza:
+> - `gestao@excluvia.com.br` — única com `role_types.type = 'AdminBalu'`
+>   agora. Super Admin, por decisão explícita do usuário.
+> - `allanvalle@outlook.com` e `allanbv00@gmail.com` — donos de **AL
+>   PISCINAS**, que tem 2 notas fiscais **ativas** (não canceladas).
+>   Preservadas por serem uso real, não teste.
+>
+> **Pendência aberta — decisão do usuário, não mexi:** apareceu no meio da
+> investigação um escritório (`public.contabilidades`, id
+> `1418c7fb-f578-4029-a003-a754e9cf8dcc`) chamado **"Escritório Teste Balu"**,
+> aprovado pela conta admin que acabou de ser excluída, com:
+> - subconta Asaas **real**: `asaas_subconta_id
+>   dbd05c4a-5b4f-4bf3-b445-16da1e219e17`, `asaas_subconta_status: 'aprovada'`;
+> - instância WhatsApp/uazapi **real**: `uazapi_instancia_id
+>   r42092cbc8ff21d`, status `'conectando'`.
+>
+> Só zerei `aprovada_por` (era o que travava a exclusão do admin). O
+> escritório, a subconta Asaas e a instância de WhatsApp **continuam intactos
+> e ativos** — não foram avaliados nem tocados. Fica para quando o usuário
+> decidir o que fazer com isso.
 
 > ## ▶️ SESSÃO 40 (08/09/2026) — recuperação de senha
 >

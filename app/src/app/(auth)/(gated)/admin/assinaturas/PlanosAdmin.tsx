@@ -1,7 +1,7 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { CreditCard, Users, Pencil, Power } from 'lucide-react';
-import { salvarPlanoAction, desativarPlanoAction, type PlanoInput } from './actions';
+import { CreditCard, Users, Pencil, Power, Trash2 } from 'lucide-react';
+import { salvarPlanoAction, desativarPlanoAction, excluirPlanoAction, type PlanoInput } from './actions';
 import { normalizarValorBRL } from '@/lib/format/dinheiro';
 
 const reais = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -18,11 +18,21 @@ export default function PlanosAdmin({
   const [valorTexto, setValorTexto] = useState('');
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [pending, start] = useTransition();
+  // Id do plano que acabou de esbarrar num buraco de faixa ao desativar: o
+  // próximo clique no mesmo botão (agora "Desativar mesmo assim") reenvia
+  // com `forcar=true`. Erro de outro tipo (ex.: assinatura viva) NÃO entra
+  // aqui — aquela checagem nunca é forçável.
+  const [confirmarForcar, setConfirmarForcar] = useState<string | null>(null);
+  // Excluir é irreversível (DELETE de verdade) — exige um segundo clique,
+  // mesmo sem passar pelo servidor no primeiro.
+  const [confirmarExcluir, setConfirmarExcluir] = useState<string | null>(null);
 
   function abrirEdicao(p: PlanoInput) {
     setEdit(p);
     setValorTexto((p.valor_centavos / 100).toFixed(2).replace('.', ','));
     setMsg(null);
+    setConfirmarForcar(null);
+    setConfirmarExcluir(null);
   }
 
   /**
@@ -63,12 +73,35 @@ export default function PlanosAdmin({
     });
   }
 
-  function desativar(id: string) {
+  function desativar(id: string, forcar: boolean) {
     setMsg(null);
     start(async () => {
-      const r = await desativarPlanoAction(id);
+      const r = await desativarPlanoAction(id, forcar);
+      if (r.ok) {
+        setConfirmarForcar(null);
+        setMsg({ tipo: 'ok', texto: 'Plano desativado.' });
+        return;
+      }
+      // Só entra no modo "desativar mesmo assim" quando o próprio erro é o
+      // buraco de faixa — qualquer outro (ex.: assinatura viva) mostra a
+      // mensagem normal e não oferece forçar.
+      setConfirmarForcar(r.code === 'faixas_inconsistentes' ? id : null);
+      setMsg({ tipo: 'erro', texto: r.error });
+    });
+  }
+
+  function excluir(id: string) {
+    if (confirmarExcluir !== id) {
+      setConfirmarExcluir(id);
+      setMsg(null);
+      return;
+    }
+    setMsg(null);
+    start(async () => {
+      const r = await excluirPlanoAction(id);
+      setConfirmarExcluir(null);
       setMsg(r.ok
-        ? { tipo: 'ok', texto: 'Plano desativado.' }
+        ? { tipo: 'ok', texto: 'Plano excluído.' }
         : { tipo: 'erro', texto: r.error });
     });
   }
@@ -138,15 +171,53 @@ export default function PlanosAdmin({
                 <button
                   type="button"
                   disabled={pending || !p.ativo}
-                  onClick={() => desativar(p.id)}
+                  onClick={() => desativar(p.id, confirmarForcar === p.id)}
                   className={`flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-2 text-sm transition-colors disabled:opacity-40 ${
-                    p.ativo
-                      ? 'border-border text-muted-foreground-2 hover:border-destructive hover:text-destructive'
-                      : 'cursor-default border-border/50 text-muted-foreground'
+                    !p.ativo
+                      ? 'cursor-default border-border/50 text-muted-foreground'
+                      : confirmarForcar === p.id
+                        ? 'border-destructive bg-destructive/10 text-destructive'
+                        : 'border-border text-muted-foreground-2 hover:border-destructive hover:text-destructive'
                   }`}
                 >
-                  <Power className="size-3.5" /> Desativar plano
+                  <Power className="size-3.5" />
+                  {confirmarForcar === p.id ? 'Desativar mesmo assim' : 'Desativar plano'}
                 </button>
+                {confirmarForcar === p.id && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmarForcar(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Cancelar
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  disabled={pending || p.ativo}
+                  onClick={() => excluir(p.id)}
+                  title={p.ativo ? 'Desative o plano antes de excluir.' : undefined}
+                  className={`flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-2 text-sm transition-colors disabled:opacity-40 ${
+                    p.ativo
+                      ? 'cursor-default border-border/50 text-muted-foreground'
+                      : confirmarExcluir === p.id
+                        ? 'border-destructive bg-destructive/10 text-destructive'
+                        : 'border-border text-muted-foreground-2 hover:border-destructive hover:text-destructive'
+                  }`}
+                >
+                  <Trash2 className="size-3.5" />
+                  {confirmarExcluir === p.id ? 'Confirmar exclusão' : 'Excluir plano'}
+                </button>
+                {confirmarExcluir === p.id && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmarExcluir(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Cancelar
+                  </button>
+                )}
               </div>
             </article>
           );
