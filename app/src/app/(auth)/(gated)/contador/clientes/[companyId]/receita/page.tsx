@@ -9,6 +9,8 @@ import { createServerClient } from '@/lib/supabase/server';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import CaixaPostalReceita from '@/app/(auth)/(gated)/receita/mensagens/CaixaPostalReceita';
 import SituacaoFiscalCard from '@/app/(auth)/(gated)/receita/mensagens/SituacaoFiscalCard';
+import DctfwebCard from '@/app/(auth)/(gated)/receita/mensagens/DctfwebCard';
+import { ymdBrt } from '@/lib/fiscal/tempo-brt';
 import ParcelamentosCard from '@/app/(auth)/(gated)/receita/mensagens/ParcelamentosCard';
 import { carregarCaixaPostal } from '@/app/(auth)/(gated)/receita/mensagens/carregar';
 
@@ -49,6 +51,7 @@ export default async function ReceitaClientePage({ params }: { params: Promise<{
       )}
       <SituacaoFiscalCard ultimo={dados.ultimoSitfis} companyId={companyId} temCertificado={dados.temCertificado} />
       <ParcelamentosCard parcelamentos={dados.parcelamentos} consultadoEm={dados.parcelamentosConsultadosEm} companyId={companyId} temCertificado={dados.temCertificado} />
+      <DctfwebCard companyId={companyId} hojeYmd={ymdBrt()} temCertificado={dados.temCertificado} />
       <h2 className="mb-3 text-sm font-semibold text-foreground">Caixa Postal do e-CAC</h2>
       <CaixaPostalReceita
         mensagens={dados.mensagens} companyId={companyId}

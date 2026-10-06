@@ -18,6 +18,7 @@ import { detalharMensagem } from '@/lib/fiscal/serpro-caixa-postal';
 import { gerarRelatorioSitfisEmpresa, BUCKET_RELATORIOS } from '@/lib/fiscal/sitfis-sync';
 import { signedUrlDownload } from '@/lib/clients/supabase-storage';
 import { consultarParcelamentosEmpresa, parcelasDisponiveis, gerarDasDaParcela } from '@/lib/fiscal/parcelamentos-sync';
+import { consultarReciboDctfweb, gerarGuiaDctfweb } from '@/lib/fiscal/dctfweb';
 
 type Resultado<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -208,5 +209,28 @@ export async function gerarDasParcelaAction(
     actorUserId: g.userId, acao: 'receita.das_parcela_emitido', alvoTipo: 'company', alvoId: p.company_id,
     contabilidadeId: g.contabilidade?.id ?? undefined, meta: { modalidade: p.modalidade, parcela },
   });
+  return { ok: true, data: { pdfBase64: r.pdfBase64 } };
+}
+
+// ─── DCTFWeb (só leitura e guia) ─────────────────────────────────────────────
+
+/** Recibo (CONSRECIBO32) ou DARF (GERARGUIA31) da DCTFWeb do mês, em PDF base64. */
+export async function documentoDctfwebAction(
+  companyId: string | null, competencia: string, tipo: 'recibo' | 'darf',
+): Promise<Resultado<{ pdfBase64: string }>> {
+  if (!/^\d{6}$/.test(competencia)) return { ok: false, error: 'Escolha o mês.' };
+  const e = await empresaPermitida(companyId);
+  if (!e.ok) return e;
+  const admin = createAdminClient();
+  const r = tipo === 'darf'
+    ? await gerarGuiaDctfweb(admin, e.companyId, competencia)
+    : await consultarReciboDctfweb(admin, e.companyId, competencia);
+  if (!r.ok) return r;
+  if (tipo === 'darf') {
+    await registrarAuditoria({
+      actorUserId: e.userId, acao: 'receita.dctfweb_darf_emitido', alvoTipo: 'company', alvoId: e.companyId,
+      contabilidadeId: e.contabilidadeId ?? undefined, meta: { competencia },
+    });
+  }
   return { ok: true, data: { pdfBase64: r.pdfBase64 } };
 }
