@@ -5,6 +5,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { getContabilidadeCtx } from '@/lib/contador/guards';
 import CaixaPostalReceita from './CaixaPostalReceita';
 import SituacaoFiscalCard from './SituacaoFiscalCard';
+import ParcelamentosCard from './ParcelamentosCard';
 import { carregarCaixaPostal } from './carregar';
 
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,7 @@ export default async function MensagensReceitaPage() {
         </p>
       )}
       <SituacaoFiscalCard ultimo={dados.ultimoSitfis} temCertificado={dados.temCertificado} />
+      <ParcelamentosCard parcelamentos={dados.parcelamentos} consultadoEm={dados.parcelamentosConsultadosEm} temCertificado={dados.temCertificado} />
       <h2 className="mb-3 text-sm font-semibold text-foreground">Caixa Postal do e-CAC</h2>
       <CaixaPostalReceita mensagens={dados.mensagens} consultadaEm={dados.consultadaEm} temCertificado={dados.temCertificado} />
     </main>

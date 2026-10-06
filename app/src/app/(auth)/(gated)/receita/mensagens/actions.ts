@@ -17,6 +17,7 @@ import { sincronizarCaixaPostalEmpresa } from '@/lib/fiscal/caixa-postal-sync';
 import { detalharMensagem } from '@/lib/fiscal/serpro-caixa-postal';
 import { gerarRelatorioSitfisEmpresa, BUCKET_RELATORIOS } from '@/lib/fiscal/sitfis-sync';
 import { signedUrlDownload } from '@/lib/clients/supabase-storage';
+import { consultarParcelamentosEmpresa, parcelasDisponiveis, gerarDasDaParcela } from '@/lib/fiscal/parcelamentos-sync';
 
 type Resultado<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -154,4 +155,58 @@ export async function baixarRelatorioSitfisAction(relatorioId: string): Promise<
   const url = await signedUrlDownload(BUCKET_RELATORIOS, data.storage_path as string, `situacao-fiscal-${dia}.pdf`);
   if (!url) return { ok: false, error: 'Não foi possível gerar o link do relatório. Tente de novo.' };
   return { ok: true, data: { url } };
+}
+
+// ─── PARCELAMENTOS (0112) ────────────────────────────────────────────────────
+
+/** Consulta na Receita os pedidos de parcelamento de todas as modalidades do regime. */
+export async function consultarParcelamentosAction(
+  companyId: string | null,
+): Promise<Resultado<{ encontrados: number; falhas: string[] }>> {
+  const e = await empresaPermitida(companyId);
+  if (!e.ok) return e;
+  const r = await consultarParcelamentosEmpresa(createAdminClient(), e.companyId);
+  if (!r.ok) return { ok: false, error: r.error };
+  revalidar(e.companyId);
+  return { ok: true, data: { encontrados: r.encontrados, falhas: r.falhas } };
+}
+
+/**
+ * O parcelamento, se a pessoa pode vê-lo. Lido pela SESSÃO (RLS da 0112): só
+ * o dono da empresa e o escritório dela recebem a linha.
+ */
+async function parcelamentoVisivel(parcelamentoId: string) {
+  const sb = await createServerClient();
+  const { data } = await sb.from('parcelamentos_receita')
+    .select('id, company_id, modalidade').eq('id', parcelamentoId).maybeSingle();
+  return data as { id: string; company_id: string; modalidade: string } | null;
+}
+
+export async function parcelasDisponiveisAction(
+  parcelamentoId: string,
+): Promise<Resultado<{ parcelas: { parcela: string; valor: number | null }[] }>> {
+  const g = await getContabilidadeCtx();
+  if ('error' in g) return { ok: false, error: 'Entre na sua conta.' };
+  const p = await parcelamentoVisivel(parcelamentoId);
+  if (!p) return { ok: false, error: 'Parcelamento não encontrado.' };
+  const r = await parcelasDisponiveis(createAdminClient(), p.company_id, p.modalidade);
+  if (!r.ok) return r;
+  return { ok: true, data: { parcelas: r.parcelas } };
+}
+
+/** DAS de uma parcela, como PDF em base64 (a tela baixa como arquivo). */
+export async function gerarDasParcelaAction(
+  parcelamentoId: string, parcela: string,
+): Promise<Resultado<{ pdfBase64: string }>> {
+  const g = await getContabilidadeCtx();
+  if ('error' in g) return { ok: false, error: 'Entre na sua conta.' };
+  const p = await parcelamentoVisivel(parcelamentoId);
+  if (!p) return { ok: false, error: 'Parcelamento não encontrado.' };
+  const r = await gerarDasDaParcela(createAdminClient(), p.company_id, p.modalidade, parcela);
+  if (!r.ok) return r;
+  await registrarAuditoria({
+    actorUserId: g.userId, acao: 'receita.das_parcela_emitido', alvoTipo: 'company', alvoId: p.company_id,
+    contabilidadeId: g.contabilidade?.id ?? undefined, meta: { modalidade: p.modalidade, parcela },
+  });
+  return { ok: true, data: { pdfBase64: r.pdfBase64 } };
 }

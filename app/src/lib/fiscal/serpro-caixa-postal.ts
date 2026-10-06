@@ -7,10 +7,7 @@
 // cron. Ver o cabeçalho da 0110.
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { garantirAuthContratante } from '@/lib/fiscal/serpro-contratante';
-import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
-import { consultarComProcurador, Tipo } from '@/lib/clients/serpro';
-import { traduzirErroSerpro } from '@/lib/fiscal/serpro-erro';
+import { chamarIntegraDaEmpresa } from '@/lib/fiscal/serpro-chamada';
 import {
   parseIndicador, parseListaMensagens, parseDetalhe,
   type ListaMensagens, type MensagemDetalhe,
@@ -19,40 +16,13 @@ import {
 type Falha = { ok: false; error: string };
 
 /** Uma chamada ao serviço CAIXAPOSTAL para a empresa. */
-async function chamar(
+function chamar(
   sb: SupabaseClient, companyId: string, idServico: string, dados: Record<string, string> | null,
-): Promise<{ ok: true; resp: unknown } | Falha> {
-  const { data: company } = await sb.from('companies').select('cnpj').eq('id', companyId).single();
-  const cnpj = String(company?.cnpj ?? '').replace(/\D+/g, '');
-  if (!cnpj) return { ok: false, error: 'CNPJ da empresa ausente.' };
-
-  const auth = await garantirAuthContratante();
-  if (!auth) return { ok: false, error: 'Configure o certificado do contratante (SERPRO) para consultar.' };
-  const tk = await garantirTokenProcurador(sb, companyId);
-  if (!tk.ok) return { ok: false, error: tk.warning };
-
-  try {
-    const resp = await consultarComProcurador({
-      pfx: auth.pfx, passphrase: auth.passphrase, accessToken: auth.accessToken, jwt: auth.jwt,
-      procuradorToken: tk.token,
-      envelope: {
-        contratante: { numero: auth.cnpj, tipo: Tipo.CNPJ },
-        autorPedidoDados: { numero: cnpj, tipo: Tipo.CNPJ },
-        contribuinte: { numero: cnpj, tipo: Tipo.CNPJ },
-        pedidoDados: {
-          idSistema: 'CAIXAPOSTAL', idServico, versaoSistema: '1.0',
-          dados: dados ? JSON.stringify(dados) : '',
-        },
-      },
-    });
-    return { ok: true, resp };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : '';
-    if (/ICGERENCIADOR-022|procura(c|ç)[aã]o/i.test(msg)) {
-      return { ok: false, error: 'A empresa ainda não autorizou a Balu (Termo/procuração) na SERPRO.' };
-    }
-    return { ok: false, error: `Não foi possível consultar a Caixa Postal: ${traduzirErroSerpro(msg)}` };
-  }
+) {
+  return chamarIntegraDaEmpresa(sb, companyId, {
+    rota: 'Consultar', idSistema: 'CAIXAPOSTAL', idServico, dados,
+    contexto: 'Não foi possível consultar a Caixa Postal',
+  });
 }
 
 /** INNOVAMSG63 — há mensagem nova (ainda não aberta por ninguém)? */
