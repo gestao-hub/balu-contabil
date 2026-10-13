@@ -27,6 +27,28 @@
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
 
+> ## ⏸️ PENDENTE (13/10/2026) — contas de teste, na branch `feat/contas-teste` (NÃO está no `main`)
+>
+> Pedido do usuário: as contas de teste nunca expiram, não precisam de assinatura e têm tudo liberado.
+> Contas: `luanbonadie+demoadmin@gmail.com`, `luanbonadie+democontador@gmail.com`,
+> `luanbonadie+demoempresa@gmail.com`.
+>
+> - **Migration 0113** (`contas_teste`): marca por USUÁRIO; `aplicar_conta_teste(uid)` põe as assinaturas
+>   das empresas próprias e dos escritórios de que é membro em `cortesia` (o status que o gate sempre
+>   libera, que Asaas/webhook/cron não tocam e que não recebe aviso de trial) e aprova o escritório;
+>   `remover_conta_teste(uid)` volta a `trial` vencendo hoje. Trigger: empresa nova de conta de teste nasce
+>   em `cortesia`; membro marcado que entra num escritório o libera. Já marca as 3 contas por e-mail.
+>   Nenhuma funcionalidade depende do PLANO — só do status —, então isso basta. A subconta Asaas do
+>   escritório NÃO é forçada (é conta de pagamento real).
+> - **Tela:** `/admin/usuarios` ganhou a coluna "Conta de teste" (Teste/Normal, com confirmação e auditoria).
+> - tsc limpo; `admin/usuarios/actions.test.ts` (3) e `lib/billing` (473) verdes.
+>
+> **Para terminar:** (1) aplicar a 0113 em produção ANTES do deploy — o `.env.local` não veio no clone e o
+> conector do Supabase desta máquina não enxerga o projeto `llykzqnugdpojwnlontj`; ou o usuário cola o SQL
+> no SQL Editor, ou põe `SUPABASE_PASSWORD` em `app/.env.local`; (2) conferir que as 3 contas ficaram em
+> `cortesia` (`assinaturas` das empresas/escritórios delas) e o escritório em `aprovada`; (3) merge da
+> branch no `main` e push (deploy pela Vercel).
+
 > ## ▶️ SESSÃO 44 (06/10/2026, registrada em 13/10) — integração com a Receita (SERPRO)
 >
 > **Commits** `4c9e5be`, `c02f814`, `771835e`, `15d955a`, `3257610`, `cf66455` (06/10, 11h–11h40), em `main`.

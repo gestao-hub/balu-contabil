@@ -1,8 +1,11 @@
-// @custom — Oversight: todos os usuários da plataforma (read-only). Papel via
-// role_types (fonte canônica); e-mail/confirmação via GoTrue admin API.
+// @custom — Oversight: todos os usuários da plataforma. Papel via role_types
+// (fonte canônica); e-mail/confirmação via GoTrue admin API. A única escrita
+// é o interruptor de conta de teste (0113).
 import { requireAdminBaluPage } from '@/lib/admin/guard';
 import { listarUsuariosPlataforma } from '@/lib/admin/users';
 import { dataBrt } from '@/lib/format/data-brt';
+import { idsContasTeste } from '@/lib/admin/contas-teste';
+import ContaTesteToggle from './ContaTesteToggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +19,7 @@ const PAPEL_LABEL: Record<string, string> = {
 
 export default async function AdminUsuariosPage() {
   await requireAdminBaluPage();
-  const usuarios = await listarUsuariosPlataforma();
+  const [usuarios, teste] = await Promise.all([listarUsuariosPlataforma(), idsContasTeste()]);
 
   return (
     <main className="p-6">
@@ -24,6 +27,9 @@ export default async function AdminUsuariosPage() {
         <h1 className="text-2xl font-head font-semibold text-foreground">Usuários</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Todos os usuários da plataforma ({usuarios.length}).
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Conta de teste: as empresas e escritórios do usuário ficam liberados, sem assinatura e sem prazo.
         </p>
       </header>
 
@@ -35,6 +41,7 @@ export default async function AdminUsuariosPage() {
               <th className="px-3 py-2 font-medium">Papel</th>
               <th className="px-3 py-2 font-medium">Criado</th>
               <th className="px-3 py-2 font-medium">E-mail confirmado</th>
+              <th className="px-3 py-2 font-medium">Conta de teste</th>
             </tr>
           </thead>
           <tbody>
@@ -54,11 +61,14 @@ export default async function AdminUsuariosPage() {
                       <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning">pendente</span>
                     )}
                   </td>
+                  <td className="px-3 py-2">
+                    <ContaTesteToggle userId={u.id} email={u.email} inicial={teste.has(u.id)} />
+                  </td>
                 </tr>
               );
             })}
             {usuarios.length === 0 && (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">Nenhum usuário.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Nenhum usuário.</td></tr>
             )}
           </tbody>
         </table>
