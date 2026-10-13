@@ -1,7 +1,9 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-10-06 (sessão 43 — KYC da subconta visível e enviável, encaminhamento do WhatsApp para escritório, "Responder" na fila, "Pagar" do honorário pelo cliente; migration 0109; ver o bloco SESSÃO 43.)
+> **Última atualização:** 2026-10-13 (sessão 44, trabalho de 06/10 — integração com a Receita via SERPRO: Caixa Postal do e-CAC, situação fiscal (SITFIS), guia oficial do MEI e reconsulta do Simples, parcelamentos, DCTFWeb e os 4 achados do code-review; migrations 0110–0112; ver o bloco SESSÃO 44.)
+>
+> _Anterior — sessão 43 (06/10/2026): KYC da subconta visível e enviável, encaminhamento do WhatsApp para escritório, "Responder" na fila, "Pagar" do honorário pelo cliente; migration 0109; ver o bloco SESSÃO 43.)
 >
 > _Anterior — sessão 42 (05/10/2026): cobranças do escritório: honorário em Cobranças emitidas, categoria em dropdown, "Usar serviço" com cliente fora da carteira + migration 0108; ver o bloco SESSÃO 42.)
 >
@@ -24,6 +26,79 @@
 > _Anterior — sessão 35: **o impasse circular da produção**. Mesmo com o token certo, nenhuma empresa de origem `balu` chegaria a produção: `focus_ambiente='prod'` exigia `focus_habilita_nfsen_producao`, que só vem do PUT, que só sai quando o ambiente já é `'prod'`. Ciclo fechado, sem porta de entrada — **quebrado**: o upload do certificado A1 agora libera produção sozinho. A AL PISCINAS emitiu em `producaorestrita.nfse.gov.br` em 09/06 e foi a única a percorrer o fluxo inteiro. **Pendente: o token do painel continua dando 401 em `/v2/empresas`, e o usuário confirmou que não há outro token lá.**)
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
+
+> ## ▶️ SESSÃO 44 (06/10/2026, registrada em 13/10) — integração com a Receita (SERPRO)
+>
+> **Commits** `4c9e5be`, `c02f814`, `771835e`, `15d955a`, `3257610`, `cf66455` (06/10, 11h–11h40), em `main`.
+> O CHECKPOINT não foi atualizado no dia; este bloco foi reconstruído em 13/10 a partir das mensagens dos
+> commits e do diff (41 arquivos, +3257). Segue as prioridades 1–5 da "análise de 06/10".
+>
+> 1. **Caixa Postal do e-CAC na Balu** (Integra-CaixaPostal). Cron diário: indicador de mensagens novas
+>    (`INNOVAMSG63`) e, quando há, a lista (`MSGCONTRIBUINTE61`); aviso `receita_mensagem_nova` para o dono e
+>    o escritório ("Importante" vira danger). Telas `/receita/mensagens` (empresa) e
+>    `/contador/clientes/[id]/receita` (escritório), com "Atualizar". ⚠️ **ABRIR DÁ CIÊNCIA** (Decreto
+>    70.235/72, art. 23): o cron nunca abre; "Abrir" pede confirmação, guarda o texto puro e registra quem e
+>    quando, com auditoria. **Migration 0110** (`mensagens_receita`, RLS dono + escritório, escrita só
+>    service role; `empresas_fiscais.caixa_postal_consultada_em`). Parser feito pela doc do SERPRO, **sem
+>    envelope real ainda**.
+> 2. **Situação fiscal (SITFIS)** em dois passos: `SOLICITARPROTOCOLO91` (/Apoiar, 304 + ETag quando o
+>    protocolo do dia já existe) e `RELATORIOSITFIS92` (/Emitir, 202 = ainda gerando). PDF no bucket
+>    **privado** `relatorios-fiscais`, baixado por URL assinada após checagem de acesso. O resultado é
+>    **indício** lido do texto do PDF (`com_pendencias` / `sem_pendencias` / `indeterminado`); aviso
+>    `situacao_fiscal_pendencia` só na transição. Cartão "Situação fiscal" com "Emitir agora" e "Baixar
+>    relatório". Rota nova `/api/cron/receita` (Caixa Postal saiu do cron de obrigações, que estava no limite
+>    de tempo); SITFIS semanal por empresa. **Migration 0111**; bucket conferido sem policy pública.
+> 3. **Portas que faltavam:** MEI ganhou "Gerar guia oficial (Receita)" (`gerarDasMeiAction`, PGMEI
+>    `GERARDASPDF21`, existia sem chamador); Simples ganhou "Atualizar com a Receita" no Histórico
+>    (`CONSDECLARACAO13` só rodava na sincronização inicial — PGDAS-D transmitido fora da Balu nunca aparecia).
+> 4. **Parcelamentos do Simples e do MEI** (Integra-Parcelamento), sob demanda, sem varredura: `PEDIDOSPARC`
+>    das 4 modalidades do regime, "Ver parcelas" (`PARCELASPARAGERAR`) e DAS de cada parcela (`GERARDAS`,
+>    auditado). **Migration 0112** (`parcelamentos_receita`). A chamada em nome da empresa virou um lugar só:
+>    `lib/fiscal/serpro-chamada.ts`. **Fora:** `EVENTOSATUALIZACAO` — só compensa em lote e exige procuração
+>    eletrônica do e-CAC por contribuinte (a Balu usa o Termo por empresa).
+> 5. **DCTFWeb:** cartão com a competência (padrão: mês anterior, BRT) para baixar o recibo (`CONSRECIBO32`)
+>    ou o DARF (`GERARGUIA31`, auditado). Categoria `GERAL_MENSAL`. **A Balu não transmite**
+>    (`TRANSDECLARACAO310`) — irreversível e com efeito legal, mesma regra do PGDAS-D.
+> 6. **Code-review da integração, 4 achados corrigidos** (`cf66455`, cada um com teste vermelho antes):
+>    - a primeira sincronização da Caixa Postal avisava o histórico inteiro (uma notificação e um e-mail por
+>      mensagem e destinatário) — agora só mensagem **não lida no e-CAC** avisa, e a carga inicial manda um
+>      resumo por destinatário (`receita_caixa_inicial:<empresa>`);
+>    - data da ciência gravada em UTC (o prazo conta dela) — agora `ymdBrt()`;
+>    - SITFIS "ainda gerando" carimbava a consulta e escondia a empresa por 7 dias, e a espera fixa de 6s
+>      nunca bastava para uma Receita lenta — agora só carimba tentativa concluída ou erro definitivo, e a
+>      espera usa o orçamento que sobra;
+>    - a varredura da Receita dependia de um job de pg_cron criado à mão (segredo fora do git) — agora
+>      `/api/cron/obrigacoes` a dispara todo dia; o pg_cron ficou opcional.
+>
+> **Migrations 0110, 0111 e 0112 aplicadas em produção** (segundo as mensagens dos commits).
+> **Code-review de 13/10 (`/code-review high` em `dc5d6b8..cf66455`) — corrigido no commit seguinte, cada um com teste:**
+> - Caixa Postal: a 1ª sincronização que falhava (e carimbava) nunca mais virava listagem completa → agora a
+>   lista é completa quando a empresa não tem nada guardado; mensagem guardada **não lida** também força a
+>   lista completa (só ela mostra que foi lida no e-CAC ou ganhou ciência por decurso). Leitura e ciência
+>   só avançam (`estadoAtualizado`); `.in('isn')` em lotes de 100; erro do update vai para o log.
+> - Caixa vazia que recebe a 1ª intimação avisa a intimação (com assunto/IMPORTANTE); o resumo "Caixa
+>   Postal conectada" ficou só para carga inicial com mais de 3 não lidas.
+> - SITFIS: carimbo só DEPOIS de guardar o PDF e a linha; "ainda gerando" carimba recuado 6 dias (volta
+>   amanhã, atrás das atrasadas, sem prender a frente da fila). `/api/cron/receita` dá ao SITFIS o que
+>   sobra de 50s, não 28s fixos depois de uma Caixa Postal que pode estourar.
+> - Parcelamentos: preparo (CNPJ, contratante, procurador) uma vez; 1ª modalidade sozinha, as outras 3 em
+>   paralelo; falha de preparo mostra o motivo real; sem carimbo quando nenhuma modalidade respondeu.
+> - Ações por id de linha (abrir mensagem, baixar SITFIS, parcelas, DAS de parcela) agora conferem escritório
+>   **aprovado** + empresa ativa da carteira, ou prova de dono — a RLS (`minha_contabilidade_membro()`) não
+>   olha status. Abrir mensagem não troca o assunto real pelo texto padrão.
+> - Reuso: `serpro-chamada.ts` ganhou `prepararChamadaDaEmpresa`/`mensagemDeFalhaSerpro` (o SITFIS deixou
+>   de ter cópia própria); `destinatarios-receita.ts` e `baixar-pdf.ts` tiraram duplicatas.
+> - **Aberto, decisão do usuário:** escritório dá ciência e emite guias apesar da regra "somente
+>   visualização"; o disparo de `/api/cron/receita` pelo cron de obrigações conta timeout de 1,5s como sucesso.
+>
+> **Base (13/10, depois das correções):** tsc limpo · **2573 testes** verdes (27 pulados). Único arquivo
+> vermelho: `registrar.smoke.test.ts`, que lê `app/.env.local` (não vem no clone) — não é regressão.
+> **NÃO VERIFICADO no navegador logado** nem contra resposta real do SERPRO: Caixa Postal, SITFIS,
+> parcelamentos, DCTFWeb, guia do MEI e "Atualizar com a Receita".
+>
+> **Pendências que vêm de antes e continuam abertas:** testar logado o KYC da subconta, "Responder",
+> "Pagar" (sessão 43) e "Usar serviço" (sessão 42); decidir o modelo BaaS/white label com o Asaas;
+> decidir o destino do "Escritório Teste Balu" (sessão 41).
 
 > ## ▶️ SESSÃO 43 (06/10/2026) — subconta, encaminhamento do WhatsApp, resposta e pagamento
 >
