@@ -4,12 +4,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const h = vi.hoisted(() => {
-  const estado = { mensagem: null as Record<string, unknown> | null };
+  const estado = {
+    mensagem: null as Record<string, unknown> | null,
+    /** Linha de `companies` que o caminho do escritório lê. */
+    empresa: { id: 'emp_1', contabilidade_id: 'contab_1', deleted_at: null } as Record<string, unknown> | null,
+    contabilidade: null as { id: string; status: string } | null,
+    /** O que `empresaDoDono` prova (null = não é dono). */
+    dono: 'emp_1' as string | null,
+  };
   const updates: Record<string, unknown>[] = [];
-  const builder = () => {
+  const builder = (tabela: string) => {
     const b: Record<string, unknown> = {};
     for (const m of ['select', 'eq']) b[m] = () => b;
-    b.maybeSingle = async () => ({ data: estado.mensagem, error: null });
+    b.maybeSingle = async () => ({ data: tabela === 'companies' ? estado.empresa : estado.mensagem, error: null });
     b.update = (v: Record<string, unknown>) => { updates.push(v); return { eq: async () => ({ error: null }) }; };
     return b;
   };
@@ -21,7 +28,14 @@ const h = vi.hoisted(() => {
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/supabase/server', () => ({ createServerClient: async () => ({ from: h.builder }) }));
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: h.builder }) }));
-vi.mock('@/lib/contador/guards', () => ({ getContabilidadeCtx: async () => ({ userId: 'u1', contabilidade: null }) }));
+vi.mock('@/lib/contador/guards', () => ({
+  getContabilidadeCtx: async () => ({ userId: 'u1', contabilidade: h.estado.contabilidade }),
+}));
+vi.mock('@/lib/auth/empresa-dono', () => ({
+  empresaDoDono: async () => h.estado.dono,
+  empresaAtivaDoDono: async () => ({ ok: false, motivo: 'sem_empresa' }),
+  mensagemDeRecusaDeEmpresa: () => 'Empresa não encontrada.',
+}));
 vi.mock('@/lib/security/audit', () => ({ registrarAuditoria: h.auditoria }));
 vi.mock('@/lib/fiscal/serpro-caixa-postal', () => ({ detalharMensagem: h.detalharMensagem }));
 vi.mock('@/lib/fiscal/caixa-postal-sync', () => ({ sincronizarCaixaPostalEmpresa: vi.fn() }));
@@ -30,6 +44,9 @@ import { abrirMensagemReceitaAction } from './actions';
 
 beforeEach(() => {
   h.estado.mensagem = { id: 'm1', company_id: 'emp_1', isn: '123', conteudo: null };
+  h.estado.empresa = { id: 'emp_1', contabilidade_id: 'contab_1', deleted_at: null };
+  h.estado.contabilidade = null;
+  h.estado.dono = 'emp_1';
   h.updates.length = 0;
   h.detalharMensagem.mockReset();
   h.auditoria.mockClear();
@@ -80,6 +97,36 @@ describe('abrirMensagemReceitaAction', () => {
     h.estado.mensagem = null;
     expect((await abrirMensagemReceitaAction('m_outro', true)).ok).toBe(false);
     expect(h.detalharMensagem).not.toHaveBeenCalled();
+  });
+
+  // ── Code-review de 13/10: a RLS sozinha não olha o status do escritório.
+  it('escritório SUSPENSO não dá ciência de intimação do cliente', async () => {
+    h.estado.contabilidade = { id: 'contab_1', status: 'suspensa' };
+    h.estado.dono = null;
+    expect((await abrirMensagemReceitaAction('m1', true)).ok).toBe(false);
+    expect(h.detalharMensagem).not.toHaveBeenCalled();
+  });
+
+  it('escritório aprovado abre a mensagem de cliente da carteira', async () => {
+    h.estado.contabilidade = { id: 'contab_1', status: 'aprovada' };
+    h.estado.dono = null;
+    h.detalharMensagem.mockResolvedValue({ ok: true, mensagem: { isn: '123', assunto: 'X', corpo: 'Corpo', dataCiencia: null } });
+    expect((await abrirMensagemReceitaAction('m1', true)).ok).toBe(true);
+  });
+
+  it('membro de escritório que é DONO da própria empresa (fora da carteira) também abre', async () => {
+    h.estado.contabilidade = { id: 'contab_1', status: 'aprovada' };
+    h.estado.empresa = { id: 'emp_1', contabilidade_id: null, deleted_at: null };
+    h.detalharMensagem.mockResolvedValue({ ok: true, mensagem: { isn: '123', assunto: 'X', corpo: 'Corpo', dataCiencia: null } });
+    expect((await abrirMensagemReceitaAction('m1', true)).ok).toBe(true);
+  });
+
+  it('detalhe sem assunto não troca o assunto real da lista pelo texto padrão', async () => {
+    h.detalharMensagem.mockResolvedValue({
+      ok: true, mensagem: { isn: '123', assunto: 'Mensagem da Receita Federal', corpo: 'Corpo', dataCiencia: null },
+    });
+    await abrirMensagemReceitaAction('m1', true);
+    expect(h.updates[0]).not.toHaveProperty('assunto');
   });
 
   it('falha da Receita não grava nada', async () => {

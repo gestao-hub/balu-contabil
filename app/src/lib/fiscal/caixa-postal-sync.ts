@@ -3,19 +3,21 @@
 // Duas portas:
 //   * `sincronizarCaixaPostalEmpresa` — uma empresa, sob demanda (botão
 //     "Atualizar" da tela) ou chamada pela varredura;
-//   * `rodarCaixaPostal` — a varredura diária do cron `/api/cron/obrigacoes`.
+//   * `rodarCaixaPostal` — a varredura diária do cron `/api/cron/receita`.
 //
 // NENHUMA DAS DUAS ABRE MENSAGEM. Só listam (assunto, origem, data). Abrir dá
 // ciência da intimação e é decisão de uma pessoa — ver `serpro-caixa-postal.ts`.
 //
-// AVISO SÓ DO QUE É NOVO NA BALU. O indicador da Receita diz "há mensagem não
-// aberta" e continua dizendo isso todo dia até alguém abrir; avisar por ele
-// repetiria o mesmo aviso diariamente. O aviso sai quando um `isn` entra na
-// tabela pela primeira vez, com chave única por mensagem.
+// AVISO SÓ DO QUE É NOVO NA BALU E NÃO LIDO NO e-CAC. O indicador da Receita
+// diz "há mensagem não aberta" e continua dizendo isso todo dia até alguém
+// abrir; avisar por ele repetiria o mesmo aviso diariamente. O aviso sai
+// quando um `isn` ainda não lido entra na tabela pela primeira vez, com chave
+// única por mensagem.
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { indicadorMensagensNovas, listarMensagens } from '@/lib/fiscal/serpro-caixa-postal';
 import type { MensagemResumo } from '@/lib/fiscal/serpro-caixa-postal-parse';
+import { destinatariosReceita as destinatarios } from '@/lib/fiscal/destinatarios-receita';
 
 export type ResultadoSyncEmpresa =
   | { ok: true; novas: number; total: number; pulada?: 'sem_novidade' }
@@ -27,12 +29,18 @@ async function gravarMensagens(
 ): Promise<{ novas: MensagemResumo[] } | { erro: string }> {
   if (mensagens.length === 0) return { novas: [] };
 
-  const { data: existentes, error: eLer } = await admin.from('mensagens_receita')
-    .select('isn, lida_na_receita, data_ciencia')
-    .eq('company_id', companyId)
-    .in('isn', mensagens.map((m) => m.isn));
-  if (eLer) return { erro: eLer.message };
-  const porIsn = new Map((existentes ?? []).map((e) => [e.isn as string, e]));
+  // Em lotes: o `.in()` vai na URL do GET, e uma caixa grande (5 páginas na
+  // primeira carga) passaria do limite de tamanho da URL.
+  const existentes: { isn: string; lida_na_receita: boolean | null; data_ciencia: string | null }[] = [];
+  for (let i = 0; i < mensagens.length; i += LOTE_ISN) {
+    const { data, error: eLer } = await admin.from('mensagens_receita')
+      .select('isn, lida_na_receita, data_ciencia')
+      .eq('company_id', companyId)
+      .in('isn', mensagens.slice(i, i + LOTE_ISN).map((m) => m.isn));
+    if (eLer) return { erro: eLer.message };
+    existentes.push(...((data ?? []) as typeof existentes));
+  }
+  const porIsn = new Map(existentes.map((e) => [e.isn, e]));
 
   const novas = mensagens.filter((m) => !porIsn.has(m.isn));
   if (novas.length) {
@@ -53,32 +61,33 @@ async function gravarMensagens(
   for (const m of mensagens) {
     const e = porIsn.get(m.isn);
     if (!e) continue;
-    if (Boolean(e.lida_na_receita) !== m.lidaNaReceita || (e.data_ciencia ?? null) !== m.dataCiencia) {
-      await admin.from('mensagens_receita')
-        .update({ lida_na_receita: m.lidaNaReceita, data_ciencia: m.dataCiencia, updated_at: new Date().toISOString() })
+    const { lida, dataCiencia } = estadoAtualizado(e, m);
+    if (lida !== Boolean(e.lida_na_receita) || dataCiencia !== (e.data_ciencia ?? null)) {
+      const { error } = await admin.from('mensagens_receita')
+        .update({ lida_na_receita: lida, data_ciencia: dataCiencia, updated_at: new Date().toISOString() })
         .eq('company_id', companyId).eq('isn', m.isn);
+      if (error) console.error('[caixa postal] atualização do estado de leitura falhou', m.isn, error.message);
     }
   }
   return { novas };
 }
 
-/** Quem é avisado: o dono da empresa e cada membro do escritório que a atende. */
-async function destinatarios(admin: SupabaseClient, companyId: string): Promise<{
-  nomeEmpresa: string; destinos: { userId: string; href: string }[];
-}> {
-  const { data: empresa } = await admin.from('companies')
-    .select('user_id, contabilidade_id, nome, razao_social').eq('id', companyId).maybeSingle();
-  const nomeEmpresa = ((empresa?.nome as string | null)?.trim() || (empresa?.razao_social as string | null)?.trim()) ?? '';
-  const destinos: { userId: string; href: string }[] = [];
-  if (empresa?.user_id) destinos.push({ userId: empresa.user_id as string, href: '/receita/mensagens' });
-  if (empresa?.contabilidade_id) {
-    const { data: membros } = await admin.from('contabilidade_membros')
-      .select('user_id').eq('contabilidade_id', empresa.contabilidade_id as string);
-    for (const m of membros ?? []) {
-      destinos.push({ userId: m.user_id as string, href: `/contador/clientes/${companyId}/receita` });
-    }
-  }
-  return { nomeEmpresa, destinos };
+const LOTE_ISN = 100;
+
+/**
+ * Leitura e ciência SÓ AVANÇAM. Lida não volta a "não lida", e a data de
+ * ciência guardada (a que a Balu gravou ao abrir — é dela que o prazo conta)
+ * não some porque a lista veio sem o campo. A data da Receita, quando vem,
+ * prevalece. Exportado para teste.
+ */
+export function estadoAtualizado(
+  guardado: { lida_na_receita: boolean | null; data_ciencia: string | null },
+  daReceita: Pick<MensagemResumo, 'lidaNaReceita' | 'dataCiencia'>,
+): { lida: boolean; dataCiencia: string | null } {
+  return {
+    lida: Boolean(guardado.lida_na_receita) || daReceita.lidaNaReceita,
+    dataCiencia: daReceita.dataCiencia ?? guardado.data_ciencia ?? null,
+  };
 }
 
 /**
@@ -108,6 +117,9 @@ async function avisarCargaInicial(admin: SupabaseClient, companyId: string, naoL
   if (error) console.error('[caixa postal] aviso da carga inicial falhou:', error.message);
 }
 
+/** Até aqui a carga inicial avisa mensagem a mensagem; acima, um resumo. */
+const MAX_AVISOS_INDIVIDUAIS = 3;
+
 /** Avisa o dono da empresa e o escritório que a atende — uma notificação por mensagem. */
 async function avisarNovas(admin: SupabaseClient, companyId: string, novas: MensagemResumo[]): Promise<void> {
   if (novas.length === 0) return;
@@ -135,12 +147,27 @@ async function avisarNovas(admin: SupabaseClient, companyId: string, novas: Mens
  *
  * `completa`: lista TODAS as mensagens (primeira vez e botão "Atualizar").
  * Senão (cron): pergunta o indicador primeiro e só lista as não lidas quando
- * ele diz que há — a lista é a chamada mais cara.
+ * ele diz que há — a lista é a chamada mais cara. A lista vira completa por
+ * conta própria em dois casos (code-review de 13/10):
+ *   * nada guardado ainda — a primeira sincronização pode ter falhado e
+ *     carimbado, e é o carimbo que o cron usa para pedir `completa`;
+ *   * há mensagem guardada ainda NÃO LIDA — só a lista completa diz que ela
+ *     foi lida no e-CAC ou ganhou ciência por decurso; a de não lidas
+ *     simplesmente deixa de trazê-la.
  */
 export async function sincronizarCaixaPostalEmpresa(
   admin: SupabaseClient, companyId: string, opts: { completa: boolean },
 ): Promise<ResultadoSyncEmpresa> {
-  if (!opts.completa) {
+  // Lido ANTES de gravar. Erro de leitura conta como carga inicial: errar
+  // para o resumo custa um aviso; errar para o outro lado é a enxurrada.
+  const [{ data: jaTem, error: eJaTem }, { data: pendentes }] = await Promise.all([
+    admin.from('mensagens_receita').select('id').eq('company_id', companyId).limit(1),
+    admin.from('mensagens_receita').select('id').eq('company_id', companyId).eq('lida_na_receita', false).limit(1),
+  ]);
+  const cargaInicial = Boolean(eJaTem) || (jaTem ?? []).length === 0;
+  const completa = opts.completa || cargaInicial || (pendentes ?? []).length > 0;
+
+  if (!completa) {
     const ind = await indicadorMensagensNovas(admin, companyId);
     if (!ind.ok) return ind;
     // `null` (resposta sem o campo) NÃO é "nada novo": lista para conferir.
@@ -150,23 +177,18 @@ export async function sincronizarCaixaPostalEmpresa(
     }
   }
 
-  const lista = await listarMensagens(admin, companyId, { somenteNaoLidas: !opts.completa });
+  const lista = await listarMensagens(admin, companyId, { somenteNaoLidas: !completa });
   if (!lista.ok) return lista;
-
-  // Carga inicial = a empresa ainda não tem NENHUMA mensagem guardada. Lido
-  // ANTES de gravar. Erro de leitura conta como carga inicial: errar para o
-  // resumo custa um aviso; errar para o outro lado é a enxurrada.
-  const { data: jaTem, error: eJaTem } = await admin.from('mensagens_receita')
-    .select('id').eq('company_id', companyId).limit(1);
-  const cargaInicial = Boolean(eJaTem) || (jaTem ?? []).length === 0;
 
   const gravado = await gravarMensagens(admin, companyId, lista.lista.mensagens);
   if ('erro' in gravado) return { ok: false, error: `Não foi possível gravar as mensagens: ${gravado.erro}` };
 
   // Só o que ainda NÃO foi lido no e-CAC é notícia: mensagem aberta por lá
-  // (pelo contador, pelo próprio cliente) já foi vista por alguém.
+  // (pelo contador, pelo próprio cliente) já foi vista por alguém. O resumo
+  // é para o HISTÓRICO de uma caixa cheia; caixa que nasceu vazia e recebe a
+  // primeira intimação avisa a intimação, com o assunto dela.
   const naoLidas = gravado.novas.filter((m) => !m.lidaNaReceita);
-  if (cargaInicial) await avisarCargaInicial(admin, companyId, naoLidas);
+  if (cargaInicial && naoLidas.length > MAX_AVISOS_INDIVIDUAIS) await avisarCargaInicial(admin, companyId, naoLidas);
   else await avisarNovas(admin, companyId, naoLidas);
   await carimbar(admin, companyId);
   return { ok: true, novas: gravado.novas.length, total: lista.lista.mensagens.length };
@@ -181,8 +203,7 @@ async function carimbar(admin: SupabaseClient, companyId: string): Promise<void>
 
 // ─── VARREDURA DIÁRIA ────────────────────────────────────────────────────────
 
-/** Mesmo raciocínio de `pagamentos-serpro-cron.ts`: o `maxDuration` de 60s é
- *  compartilhado, e a varredura não pode comer o tempo das obrigações. */
+/** Padrão conservador; a rota `/api/cron/receita` passa o orçamento dela. */
 const ORCAMENTO_MS_PADRAO = 8_000;
 /** Indicador (uma chamada) + às vezes a lista. */
 const CUSTO_EMPRESA_MS = 2_500;

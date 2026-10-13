@@ -11,10 +11,8 @@
 // esperar (a tela espera mais, a varredura menos).
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { garantirAuthContratante } from '@/lib/fiscal/serpro-contratante';
-import { garantirTokenProcurador } from '@/lib/fiscal/serpro-procurador';
-import { apoiarComProcurador, emitirComProcurador, Tipo } from '@/lib/clients/serpro';
-import { traduzirErroSerpro } from '@/lib/fiscal/serpro-erro';
+import { apoiarComProcurador, emitirComProcurador } from '@/lib/clients/serpro';
+import { prepararChamadaDaEmpresa, mensagemDeFalhaSerpro } from '@/lib/fiscal/serpro-chamada';
 import { parseProtocolo, parseEmissao, pareceUmPdf } from '@/lib/fiscal/sitfis-parse';
 
 export type ResultadoSitfisSerpro =
@@ -27,25 +25,11 @@ export async function emitirRelatorioSitfis(
   sb: SupabaseClient, companyId: string, opts: { esperaMaximaMs: number },
 ): Promise<ResultadoSitfisSerpro> {
   const inicio = Date.now();
-  const { data: company } = await sb.from('companies').select('cnpj').eq('id', companyId).single();
-  const cnpj = String(company?.cnpj ?? '').replace(/\D+/g, '');
-  if (!cnpj) return { ok: false, error: 'CNPJ da empresa ausente.' };
-
-  const auth = await garantirAuthContratante();
-  if (!auth) return { ok: false, error: 'Configure o certificado do contratante (SERPRO) para consultar.' };
-  const tk = await garantirTokenProcurador(sb, companyId);
-  if (!tk.ok) return { ok: false, error: tk.warning };
-
-  const base = {
-    pfx: auth.pfx, passphrase: auth.passphrase, accessToken: auth.accessToken, jwt: auth.jwt,
-    procuradorToken: tk.token,
-  };
-  const envelope = (idServico: string, dados: string) => ({
-    contratante: { numero: auth.cnpj, tipo: Tipo.CNPJ },
-    autorPedidoDados: { numero: cnpj, tipo: Tipo.CNPJ },
-    contribuinte: { numero: cnpj, tipo: Tipo.CNPJ },
-    pedidoDados: { idSistema: 'SITFIS', idServico, versaoSistema: '2.0', dados },
-  });
+  const prep = await prepararChamadaDaEmpresa(sb, companyId);
+  if (!prep.ok) return prep;
+  const { base } = prep.chamada;
+  const envelope = (idServico: string, dados: string) =>
+    prep.chamada.envelope({ idSistema: 'SITFIS', idServico, versaoSistema: '2.0', dados });
 
   try {
     // 1. protocolo
@@ -74,10 +58,6 @@ export async function emitirRelatorioSitfis(
     }
     return { ok: false, aindaGerando: true, error: 'A Receita ainda está gerando o relatório. Tente de novo em instantes.' };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '';
-    if (/ICGERENCIADOR-022|procura(c|ç)[aã]o/i.test(msg)) {
-      return { ok: false, error: 'A empresa ainda não autorizou a Balu (Termo/procuração) na SERPRO.' };
-    }
-    return { ok: false, error: `Não foi possível emitir a situação fiscal: ${traduzirErroSerpro(msg)}` };
+    return { ok: false, error: mensagemDeFalhaSerpro(e, 'Não foi possível emitir a situação fiscal') };
   }
 }

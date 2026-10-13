@@ -7,7 +7,7 @@
 // parcelamentos" é a porta.
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { chamarIntegraDaEmpresa } from '@/lib/fiscal/serpro-chamada';
+import { chamarIntegraDaEmpresa, prepararChamadaDaEmpresa } from '@/lib/fiscal/serpro-chamada';
 import {
   modalidadesDoRegime, modalidadePorSistema, servico, parsePedidos, parseParcelas, parsePdfDas,
   type ParcelaDisponivel,
@@ -27,17 +27,33 @@ export async function consultarParcelamentosEmpresa(
     return { ok: false, error: 'Parcelamentos pela Receita cobrem só empresas do Simples e MEI.' };
   }
 
+  // Preparo UMA vez (CNPJ, contratante, procurador). Falha aqui vale para todas
+  // as modalidades e tem motivo próprio ("certificado vencido"…) — que a tela
+  // precisa mostrar, em vez de quatro falhas viradas em "tente de novo".
+  const prep = await prepararChamadaDaEmpresa(admin, companyId);
+  if (!prep.ok) return prep;
+
+  const consultar = (m: (typeof modalidades)[number]) => chamarIntegraDaEmpresa(admin, companyId, {
+    rota: 'Consultar', idSistema: m.sistema, idServico: servico.pedidos(m), dados: null,
+    contexto: `Não foi possível consultar ${m.nome}`,
+  }, prep.chamada);
+  // A primeira sozinha: sem autorização ela já responde, e as outras três
+  // (chamadas cobradas) nem saem. Depois, as restantes em paralelo, para
+  // caber no tempo da página em vez de somar quatro idas ao SERPRO.
+  const primeira = await consultar(modalidades[0]);
+  if (!primeira.ok && /não autorizou/.test(primeira.error)) return { ok: false, error: primeira.error };
+  const respostas = [primeira, ...await Promise.all(modalidades.slice(1).map(consultar))];
+
   let encontrados = 0;
   const falhas: string[] = [];
+  let primeiroErro: string | null = null;
   const agora = new Date().toISOString();
-  for (const m of modalidades) {
-    const r = await chamarIntegraDaEmpresa(admin, companyId, {
-      rota: 'Consultar', idSistema: m.sistema, idServico: servico.pedidos(m), dados: null,
-      contexto: `Não foi possível consultar ${m.nome}`,
-    });
+  for (const [i, m] of modalidades.entries()) {
+    const r = respostas[i];
     if (!r.ok) {
-      // Falta de autorização vale para todas: não adianta tentar as outras três.
+      // Falta de autorização vale para todas.
       if (/não autorizou/.test(r.error)) return { ok: false, error: r.error };
+      primeiroErro ??= r.error;
       falhas.push(m.nome);
       continue;
     }
@@ -56,10 +72,12 @@ export async function consultarParcelamentosEmpresa(
     encontrados += pedidos.length;
   }
 
-  await admin.from('empresas_fiscais').update({ parcelamentos_consultados_em: agora }).eq('empresa_id', companyId);
+  // Nenhuma modalidade respondeu: não houve consulta — sem carimbo, e com o
+  // motivo da Receita quando houver um.
   if (falhas.length === modalidades.length) {
-    return { ok: false, error: 'Não foi possível consultar os parcelamentos na Receita agora. Tente de novo.' };
+    return { ok: false, error: primeiroErro ?? 'Não foi possível consultar os parcelamentos na Receita agora. Tente de novo.' };
   }
+  await admin.from('empresas_fiscais').update({ parcelamentos_consultados_em: agora }).eq('empresa_id', companyId);
   return { ok: true, encontrados, falhas };
 }
 

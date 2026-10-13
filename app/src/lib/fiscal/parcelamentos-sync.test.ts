@@ -3,19 +3,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const h = vi.hoisted(() => {
   const estado = { regime: '4' as string | null };
   const upserts: { tabela: string; linhas: Record<string, unknown>[] }[] = [];
+  const updates: { tabela: string; valores: Record<string, unknown> }[] = [];
   const from = (tabela: string) => {
     const b: Record<string, unknown> = {};
     for (const m of ['select', 'eq', 'is']) b[m] = () => b;
     b.maybeSingle = async () => ({ data: estado.regime ? { Code_regime_tributario: estado.regime } : null, error: null });
     b.upsert = async (linhas: Record<string, unknown>[]) => { upserts.push({ tabela, linhas }); return { error: null }; };
-    b.update = () => ({ eq: async () => ({ error: null }) });
+    b.update = (valores: Record<string, unknown>) => {
+      updates.push({ tabela, valores });
+      return { eq: async () => ({ error: null }) };
+    };
     return b;
   };
   const chamar = vi.fn();
-  return { estado, upserts, from, chamar };
+  const preparar = vi.fn();
+  return { estado, upserts, updates, from, chamar, preparar };
 });
 
-vi.mock('@/lib/fiscal/serpro-chamada', () => ({ chamarIntegraDaEmpresa: h.chamar }));
+vi.mock('@/lib/fiscal/serpro-chamada', () => ({ chamarIntegraDaEmpresa: h.chamar, prepararChamadaDaEmpresa: h.preparar }));
 
 import { consultarParcelamentosEmpresa, gerarDasDaParcela } from './parcelamentos-sync';
 
@@ -25,7 +30,9 @@ const env = (dados: unknown) => ({ dados: JSON.stringify(dados) });
 beforeEach(() => {
   h.estado.regime = '4';
   h.upserts.length = 0;
+  h.updates.length = 0;
   h.chamar.mockReset();
+  h.preparar.mockReset().mockResolvedValue({ ok: true, chamada: { base: {}, envelope: () => ({}) } });
 });
 
 describe('consultarParcelamentosEmpresa', () => {
@@ -55,9 +62,25 @@ describe('consultarParcelamentosEmpresa', () => {
     expect(h.chamar).not.toHaveBeenCalled();
   });
 
-  it('todas as modalidades falharam: erro, não "nenhum parcelamento"', async () => {
+  it('todas as modalidades falharam: erro com o motivo da Receita, e sem carimbo de "consultado"', async () => {
     h.chamar.mockResolvedValue({ ok: false, error: 'SERPRO fora' });
-    expect((await consultarParcelamentosEmpresa(admin, 'emp_1')).ok).toBe(false);
+    expect(await consultarParcelamentosEmpresa(admin, 'emp_1')).toEqual({ ok: false, error: 'SERPRO fora' });
+    expect(h.updates.filter((u) => 'parcelamentos_consultados_em' in u.valores)).toHaveLength(0);
+  });
+
+  it('falha no preparo (certificado vencido): mostra o motivo real, uma vez, sem chamar o SERPRO', async () => {
+    h.preparar.mockResolvedValue({ ok: false, error: 'Certificado A1 vencido.' });
+    expect(await consultarParcelamentosEmpresa(admin, 'emp_1')).toEqual({ ok: false, error: 'Certificado A1 vencido.' });
+    expect(h.preparar).toHaveBeenCalledTimes(1);
+    expect(h.chamar).not.toHaveBeenCalled();
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it('as 4 chamadas reaproveitam o mesmo preparo', async () => {
+    h.chamar.mockResolvedValue({ ok: true, resp: env({ parcelamentos: [] }) });
+    await consultarParcelamentosEmpresa(admin, 'emp_1');
+    expect(h.preparar).toHaveBeenCalledTimes(1);
+    expect(h.chamar.mock.calls.every((c) => c[3] !== undefined)).toBe(true);
   });
 });
 

@@ -71,11 +71,14 @@ export function dataDaReceita(v: unknown): string | null {
   return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
 }
 
+/** O que `montarAssunto` devolve quando a resposta não trouxe assunto. */
+export const ASSUNTO_PADRAO = 'Mensagem da Receita Federal';
+
 /** Assunto com o parâmetro no lugar de `++VARIAVEL++`. */
 export function montarAssunto(modelo: unknown, parametro: unknown): string {
   const m = String(modelo ?? '').trim();
   const p = String(parametro ?? '').trim();
-  return (m.replace(/\+\+VARIAVEL\+\+/gi, p).trim() || 'Mensagem da Receita Federal');
+  return (m.replace(/\+\+VARIAVEL\+\+/gi, p).trim() || ASSUNTO_PADRAO);
 }
 
 /** Corpo com `++1++`, `++2++`… trocados pelas `variaveis`, na ordem. */

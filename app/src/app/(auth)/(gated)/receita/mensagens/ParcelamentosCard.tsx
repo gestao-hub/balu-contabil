@@ -10,6 +10,7 @@ import { dataBrt, dataHoraBrt } from '@/lib/format/data-brt';
 import { brl } from '@/lib/fiscal/guia';
 import { parcelamentoAtivo, modalidadePorSistema } from '@/lib/fiscal/parcelamento-parse';
 import { consultarParcelamentosAction, gerarDasParcelaAction, parcelasDisponiveisAction } from './actions';
+import { baixarPdf } from './baixar-pdf';
 
 export type ParcelamentoVm = {
   id: string;
@@ -21,15 +22,6 @@ export type ParcelamentoVm = {
 };
 
 const competencia = (aaaamm: string) => `${aaaamm.slice(4, 6)}/${aaaamm.slice(0, 4)}`;
-
-/** Base64 → arquivo baixado, sem passar por URL de dados na barra de endereço. */
-function baixarPdf(base64: string, nome: string) {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-  const a = document.createElement('a');
-  a.href = url; a.download = nome; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
 
 function LinhaParcelamento({ p }: { p: ParcelamentoVm }) {
   const toast = useToast();

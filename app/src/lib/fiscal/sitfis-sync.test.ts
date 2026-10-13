@@ -100,10 +100,25 @@ describe('gerarRelatorioSitfisEmpresa', () => {
   });
 
   // Achado do code-review (06/10): "ainda gerando" é tentativa INTERROMPIDA,
-  // não consulta feita. Carimbar escondia a empresa da varredura por 7 dias.
-  it('"ainda gerando" NÃO carimba a consulta (volta na próxima rodada)', async () => {
+  // não consulta feita. Carimbar com "agora" escondia a empresa por 7 dias.
+  // Code-review de 13/10: sem carimbo nenhum ela voltava à FRENTE da fila
+  // todo dia. O carimbo é RECUADO 6 dias: volta amanhã, atrás das atrasadas.
+  it('"ainda gerando" carimba RECUADO: volta amanhã, sem ocupar a frente da fila', async () => {
     h.emitirRelatorioSitfis.mockResolvedValue({ ok: false, error: 'ainda gerando', aindaGerando: true });
+    const antes = Date.now();
     await gerarRelatorioSitfisEmpresa(admin, 'emp_1', opts);
+    const carimbos = h.updates.filter((u) => u.tabela === 'empresas_fiscais');
+    expect(carimbos).toHaveLength(1);
+    const dias = (antes - new Date(carimbos[0].valores.sitfis_consultado_em as string).getTime()) / 86_400_000;
+    expect(dias).toBeGreaterThan(5.9);
+    expect(dias).toBeLessThan(6.1);
+  });
+
+  it('sucesso carimba só DEPOIS de guardar; falha ao gravar não carimba', async () => {
+    h.analisarRelatorio.mockReturnValue('sem_pendencias');
+    h.estado.erroInsert = { message: 'banco fora' };
+    const r = await gerarRelatorioSitfisEmpresa(admin, 'emp_1', opts);
+    expect(r.ok).toBe(false);
     expect(h.updates.filter((u) => u.tabela === 'empresas_fiscais')).toHaveLength(0);
   });
 
@@ -119,6 +134,8 @@ describe('gerarRelatorioSitfisEmpresa', () => {
     const r = await gerarRelatorioSitfisEmpresa(admin, 'emp_1', opts);
     expect(r.ok).toBe(false);
     expect(h.inserts).toHaveLength(0);
+    // E não carimba: sem isso a empresa sumia da varredura 7 dias sem relatório.
+    expect(h.updates.filter((u) => u.tabela === 'empresas_fiscais')).toHaveLength(0);
   });
 });
 

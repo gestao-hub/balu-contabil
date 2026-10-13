@@ -5,14 +5,7 @@ import { useState, useTransition } from 'react';
 import { Download, FileText, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/Toaster';
 import { documentoDctfwebAction } from './actions';
-
-function baixarPdf(base64: string, nome: string) {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-  const a = document.createElement('a');
-  a.href = url; a.download = nome; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
+import { baixarPdf } from './baixar-pdf';
 
 /** Mês anterior ao de hoje, em YYYY-MM (valor de <input type="month">). */
 function mesAnterior(hoje: string): string {

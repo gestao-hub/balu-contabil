@@ -11,10 +11,15 @@ const h = vi.hoisted(() => {
   const updates: { tabela: string; valores: Record<string, unknown> }[] = [];
   const from = (tabela: string) => {
     const b: Record<string, unknown> = {};
-    for (const m of ['select', 'eq', 'in', 'is', 'not', 'limit']) b[m] = () => b;
+    // `eq` de coluna que a linha tem filtra de verdade (ex.: lida_na_receita = false).
+    const filtros: [string, unknown][] = [];
+    for (const m of ['select', 'in', 'is', 'not', 'limit']) b[m] = () => b;
+    b.eq = (col: string, val: unknown) => { filtros.push([col, val]); return b; };
     b.maybeSingle = async () => ({ data: tabela === 'companies' ? estado.empresa : null, error: null });
     b.then = (ok: (v: unknown) => unknown) => Promise.resolve({
-      data: tabela === 'mensagens_receita' ? estado.existentes : tabela === 'contabilidade_membros' ? estado.membros : [],
+      data: tabela === 'mensagens_receita'
+        ? estado.existentes.filter((e) => filtros.every(([c, v]) => !(c in e) || (e as Record<string, unknown>)[c] === v))
+        : tabela === 'contabilidade_membros' ? estado.membros : [],
       error: null,
     }).then(ok);
     b.upsert = async (linhas: unknown, opts: unknown) => { upserts.push({ tabela, linhas, opts }); return { error: null }; };
@@ -47,8 +52,12 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
+/** Empresa já sincronizada, com tudo lido: o único caso em que o cron usa o indicador. */
+const jaSincronizada = () => { h.estado.existentes = [{ isn: '0', lida_na_receita: true, data_ciencia: null }]; };
+
 describe('sincronizarCaixaPostalEmpresa', () => {
   it('indicador 0: não lista (a chamada mais cara) e só carimba', async () => {
+    jaSincronizada();
     h.indicadorMensagensNovas.mockResolvedValue({ ok: true, indicador: 0 });
     const r = await sincronizarCaixaPostalEmpresa(admin, 'emp_1', { completa: false });
     expect(r).toMatchObject({ ok: true, novas: 0, pulada: 'sem_novidade' });
@@ -57,6 +66,7 @@ describe('sincronizarCaixaPostalEmpresa', () => {
   });
 
   it('indicador ausente (null) NÃO é "nada novo": lista para conferir', async () => {
+    jaSincronizada();
     h.indicadorMensagensNovas.mockResolvedValue({ ok: true, indicador: null });
     h.listarMensagens.mockResolvedValue({ ok: true, lista: { mensagens: [], ultimaPagina: true, proximoPonteiro: null } });
     await sincronizarCaixaPostalEmpresa(admin, 'emp_1', { completa: false });
@@ -88,7 +98,7 @@ describe('sincronizarCaixaPostalEmpresa', () => {
     h.listarMensagens.mockResolvedValue({
       ok: true,
       lista: {
-        mensagens: [msg('1', { lidaNaReceita: true }), msg('2', { lidaNaReceita: true }), msg('3'), msg('4')],
+        mensagens: [msg('1', { lidaNaReceita: true }), msg('2', { lidaNaReceita: true }), msg('3'), msg('4'), msg('5'), msg('6')],
         ultimaPagina: true, proximoPonteiro: null,
       },
     });
@@ -96,7 +106,39 @@ describe('sincronizarCaixaPostalEmpresa', () => {
     const avisos = h.upserts.find((u) => u.tabela === 'notifications')?.linhas as Record<string, unknown>[];
     expect(avisos).toHaveLength(2); // dono + 1 membro, e não 4 mensagens x 2
     expect(avisos[0]).toMatchObject({ chave: 'receita_caixa_inicial:emp_1' });
-    expect(String(avisos[0].corpo)).toMatch(/2 mensage/);
+    expect(String(avisos[0].corpo)).toMatch(/4 mensage/);
+  });
+
+  // ── Code-review de 13/10.
+  it('caixa que nasceu vazia e recebe a 1ª intimação: aviso da intimação, com o assunto, não o resumo', async () => {
+    h.estado.existentes = [];
+    h.listarMensagens.mockResolvedValue({
+      ok: true, lista: { mensagens: [msg('9', { relevante: true })], ultimaPagina: true, proximoPonteiro: null },
+    });
+    await sincronizarCaixaPostalEmpresa(admin, 'emp_1', { completa: false });
+    const avisos = h.upserts.find((u) => u.tabela === 'notifications')?.linhas as Record<string, unknown>[];
+    expect(avisos[0]).toMatchObject({ chave: 'receita_mensagem:emp_1:9', severidade: 'danger' });
+    expect(String(avisos[0].corpo)).toContain('Assunto 9');
+  });
+
+  it('nada guardado ainda (1ª sincronização falhou e carimbou): o cron lista TUDO, sem o indicador', async () => {
+    h.estado.existentes = [];
+    h.listarMensagens.mockResolvedValue({ ok: true, lista: { mensagens: [], ultimaPagina: true, proximoPonteiro: null } });
+    await sincronizarCaixaPostalEmpresa(admin, 'emp_1', { completa: false });
+    expect(h.indicadorMensagensNovas).not.toHaveBeenCalled();
+    expect(h.listarMensagens).toHaveBeenCalledWith(admin, 'emp_1', { somenteNaoLidas: false });
+  });
+
+  it('mensagem guardada ainda não lida: o cron lista TUDO para saber se foi lida no e-CAC', async () => {
+    h.estado.existentes = [{ isn: '1', lida_na_receita: false, data_ciencia: null }];
+    h.listarMensagens.mockResolvedValue({
+      ok: true, lista: { mensagens: [msg('1', { lidaNaReceita: true, dataCiencia: '2026-10-12' })], ultimaPagina: true, proximoPonteiro: null },
+    });
+    await sincronizarCaixaPostalEmpresa(admin, 'emp_1', { completa: false });
+    expect(h.indicadorMensagensNovas).not.toHaveBeenCalled();
+    expect(h.listarMensagens).toHaveBeenCalledWith(admin, 'emp_1', { somenteNaoLidas: false });
+    expect(h.updates.find((u) => u.tabela === 'mensagens_receita')?.valores)
+      .toMatchObject({ lida_na_receita: true, data_ciencia: '2026-10-12' });
   });
 
   it('carga inicial com tudo já lido no e-CAC: ninguém é avisado', async () => {

@@ -9,6 +9,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { uploadToBucket } from '@/lib/clients/supabase-storage';
 import { emitirRelatorioSitfis } from '@/lib/fiscal/serpro-sitfis';
 import { analisarRelatorio, type ResultadoSitfis } from '@/lib/fiscal/sitfis-parse';
+import { destinatariosReceita } from '@/lib/fiscal/destinatarios-receita';
 
 export const BUCKET_RELATORIOS = 'relatorios-fiscais';
 
@@ -25,8 +26,17 @@ export async function gerarRelatorioSitfisEmpresa(
   // aqui escondia a empresa da varredura por INTERVALO_DIAS (achado do
   // code-review de 06/10). Erro definitivo (sem autorização, sem CNPJ)
   // carimba, senão a empresa ocupa a frente da fila todo dia.
-  if (r.ok || !r.aindaGerando) await carimbar(admin, companyId);
-  if (!r.ok) return r;
+  // Mas sem carimbo nenhum a empresa lenta voltava para a FRENTE da fila todo
+  // dia e comia o orçamento das outras: o carimbo "recuado" a faz voltar
+  // amanhã, atrás de quem está há mais tempo sem relatório.
+  if (!r.ok) {
+    if (r.aindaGerando) await carimbar(admin, companyId, new Date(Date.now() - (INTERVALO_DIAS - 1) * 86_400_000));
+    else await carimbar(admin, companyId);
+    return r;
+  }
+  // Sucesso só carimba DEPOIS de guardar: relatório emitido que não chegou
+  // ao bucket ou à tabela não é consulta feita — sem isso a empresa sumia da
+  // varredura por INTERVALO_DIAS sem relatório nenhum (code-review de 13/10).
 
   const resultado = analisarRelatorio(r.pdf);
   const agora = new Date();
@@ -50,6 +60,7 @@ export async function gerarRelatorioSitfisEmpresa(
     console.error('[sitfis] gravação do relatório falhou', companyId, error?.message);
     return { ok: false, error: 'O relatório foi emitido, mas não pôde ser registrado. Tente de novo.' };
   }
+  await carimbar(admin, companyId);
 
   if (resultado === 'com_pendencias' && anterior?.resultado !== 'com_pendencias') {
     await avisarPendencia(admin, companyId, linha.id as string);
@@ -58,16 +69,7 @@ export async function gerarRelatorioSitfisEmpresa(
 }
 
 async function avisarPendencia(admin: SupabaseClient, companyId: string, relatorioId: string): Promise<void> {
-  const { data: empresa } = await admin.from('companies')
-    .select('user_id, contabilidade_id, nome, razao_social').eq('id', companyId).maybeSingle();
-  const nome = ((empresa?.nome as string | null)?.trim() || (empresa?.razao_social as string | null)?.trim()) ?? '';
-  const destinos: { userId: string; href: string }[] = [];
-  if (empresa?.user_id) destinos.push({ userId: empresa.user_id as string, href: '/receita/mensagens' });
-  if (empresa?.contabilidade_id) {
-    const { data: membros } = await admin.from('contabilidade_membros')
-      .select('user_id').eq('contabilidade_id', empresa.contabilidade_id as string);
-    for (const m of membros ?? []) destinos.push({ userId: m.user_id as string, href: `/contador/clientes/${companyId}/receita` });
-  }
+  const { nomeEmpresa: nome, destinos } = await destinatariosReceita(admin, companyId);
   if (destinos.length === 0) return;
   const { error } = await admin.from('notifications').upsert(destinos.map((d) => ({
     owner_user_id: d.userId, company_id: companyId, tipo: 'situacao_fiscal_pendencia', severidade: 'danger',
@@ -79,9 +81,9 @@ async function avisarPendencia(admin: SupabaseClient, companyId: string, relator
   if (error) console.error('[sitfis] aviso de pendência falhou:', error.message);
 }
 
-async function carimbar(admin: SupabaseClient, companyId: string): Promise<void> {
+async function carimbar(admin: SupabaseClient, companyId: string, quando: Date = new Date()): Promise<void> {
   const { error } = await admin.from('empresas_fiscais')
-    .update({ sitfis_consultado_em: new Date().toISOString() }).eq('empresa_id', companyId);
+    .update({ sitfis_consultado_em: quando.toISOString() }).eq('empresa_id', companyId);
   if (error) console.error('[sitfis] carimbo falhou', companyId, error.message);
 }
 

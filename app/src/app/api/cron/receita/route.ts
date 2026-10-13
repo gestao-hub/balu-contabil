@@ -33,11 +33,24 @@ export const maxDuration = 60;
  */
 const ORCAMENTO_CAIXA_POSTAL_MS = 22_000;
 const ORCAMENTO_SITFIS_MS = 28_000;
+const ORCAMENTO_TOTAL_MS = ORCAMENTO_CAIXA_POSTAL_MS + ORCAMENTO_SITFIS_MS;
+
+/**
+ * O SITFIS fica com o que SOBRA do total, nunca mais que o dele. A Caixa
+ * Postal só confere o orçamento antes de cada empresa, e uma chamada ao SERPRO
+ * pode levar até 25s: medir o SITFIS a partir do próprio início somava mais
+ * que os 60s da função, e a Vercel cortava no meio de um relatório
+ * (code-review de 13/10).
+ */
+function orcamentoSitfis(gastoMs: number): number {
+  return Math.max(0, Math.min(ORCAMENTO_SITFIS_MS, ORCAMENTO_TOTAL_MS - gastoMs));
+}
 
 export async function GET(req: Request) {
   const recusa = checarCron(req);
   if (recusa) return NextResponse.json(recusa.body, { status: recusa.status });
 
+  const inicio = Date.now();
   const admin = createAdminClient();
 
   let caixaPostal: unknown = null;
@@ -50,7 +63,7 @@ export async function GET(req: Request) {
 
   let sitfis: unknown = null;
   try {
-    sitfis = await rodarSitfis(admin, { orcamentoMs: ORCAMENTO_SITFIS_MS });
+    sitfis = await rodarSitfis(admin, { orcamentoMs: orcamentoSitfis(Date.now() - inicio) });
   } catch (err) {
     console.error('[cron receita] sitfis falhou', err);
     sitfis = { erro: String(err) };
