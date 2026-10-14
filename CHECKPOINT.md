@@ -1,7 +1,9 @@
 # CHECKPOINT — Balu
 
 > Estado vivo do projeto para retomada de contexto. Atualizar ao fim de cada sessão de trabalho.
-> **Última atualização:** 2026-10-13 (sessão 44, trabalho de 06/10 — integração com a Receita via SERPRO: Caixa Postal do e-CAC, situação fiscal (SITFIS), guia oficial do MEI e reconsulta do Simples, parcelamentos, DCTFWeb e os 4 achados do code-review; migrations 0110–0112; ver o bloco SESSÃO 44.)
+> **Última atualização:** 2026-10-14 (sessão 45 — contas de teste nunca expiram nem pedem assinatura: migration 0113 aplicada em produção, coluna "Conta de teste" em /admin/usuarios; CLI da Vercel conectada; ver o bloco SESSÃO 45.)
+>
+> _Anterior — sessão 44 (13/10/2026, trabalho de 06/10): integração com a Receita via SERPRO — Caixa Postal do e-CAC, SITFIS, guia oficial do MEI, parcelamentos, DCTFWeb e dois code-reviews; migrations 0110–0112; ver o bloco SESSÃO 44.)
 >
 > _Anterior — sessão 43 (06/10/2026): KYC da subconta visível e enviável, encaminhamento do WhatsApp para escritório, "Responder" na fila, "Pagar" do honorário pelo cliente; migration 0109; ver o bloco SESSÃO 43.)
 >
@@ -27,7 +29,7 @@
 >
 > _Anterior — sessão 34: **o bloqueio da Focus era nosso.** A conta nunca esteve sem permissão: a API de Empresas exige o **token principal de produção**, e o que estava configurado não é ele. O MESMO token dá 200 no catálogo e 401 em `/v2/empresas`, no mesmo host. O erro de 35 dias veio de uma sonda que não conseguia ver essa diferença — corrigida, com teste._
 
-> ## ⏸️ PENDENTE (13/10/2026) — contas de teste, na branch `feat/contas-teste` (NÃO está no `main`)
+> ## ▶️ SESSÃO 45 (13–14/10/2026) — contas de teste liberadas para sempre (migration 0113)
 >
 > Pedido do usuário: as contas de teste nunca expiram, não precisam de assinatura e têm tudo liberado.
 > Contas: `luanbonadie+demoadmin@gmail.com`, `luanbonadie+democontador@gmail.com`,
@@ -43,11 +45,20 @@
 > - **Tela:** `/admin/usuarios` ganhou a coluna "Conta de teste" (Teste/Normal, com confirmação e auditoria).
 > - tsc limpo; `admin/usuarios/actions.test.ts` (3) e `lib/billing` (473) verdes.
 >
-> **Para terminar:** (1) aplicar a 0113 em produção ANTES do deploy — o `.env.local` não veio no clone e o
-> conector do Supabase desta máquina não enxerga o projeto `llykzqnugdpojwnlontj`; ou o usuário cola o SQL
-> no SQL Editor, ou põe `SUPABASE_PASSWORD` em `app/.env.local`; (2) conferir que as 3 contas ficaram em
-> `cortesia` (`assinaturas` das empresas/escritórios delas) e o escritório em `aprovada`; (3) merge da
-> branch no `main` e push (deploy pela Vercel).
+> **Aplicada em produção em 14/10, ANTES do deploy** (ensaio com ROLLBACK, depois COMMIT; conexão direta
+> `db.llykzqnugdpojwnlontj.supabase.co` com a `SUPABASE_PASSWORD` do `.env.local` da raiz). Estado antes →
+> depois, conferido por conexão nova:
+> - `democontador`: "Escritório Demo — Apresentação" estava em `trial` **vencido em 12/10** (bloqueado) →
+>   `cortesia`; escritório já `aprovada`, subconta já `aprovada` (forçada na sessão 43).
+> - `demoempresa`: "Empresa Demo — Apresentação" é da carteira do escritório demo → coberta por ele.
+> - `demoadmin`: AdminBalu, sem empresa nem escritório → nada a liberar; marcado para o que criar depois.
+> - As 3 em `contas_teste`.
+>
+> **Também nesta sessão:** CLI da Vercel logada como `luan-4913` (time `gestao-9664s-projects`) e a raiz do
+> repo ligada ao projeto `balu-contabil` (`.vercel/`, ignorado). `vercel env pull` trouxe só 5 valores reais
+> (Asaas e `UAZAPI_ADMIN_TOKEN`); os outros 18 são "sensitive" e vêm como `[SENSITIVE]`. As variáveis do
+> Supabase o usuário pôs à mão no `.env.local` da RAIZ (o app lê `app/.env.local`). A conta do Supabase
+> dona do projeto é a da org "dev@excluvia.com.br's Org" (`omjazugobjvmpurrazsn`).
 
 > ## ▶️ SESSÃO 44 (06/10/2026, registrada em 13/10) — integração com a Receita (SERPRO)
 >
