@@ -57,10 +57,12 @@ const h = vi.hoisted(() => {
     erroBusca: null as unknown,
     cobranca: { id: 'pay_0001', invoiceUrl: 'https://asaas.invalid/i/pay_0001' } as unknown,
     erroCobranca: null as unknown,
+    erroCliente: null as unknown,
   };
 
   const criarCliente = vi.fn(async (_d: unknown) => {
     ordem.push('sub.criarCliente');
+    if (estado.erroCliente) throw estado.erroCliente;
     return { id: 'cus_novo', name: 'x', cpfCnpj: '12345678000195' };
   });
   const buscarClientesPorDocumento = vi.fn(async (_doc: string) => {
@@ -232,6 +234,7 @@ beforeEach(() => {
   h.estado.erroBusca = null;
   h.estado.cobranca = { id: 'pay_0001', invoiceUrl: 'https://asaas.invalid/i/pay_0001' };
   h.estado.erroCobranca = null;
+  h.estado.erroCliente = null;
   vi.clearAllMocks();
 
   db.consultas = [];
@@ -487,11 +490,20 @@ describe('emitirCobrancaEscritorio — recusas locais', () => {
     ['descricao vazia', { descricao: '   ' }],
     ['cliente sem documento', { cliente: { ...CLIENTE, cpfCnpj: '' } }],
     ['documento truncado', { cliente: { ...CLIENTE, cpfCnpj: '123' } }],
+    // DV errado: o Asaas recusa com 400, e antes isto virava "tente de novo".
+    ['CNPJ com digito verificador errado', { cliente: { ...CLIENTE, cpfCnpj: '12.345.678/0001-90' } }],
+    ['CPF com digito verificador errado', { cliente: { ...CLIENTE, cpfCnpj: '529.982.247-26' } }],
   ])('%s recusa antes do Asaas', async (_nome, over) => {
     const r = await emitirCobrancaEscritorio(fakeSb(), pedido(over as Partial<PedidoEmissao>));
     expect(r.ok).toBe(false);
     expect(h.criarCobranca).not.toHaveBeenCalled();
     expect(db.insercoes).toHaveLength(0);
+  });
+
+  it('documento com DV errado diz para corrigir o cadastro, nao para tentar de novo', async () => {
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido({ cliente: { ...CLIENTE, cpfCnpj: '12345678000190' } }));
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('CPF/CNPJ deste cliente está inválido') });
+    expect(h.criarCliente).not.toHaveBeenCalled();
   });
 });
 
@@ -526,6 +538,25 @@ describe('emitirCobrancaEscritorio — cliente na subconta', () => {
     await emitirCobrancaEscritorio(fakeSb(), pedido());
     expect(h.buscarClientesPorDocumento).toHaveBeenCalledWith('12345678000195');
     expect(h.criarCliente).toHaveBeenCalledWith(expect.objectContaining({ cpfCnpj: '12345678000195' }));
+  });
+
+  // O caso de 17/10 em producao: 400 no POST /v3/customers chegava a tela como
+  // "tente de novo em instantes", e repetir nunca resolvia.
+  it('recusa 4xx do cadastro manda conferir o cadastro, sem repassar o texto do Asaas', async () => {
+    h.estado.erroCliente = Object.assign(
+      new Error('Asaas POST /v3/customers → 400: {"errors":[{"description":"O CPF/CNPJ informado é inválido."}]}'),
+      { status: 400 },
+    );
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido());
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('O Asaas recusou o cadastro deste cliente') });
+    expect(JSON.stringify(r)).not.toContain('informado é inválido');
+    expect(h.criarCobranca).not.toHaveBeenCalled();
+  });
+
+  it('falha 5xx do cadastro continua sendo "tente de novo"', async () => {
+    h.estado.erroCliente = Object.assign(new Error('Asaas POST /v3/customers → 503'), { status: 503 });
+    const r = await emitirCobrancaEscritorio(fakeSb(), pedido());
+    expect(r).toEqual({ ok: false, error: 'Não foi possível emitir a cobrança agora. Tente de novo em instantes.' });
   });
 });
 

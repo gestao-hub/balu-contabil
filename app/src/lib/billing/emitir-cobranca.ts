@@ -28,6 +28,7 @@ import { assertAssinaturaEscritorio } from '@/lib/billing/gate';
 import { statusDoErroAsaas } from '@/lib/billing/subconta-erros';
 import { cobrancaViva } from '@/lib/billing/cobranca-escritorio';
 import { soDigitos } from '@/lib/billing/subconta';
+import { documentoValido } from '@/lib/billing/cliente-avulso';
 
 export type ClienteCobravel = {
   /** De onde o cliente vem, e portanto qual coluna da cobrança ele preenche:
@@ -84,6 +85,14 @@ export type ResultadoEmissao =
  *  texto do Asaas: o corpo de erro dele carrega dado do cliente e, no caminho
  *  da subconta, a mensagem passa perto da chave. */
 const ERRO_ASAAS = 'Não foi possível emitir a cobrança agora. Tente de novo em instantes.';
+
+const DOCUMENTO_INVALIDO =
+  'O CPF/CNPJ deste cliente está inválido no cadastro — confira os números e corrija antes de cobrar.';
+
+/** O Asaas RECUSOU (4xx) o cadastro do cliente: repetir não resolve, o dado
+ *  precisa mudar. Mesma regra de não repassar o texto do Asaas. */
+const CLIENTE_RECUSADO =
+  'O Asaas recusou o cadastro deste cliente. Confira nome, CPF/CNPJ e e-mail no cadastro e tente de novo.';
 
 /**
  * Cliente do Asaas correspondente a empresa, reusando o cadastro anterior.
@@ -354,9 +363,14 @@ export async function emitirCobrancaEscritorio(
   if (!(p.valorCentavos > 0)) return { ok: false, error: 'Informe o valor da cobrança.' };
   if (!p.descricao.trim()) return { ok: false, error: 'Descreva o que está sendo cobrado.' };
 
-  const doc = soDigitos(p.cliente.cpfCnpj);
-  if (doc.length !== 11 && doc.length !== 14) {
-    return { ok: false, error: 'Este cliente está sem CNPJ/CPF válido no cadastro — corrija antes de cobrar.' };
+  // Dígito verificador, e não só o tamanho: o Asaas recusa documento com DV
+  // errado (400 "O CPF/CNPJ informado é inválido") e, sem esta conferência, a
+  // recusa chegava ao contador como o genérico "tente de novo em instantes" —
+  // que nunca passa. Empresa da carteira e avulso antigo chegam aqui sem a
+  // validação que o cadastro novo de avulso já faz.
+  const doc = documentoValido(p.cliente.cpfCnpj);
+  if (!doc) {
+    return { ok: false, error: DOCUMENTO_INVALIDO };
   }
 
   // ─── CREDENCIAL ───────────────────────────────────────────────────────────
@@ -435,7 +449,9 @@ export async function emitirCobrancaEscritorio(
   } catch (e) {
     console.error('[4b] cadastro do cliente na subconta falhou:', mensagemCurta(e));
     await liberarReserva(sb, p.contabilidadeId, reserva);
-    return { ok: false, error: ERRO_ASAAS };
+    const status = statusDoErroAsaas(e);
+    const recusado = status !== null && status >= 400 && status < 500 && status !== 401 && status !== 403 && status !== 429;
+    return { ok: false, error: recusado ? CLIENTE_RECUSADO : ERRO_ASAAS };
   }
 
   let cobranca;
